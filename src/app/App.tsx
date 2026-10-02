@@ -5,6 +5,7 @@ import { SignupPage } from '../features/auth/SignupPage'
 import { SigninPage } from '../features/auth/SigninPage'
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage'
 import { WelcomePage } from '../features/auth/WelcomePage'
+import { ProfilePage } from '../features/profile/ProfilePage'
 import { NotFoundPage } from '../features/misc/NotFoundPage'
 import { DesignPage } from '../features/misc/DesignPage'
 
@@ -17,6 +18,7 @@ export function AppRoutes() {
       <Route path="/signin" element={<SigninPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/welcome" element={<WelcomePage />} />
+      <Route path="/profile" element={<ProfilePage />} />
       {import.meta.env.DEV && <Route path="/design" element={<DesignPage />} />}
       <Route path="/404" element={<NotFoundPage />} />
       <Route path="*" element={<Navigate to="/404" replace />} />

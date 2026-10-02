@@ -9,6 +9,7 @@ import { Logo } from '../../shared/ui/Logo'
 import { Spinner } from '../../shared/ui/Spinner'
 import { StripeBackground } from '../../shared/ui/StripeBackground'
 import { useAuth } from './useAuth'
+import { useUserProfile } from '../profile/useUserProfile'
 import { mapFirebaseAuthError } from './authErrors'
 import { resendVerificationEmail, signOutCurrentUser } from './authService'
 
@@ -18,7 +19,8 @@ interface WelcomeRouteState {
 }
 
 export function WelcomePage() {
-  const { user, status, authError } = useAuth()
+  const { user, status, authError, profileStatus, profileError, retryProfileSetup } = useAuth()
+  const { profile, loading: profileLoading } = useUserProfile()
   const location = useLocation()
   const navigate = useNavigate()
   const routeState = location.state as WelcomeRouteState | null
@@ -37,8 +39,10 @@ export function WelcomePage() {
     return () => window.clearTimeout(timer)
   }, [cooldown])
 
-  if (status === 'loading') return <main className="auth-wait"><Spinner label="Loading your account" /></main>
+  if (status === 'loading' || profileStatus === 'loading' || profileLoading) return <main className="auth-wait"><Spinner label="Loading your account" /></main>
   if (status === 'signedOut' || !user) return <Navigate to="/role?mode=signin" replace />
+  if (profileStatus === 'error') return <main className="auth-screen"><StripeBackground variant="fade" /><Card className="profile-error-card"><Alert tone="error" label="Profile unavailable">{profileError ?? 'We couldn’t prepare your profile.'}</Alert><Button type="button" onClick={retryProfileSetup}>Try again</Button></Card></main>
+  if (!profile?.role) return <Navigate to="/role?mode=continue" replace />
 
   async function handleResend() {
     if (!user || cooldown > 0 || resendLock.current) return
@@ -85,6 +89,7 @@ export function WelcomePage() {
           <Badge>YOU’RE IN</Badge>
           <h1>Welcome to Cool-lab.</h1>
           <p className="welcome-email">Signed in as <strong>{user.email ?? user.displayName ?? 'your account'}</strong></p>
+          <Link to="/profile" className="welcome-profile-link">Edit profile <ArrowRight size={15} aria-hidden="true" /></Link>
           {authError && <Alert tone="error" label="Session notice">{authError}</Alert>}
           {pageError && <Alert tone="error" label="Action not completed">{pageError}</Alert>}
           {!user.emailVerified && <Alert tone="warning" label="Verify your email" action={<Button type="button" variant="ghost" className="verification-resend" onClick={handleResend} disabled={resendBusy || cooldown > 0}>{resendBusy ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend email'} <ArrowRight size={14} aria-hidden="true" /></Button>}>We sent a verification link to {user.email ?? 'your email'}. Check your inbox to finish setting up your account.</Alert>}

@@ -1,11 +1,15 @@
 import { ArrowLeft, ArrowRight, GraduationCap, UserRound, Check } from 'lucide-react'
 import { useRef, useState, type KeyboardEvent } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import type { RoleIntentMode, UserRole } from './roleIntent'
 import { readRoleIntent, saveRoleIntent } from './roleIntent'
 import { Button } from '../../shared/ui/Button'
+import { Alert } from '../../shared/ui/Alert'
 import { Logo } from '../../shared/ui/Logo'
 import { StripeBackground } from '../../shared/ui/StripeBackground'
+import { Spinner } from '../../shared/ui/Spinner'
+import { useAuth } from './useAuth'
+import { mapFirebaseAuthError } from './authErrors'
 
 const roleOptions: { role: UserRole; title: string; description: string; Icon: typeof UserRound }[] = [
   { role: 'student', title: 'Student', description: 'I answer quizzes, practice and learn with others', Icon: UserRound },
@@ -15,14 +19,19 @@ const roleOptions: { role: UserRole; title: string; description: string; Icon: t
 export function RolePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { status, completeRoleSelection } = useAuth()
   const requestedMode = searchParams.get('mode')
   const previousIntent = readRoleIntent()
   const destinationMode: RoleIntentMode = requestedMode === 'signup'
     ? 'signup'
+    : requestedMode === 'continue'
+      ? 'continue'
     : requestedMode === 'signin'
       ? 'signin'
       : previousIntent?.mode ?? 'signin'
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null)
+  const [continuing, setContinuing] = useState(false)
+  const [continueError, setContinueError] = useState<string | null>(null)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   function handleRadioKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -37,13 +46,29 @@ export function RolePage() {
     }
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     if (!selectedRole) return
     saveRoleIntent({ role: selectedRole, mode: destinationMode })
+    if (destinationMode === 'continue') {
+      setContinuing(true)
+      setContinueError(null)
+      try {
+        await completeRoleSelection(selectedRole)
+        navigate('/profile', { replace: true })
+      } catch (error) {
+        setContinueError(mapFirebaseAuthError(error))
+      } finally {
+        setContinuing(false)
+      }
+      return
+    }
     navigate(`/${destinationMode}?mode=${destinationMode}`)
   }
 
   const heading = requestedMode === 'signup' ? 'Let’s set up your account.' : requestedMode === 'continue' ? 'Let’s keep learning.' : 'Welcome back.'
+
+  if (requestedMode === 'continue' && status === 'loading') return <main className="auth-wait"><Spinner label="Checking your account" /></main>
+  if (requestedMode === 'continue' && status === 'signedOut') return <Navigate to="/role?mode=signin" replace />
 
   return (
     <main className="role-screen" id="main-content">
@@ -65,7 +90,8 @@ export function RolePage() {
             )
           })}
         </div>
-        <Button type="button" className="role-continue" disabled={!selectedRole} onClick={handleContinue}>Continue <ArrowRight size={18} aria-hidden="true" /></Button>
+        {continueError && <Alert tone="error" label="Role not saved">{continueError}</Alert>}
+        <Button type="button" className="role-continue" disabled={!selectedRole || continuing} onClick={handleContinue}>{continuing ? 'Saving…' : 'Continue'} <ArrowRight size={18} aria-hidden="true" /></Button>
         <p className="role-privacy">Your choice helps us make Cool-lab feel like yours.</p>
       </section>
       <p className="role-footer">LEARN IT. OWN IT. TOGETHER.</p>

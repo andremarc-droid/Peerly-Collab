@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { readRoleIntent, ROLE_INTENT_STORAGE_KEY, saveRoleIntent } from './roleIntent'
+import { clearRoleIntent, readRoleIntent, ROLE_INTENT_STORAGE_KEY, saveRoleIntent } from './roleIntent'
 
 describe('role intent session storage', () => {
   beforeEach(() => sessionStorage.clear())
@@ -14,5 +14,12 @@ describe('role intent session storage', () => {
     sessionStorage.setItem(ROLE_INTENT_STORAGE_KEY, '{bad json')
     expect(readRoleIntent()).toBeNull()
     expect(sessionStorage.getItem(ROLE_INTENT_STORAGE_KEY)).toBeNull()
+  })
+
+  it('supports profile continuation role intent and clearing it after auth', () => {
+    saveRoleIntent({ role: 'instructor', mode: 'continue' })
+    expect(readRoleIntent()).toEqual({ role: 'instructor', mode: 'continue' })
+    clearRoleIntent()
+    expect(readRoleIntent()).toBeNull()
   })
 })

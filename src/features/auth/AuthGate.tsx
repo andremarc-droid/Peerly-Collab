@@ -8,7 +8,7 @@ export function AuthGate({ mode, children }: { mode: 'signup' | 'signin'; childr
   const intent = readRoleIntent()
   const { status } = useAuth()
 
-  if (!intent) return <Navigate to={`/role?mode=${mode}`} replace />
+  if (!intent || intent.mode !== mode) return <Navigate to={`/role?mode=${mode}`} replace />
   if (status === 'loading') return <AuthLoadingCard />
   if (status === 'signedIn') return <Navigate to="/welcome" replace />
   return children(intent.role)
