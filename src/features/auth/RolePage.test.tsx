@@ -1,0 +1,53 @@
+import '@testing-library/jest-dom/vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it } from 'vitest'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { RolePage } from './RolePage'
+import { readRoleIntent } from './roleIntent'
+
+function renderRolePage(mode: string) {
+  return render(
+    <MemoryRouter initialEntries={[`/role?mode=${mode}`]}>
+      <Routes>
+        <Route path="/role" element={<RolePage />} />
+        <Route path="/signup" element={<h1>Signup form coming next</h1>} />
+        <Route path="/signin" element={<h1>Signin form coming next</h1>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+afterEach(() => {
+  cleanup()
+  sessionStorage.clear()
+})
+
+describe('role choice screen', () => {
+  it('keeps Continue disabled until a role is chosen', () => {
+    renderRolePage('signup')
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+  })
+
+  it('supports keyboard arrow selection and continues signup with saved role', async () => {
+    const user = userEvent.setup()
+    renderRolePage('signup')
+    screen.getByRole('radio', { name: /Student/ }).focus()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('radio', { name: /Instructor/ })).toHaveFocus()
+    expect(screen.getByRole('radio', { name: /Instructor/ })).toBeChecked()
+    await user.keyboard('{Enter}')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(await screen.findByText('Signup form coming next')).toBeInTheDocument()
+    expect(readRoleIntent()).toEqual({ role: 'instructor', mode: 'signup' })
+  })
+
+  it('continues sign in mode to the sign in placeholder', async () => {
+    const user = userEvent.setup()
+    renderRolePage('signin')
+    await user.click(screen.getByRole('radio', { name: /Student/ }))
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(await screen.findByText('Signin form coming next')).toBeInTheDocument()
+    expect(readRoleIntent()).toEqual({ role: 'student', mode: 'signin' })
+  })
+})
