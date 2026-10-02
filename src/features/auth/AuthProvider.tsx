@@ -7,6 +7,7 @@ import { clearRoleIntent, readRoleIntent } from './roleIntent'
 import type { UserRole } from './roleIntent'
 import { getRoleMismatch } from '../profile/profileTypes'
 import { RoleMismatchDialog } from '../profile/RoleMismatchDialog'
+import type { UserProfile } from '../profile/profileTypes'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -14,6 +15,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null)
   const [profileStatus, setProfileStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [roleMismatch, setRoleMismatch] = useState<UserRole | null>(null)
   const [profileRetry, setProfileRetry] = useState(0)
 
@@ -41,15 +43,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (nextUser) {
           setProfileStatus('loading')
           setProfileError(null)
+          setProfile(null)
         } else {
+          setAuthError(null)
           setProfileStatus('ready')
           setProfileError(null)
+          setProfile(null)
           setRoleMismatch(null)
+          setProfileRetry(0)
         }
       }, (error) => {
         setUser(null)
         setStatus('signedOut')
         setAuthError(mapFirebaseAuthError(error))
+        setProfileStatus('ready')
+        setProfileError(null)
+        setProfile(null)
+        setRoleMismatch(null)
+        setProfileRetry(0)
       })
     }
 
@@ -66,18 +77,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let active = true
+    let unsubscribeProfile: () => void = () => {}
     const intent = readRoleIntent()
-    void import('../profile/profileService').then(({ ensureUserProfile }) => ensureUserProfile(user, intent?.role ?? null)).then((profile) => {
+    void import('../profile/profileService').then(async (service) => {
+      const nextProfile = await service.ensureUserProfile(user, intent?.role ?? null)
       if (!active) return
       clearRoleIntent()
-      setRoleMismatch(getRoleMismatch(intent?.role ?? null, profile.role))
+      setProfile(nextProfile)
+      setRoleMismatch(getRoleMismatch(intent?.role ?? null, nextProfile.role))
+      unsubscribeProfile = service.watchUserProfile(user.uid, (currentProfile) => {
+        setProfile(currentProfile)
+        setProfileStatus('ready')
+      }, () => {
+        setProfileError('We couldn’t load your profile. Check your connection and try again.')
+        setProfileStatus('error')
+      })
       setProfileStatus('ready')
     }).catch(() => {
       if (!active) return
       setProfileError('We couldn’t prepare your profile. Check your connection and try again.')
       setProfileStatus('error')
     })
-    return () => { active = false }
+    return () => {
+      active = false
+      unsubscribeProfile()
+    }
   }, [status, user, profileRetry])
 
   const completeRoleSelection = useCallback(async (role: UserRole): Promise<UserRole | null> => {
@@ -88,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { ensureUserProfile } = await import('../profile/profileService')
       const profile = await ensureUserProfile(user, role)
       clearRoleIntent()
+      setProfile(profile)
       const mismatch = getRoleMismatch(role, profile.role)
       setRoleMismatch(mismatch)
       setProfileStatus('ready')
@@ -110,6 +135,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfileError(null)
     setProfileRetry((attempt) => attempt + 1)
   }, [])
-  const value = useMemo(() => ({ user, status, authError, clearAuthError, profileStatus, profileError, roleMismatch, completeRoleSelection, continueWithAccountRole, retryProfileSetup }), [user, status, authError, clearAuthError, profileStatus, profileError, roleMismatch, completeRoleSelection, continueWithAccountRole, retryProfileSetup])
+  const value = useMemo(() => ({ user, status, authError, clearAuthError, profileStatus, profileError, profile, roleMismatch, completeRoleSelection, continueWithAccountRole, retryProfileSetup }), [user, status, authError, clearAuthError, profileStatus, profileError, profile, roleMismatch, completeRoleSelection, continueWithAccountRole, retryProfileSetup])
   return <AuthContext.Provider value={value}>{children}<RoleMismatchDialog /></AuthContext.Provider>
 }

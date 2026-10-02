@@ -1,23 +1,23 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
-import { AuthGate } from './AuthGate'
 import { AccountTypeHint, AuthCard, AuthShell, GoogleSignInButton, PasswordField, RoleChip } from './AuthChrome'
 import { mapFirebaseAuthError } from './authErrors'
 import { signInWithEmail, signInWithGoogle } from './authService'
 import { useAuth } from './useAuth'
 import { validateSignin, type AuthFieldErrors } from './validation'
-import type { UserRole } from './roleIntent'
+import { readRoleIntent, type UserRole } from './roleIntent'
 
 export function SigninPage() {
-  return <AuthGate mode="signin">{(role) => <SigninForm role={role} />}</AuthGate>
+  const intent = readRoleIntent()
+  if (!intent || intent.mode !== 'signin') return <Navigate to="/role?mode=signin" replace />
+  return <SigninForm role={intent.role} />
 }
 
 function SigninForm({ role }: { role: UserRole }) {
-  const navigate = useNavigate()
   const { authError, clearAuthError } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -40,7 +40,6 @@ function SigninForm({ role }: { role: UserRole }) {
     clearAuthError()
     try {
       await signInWithEmail(email.trim(), password)
-      navigate('/welcome', { replace: true })
     } catch (error) {
       setRequestError(mapFirebaseAuthError(error))
     } finally {
@@ -56,8 +55,7 @@ function SigninForm({ role }: { role: UserRole }) {
     setRequestError(null)
     clearAuthError()
     try {
-      const result = await signInWithGoogle()
-      if (result) navigate('/welcome', { replace: true })
+      await signInWithGoogle()
     } catch (error) {
       setRequestError(mapFirebaseAuthError(error))
     } finally {

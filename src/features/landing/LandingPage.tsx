@@ -1,5 +1,9 @@
 import { ArrowDown, ArrowRight, ArrowUpRight, BookOpenCheck, Brain, Check, Clock3, Layers3, Lightbulb, Menu, Sparkles, UsersRound, X } from 'lucide-react'
 import { useState } from 'react'
+import { Skeleton } from '../../shared/ui/Skeleton'
+import { useAuth } from '../auth/useAuth'
+import { useUserProfile } from '../profile/useUserProfile'
+import { dashboardPath } from '../../app/returnTo'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { Card } from '../../shared/ui/Card'
@@ -57,6 +61,9 @@ function ProductPreview() {
 
 function BrandHeader() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const { status } = useAuth()
+  const { profile, loading } = useUserProfile()
+  const waitingForProfile = status === 'loading' || (status === 'signedIn' && loading)
   return (
     <header className="site-header">
       <Container className="site-header__inner">
@@ -67,8 +74,7 @@ function BrandHeader() {
         <nav id="primary-navigation" className={`site-nav${menuOpen ? ' site-nav--open' : ''}`} aria-label="Main navigation">
           <a href="#features" onClick={() => setMenuOpen(false)}>Features</a>
           <a href="#how-it-works" onClick={() => setMenuOpen(false)}>How it works</a>
-          <Button to="/role?mode=signin" variant="ghost" className="site-nav__signin">Sign in</Button>
-          <Button to="/role?mode=signup" className="site-nav__start">Get started <ArrowUpRight size={16} aria-hidden="true" /></Button>
+          {waitingForProfile ? <Skeleton className="site-nav__account-skeleton" label="Loading account" /> : status === 'signedIn' ? <Button to={profile?.role ? dashboardPath(profile.role) : '/role?mode=continue'} className="site-nav__start">Open dashboard <ArrowUpRight size={16} aria-hidden="true" /></Button> : <><Button to="/role?mode=signin" variant="ghost" className="site-nav__signin">Sign in</Button><Button to="/role?mode=signup" className="site-nav__start">Get started <ArrowUpRight size={16} aria-hidden="true" /></Button></>}
         </nav>
       </Container>
     </header>

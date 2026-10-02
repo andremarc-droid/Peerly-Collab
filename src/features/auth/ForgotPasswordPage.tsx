@@ -1,26 +1,23 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { ArrowLeft, ArrowRight, MailCheck } from 'lucide-react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
-import { AuthCard, AuthLoadingCard, AuthShell } from './AuthChrome'
+import { AuthCard, AuthShell } from './AuthChrome'
 import { mapFirebaseAuthError } from './authErrors'
 import { sendPasswordReset } from './authService'
 import { useAuth } from './useAuth'
 import { validateEmail } from './validation'
 
 export function ForgotPasswordPage() {
-  const { status, authError, clearAuthError } = useAuth()
+  const { authError, clearAuthError } = useAuth()
   const [email, setEmail] = useState('')
   const [emailError, setEmailError] = useState<string | undefined>()
   const [requestError, setRequestError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
-
-  if (status === 'loading') return <AuthLoadingCard label="Checking your session" />
-  if (status === 'signedIn') return <Navigate to="/welcome" replace />
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

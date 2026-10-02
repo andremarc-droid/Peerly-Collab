@@ -5,6 +5,7 @@ import { Button } from '../../shared/ui/Button'
 import { Card } from '../../shared/ui/Card'
 import { signOutCurrentUser } from '../auth/authService'
 import { useAuth } from '../auth/useAuth'
+import { clearReturnTo } from '../../app/returnTo'
 
 function titleCase(role: string): string {
   return `${role.charAt(0).toUpperCase()}${role.slice(1)}`
@@ -31,6 +32,7 @@ export function RoleMismatchDialog() {
     setError(null)
     try {
       await signOutCurrentUser()
+      clearReturnTo()
       continueWithAccountRole()
     } catch {
       setError('We couldn’t sign you out. Please try again.')

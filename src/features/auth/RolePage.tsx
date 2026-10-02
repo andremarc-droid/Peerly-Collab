@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, GraduationCap, UserRound, Check } from 'lucide-react'
 import { useRef, useState, type KeyboardEvent } from 'react'
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import type { RoleIntentMode, UserRole } from './roleIntent'
 import { readRoleIntent, saveRoleIntent } from './roleIntent'
 import { Button } from '../../shared/ui/Button'
@@ -10,6 +10,7 @@ import { StripeBackground } from '../../shared/ui/StripeBackground'
 import { Spinner } from '../../shared/ui/Spinner'
 import { useAuth } from './useAuth'
 import { mapFirebaseAuthError } from './authErrors'
+import { consumeReturnTo, rememberReturnTo, returnPathFromState } from '../../app/returnTo'
 
 const roleOptions: { role: UserRole; title: string; description: string; Icon: typeof UserRound }[] = [
   { role: 'student', title: 'Student', description: 'I answer quizzes, practice and learn with others', Icon: UserRound },
@@ -19,6 +20,7 @@ const roleOptions: { role: UserRole; title: string; description: string; Icon: t
 export function RolePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { status, completeRoleSelection } = useAuth()
   const requestedMode = searchParams.get('mode')
   const previousIntent = readRoleIntent()
@@ -54,7 +56,7 @@ export function RolePage() {
       setContinueError(null)
       try {
         await completeRoleSelection(selectedRole)
-        navigate('/profile', { replace: true })
+        navigate(consumeReturnTo(location.state, selectedRole), { replace: true })
       } catch (error) {
         setContinueError(mapFirebaseAuthError(error))
       } finally {
@@ -62,13 +64,14 @@ export function RolePage() {
       }
       return
     }
-    navigate(`/${destinationMode}?mode=${destinationMode}`)
+    rememberReturnTo(returnPathFromState(location.state))
+    navigate(`/${destinationMode}?mode=${destinationMode}`, { state: location.state })
   }
 
   const heading = requestedMode === 'signup' ? 'Let’s set up your account.' : requestedMode === 'continue' ? 'Let’s keep learning.' : 'Welcome back.'
 
   if (requestedMode === 'continue' && status === 'loading') return <main className="auth-wait"><Spinner label="Checking your account" /></main>
-  if (requestedMode === 'continue' && status === 'signedOut') return <Navigate to="/role?mode=signin" replace />
+  if (requestedMode === 'continue' && status === 'signedOut') return <Navigate to="/role?mode=signin" replace state={location.state} />
 
   return (
     <main className="role-screen" id="main-content">

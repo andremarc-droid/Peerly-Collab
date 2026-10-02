@@ -1,8 +1,12 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { LandingPage } from './LandingPage'
+
+const mocks = vi.hoisted(() => ({ status: 'signedOut' as 'loading' | 'signedOut' | 'signedIn' }))
+vi.mock('../auth/useAuth', () => ({ useAuth: () => ({ status: mocks.status, user: null }) }))
+vi.mock('../profile/useUserProfile', () => ({ useUserProfile: () => ({ profile: null, loading: false, error: null }) }))
 
 afterEach(cleanup)
 

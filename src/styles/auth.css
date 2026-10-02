@@ -34,20 +34,8 @@
 .auth-card--loading { display: flex; min-height: 140px; align-items: center; justify-content: center; gap: 12px; color: var(--color-navy-900); }
 .auth-card--loading > span:last-child { color: var(--color-navy-800-72); font-size: 13px; }
 .auth-symbol { display: grid; width: 50px; height: 50px; margin-bottom: 20px; place-items: center; border-radius: 16px; color: var(--color-white); background: var(--color-navy-800); }
-.welcome-card { display: grid; width: min(100%, 600px); gap: 18px; padding: clamp(26px, 4vw, 44px); border-radius: 24px; }
-.welcome-mark { display: grid; width: 50px; height: 50px; place-items: center; border-radius: 16px; color: var(--color-white); background: var(--color-navy-800); }
-.welcome-card > .badge { justify-self: start; }
-.welcome-card h1 { margin: -9px 0 0; font-size: clamp(34px, 5vw, 48px); font-weight: 570; letter-spacing: -.06em; line-height: 1.05; }
-.welcome-email { margin: -8px 0 0; color: var(--color-navy-800-72); font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
-.welcome-email strong { color: var(--color-navy-900); }
-.welcome-card .alert { align-items: flex-start; }
-.welcome-details { display: grid; gap: 11px; padding-block: 4px; }
-.welcome-details span { display: flex; align-items: center; gap: 9px; color: var(--color-navy-800-72); font-size: 12px; }
-.welcome-details svg { flex: 0 0 auto; color: var(--color-navy-800); }
 .verification-resend { min-height: 44px; padding-inline: 8px; color: var(--color-navy-900); font-size: 12px; }
-.signout-button { width: 100%; min-height: 48px; }
 .auth-wait { display: grid; min-height: 100svh; place-items: center; color: var(--color-navy-800); background: var(--color-white); }
-.welcome-profile-link { display: inline-flex; min-height: 44px; width: fit-content; align-items: center; gap: 7px; color: var(--color-navy-800); font-size: 12px; font-weight: 700; text-underline-offset: 3px; }
 .profile-card, .profile-error-card { width: min(100%, 600px); padding: clamp(26px, 4vw, 44px); border-radius: 24px; }
 .profile-card h1 { margin: 4px 0 6px; font-size: clamp(34px, 5vw, 48px); font-weight: 570; letter-spacing: -.06em; line-height: 1.05; }
 .profile-eyebrow { color: var(--color-navy-800-72); font-size: 10px; font-weight: 750; letter-spacing: .12em; }
@@ -66,6 +54,44 @@
 .role-conflict-dialog p strong { color: var(--color-navy-900); }
 .role-conflict-actions { display: grid; gap: 10px; padding-top: 3px; }
 .role-conflict-actions .button { min-height: 48px; }
+.app-shell { min-height: 100svh; color: var(--color-navy-900); background: var(--color-white); }
+.app-shell__header { position: sticky; z-index: 5; top: 0; display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px clamp(16px, 4vw, 48px); border-bottom: 1px solid var(--color-navy-900-12); background: var(--color-white); }
+.app-shell__header > .logo { flex: 0 0 auto; }
+.account-menu { position: relative; }
+.account-menu summary { display: flex; min-height: 48px; align-items: center; gap: 10px; padding: 4px 8px; border: 1px solid var(--color-navy-900-12); border-radius: 999px; cursor: pointer; list-style: none; }
+.account-menu summary::-webkit-details-marker { display: none; }
+.account-avatar { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; overflow: hidden; border-radius: 50%; color: var(--color-white); background: var(--color-navy-800); object-fit: cover; }
+.account-avatar--initial { font-family: var(--font-heading); font-size: 15px; font-weight: 700; }
+.account-menu__identity { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; }
+.account-menu__identity strong { max-width: min(36vw, 220px); overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu__identity .badge { padding: 3px 7px; font-size: 8px; line-height: 1.2; }
+.account-menu summary > svg { flex: 0 0 auto; }
+.account-menu__panel { position: absolute; top: calc(100% + 8px); right: 0; display: grid; width: min(84vw, 240px); gap: 4px; padding: 8px; border: 1px solid var(--color-navy-900-12); border-radius: 16px; background: var(--color-white); box-shadow: var(--shadow-card); }
+.account-menu__panel > a, .account-menu__panel > .button { display: flex; min-height: 44px; align-items: center; justify-content: flex-start; gap: 9px; padding-inline: 12px; border-radius: 10px; color: var(--color-navy-900); font-size: 13px; text-decoration: none; }
+.account-menu__panel > a:hover { background: var(--color-navy-900-08); }
+.app-shell__content { width: min(100%, 1120px); margin-inline: auto; padding: clamp(24px, 5vw, 56px) clamp(16px, 4vw, 48px); }
+.app-shell__notice { display: flex; min-height: 52px; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; padding: 6px 16px; border-bottom: 1px solid var(--color-navy-900-12); color: var(--color-navy-900); font-size: 12px; text-align: center; }
+.app-shell__notice .button { min-height: 44px; color: var(--color-navy-900); }
+.app-shell__error { padding: 8px clamp(16px, 4vw, 48px) 0; }
+.app-shell__loading { display: grid; justify-items: start; gap: 24px; }
+.app-shell__logo-skeleton { width: 116px; height: 34px; }
+.app-shell__account-skeleton { width: 190px; height: 48px; border-radius: 999px; }
+.app-shell__title-skeleton { width: min(65%, 340px); height: 44px; }
+.app-shell__card-skeleton { width: 100%; height: 230px; border-radius: 24px; }
+.route-state, .route-loading { display: grid; min-height: 100svh; align-content: center; justify-items: center; gap: 16px; padding: 24px; }
+.route-state > .alert { width: min(100%, 560px); }
+.dashboard-home { display: grid; gap: clamp(28px, 6vw, 52px); }
+.dashboard-home__heading { display: grid; justify-items: start; gap: 12px; }
+.dashboard-home__heading h1 { margin: 0; font-size: clamp(36px, 7vw, 58px); font-weight: 570; letter-spacing: -.06em; line-height: 1.05; overflow-wrap: anywhere; }
+.dashboard-home__heading p { max-width: 58ch; margin: 0; color: var(--color-navy-800-72); font-size: clamp(14px, 2vw, 17px); line-height: 1.65; }
+.dashboard-empty { display: grid; min-height: 270px; align-content: center; justify-items: center; gap: 14px; padding: clamp(24px, 6vw, 52px); border-radius: 24px; text-align: center; }
+.dashboard-empty__icon { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 17px; color: var(--color-white); background: var(--color-navy-800); }
+.dashboard-empty h2 { margin: 2px 0 0; font-size: clamp(24px, 4vw, 32px); font-weight: 570; letter-spacing: -.04em; }
+.dashboard-empty p { max-width: 44ch; margin: 0; color: var(--color-navy-800-72); font-size: 14px; line-height: 1.6; }
+.dashboard-empty__note { display: inline-flex; min-height: 44px; align-items: center; gap: 8px; color: var(--color-navy-800); font-size: 12px; font-weight: 650; }
+.site-nav__account-skeleton { width: 150px; height: 44px; border-radius: 999px; }
+.profile-page { display: grid; justify-items: center; }
+.profile-page > .profile-card, .profile-page > .profile-error-card { width: min(100%, 600px); }
 
 @media (min-width: 560px) {
   .role-conflict-actions { grid-template-columns: 1fr 1fr; }
@@ -75,7 +101,9 @@
   .auth-screen { padding: 18px; }
   .auth-screen__content { padding-block: 24px; }
   .auth-screen__header .logo { font-size: 18px; }
-  .auth-card, .welcome-card { border-radius: 21px; }
+  .auth-card { border-radius: 21px; }
   .auth-divider { gap: 8px; font-size: 8px; }
   .alert__action { margin-top: 3px; }
+  .account-menu__identity strong { max-width: 25vw; }
+  .app-shell__header { min-height: 64px; }
 }

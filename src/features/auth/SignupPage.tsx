@@ -1,26 +1,27 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
-import { AuthGate } from './AuthGate'
 import { AccountTypeHint, AuthCard, AuthShell, GoogleSignInButton, PasswordField, RoleChip } from './AuthChrome'
 import { mapFirebaseAuthError } from './authErrors'
 import { createEmailAccount, signInWithGoogle } from './authService'
 import { useAuth } from './useAuth'
 import { getPasswordStrength, validateSignup, type AuthFieldErrors, type SignupValues } from './validation'
 import type { UserRole } from './roleIntent'
+import { readRoleIntent } from './roleIntent'
 
 const initialValues: SignupValues = { name: '', email: '', password: '', confirmPassword: '' }
 const strengthHint = { empty: 'Use at least 8 characters.', weak: 'Weak · add more characters.', fair: 'Getting stronger · add a number or symbol.', strong: 'Strong password.' }
 
 export function SignupPage() {
-  return <AuthGate mode="signup">{(role) => <SignupForm role={role} />}</AuthGate>
+  const intent = readRoleIntent()
+  if (!intent || intent.mode !== 'signup') return <Navigate to="/role?mode=signup" replace />
+  return <SignupForm role={intent.role} />
 }
 
 function SignupForm({ role }: { role: UserRole }) {
-  const navigate = useNavigate()
   const { authError, clearAuthError } = useAuth()
   const [values, setValues] = useState(initialValues)
   const [errors, setErrors] = useState<AuthFieldErrors>({})
@@ -48,8 +49,7 @@ function SignupForm({ role }: { role: UserRole }) {
     setRequestError(null)
     clearAuthError()
     try {
-      const result = await createEmailAccount(values.name, values.email.trim(), values.password)
-      navigate('/welcome', { replace: true, state: { verificationSent: !result.verificationError, verificationError: result.verificationError ? mapFirebaseAuthError(result.verificationError) : null } })
+      await createEmailAccount(values.name, values.email.trim(), values.password)
     } catch (error) {
       setRequestError(mapFirebaseAuthError(error))
     } finally {
@@ -65,8 +65,7 @@ function SignupForm({ role }: { role: UserRole }) {
     setRequestError(null)
     clearAuthError()
     try {
-      const result = await signInWithGoogle()
-      if (result) navigate('/welcome', { replace: true })
+      await signInWithGoogle()
     } catch (error) {
       setRequestError(mapFirebaseAuthError(error))
     } finally {

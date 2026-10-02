@@ -63,13 +63,13 @@ describe('role choice screen', () => {
       <MemoryRouter initialEntries={['/role?mode=continue']}>
         <Routes>
           <Route path="/role" element={<RolePage />} />
-          <Route path="/profile" element={<h1>Profile settings</h1>} />
+          <Route path="/instructor" element={<h1>Instructor dashboard</h1>} />
         </Routes>
       </MemoryRouter>,
     )
     await user.click(screen.getByRole('radio', { name: /Instructor/ }))
     await user.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(await screen.findByRole('heading', { name: 'Profile settings' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Instructor dashboard' })).toBeInTheDocument()
     expect(mockAuth.completeRoleSelection).toHaveBeenCalledWith('instructor')
     expect(readRoleIntent()).toEqual({ role: 'instructor', mode: 'continue' })
   })
