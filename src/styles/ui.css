@@ -37,6 +37,9 @@
 .alert > div { display: grid; gap: 3px; }
 .alert strong { font-size: 13px; }
 .alert span { font-size: 13px; line-height: 1.5; }
+.alert__action { margin-top: 5px; }
+.field__error { display: flex; align-items: flex-start; gap: 6px; color: var(--color-feedback-error); font-size: 12px; line-height: 1.45; }
+.field__error svg { flex: 0 0 auto; margin-top: 1px; }
 .alert--success { color: var(--color-feedback-success); background: var(--color-feedback-success-bg); }
 .alert--warning { color: var(--color-feedback-warning); background: var(--color-feedback-warning-bg); }
 .alert--error { color: var(--color-feedback-error); background: var(--color-feedback-error-bg); }
