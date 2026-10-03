@@ -24,13 +24,13 @@ export function ClassCodePanel({ classroom, onJoiningChange, onRegenerate, busy,
   }
 
   return <>
-    <section className="grid gap-4 rounded-3xl border border-navy-900-12 bg-white p-5 shadow-md sm:p-7" aria-label="Class join code">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><span className="section-kicker">STUDENT INVITATION</span><p className="m-0 font-mono text-3xl font-bold tracking-[0.22em] sm:text-4xl">{classroom.joinCode}</p></div><Button type="button" variant="secondary" onClick={() => setShare(true)}><Share2 size={16} aria-hidden="true" /> Share code</Button></div>
+    <section className="class-code-panel grid gap-4 rounded-3xl p-5 shadow-md sm:p-7" aria-label="Class join code">
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><span className="section-kicker">STUDENT INVITATION</span><p className="m-0 font-mono text-3xl font-bold tracking-[0.22em] sm:text-4xl">{classroom.joinCode}</p></div><Button type="button" onClick={() => setProjector(true)}><Share2 size={16} aria-hidden="true" /> Show to class</Button></div>
       <Switch label={classroom.joinEnabled ? 'Joining open' : 'Joining paused'} hint={classroom.status === 'archived' ? 'Restore this class before students can join.' : 'Pause new sign-ups without removing current students.'} checked={classroom.joinEnabled} onChange={(event) => onJoiningChange(event.target.checked)} disabled={busy || classroom.status === 'archived'} />
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="secondary" onClick={() => void copy(classroom.joinCode, 'Join code copied.')}><Copy size={16} aria-hidden="true" /> Copy code</Button>
         <Button type="button" variant="secondary" onClick={() => void copy(invite, 'Invite link copied.')}><SquareArrowOutUpRight size={16} aria-hidden="true" /> Copy invite link</Button>
-        <Button type="button" variant="secondary" onClick={() => setProjector(true)}><Share2 size={16} aria-hidden="true" /> Show code to the class</Button>
+        <Button type="button" variant="secondary" onClick={() => setShare(true)}><Share2 size={16} aria-hidden="true" /> Share invite</Button>
         <Button type="button" variant="secondary" onClick={() => setConfirmRegenerate(true)} disabled={busy}><RefreshCw size={16} aria-hidden="true" /> Regenerate code</Button>
       </div>
     </section>

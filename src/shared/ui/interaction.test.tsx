@@ -7,6 +7,8 @@ import { DropdownMenu } from './DropdownMenu'
 import { Tabs } from './Tabs'
 import { ToastProvider } from './ToastProvider'
 import { useToast } from './useToast'
+import { DataTable } from './DataTable'
+import { StatTile } from './StatTile'
 
 afterEach(() => {
   cleanup()
@@ -66,11 +68,30 @@ describe('shared interaction components', () => {
   })
 
   it('moves between tabs with arrow keys and keeps the panel connected', () => {
-    render(<Tabs label="Sample sections" tabs={[{ label: 'Overview', content: 'Overview details.' }, { label: 'Settings', content: 'Settings details.' }]} />)
-    const overview = screen.getByRole('tab', { name: 'Overview' })
+    render(<Tabs label="Sample sections" tabs={[{ label: 'Overview', content: 'Overview details.', count: 2 }, { label: 'Settings', content: 'Settings details.' }]} />)
+    const overview = screen.getByRole('tab', { name: /Overview/ })
     fireEvent.keyDown(overview, { key: 'ArrowRight' })
     expect(screen.getByRole('tab', { name: 'Settings' })).toHaveFocus()
     expect(screen.getByRole('tabpanel')).toHaveTextContent('Settings details.')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Settings' }), { key: 'Home' })
+    expect(screen.getByRole('tab', { name: /Overview.*2 items/ })).toHaveFocus()
+  })
+
+  it('sorts data table columns and exposes mobile field labels', () => {
+    render(<DataTable label="Learner roster" rows={[{ id: 'b', name: 'Bea' }, { id: 'a', name: 'Ada' }]} getRowId={(row) => row.id} columns={[{ key: 'name', header: 'Learner', cell: (row) => row.name, sortValue: (row) => row.name }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Learner/ }))
+    const rows = screen.getAllByRole('row')
+    expect(rows[1]).toHaveTextContent('Ada')
+    expect(screen.getAllByRole('cell')[0]).toHaveAttribute('data-label', 'Learner')
+    fireEvent.click(screen.getByRole('button', { name: /Learner/ }))
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent('Bea')
+  })
+
+  it('supports the navy stat-tile variant with its label and hint', () => {
+    render(<StatTile label="Submissions" value="18" hint="Across all attempts" variant="navy" />)
+    const tile = screen.getByRole('article')
+    expect(tile).toHaveClass('stat-tile--navy')
+    expect(tile).toHaveTextContent('Submissions18Across all attempts')
   })
 
   it('announces toasts and allows dismissing and automatic dismissal', async () => {

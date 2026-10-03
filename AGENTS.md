@@ -24,6 +24,10 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Use `DropdownMenu`, `Dialog`, `ConfirmDialog`, `ToastProvider`, and `Tooltip` for shared interactions. Menus and dialogs support keyboard use; dialogs label their purpose, contain focus, close on Escape, and lock background scroll. Toasts have an icon, visible status label, live announcement, dismiss button, and timeout.
 - Shared form controls (`Input`, `Textarea`, `Select`, `Switch`, `Checkbox`, `RadioGroup`, `SegmentedControl`, `Tabs`) must keep labels, hints, and errors programmatically associated with their controls. Prefer native controls where they provide equivalent accessible behavior.
 - Keep page rhythm on the 8px scale, favor a clear page heading and semantic sections, and check widths at 360px, 768px, 1280px, and 1920px. Use white/navy contrast pairs listed in `docs/contrast-report.md`; opacity tints are for surfaces and dividers, not small text.
+- Use `PageSection` for titled groups on tinted content panels; use icon-led `SectionCard` for raised forms and settings, and keep one clear primary action in each group.
+- Use `DataTable` for sortable rosters/results; keep row headers visible on desktop and provide labelled mobile cards without horizontal page overflow.
+- `Tabs` use a strong selected state, optional count badges, keyboard arrows, and a horizontally scrollable mobile tab rail. `StatTile` supports white and navy stripe variants.
+- Dialogs use the shared icon header, focus trap, Escape handling, and a consistent footer; destructive actions include a warning icon and clear text label.
 
 ## USER FLOW
 - The public landing page is `/`. “Get started” opens `/role?mode=signup`; “Sign in” opens `/role?mode=signin`.

@@ -98,8 +98,8 @@ export function ClassPage() {
 
   const subtitle = [classroom.section, classroom.subject].filter(Boolean).join(' · ') || 'Manage learners, class quizzes, and invitations.'
   const tabs = [
-    { label: 'Quizzes', content: <ClassQuizzesTab key={classroom.id} classroom={classroom} classes={classes} /> },
-    { label: 'People', content: <ClassPeopleTab key={classroom.id} classroom={classroom} enrollments={enrollments} counts={counts} /> },
+    { label: 'Quizzes', count: counts.quizzes, content: <ClassQuizzesTab key={classroom.id} classroom={classroom} classes={classes} /> },
+    { label: 'People', count: counts.students + counts.pending, content: <ClassPeopleTab key={classroom.id} classroom={classroom} enrollments={enrollments} counts={counts} /> },
     { label: 'Settings', content: <ClassSettingsTab key={classroom.id} classroom={classroom} counts={{ students: counts.enrollments, quizzes: counts.quizzes }} /> },
   ]
 

@@ -8,12 +8,14 @@ import { Checkbox } from '../../shared/ui/Checkbox'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Container } from '../../shared/ui/Container'
 import { DataCard } from '../../shared/ui/DataCard'
+import { DataTable } from '../../shared/ui/DataTable'
 import { Dialog } from '../../shared/ui/Dialog'
 import { DropdownMenu } from '../../shared/ui/DropdownMenu'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Input } from '../../shared/ui/Input'
 import { Logo } from '../../shared/ui/Logo'
 import { PageHeader } from '../../shared/ui/PageHeader'
+import { PageSection } from '../../shared/ui/PageSection'
 import { RadioGroup } from '../../shared/ui/RadioGroup'
 import { Reveal } from '../../shared/ui/Reveal'
 import { SectionCard } from '../../shared/ui/SectionCard'
@@ -67,12 +69,16 @@ function DesignGallery() {
         </SectionCard>
 
         <SectionCard title="Stats, section cards and content lists" description="Use concise stats for honest counts, section cards for related controls, and data cards for list rows.">
-          <StatRow><StatTile label="Quizzes" value="0" hint="No quizzes created yet" /><StatTile label="Learners" value="0" hint="Appears when learners join" /><StatTile label="Responses" value="0" hint="No submissions yet" /><StatTile label="Study groups" value="0" hint="Available for shared practice" /></StatRow>
+          <StatRow><StatTile label="Quizzes" value="0" hint="No quizzes created yet" variant="navy" /><StatTile label="Learners" value="0" hint="Appears when learners join" /><StatTile label="Responses" value="0" hint="No submissions yet" /><StatTile label="Study groups" value="0" hint="Available for shared practice" /></StatRow>
           <div className="design-gallery__stack">
             <Toolbar query={query} onQueryChange={setQuery} placeholder="Search sample content" filters={<Select label="Type" name="sample-type" value={type} onChange={(event) => setType(event.target.value)} options={[{ label: 'All types', value: 'All types' }, { label: 'Quiz', value: 'Quiz' }, { label: 'Flashcards', value: 'Flashcards' }]} />} />
             {visibleSamples.length ? visibleSamples.map((sample) => <DataCard key={sample.title} title={sample.title} meta={sample.meta} badge={<Badge>{sample.type}</Badge>} actions={<Button variant="secondary" onClick={() => showToast('info', `${sample.title} is a preview item.`)}>Preview</Button>} />) : <p role="status">No preview items match this search.</p>}
           </div>
         </SectionCard>
+
+        <PageSection title="Responsive data table" description="Sortable headers on wide screens; labelled cards on mobile." action={<Button variant="secondary" onClick={() => showToast('info', 'Table action selected.')}>Export preview</Button>}>
+          <DataTable label="Sample learner roster" rows={[{ id: '1', learner: 'Ari Nguyen', status: 'Active', score: 92 }, { id: '2', learner: 'Morgan Lee', status: 'Pending', score: 0 }, { id: '3', learner: 'Sam Rivera', status: 'Active', score: 85 }]} getRowId={(row) => row.id} selectedId="1" columns={[{ key: 'learner', header: 'Learner', cell: (row) => row.learner, sortValue: (row) => row.learner }, { key: 'status', header: 'Status', cell: (row) => row.status, sortValue: (row) => row.status }, { key: 'score', header: 'Average', cell: (row) => `${row.score}%`, sortValue: (row) => row.score }]} />
+        </PageSection>
 
         <SectionCard title="Buttons, badges, cards and alerts" description="Buttons maintain 44px touch targets and clear interactive states.">
           <div className="design-gallery__group"><h3>Button variants</h3><div className="design-gallery__row"><Button onClick={() => showToast('success', 'Primary action selected.')}>Primary action</Button><Button variant="secondary" onClick={() => showToast('info', 'Secondary button selected.')}>Secondary action</Button><Button variant="ghost" onClick={() => showToast('info', 'Ghost button selected.')}>Ghost action</Button><Button variant="inverse" onClick={() => showToast('info', 'Inverse button selected.')}>Inverse action</Button><Button disabled>Disabled state</Button><Button to="/" variant="secondary">Link action</Button><Badge>Practice mode</Badge></div></div>

@@ -49,3 +49,13 @@ The developer-only `/design` gallery demonstrates these components, disabled/err
 - Provide a live publish checklist, class context, breadcrumbs, and a back action that returns to the originating class or quiz list.
 - Favor undo for low-risk question deletion and keyboard-first question entry.
 
+## Shared app consistency patterns
+
+- App screens use the same sequence: navy stripe header, softly tinted content panel, then white raised cards for related controls. Avoid white cards directly on white surfaces.
+- `PageSection` groups content on the tinted panel with an icon tile, title, description, and optional action. `SectionCard` is the white raised surface for forms and settings, with an icon heading and divider.
+- `StatTile` has white and navy variants. Use the navy variant to anchor the first/highest-priority metric.
+- `DataTable` provides sortable headers, selected rows, low-contrast zebra striping, and label/value cards on narrow screens.
+- `Tabs` use filled-navy selection, optional counts, arrow-key navigation, and a scrollable mobile rail.
+- Dialog headers, destructive confirmations, feedback banners, loading states, and empty states share their icon, spacing, contrast, and action patterns.
+- Keep the visual system to navy and white; feedback colors appear only with an icon and visible text label. Keep paragraph text at 16px or larger, metadata at 12px or larger, and controls at least 44px high.
+

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { BookOpenText, X } from 'lucide-react'
 import { Button } from './Button'
 
 interface DialogProps {
@@ -47,7 +47,7 @@ export function Dialog({ open, onClose, title, description, children, labelledBy
     <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <section ref={dialogRef} className={`dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleLabel} aria-describedby={description ? descriptionId : undefined} tabIndex={-1} onKeyDown={handleKeyDown}>
         <header className="dialog__header">
-          <div><h2 id={titleId}>{title}</h2>{description && <p id={descriptionId}>{description}</p>}</div>
+          <div className="dialog__heading"><span className="dialog__icon" aria-hidden="true"><BookOpenText size={21} /></span><div><h2 id={titleId}>{title}</h2>{description && <p id={descriptionId}>{description}</p>}</div></div>
           <Button type="button" variant="ghost" className="dialog__close" aria-label="Close dialog" onClick={onClose}><X size={20} aria-hidden="true" /></Button>
         </header>
         <div className="dialog__content">{children}</div>

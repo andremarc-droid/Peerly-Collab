@@ -5,6 +5,7 @@ import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Input } from '../../shared/ui/Input'
+import { SectionCard } from '../../shared/ui/SectionCard'
 import { Switch } from '../../shared/ui/Switch'
 import { Textarea } from '../../shared/ui/Textarea'
 import { useToast } from '../../shared/ui/useToast'
@@ -57,16 +58,16 @@ export function ClassSettingsTab({ classroom, counts }: { classroom: ClassWithId
 
   return <div className="grid gap-6">
     <form className="grid gap-5" onSubmit={(event) => void save(event)}>
-      <section className="section-card"><header className="section-card__header"><h2>Class details</h2><p>Keep the class information clear for your learners.</p></header>
+      <SectionCard title="Class details" description="Keep the class information clear for your learners.">
         {error && <Alert tone="error" label="Could not save class">{error}</Alert>}
         <div className="grid gap-4 sm:grid-cols-2"><Input label="Class name" name="settings-class-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /><Input label="Section" name="settings-class-section" value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value })} /><Input label="Subject" name="settings-class-subject" value={form.subject} onChange={(event) => setForm({ ...form, subject: event.target.value })} /><Textarea label="Description" name="settings-class-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} className="sm:col-span-2" /></div>
         <ClassAccentPicker value={form.accent} onChange={(accent) => setForm({ ...form, accent })} />
         <Button type="submit" disabled={saving}><Save size={16} aria-hidden="true" /> {saving ? 'Saving…' : 'Save details'}</Button>
-      </section>
-      <section className="section-card"><header className="section-card__header"><h2>Joining and approval</h2><p>Control how new students enter this class.</p></header><Switch label="Joining open" hint={classroom.status === 'archived' ? 'Restore the class before opening joining.' : 'When paused, new students cannot use the class code.'} checked={joinEnabled} onChange={(event) => void toggleJoin(event.target.checked)} disabled={classroom.status === 'archived'} /><Switch label="Require my approval to join" hint="Requests wait in Pending until you approve them." checked={requireApproval} onChange={(event) => void toggleApproval(event.target.checked)} disabled={classroom.status === 'archived'} /></section>
+      </SectionCard>
+      <SectionCard title="Joining and approval" description="Control how new students enter this class."><Switch label="Joining open" hint={classroom.status === 'archived' ? 'Restore the class before opening joining.' : 'When paused, new students cannot use the class code.'} checked={joinEnabled} onChange={(event) => void toggleJoin(event.target.checked)} disabled={classroom.status === 'archived'} /><Switch label="Require my approval to join" hint="Requests wait in Pending until you approve them." checked={requireApproval} onChange={(event) => void toggleApproval(event.target.checked)} disabled={classroom.status === 'archived'} /></SectionCard>
     </form>
-    <section className="section-card"><header className="section-card__header"><h2>Class status</h2><p>{classroom.status === 'active' ? 'Archiving pauses access through this class.' : 'Restoring makes this class active again.'}</p></header><Button type="button" variant="secondary" disabled={mutating} onClick={() => void archive()}><Archive size={16} aria-hidden="true" /> {classroom.status === 'active' ? 'Archive class' : 'Restore class'}</Button></section>
-    <section className="section-card"><header className="section-card__header"><h2>Delete class</h2><p>Archive is gentler when you may need this class again.</p></header><p className="m-0 text-sm text-navy-800-72">Deleting will erase {counts.students} active student enrollments and {counts.quizzes} quizzes, including their submissions and answer keys.</p><Button type="button" variant="secondary" className="button--destructive" onClick={() => setDeleteOpen(true)}><Trash2 size={16} aria-hidden="true" /> Delete class</Button></section>
+    <SectionCard title="Class status" description={classroom.status === 'active' ? 'Archiving pauses access through this class.' : 'Restoring makes this class active again.'}><Button type="button" variant="secondary" disabled={mutating} onClick={() => void archive()}><Archive size={16} aria-hidden="true" /> {classroom.status === 'active' ? 'Archive class' : 'Restore class'}</Button></SectionCard>
+    <SectionCard title="Danger zone · Delete class" description="Archive is gentler when you may need this class again." className="danger-zone"><p className="m-0">Deleting will erase {counts.students} active student enrollments and {counts.quizzes} quizzes, including their submissions and answer keys.</p><Button type="button" className="button--destructive" onClick={() => setDeleteOpen(true)}><Trash2 size={16} aria-hidden="true" /> Delete class</Button></SectionCard>
     <ConfirmDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} onConfirm={() => void remove()} title="Delete this class?" description={`This permanently removes ${counts.students} student enrollments and ${counts.quizzes} quizzes with their submissions. Archive “${classroom.name}” instead if you may need it later.`} requiredName={classroom.name} confirmLabel="Delete class" busy={mutating} closeOnConfirm={false} />
   </div>
 }

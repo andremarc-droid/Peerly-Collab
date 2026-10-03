@@ -1,6 +1,6 @@
 # Contrast report
 
-Updated 2026-10-03 for the in-app shell, PageHeader, form controls, dialogs, menus and empty states. Ratios use the WCAG 2.x relative-luminance formula and alpha-composite opacity tokens against the stated surface. Normal-size text passes AA at 4.5:1; the large-text threshold is 3:1.
+Updated 2026-10-03 for the app shell, tinted panels, raised cards, shared data tables, dialogs, menus and feedback states. Ratios use the WCAG 2.x relative-luminance formula and alpha-composite opacity tokens against the stated surface. Normal-size text passes AA at 4.5:1; the large-text threshold is 3:1. Decorative stripe masks remain behind text; the white stripe token is 50% opacity and is never used to convey state.
 
 | Foreground / background | Contrast | Result |
 | --- | ---: | --- |
@@ -14,6 +14,9 @@ Updated 2026-10-03 for the in-app shell, PageHeader, form controls, dialogs, men
 | White at 72% / navy-900 (page-header and shell supporting copy) | 8.97:1 | AAA |
 | White / navy-700 (account trigger and raised navy panels) | 13.71:1 | AAA |
 | Navy-700 / white (visible focus ring on light surfaces) | 13.71:1 | AAA |
+| Navy-900 / navy-700 at 5% over white (tinted app panel) | 15.59:1 | AAA |
+| Navy-800 at 72% / navy-700 at 5% over white (secondary content on panel) | 6.96:1 | AA |
+| Navy-900 / white (raised card text on white) | 17.23:1 | AAA |
 | White / navy-900 (inverse focus ring on navy surfaces) | 17.23:1 | AAA |
 | Success text / success surface | 6.66:1 | AA |
 | Warning text / warning surface | 6.23:1 | AA |

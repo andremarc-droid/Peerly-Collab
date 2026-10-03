@@ -1,3 +1,4 @@
+import { CircleCheck, CircleX } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
@@ -9,7 +10,6 @@ import { getQuestionWithKey, listQuestions } from '../quizzes/services/questionS
 import type { AnswerKey, QuizAttempt, QuizResult, QuizQuestion } from '../quizzes/types'
 import { parseQuestion } from '../quizzes/schemas'
 import { Alert } from '../../shared/ui/Alert'
-import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { SectionCard } from '../../shared/ui/SectionCard'
@@ -50,12 +50,12 @@ export function QuizResultPage() {
   const visibility = resultVisibility(quiz, quiz.settings.answerReveal, result)
   return <AppShell><PageHeader eyebrow="SUBMISSION COMPLETE" title="Your result." subtitle={quiz.title} />
     <main className="app-shell__content grid gap-5"><SectionCard title={visibility.showScore ? 'Your score' : 'Submitted'} description={visibility.showScore ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
-      {quiz.mode === 'flashcards' ? <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p> : visibility.showScore ? <p className="m-0 font-heading text-3xl">{result.score} / {result.maxScore}</p> : <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>}
+      {quiz.mode === 'flashcards' ? <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p> : visibility.showScore ? <div className="quiz-score-summary"><ScoreRing percent={result.maxScore > 0 ? Math.round(result.score / result.maxScore * 100) : 0} /><strong>{result.score} / {result.maxScore} points</strong></div> : <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>}
     </SectionCard>
     {visibility.showAnswers && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {
       const grade = result.perQuestion[question.id]
       return <SectionCard key={question.id} title={`Question ${index + 1}`} description={question.prompt}>
-        {quiz.mode !== 'flashcards' && visibility.showScore && <Badge>{grade?.correct ? 'Correct' : 'Needs practice'} · {grade?.pointsAwarded ?? 0} / {question.points}</Badge>}
+        {quiz.mode !== 'flashcards' && visibility.showScore && <span className={`attempt-status ${grade?.correct ? 'attempt-status--correct' : 'attempt-status--incorrect'}`}>{grade?.correct ? <CircleCheck size={16} aria-hidden="true" /> : <CircleX size={16} aria-hidden="true" />}{grade?.correct ? 'Correct' : 'Needs practice'} · {grade?.pointsAwarded ?? 0} / {question.points}</span>}
         <p className="mt-3 mb-0"><strong>Your answer:</strong> {answerText(attempt.answers[question.id])}</p>
         {key && <p className="mt-2 mb-0"><strong>Answer:</strong> {key.type === 'choice' && 'options' in question ? question.options.find(({ id }) => id === key.correctOptionId)?.text : key.type === 'identification' ? key.acceptedAnswers.join(', ') : key.type === 'fill_blank' ? key.blanks.map((blank) => blank.join(' / ')).join(' · ') : key.type === 'flashcard' ? key.back : ''}</p>}
         {key?.explanation && <p className="mt-2 mb-0">{key.explanation}</p>}
@@ -63,4 +63,10 @@ export function QuizResultPage() {
     })}</section>}
     <Button to="/student">Back to practice</Button></main>
   </AppShell>
+}
+
+function ScoreRing({ percent }: { percent: number }) {
+  const circumference = 276
+  const offset = circumference - circumference * Math.max(0, Math.min(100, percent)) / 100
+  return <svg className="quiz-score-ring" viewBox="0 0 100 100" role="img" aria-label={`Score ${percent} percent`}><circle className="quiz-score-ring__track" cx="50" cy="50" r="44" fill="none" strokeWidth="6" /><circle className="quiz-score-ring__value" cx="50" cy="50" r="44" fill="none" strokeWidth="6" strokeDasharray={circumference} strokeDashoffset={offset} transform="rotate(-90 50 50)" /><text x="50" y="54" textAnchor="middle" className="quiz-score-ring__text">{percent}%</text></svg>
 }

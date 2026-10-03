@@ -51,10 +51,10 @@ describe('instructor quiz results page', () => {
     expect(await screen.findByText('Class · Science, North')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Submissions' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Review$/ }))
-    expect(await screen.findByText('Student answer:')).toBeInTheDocument()
-    expect(screen.getByText('Correct answer:')).toBeInTheDocument()
-    expect(screen.getByRole('dialog')).toHaveTextContent('Student answer: Mars')
-    expect(screen.getByRole('dialog')).toHaveTextContent('Correct answer: Mars')
+    expect(await screen.findByText('Student answer')).toBeInTheDocument()
+    expect(screen.getByText('Correct answer')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toHaveTextContent('Student answerMars')
+    expect(screen.getByRole('dialog')).toHaveTextContent('Correct answerMars')
   })
 
   it('confirms score release before updating settings', async () => {
@@ -77,7 +77,7 @@ describe('instructor quiz results page', () => {
 describe('attempt detail component', () => {
   it('shows the student response and exposes reversible typed-answer grading', async () => {
     render(<AttemptDetail quizId="quiz-1" attempt={attempt} questions={[question]} ungraded={false} onGradeChanged={vi.fn()} />)
-    expect(screen.getByText('Student answer:')).toBeInTheDocument()
+    expect(screen.getByText('Student answer')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Mark correct' }))
     await waitFor(() => expect(mocks.setQuestionGradeOverride).toHaveBeenCalledWith('quiz-1', 'attempt-1', 'q1', 2))
   })

@@ -1,6 +1,5 @@
-import { RotateCcw } from 'lucide-react'
+import { CircleCheck, CircleHelp, CircleX, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
-import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
 import { SectionCard } from '../../../shared/ui/SectionCard'
@@ -45,9 +44,8 @@ export function AttemptDetail({ quizId, attempt, questions, ungraded, onGradeCha
             : answerKey.type === 'flashcard' ? answerKey.back : ''
       return <SectionCard key={id} title={`Question ${index + 1}`} description={question.prompt}>
         {question.type === 'flashcard' ? <><p className="m-0"><strong>Student’s rating:</strong> {answer === 'knew' ? 'Knew it' : answer === 'learning' ? 'Still learning' : 'Not rated'}</p>{answerKey.type === 'flashcard' && <p className="m-0"><strong>Card back:</strong> {answerKey.back}</p>}</> : <>
-          <p className="m-0"><strong>Student answer:</strong> {answerText}</p>
-          <p className="m-0"><strong>Correct answer:</strong> {correctAnswer || '—'}</p>
-          <p className="m-0"><Badge>{grade?.correct ? 'Correct' : 'Incorrect'} · {grade?.pointsAwarded ?? 0} / {question.points} points{grade?.overridden ? ' · Instructor override' : ''}</Badge></p>
+          <div className="attempt-answer-grid"><div className="attempt-answer-block"><strong>Student answer</strong><span>{answerText}</span></div><div className="attempt-answer-block"><strong>Correct answer</strong><span>{correctAnswer || '—'}</span></div></div>
+          <p className="m-0"><span className={`attempt-status ${grade?.correct === true ? 'attempt-status--correct' : grade?.correct === false ? 'attempt-status--incorrect' : ''}`}>{grade?.correct === true ? <CircleCheck size={16} aria-hidden="true" /> : grade?.correct === false ? <CircleX size={16} aria-hidden="true" /> : <CircleHelp size={16} aria-hidden="true" />}{grade?.correct === true ? 'Correct' : grade?.correct === false ? 'Incorrect' : 'Not graded'} · {grade?.pointsAwarded ?? 0} / {question.points} points{grade?.overridden ? ' · Instructor override' : ''}</span></p>
           {answerKey.explanation && <p className="m-0"><strong>Explanation:</strong> {answerKey.explanation}</p>}
           {(question.type === 'identification' || question.type === 'fill_blank') && <div className="mt-3 grid gap-3 rounded-2xl border border-navy/15 p-4">
             <strong>Override grade</strong>
