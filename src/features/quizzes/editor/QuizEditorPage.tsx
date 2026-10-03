@@ -1,4 +1,4 @@
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Plus, Save } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useBeforeUnload, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
@@ -98,6 +98,8 @@ export function QuizEditorPage() {
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const submitIntent = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value')
+    const addQuestionsAfterSave = submitIntent === 'save-and-add-questions'
     const validation = validateQuizForm(form)
     if (form.classId && classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active')) validation.classId = 'Choose an active class before saving this quiz.'
     setErrors(validation)
@@ -112,7 +114,7 @@ export function QuizEditorPage() {
       } else {
         const created = await createQuiz(user.uid, profile?.name || user.displayName || 'Instructor', input)
         setSaved(form); showToast('success', 'Draft quiz created.')
-        navigate(`/instructor/quizzes/${created}`, { replace: true })
+        navigate(`/instructor/quizzes/${created}${addQuestionsAfterSave ? '/questions' : ''}`, { replace: true })
       }
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Your quiz could not be saved.'
@@ -176,11 +178,11 @@ export function QuizEditorPage() {
         </SectionCard>
 
         <SectionCard title="Questions" description="Build questions and answer keys after saving these settings.">
-          <div className="quiz-question-placeholder"><strong>{questionCount} {questionCount === 1 ? 'question' : 'questions'} added</strong>{quizId ? <Button to={`/instructor/quizzes/${quizId}/questions`} variant="secondary">Add questions</Button> : <span className="field__hint">Save settings before adding questions.</span>}</div>
+          <div className="quiz-question-placeholder"><strong>{questionCount} {questionCount === 1 ? 'question' : 'questions'} added</strong>{quizId ? <Button to={`/instructor/quizzes/${quizId}/questions`} variant="secondary">{questionCount > 0 ? 'Edit questions' : 'Add questions'}</Button> : <div className="grid justify-items-start gap-2"><Button type="button" variant="secondary" disabled>Add questions</Button><span className="field__hint">Save your settings first.</span></div>}</div>
         </SectionCard>
 
         <SectionCard title="How students will experience this quiz"><p className="quiz-experience-summary" aria-live="polite">{experience}</p></SectionCard>
-        <div className="quiz-editor__save"><Button type="submit" disabled={saving || !classesLoaded}><Save size={17} aria-hidden="true" />{saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : 'Save settings'}</Button>{dirty && <span role="status">Unsaved changes</span>}</div>
+        <div className="quiz-editor__save">{quizId ? <Button type="submit" name="intent" value="save" disabled={saving || !classesLoaded}><Save size={17} aria-hidden="true" />{saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : 'Save settings'}</Button> : <><Button type="submit" name="intent" value="save-and-add-questions" disabled={saving || !classesLoaded}><Plus size={17} aria-hidden="true" />{saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : 'Save and add questions'}</Button><Button type="submit" name="intent" value="save" variant="secondary" disabled={saving || !classesLoaded}><Save size={17} aria-hidden="true" />Save</Button></>}{dirty && <span role="status">Unsaved changes</span>}</div>
       </form>
     </main>
   </AppShell>
