@@ -27,6 +27,7 @@ export async function startAttempt(quizId: string, userId: string, userName: str
     if (!parent.exists()) throw new Error('Quiz not found')
     const quiz = parseQuiz(parent.data())
     if (quiz.status !== 'published') throw new Error('Only published quizzes can be started')
+    if (quiz.settings.participation.type !== 'individual') throw new Error('Group quizzes are coming soon.')
     if (questions.length === 0) throw new Error('This quiz has no questions')
     const priorParticipant = participantSnapshot.exists() ? parseQuizParticipant(participantSnapshot.data()) : null
     const attemptCount = priorParticipant?.attemptCount ?? 0
@@ -105,4 +106,3 @@ export async function listUserAttempts(quizId: string, userId: string, db: Fires
   const snapshot = await getDocs(query(collection(db, 'quizzes', quizId, 'attempts'), where('userId', '==', userId), orderBy('startedAt', 'desc')))
   return snapshot.docs.map((item) => ({ ...parseQuizAttempt(item.data()), id: item.id }))
 }
-
