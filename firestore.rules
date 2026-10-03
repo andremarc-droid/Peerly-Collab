@@ -356,23 +356,27 @@ service cloud.firestore {
 
         match /resources/{resourceId} {
           function parentPath() { return /databases/$(database)/documents/classes/$(classId)/modules/$(moduleId); }
-          function resourceOwner() { return isClassOwner(classId) && get(parentPath()).data.ownerId == request.auth.uid; }
+          function resourceOwner() { return isClassOwner(classId) && exists(parentPath()) && get(parentPath()).data.ownerId == request.auth.uid; }
+          function resourceOwnerAfter() { return isClassOwner(classId) && existsAfter(parentPath()) && getAfter(parentPath()).data.ownerId == request.auth.uid; }
+          function resourceCountWithinLimit() {
+            return existsAfter(parentPath())
+              && getAfter(parentPath()).data.get('resourceCount', -1) is int
+              && getAfter(parentPath()).data.get('resourceCount', -1) <= 10;
+          }
           function validResource(data) {
             return data.keys().hasOnly(['type', 'title', 'order', 'url', 'driveFileId', 'driveKind', 'youtubeVideoId', 'body', 'createdAt', 'updatedAt'])
               && data.keys().hasAll(['type', 'title', 'order', 'createdAt', 'updatedAt'])
               && data.type in ['drive', 'youtube', 'link', 'text'] && data.title is string && data.title.size() > 0 && data.title.size() <= 120
               && data.order is number && data.createdAt is timestamp && data.updatedAt is timestamp
-              && (data.type == 'text' ? data.body is string && data.body.size() <= 5000
-                : data.url is string && data.url.size() <= 2000 && data.url.matches('^https://[^ ]+$'))
-              && (data.type != 'drive' || (data.driveFileId is string && data.driveKind in ['file', 'doc', 'sheet', 'slides']))
-              && (data.type != 'youtube' || data.youtubeVideoId is string);
+              && (data.type == 'text' ? data.get('body', null) is string && data.get('body', '').size() <= 5000
+                : data.get('url', null) is string && data.get('url', '').size() <= 2000 && data.get('url', '').matches('^https://[^ ]+$'))
+              && (data.type != 'drive' || (data.get('driveFileId', null) is string && data.get('driveKind', null) in ['file', 'doc', 'sheet', 'slides']))
+              && (data.type != 'youtube' || data.get('youtubeVideoId', null) is string);
           }
           allow get, list: if resourceOwner() || (isActiveMember(classId) && get(parentPath()).data.status == 'published');
-          allow create: if resourceOwner() && validResource(request.resource.data)
-            && getAfter(parentPath()).data.resourceCount <= 10;
-          allow update: if resourceOwner() && validResource(request.resource.data)
-            && getAfter(parentPath()).data.resourceCount <= 10;
-          allow delete: if resourceOwner() && getAfter(parentPath()).data.resourceCount <= 10;
+          allow create: if resourceOwnerAfter() && validResource(request.resource.data) && resourceCountWithinLimit();
+          allow update: if resourceOwner() && validResource(request.resource.data) && resourceCountWithinLimit();
+          allow delete: if resourceOwner() && resourceCountWithinLimit();
         }
       }
     }

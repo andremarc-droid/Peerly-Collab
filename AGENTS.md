@@ -71,3 +71,9 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Module documents live at `classes/{classId}/modules/{moduleId}` with child resources. Validate inputs at runtime and enforce the 10-resource limit in services and rules where possible.
 - Drive access follows the file's own sharing settings. Generic links open in a new tab and are never embedded. Allow embeds only for Drive, Docs, Sheets, Slides, and privacy-enhanced YouTube hosts.
 
+### Emulator tests in PowerShell
+Emulator tests in PowerShell need `JAVA_HOME` set to the JDK 21 path above. Run the full suite with:
+```powershell
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-21.0.2.13-hotspot'; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"; $env:XDG_CONFIG_HOME='node_modules/.cache/firebase-cli-config'; npx firebase emulators:exec --only auth,firestore --project demo-peerly-collab "npx vitest run --maxWorkers=1"
+```
+

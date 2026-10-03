@@ -63,7 +63,8 @@ export async function updateResource(classId: string, moduleId: string, id: stri
 }
 export async function deleteResource(classId: string, moduleId: string, id: string, db: Firestore = firestore): Promise<void> {
   const parent = moduleRef(db, classId, moduleId); const parentSnap = await getDoc(parent); if (!parentSnap.exists()) throw new Error('Module not found.')
-  const now = Timestamp.now(); const batch = writeBatch(db); batch.delete(resourceRef(db, classId, moduleId, id)); batch.update(parent, { resourceCount: Math.max(0, parseModule(parentSnap.data()).resourceCount - 1), updatedAt: now }); await batch.commit()
+  const resource = resourceRef(db, classId, moduleId, id); const resourceSnap = await getDoc(resource); if (!resourceSnap.exists()) throw new Error('Resource not found.')
+  const now = Timestamp.now(); const batch = writeBatch(db); batch.delete(resource); batch.update(parent, { resourceCount: Math.max(0, parseModule(parentSnap.data()).resourceCount - 1), updatedAt: now }); await batch.commit()
 }
 export async function reorderResources(classId: string, moduleId: string, ids: string[], db: Firestore = firestore): Promise<void> {
   const snap = await getDocs(resources(db, classId, moduleId)); if (ids.length !== snap.size || new Set(ids).size !== ids.length || ids.some((id) => !snap.docs.some((item) => item.id === id))) throw new Error('Reorder must include every resource exactly once.')
