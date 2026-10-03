@@ -43,12 +43,7 @@ export function ClassesPage() {
   const [creating, setCreating] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!ownerId) return undefined
-    return watchMyClasses(ownerId, (items) => { setClasses(items); setLoading(false) }, (reason) => { setError(reason.message); setLoading(false) })
-  }, [ownerId, retry])
-
-  const refreshCounts = useCallback(async (items = classes) => {
+  const refreshCounts = useCallback(async (items: ClassWithId[]) => {
     if (!ownerId) return
     try {
       const [classCount, entries] = await Promise.all([
@@ -63,14 +58,22 @@ export function ClassesPage() {
       setTotalClasses(classCount)
       setCounts(Object.fromEntries(entries))
     } catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Class counts could not be refreshed.') }
-  }, [classes, ownerId, showToast])
+  }, [ownerId, showToast])
 
-  useEffect(() => { void refreshCounts() }, [refreshCounts])
+  useEffect(() => {
+    if (!ownerId) return undefined
+    return watchMyClasses(ownerId, (items) => {
+      setClasses(items)
+      setLoading(false)
+      void refreshCounts(items)
+    }, (reason) => { setError(reason.message); setLoading(false) })
+  }, [ownerId, retry, refreshCounts])
+
   useEffect(() => {
     if (!ownerId || !classes.length) return undefined
     const stop = classes.flatMap((item) => [
-      watchEnrollments(item.id, ownerId, () => void refreshCounts(), () => void refreshCounts()),
-      watchQuizzesForClass(item.id, ownerId, () => void refreshCounts(), () => void refreshCounts()),
+      watchEnrollments(item.id, ownerId, () => void refreshCounts(classes), () => void refreshCounts(classes)),
+      watchQuizzesForClass(item.id, ownerId, () => void refreshCounts(classes), () => void refreshCounts(classes)),
     ])
     return () => stop.forEach((unsubscribe) => unsubscribe())
   }, [classes, ownerId, refreshCounts])

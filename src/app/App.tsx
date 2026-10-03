@@ -1,24 +1,28 @@
+import { lazy, Suspense } from 'react'
 import { Outlet, Route, Routes } from 'react-router-dom'
 import { LandingPage } from '../features/landing/LandingPage'
 import { RolePage } from '../features/auth/RolePage'
 import { SignupPage } from '../features/auth/SignupPage'
 import { SigninPage } from '../features/auth/SigninPage'
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage'
-import { ProfilePage } from '../features/profile/ProfilePage'
 import { NotFoundPage } from '../features/misc/NotFoundPage'
-import { DesignPage } from '../features/misc/DesignPage'
 import { ProtectedRoute, PublicRoute, RoleRoute } from './RouteGuards'
-import { DashboardHome } from '../features/dashboard/DashboardHome'
-import { ClassesPage } from '../features/classes/ClassesPage'
-import { ClassPage } from '../features/classes/ClassPage'
 import { JoinClassPage } from '../features/classes/JoinClassPage'
-import { InstructorQuizzesPage } from '../features/quizzes/dashboard/InstructorQuizzesPage'
-import { QuizEditorPage } from '../features/quizzes/editor/QuizEditorPage'
-import { QuestionBuilderPage } from '../features/quizzes/builder/QuestionBuilderPage'
 import { ToastProvider } from '../shared/ui/ToastProvider'
+import { AppShellLoading } from './AppShell'
+
+const ProfilePage = lazy(() => import('../features/profile/ProfilePage').then((module) => ({ default: module.ProfilePage })))
+const DesignPage = lazy(() => import('../features/misc/DesignPage').then((module) => ({ default: module.DesignPage })))
+const DashboardHome = lazy(() => import('../features/dashboard/DashboardHome').then((module) => ({ default: module.DashboardHome })))
+const ClassesPage = lazy(() => import('../features/classes/ClassesPage').then((module) => ({ default: module.ClassesPage })))
+const ClassPage = lazy(() => import('../features/classes/ClassPage').then((module) => ({ default: module.ClassPage })))
+const InstructorQuizzesPage = lazy(() => import('../features/quizzes/dashboard/InstructorQuizzesPage').then((module) => ({ default: module.InstructorQuizzesPage })))
+const QuizEditorPage = lazy(() => import('../features/quizzes/editor/QuizEditorPage').then((module) => ({ default: module.QuizEditorPage })))
+const QuestionBuilderPage = lazy(() => import('../features/quizzes/builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
 
 export function AppRoutes() {
   return (
+    <Suspense fallback={<AppShellLoading />}>
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/role" element={<PublicRoute><RolePage /></PublicRoute>} />
@@ -40,5 +44,6 @@ export function AppRoutes() {
       <Route path="/404" element={<NotFoundPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </Suspense>
   )
 }
