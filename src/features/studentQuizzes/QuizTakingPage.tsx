@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
+import { listMyEnrollments } from '../classes/services/joinService'
 import { getQuiz } from '../quizzes/services/quizService'
 import { getAttempt, autosaveAnswers, submitAttempt } from '../quizzes/services/attemptService'
 import { getQuestionWithKey, listQuestions } from '../quizzes/services/questionService'
@@ -22,6 +23,17 @@ type QuestionRecord = QuizQuestion & { id: string }
 const answerValue = (value: SubmittedAnswer | undefined, index?: number) => Array.isArray(value) ? (index === undefined ? '' : value[index] ?? '') : value ?? ''
 const hasAnswer = (value: SubmittedAnswer | undefined) => Array.isArray(value) ? value.some((item) => Boolean(item.trim())) : Boolean(value?.trim())
 
+function readCheckedAnswers(storageKey: string) {
+  try {
+    const parsed: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? '{}')
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, { correct: boolean | null; explanation: string }] => {
+      const value = entry[1]
+      return typeof value === 'object' && value !== null && 'correct' in value && (value.correct === null || typeof value.correct === 'boolean') && 'explanation' in value && typeof value.explanation === 'string'
+    }))
+  } catch { return {} }
+}
+
 export function QuizTakingPage() {
   const { quizId = '', attemptId = '' } = useParams()
   const { user } = useAuth()
@@ -32,7 +44,8 @@ export function QuizTakingPage() {
   const [questions, setQuestions] = useState<QuestionRecord[]>([])
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, SubmittedAnswer>>({})
-  const [checked, setChecked] = useState<Record<string, { correct: boolean | null; explanation: string }>>({})
+  const checkedStorageKey = `peerly:checkedAnswers:${quizId}:${attemptId}`
+  const [checked, setChecked] = useState<Record<string, { correct: boolean | null; explanation: string }>>(() => readCheckedAnswers(checkedStorageKey))
   const [seconds, setSeconds] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -40,6 +53,7 @@ export function QuizTakingPage() {
   const [flashcardsFinished, setFlashcardsFinished] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [membership, setMembership] = useState<{ classId: string; status: 'active' | 'lost' } | null>(null)
   const autosaveTimer = useRef<number | null>(null)
   const submitted = useRef(false)
 
@@ -50,12 +64,32 @@ export function QuizTakingPage() {
       if (!live) return
       if (!foundQuiz || !foundAttempt || foundAttempt.userId !== user.uid || foundAttempt.status !== 'in_progress') { setError('This attempt is unavailable.'); setLoading(false); return }
       if (foundQuiz.settings.participation.type === 'group') { setError('Group quizzes are coming soon.'); setLoading(false); return }
-      const records = rawQuestions.map((item) => ({ ...parseQuestion(item), id: item.id }))
+      const records = rawQuestions.map(({ id, ...value }) => ({ ...parseQuestion(value), id }))
       setQuiz(foundQuiz); setAttempt({ ...foundAttempt, id: attemptId }); setAnswers(foundAttempt.answers)
       setQuestions(persistedQuestionOrder(foundAttempt, records)); setLoading(false)
     }).catch((reason: unknown) => { if (live) { setError(reason instanceof Error ? reason.message : 'The attempt could not be loaded.'); setLoading(false) } })
     return () => { live = false }
   }, [quizId, attemptId, user])
+
+  useEffect(() => {
+    if (!user || !quiz) return undefined
+    if (!quiz.classId) {
+      showToast('info', 'This quiz is no longer linked to an active class.')
+      navigate('/student', { replace: true })
+      return undefined
+    }
+    return listMyEnrollments(user.uid, (items) => {
+      const isActive = items.some((item) => item.classId === quiz.classId && item.status === 'active')
+      setMembership({ classId: quiz.classId!, status: isActive ? 'active' : 'lost' })
+      if (!isActive) {
+        showToast('info', 'Your class access changed. This attempt was not submitted.')
+        navigate('/student', { replace: true })
+      }
+    }, () => {
+      showToast('error', 'Your class access could not be checked. Please return to practice and try again.')
+      navigate('/student', { replace: true })
+    })
+  }, [quiz, user, showToast, navigate])
 
   useEffect(() => {
     if (!attempt || !quiz?.settings.timeLimitMinutes) return undefined
@@ -81,9 +115,10 @@ export function QuizTakingPage() {
     try {
       await autosaveAnswers(quizId, attemptId, answers)
       await submitAttempt(quizId, attemptId, quiz.settings.timeLimitMinutes ? Math.max(0, quiz.settings.timeLimitMinutes * 60 - (seconds ?? 0)) : Math.floor((Date.now() - attempt.startedAt.toMillis()) / 1000))
+      sessionStorage.removeItem(checkedStorageKey)
       navigate(`/student/quizzes/${quizId}/attempts/${attemptId}/result`, { replace: true })
     } catch (reason) { submitted.current = false; setError(reason instanceof Error ? reason.message : 'Submission failed.'); showToast('error', 'Your quiz could not be submitted.'); setBusy(false) }
-  }, [attempt, quiz, quizId, attemptId, answers, seconds, navigate, showToast])
+  }, [attempt, quiz, quizId, attemptId, answers, seconds, navigate, showToast, checkedStorageKey])
 
   useEffect(() => { if (seconds !== null && shouldAutoSubmit(seconds) && !submitted.current) void submit() }, [seconds, submit])
 
@@ -99,16 +134,20 @@ export function QuizTakingPage() {
       const pair = await getQuestionWithKey(quizId, question.id)
       if (!pair) throw new Error('Answer key unavailable.')
       const result = gradeAttempt({ userId: user!.uid, questions: [{ ...pair.question, id: question.id }], answerKeys: { [question.id]: pair.answerKey }, answers: { [question.id]: answers[question.id] ?? '' } })
-      setChecked((current) => ({ ...current, [question.id]: { correct: result.perQuestion[question.id].correct, explanation: pair.answerKey.explanation } }))
+      const updated = { ...checked, [question.id]: { correct: result.perQuestion[question.id].correct, explanation: pair.answerKey.explanation } }
+      sessionStorage.setItem(checkedStorageKey, JSON.stringify(updated))
+      setChecked(updated)
     } catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Answer could not be checked.') }
   }
 
-  if (loading) return <AppShell><main className="app-shell__content"><Skeleton className="h-96 rounded-3xl" label="Loading attempt" /></main></AppShell>
-  if (error && !quiz) return <AppShell><main className="app-shell__content grid gap-4"><Alert tone="error" label="Attempt unavailable">{error}</Alert><Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
+  const membershipStatus = quiz ? quiz.classId ? membership?.classId === quiz.classId ? membership.status : 'checking' : 'lost' : 'active'
+  if (loading || membershipStatus === 'checking') return <AppShell><main className="app-shell__content"><Skeleton className="h-96 rounded-3xl" label="Loading attempt" /></main></AppShell>
+  if (membershipStatus === 'lost') return <AppShell><main className="app-shell__content"><Alert tone="warning" label="Class access changed">You’re being returned to your practice catalog.</Alert></main></AppShell>
+  if (error && (!quiz || !attempt)) return <AppShell><main className="app-shell__content grid gap-4"><Alert tone="error" label="Attempt unavailable">{error}</Alert><Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
   if (!quiz || !attempt || !question) return <AppShell><main className="app-shell__content"><EmptyAttempt onBack={() => navigate('/student')} /></main></AppShell>
-  const checkedCurrent = checked[question.id]
-  const options = 'options' in question ? optionOrderForQuestion(question.id, attempt, question).map((id) => question.options.find((option) => option.id === id)!).filter(Boolean) : []
   const revealEach = quiz.settings.answerReveal === 'after_each'
+  const checkedCurrent = revealEach ? checked[question.id] : undefined
+  const options = 'options' in question ? optionOrderForQuestion(question.id, attempt, question).map((id) => question.options.find((option) => option.id === id)!).filter(Boolean) : []
   const timeText = seconds === null ? null : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 
   return <AppShell><PageHeader eyebrow={quiz.mode === 'flashcards' ? 'FLASHCARDS' : 'QUIZ IN PROGRESS'} title={quiz.title} subtitle={`${index + 1} of ${questions.length}${timeText ? ` · ${timeText} remaining` : ''}`} />
@@ -116,10 +155,10 @@ export function QuizTakingPage() {
       <label className="grid gap-2 text-sm font-semibold">Progress <progress aria-label="Quiz progress" max={questions.length} value={answeredCount} className="h-3 w-full accent-navy-900" /></label>
       {seconds !== null && seconds <= 60 && seconds > 0 && <Alert tone="warning" label="One minute remaining">Your quiz will submit automatically when time runs out.</Alert>}
       {error && <Alert tone="error" label="Submission problem">{error}</Alert>}
-      <section className="grid gap-5 rounded-3xl bg-white p-5 shadow-navy sm:p-8" aria-labelledby="question-title" onKeyDown={(event) => { if (event.key === 'ArrowLeft') go(index - 1); if (event.key === 'ArrowRight' && !checkedCurrent) go(index + 1); if (/^[1-6]$/.test(event.key) && options[Number(event.key) - 1] && !checkedCurrent) setAnswer(question.id, options[Number(event.key) - 1].id) }}>
+      <section className="grid gap-5 rounded-3xl bg-white p-5 shadow-navy sm:p-8" aria-labelledby="question-title" onKeyDown={(event) => { if (event.key === 'ArrowLeft') go(index - 1); if (event.key === 'ArrowRight' && !checkedCurrent) go(index + 1); if (/^[1-6]$/.test(event.key) && options[Number(event.key) - 1] && !checkedCurrent) setAnswer(question.id, options[Number(event.key) - 1].id); if (event.key === 'Enter' && !(event.target instanceof HTMLButtonElement) && quiz.mode !== 'flashcards') { event.preventDefault(); if (revealEach && !checkedCurrent) void checkCurrent(); else if (index < questions.length - 1) go(index + 1); else setReviewOpen(true) } }}>
         <p className="m-0 text-sm font-semibold">Question {index + 1} · {question.points} {question.points === 1 ? 'point' : 'points'}</p>
         <h2 id="question-title" className="m-0 font-heading text-2xl">{question.prompt}</h2>
-        {quiz.mode === 'flashcards' ? flashcardsFinished ? <div className="grid gap-3"><p className="m-0">You reviewed {questions.length} cards: {Object.values(answers).filter((answer) => answer === 'knew').length} marked “Knew it” and {Object.values(answers).filter((answer) => answer === 'learning').length} still learning.</p><Button type="button" onClick={() => void submit()}>Finish review</Button></div> : <Flashcard question={question} quizId={quizId} onRate={(rating) => { setAnswer(question.id, rating); if (index < questions.length - 1) go(index + 1); else setFlashcardsFinished(true) }} /> : <AnswerInput question={question} options={options} value={answers[question.id]} disabled={Boolean(checkedCurrent)} onChange={(value) => setAnswer(question.id, value)} />}
+        {quiz.mode === 'flashcards' ? flashcardsFinished ? <div className="grid gap-3"><p className="m-0">You rated {Object.values(answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {questions.length} cards: {Object.values(answers).filter((answer) => answer === 'knew').length} marked “Knew it” and {Object.values(answers).filter((answer) => answer === 'learning').length} still learning.</p><Button type="button" onClick={() => void submit()}>Finish review</Button></div> : <Flashcard question={question} quizId={quizId} onRate={(rating) => { setAnswer(question.id, rating); if (index < questions.length - 1) go(index + 1); else setFlashcardsFinished(true) }} /> : <AnswerInput question={question} options={options} value={answers[question.id]} disabled={Boolean(checkedCurrent)} onChange={(value) => setAnswer(question.id, value)} />}
         {checkedCurrent && <Alert tone={checkedCurrent.correct ? 'success' : 'warning'} label={checkedCurrent.correct ? 'Correct' : 'Review this answer'}>{checkedCurrent.explanation || 'No explanation was provided.'}</Alert>}
         <div className="flex flex-wrap gap-3">{revealEach && !checkedCurrent && quiz.mode !== 'flashcards' && <Button type="button" variant="secondary" onClick={() => void checkCurrent()}>Check answer</Button>}{checkedCurrent && <Button type="button" onClick={() => go(index + 1)}>Next</Button>}</div>
       </section>

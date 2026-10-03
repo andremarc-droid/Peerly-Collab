@@ -26,10 +26,20 @@ describe('student quiz logic', () => {
     expect(optionOrderForQuestion('a', attempt, { id: 'a', order: 0, prompt: 'pick', points: 1, type: 'multiple_choice', options: [{ id: 'o1', text: 'one' }, { id: 'o2', text: 'two' }] })).toEqual(['o2', 'o1'])
   })
 
-  it('hides unreleased and hidden scores, and never exposes answers when reveal is never', () => {
-    expect(resultVisibility(quiz({ scoreVisibility: 'after_release' }), 'after_submit', result)).toEqual({ showScore: false, showAnswers: true })
-    expect(resultVisibility(quiz({ scoreVisibility: 'hidden' }), 'never', result)).toEqual({ showScore: false, showAnswers: false })
-    expect(resultVisibility(quiz({ scoresReleased: true, scoreVisibility: 'after_release' }), 'after_submit', result).showScore).toBe(true)
+  it('applies the full score visibility and answer reveal matrix', () => {
+    const scoreSettings = ['immediate', 'after_release', 'hidden'] as const
+    const revealSettings = ['after_each', 'after_submit', 'never'] as const
+    for (const scoreVisibility of scoreSettings) {
+      for (const answerReveal of revealSettings) {
+        const matrixQuiz = quiz({ scoreVisibility, answerReveal, scoresReleased: false })
+        const actual = resultVisibility(matrixQuiz, answerReveal, result)
+        expect(actual.showScore).toBe(scoreVisibility === 'immediate')
+        expect(actual.showAnswers).toBe(answerReveal !== 'never')
+      }
+    }
+    for (const answerReveal of revealSettings) {
+      expect(resultVisibility(quiz({ scoreVisibility: 'after_release', scoresReleased: true }), answerReveal, result).showScore).toBe(true)
+    }
   })
 
   it('enforces remaining attempt counts and supports unlimited attempts', () => {

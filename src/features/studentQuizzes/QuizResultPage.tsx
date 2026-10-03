@@ -36,7 +36,7 @@ export function QuizResultPage() {
     void Promise.all([getQuiz(quizId), getAttempt(quizId, attemptId), getQuizResult(quizId, attemptId), listQuestions(quizId)]).then(async ([foundQuiz, foundAttempt, foundResult, raw]) => {
       if (!live) return
       if (!foundQuiz || !foundAttempt || !foundResult || foundAttempt.userId !== user.uid) { setError('The submitted result could not be found.'); setLoading(false); return }
-      const questions = persistedQuestionOrder(foundAttempt, raw.map((item) => ({ ...parseQuestion(item), id: item.id })))
+      const questions = persistedQuestionOrder(foundAttempt, raw.map(({ id, ...value }) => ({ ...parseQuestion(value), id })))
       const visibility = resultVisibility(foundQuiz, foundQuiz.settings.answerReveal, foundResult)
       const items = await Promise.all(questions.map(async (question) => ({ question, key: visibility.showAnswers ? (await getQuestionWithKey(quizId, question.id))?.answerKey ?? null : null })))
       if (!live) return
@@ -50,7 +50,7 @@ export function QuizResultPage() {
   const visibility = resultVisibility(quiz, quiz.settings.answerReveal, result)
   return <AppShell><PageHeader eyebrow="SUBMISSION COMPLETE" title="Your result." subtitle={quiz.title} />
     <main className="app-shell__content grid gap-5"><SectionCard title={visibility.showScore ? 'Your score' : 'Submitted'} description={visibility.showScore ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
-      {quiz.mode === 'flashcards' ? <p className="m-0">You reviewed {review.length} cards. Keep practicing to strengthen what you know.</p> : visibility.showScore ? <p className="m-0 font-heading text-3xl">{result.score} / {result.maxScore}</p> : <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>}
+      {quiz.mode === 'flashcards' ? <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p> : visibility.showScore ? <p className="m-0 font-heading text-3xl">{result.score} / {result.maxScore}</p> : <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>}
     </SectionCard>
     {visibility.showAnswers && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {
       const grade = result.perQuestion[question.id]

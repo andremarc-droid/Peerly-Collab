@@ -9,7 +9,7 @@ import { createQuiz, getQuiz, publishQuiz, updateQuiz, watchOwnerQuizzes } from 
 import { saveQuestionAndKey } from './questionService'
 import { duplicateQuiz } from './duplicateQuiz'
 import { deleteQuizCascade } from './deleteQuizCascade'
-import { startAttempt, autosaveAnswers, submitAttempt } from './attemptService'
+import { startAttempt, getAttempt, autosaveAnswers, submitAttempt } from './attemptService'
 import { getQuizResult } from './resultService'
 
 const projectId = 'demo-peerly-collab'
@@ -84,5 +84,31 @@ describe('quiz Firestore services', () => {
     expect(submitted.result.score).toBe(2)
     expect((await getQuizResult(quizId, attemptId, student))?.score).toBe(2)
     await expect(startAttempt(quizId, 'student', 'Student', student)).rejects.toThrow('No attempts remain')
+  })
+
+  it('persists shuffled question and option order for attempt resume', async () => {
+    await users()
+    const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+    const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
+    const input = quizInput('Shuffled practice')
+    input.settings.shuffleQuestions = true
+    input.settings.shuffleOptions = true
+    const quizId = await createQuiz('teacher', 'Teacher', input, owner)
+    const choiceId = await saveQuestionAndKey(quizId, null,
+      { type: 'multiple_choice', order: 0, prompt: 'Choose', points: 1, options: [{ id: 'one', text: 'One' }, { id: 'two', text: 'Two' }, { id: 'three', text: 'Three' }] },
+      { type: 'choice', correctOptionId: 'two', explanation: '', caseSensitive: false }, owner)
+    const textId = await saveQuestionAndKey(quizId, null,
+      { type: 'identification', order: 1, prompt: 'Name it', points: 1 },
+      { type: 'identification', acceptedAnswers: ['answer'], explanation: '', caseSensitive: false }, owner)
+    await publishQuiz(quizId, owner)
+
+    const attemptId = await startAttempt(quizId, 'student', 'Student', student)
+    const firstRead = await getAttempt(quizId, attemptId, student)
+    const resumedRead = await getAttempt(quizId, attemptId, student)
+    expect(firstRead?.questionOrder).toHaveLength(2)
+    expect(new Set(firstRead?.questionOrder)).toEqual(new Set([choiceId, textId]))
+    expect(resumedRead?.questionOrder).toEqual(firstRead?.questionOrder)
+    expect(resumedRead?.optionOrder).toEqual(firstRead?.optionOrder)
+    expect(new Set(firstRead?.optionOrder[choiceId])).toEqual(new Set(['one', 'two', 'three']))
   })
 })

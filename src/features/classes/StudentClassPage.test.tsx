@@ -6,6 +6,8 @@ import { Timestamp } from 'firebase/firestore'
 import type { ReactNode } from 'react'
 import { StudentClassPage } from './StudentClassPage'
 import type { ClassWithId, EnrollmentWithId } from './types'
+import { defaultQuizSettings } from '../quizzes/schemas/settings'
+import type { QuizRecord } from '../quizzes/services/quizService'
 
 const mocks = vi.hoisted(() => ({
   user: { uid: 'student-1', displayName: 'Sam' }, showToast: vi.fn(), leaveClass: vi.fn(async () => undefined),
@@ -30,10 +32,12 @@ const enrollment: EnrollmentWithId = {
   id: 'class-1_student-1', classId: 'class-1', ownerId: 'teacher', uid: 'student-1', studentName: 'Sam', studentPhotoURL: null,
   className: 'Biology', status: 'active', codeUsed: 'ABC234', joinedAt: now, updatedAt: now,
 }
+const quiz: QuizRecord = { id: 'quiz-1', ownerId: 'teacher', ownerName: 'Morgan', classId: 'class-1', title: 'Cell basics', description: '', tags: [], mode: 'quiz', status: 'published', questionCount: 2, createdAt: now, updatedAt: now, publishedAt: now, settings: defaultQuizSettings('quiz') }
 
 function renderPage() {
   return render(<MemoryRouter initialEntries={['/student/classes/class-1']}><Routes>
     <Route path="/student/classes/:classId" element={<StudentClassPage />} />
+    <Route path="/student/quizzes/:quizId" element={<h1>Quiz introduction</h1>} />
     <Route path="/student" element={<h1>My classes</h1>} />
   </Routes></MemoryRouter>)
 }
@@ -68,5 +72,15 @@ describe('student class page', () => {
     subscription.change?.([])
     await waitFor(() => expect(screen.getByRole('heading', { name: 'My classes' })).toBeInTheDocument())
     expect(mocks.showToast).toHaveBeenCalledWith('info', 'You no longer have access to this class.')
+  })
+
+  it('starts an individual quiz from the class page', async () => {
+    mocks.watchQuizzes.mockImplementation((_id: string, onChange: (items: QuizRecord[]) => void) => { onChange([quiz]); return () => undefined })
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Cell basics' })).toBeInTheDocument()
+    const start = screen.getByRole('link', { name: 'Start' })
+    expect(start).toBeEnabled()
+    fireEvent.click(start)
+    expect(await screen.findByRole('heading', { name: 'Quiz introduction' })).toBeInTheDocument()
   })
 })
