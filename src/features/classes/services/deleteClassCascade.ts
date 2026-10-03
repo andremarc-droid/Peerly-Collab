@@ -3,11 +3,17 @@ import { firestore } from '../../../lib/firebase/firestore'
 import { deleteQuizCascade } from '../../quizzes/services/deleteQuizCascade'
 import { parseClass } from '../schemas'
 import { classCodeRef, classRef, enrollmentsRef } from './paths'
+import { deleteModuleCascade } from '../../modules/services'
 
 export async function deleteClassCascade(classId: string, db: Firestore = firestore): Promise<void> {
   const classSnapshot = await getDoc(classRef(db, classId))
   if (!classSnapshot.exists()) return
   const classData = parseClass(classSnapshot.data())
+  while (true) {
+    const modulePage = await getDocs(query(collection(db, 'classes', classId, 'modules'), limit(100)))
+    if (modulePage.empty) break
+    for (const module of modulePage.docs) await deleteModuleCascade(classId, module.id, db)
+  }
   while (true) {
     const enrollmentPage = await getDocs(query(enrollmentsRef(db), where('ownerId', '==', classData.ownerId), where('classId', '==', classId), limit(400)))
     if (enrollmentPage.empty) break

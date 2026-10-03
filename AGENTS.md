@@ -65,3 +65,9 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Prefer undo over confirmation for low-risk actions such as deleting a question.
 - Keep navigation clear with Questions, Settings, and Preview tabs, a reliable back action, and class breadcrumbs.
 
+## MODULES
+- Modules are study materials inside a class: a title, description, up to 10 ordered resources, and up to 10 optional quizzes from the same class. Students read; class owners write.
+- Resources are Drive previews, YouTube embeds, generic HTTPS links, or plain text. Files remain in Google Drive; there are no uploads. Modules have no progress or completion tracking.
+- Module documents live at `classes/{classId}/modules/{moduleId}` with child resources. Validate inputs at runtime and enforce the 10-resource limit in services and rules where possible.
+- Drive access follows the file's own sharing settings. Generic links open in a new tab and are never embedded. Allow embeds only for Drive, Docs, Sheets, Slides, and privacy-enhanced YouTube hosts.
+

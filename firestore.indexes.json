@@ -9,6 +9,14 @@
       ]
     },
     {
+      "collectionGroup": "modules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "quizzes",
       "queryScope": "COLLECTION",
       "fields": [

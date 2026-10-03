@@ -335,6 +335,46 @@ service cloud.firestore {
         && existsAfter(/databases/$(database)/documents/classCodes/$(request.resource.data.joinCode))
         && classCodeMatchesClass(getAfter(/databases/$(database)/documents/classCodes/$(request.resource.data.joinCode)).data, request.resource.data.joinCode, classId);
       allow delete: if isClassOwner(classId);
+
+      match /modules/{moduleId} {
+        function validModule(data) {
+          return data.keys().hasOnly(['ownerId', 'title', 'description', 'order', 'status', 'quizIds', 'resourceCount', 'createdAt', 'updatedAt', 'publishedAt'])
+            && data.keys().hasAll(['ownerId', 'title', 'description', 'order', 'status', 'quizIds', 'resourceCount', 'createdAt', 'updatedAt', 'publishedAt'])
+            && data.ownerId is string && data.title is string && data.title.size() > 0 && data.title.size() <= 120
+            && data.description is string && data.description.size() <= 1000 && data.order is number
+            && data.status in ['draft', 'published'] && data.quizIds is list && data.quizIds.size() <= 10
+            && data.resourceCount is int && data.resourceCount >= 0 && data.resourceCount <= 10
+            && data.createdAt is timestamp && data.updatedAt is timestamp
+            && (data.publishedAt == null || data.publishedAt is timestamp);
+        }
+        function owner() { return isClassOwner(classId) && resource.data.ownerId == request.auth.uid; }
+        allow get, list: if isClassOwner(classId) || (isActiveMember(classId) && resource.data.status == 'published');
+        allow create: if isClassOwner(classId) && request.resource.data.ownerId == request.auth.uid && validModule(request.resource.data);
+        allow update: if isClassOwner(classId) && request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.createdAt == resource.data.createdAt && validModule(request.resource.data);
+        allow delete: if isClassOwner(classId);
+
+        match /resources/{resourceId} {
+          function parentPath() { return /databases/$(database)/documents/classes/$(classId)/modules/$(moduleId); }
+          function resourceOwner() { return isClassOwner(classId) && get(parentPath()).data.ownerId == request.auth.uid; }
+          function validResource(data) {
+            return data.keys().hasOnly(['type', 'title', 'order', 'url', 'driveFileId', 'driveKind', 'youtubeVideoId', 'body', 'createdAt', 'updatedAt'])
+              && data.keys().hasAll(['type', 'title', 'order', 'createdAt', 'updatedAt'])
+              && data.type in ['drive', 'youtube', 'link', 'text'] && data.title is string && data.title.size() > 0 && data.title.size() <= 120
+              && data.order is number && data.createdAt is timestamp && data.updatedAt is timestamp
+              && (data.type == 'text' ? data.body is string && data.body.size() <= 5000
+                : data.url is string && data.url.size() <= 2000 && data.url.matches('^https://[^ ]+$'))
+              && (data.type != 'drive' || (data.driveFileId is string && data.driveKind in ['file', 'doc', 'sheet', 'slides']))
+              && (data.type != 'youtube' || data.youtubeVideoId is string);
+          }
+          allow get, list: if resourceOwner() || (isActiveMember(classId) && get(parentPath()).data.status == 'published');
+          allow create: if resourceOwner() && validResource(request.resource.data)
+            && getAfter(parentPath()).data.resourceCount <= 10;
+          allow update: if resourceOwner() && validResource(request.resource.data)
+            && getAfter(parentPath()).data.resourceCount <= 10;
+          allow delete: if resourceOwner() && getAfter(parentPath()).data.resourceCount <= 10;
+        }
+      }
     }
 
     match /classCodes/{code} {
