@@ -36,4 +36,11 @@ describe('quiz runtime schemas', () => {
       { type: 'fill_blank', blanks: [['one']], explanation: '', caseSensitive: false },
     )).toThrow('blank count')
   })
+
+  it('limits multiple-choice options to six', () => {
+    expect(() => parseQuestion({
+      type: 'multiple_choice', order: 0, prompt: 'Pick', points: 1,
+      options: Array.from({ length: 7 }, (_, index) => ({ id: String(index), text: `Option ${index}` })),
+    })).toThrow('2–6 options')
+  })
 })

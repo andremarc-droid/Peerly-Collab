@@ -94,7 +94,7 @@ export function parseQuestion(value: unknown): QuizQuestion {
   exactKeys(question, hasOptions ? ['order', 'type', 'prompt', 'options', 'points'] : ['order', 'type', 'prompt', 'points'], 'question')
   const base = { order: integer(question.order, 'order'), prompt: string(question.prompt, 'prompt'), points: integer(question.points, 'points', 1) }
   if (type === 'identification' || type === 'fill_blank' || type === 'flashcard') return { ...base, type }
-  if (!Array.isArray(question.options) || question.options.length < 2) throw new DomainValidationError(`${type} requires at least two options`)
+  if (!Array.isArray(question.options) || question.options.length < 2 || question.options.length > 6) throw new DomainValidationError(`${type} requires 2–6 options`)
   if (type === 'true_false' && question.options.length !== 2) throw new DomainValidationError('true_false requires exactly two options')
   const options = question.options.map((item, index) => {
     const option = record(item, `options[${index}]`)

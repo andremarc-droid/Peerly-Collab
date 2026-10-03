@@ -11,6 +11,7 @@ import { ProtectedRoute, PublicRoute, RoleRoute } from './RouteGuards'
 import { DashboardHome } from '../features/dashboard/DashboardHome'
 import { InstructorQuizzesPage } from '../features/quizzes/dashboard/InstructorQuizzesPage'
 import { QuizEditorPage } from '../features/quizzes/editor/QuizEditorPage'
+import { QuestionBuilderPage } from '../features/quizzes/builder/QuestionBuilderPage'
 import { ToastProvider } from '../shared/ui/ToastProvider'
 
 export function AppRoutes() {
@@ -26,6 +27,7 @@ export function AppRoutes() {
         <Route index element={<InstructorQuizzesPage />} />
         <Route path="quizzes/new" element={<QuizEditorPage />} />
         <Route path="quizzes/:quizId" element={<QuizEditorPage />} />
+        <Route path="quizzes/:quizId/questions" element={<QuestionBuilderPage />} />
       </Route>
       <Route path="/student" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><DashboardHome role="student" /></RoleRoute></ProtectedRoute>} />
       {import.meta.env.DEV && <Route path="/design" element={<DesignPage />} />}

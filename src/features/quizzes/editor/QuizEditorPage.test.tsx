@@ -14,10 +14,10 @@ afterEach(cleanup)
 describe('quiz editor and deletion confirmation', () => {
   it('requires a title and keeps group participation visibly disabled', async () => {
     render(<MemoryRouter><QuizEditorPage /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
     expect(await screen.findByText('Enter a quiz title.')).toBeTruthy()
     expect(screen.getByText('Coming soon')).toBeTruthy()
-    expect((screen.getByRole('button', { name: /add questions.*coming soon/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: /add questions/i })).toBeNull()
   })
 
   it('requires the quiz title before confirming a destructive delete', () => {

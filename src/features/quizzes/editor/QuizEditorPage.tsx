@@ -160,7 +160,7 @@ export function QuizEditorPage() {
         </SectionCard>
 
         <SectionCard title="Questions" description="Build questions and answer keys after saving these settings.">
-          <div className="quiz-question-placeholder"><strong>{questionCount} {questionCount === 1 ? 'question' : 'questions'} added</strong><Button type="button" variant="secondary" disabled aria-label="Add questions, coming soon">Add questions · Coming soon</Button></div>
+          <div className="quiz-question-placeholder"><strong>{questionCount} {questionCount === 1 ? 'question' : 'questions'} added</strong>{quizId ? <Button to={`/instructor/quizzes/${quizId}/questions`} variant="secondary">Add questions</Button> : <span className="field__hint">Save settings before adding questions.</span>}</div>
         </SectionCard>
 
         <SectionCard title="How students will experience this quiz"><p className="quiz-experience-summary" aria-live="polite">{experience}</p></SectionCard>

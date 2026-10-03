@@ -330,7 +330,8 @@ service cloud.firestore {
         && data.type in ['multiple_choice', 'true_false', 'identification', 'fill_blank', 'flashcard']
         && data.prompt is string && data.points is int && data.points > 0
         && ((data.type == 'multiple_choice' || data.type == 'true_false')
-          ? data.keys().hasAll(['options']) && data.options is list && data.options.size() >= 2
+          ? data.keys().hasAll(['options']) && data.options is list && data.options.size() >= 2 && data.options.size() <= 6
+            && (data.type != 'true_false' || data.options.size() == 2)
           : !data.keys().hasAny(['options']));
     }
 
