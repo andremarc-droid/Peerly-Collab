@@ -1,4 +1,4 @@
-import { Archive, Copy, Pencil, Plus, RotateCcw, Send, Trash2 } from 'lucide-react'
+import { Archive, BarChart3, Copy, Pencil, Plus, RotateCcw, Send, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
@@ -115,6 +115,7 @@ function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRe
     <div className="quiz-settings-badges">{settingBadges(quiz).map((label) => <span key={label}>{label}</span>)}</div>
     <div className="quiz-card__actions">
       <Button to={`/instructor/quizzes/${quiz.id}`} variant="secondary"><Pencil size={15} aria-hidden="true" /> Edit</Button>
+      <Button to={`/instructor/quizzes/${quiz.id}/results`} variant="secondary"><BarChart3 size={15} aria-hidden="true" /> Results</Button>
       <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}><Copy size={15} aria-hidden="true" /> Duplicate</Button>
       {quiz.status === 'published'
         ? <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction(quiz.id, 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}><Send size={15} aria-hidden="true" /> Unpublish</Button>

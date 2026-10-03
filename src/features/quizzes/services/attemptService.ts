@@ -106,3 +106,8 @@ export async function listUserAttempts(quizId: string, userId: string, db: Fires
   const snapshot = await getDocs(query(collection(db, 'quizzes', quizId, 'attempts'), where('userId', '==', userId), orderBy('startedAt', 'desc')))
   return snapshot.docs.map((item) => ({ ...parseQuizAttempt(item.data()), id: item.id }))
 }
+
+export async function listQuizAttempts(quizId: string, db: Firestore = firestore): Promise<Array<QuizAttempt & { id: string }>> {
+  const snapshot = await getDocs(query(collection(db, 'quizzes', quizId, 'attempts'), orderBy('startedAt', 'desc')))
+  return snapshot.docs.map((item) => ({ ...parseQuizAttempt(item.data()), id: item.id }))
+}

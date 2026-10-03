@@ -17,6 +17,7 @@ const ClassPage = lazy(() => import('../features/classes/ClassPage').then((modul
 const InstructorQuizzesPage = lazy(() => import('../features/quizzes/dashboard/InstructorQuizzesPage').then((module) => ({ default: module.InstructorQuizzesPage })))
 const QuizEditorPage = lazy(() => import('../features/quizzes/editor/QuizEditorPage').then((module) => ({ default: module.QuizEditorPage })))
 const QuestionBuilderPage = lazy(() => import('../features/quizzes/builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
+const QuizResultsPage = lazy(() => import('../features/quizzes/results/QuizResultsPage').then((module) => ({ default: module.QuizResultsPage })))
 const StudentClassPage = lazy(() => import('../features/classes/StudentClassPage').then((module) => ({ default: module.StudentClassPage })))
 const JoinClassPage = lazy(() => import('../features/classes/JoinClassPage').then((module) => ({ default: module.JoinClassPage })))
 const StudentQuizCatalogPage = lazy(() => import('../features/studentQuizzes/StudentQuizCatalogPage').then((module) => ({ default: module.StudentQuizCatalogPage })))
@@ -43,6 +44,7 @@ export function AppRoutes() {
         <Route path="quizzes/new" element={<QuizEditorPage />} />
         <Route path="quizzes/:quizId" element={<QuizEditorPage />} />
         <Route path="quizzes/:quizId/questions" element={<QuestionBuilderPage />} />
+        <Route path="quizzes/:quizId/results" element={<QuizResultsPage />} />
       </Route>
       <Route path="/student" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentQuizCatalogPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentClassPage /></ToastProvider></RoleRoute></ProtectedRoute>} />

@@ -10,7 +10,7 @@ import { saveQuestionAndKey } from './questionService'
 import { duplicateQuiz } from './duplicateQuiz'
 import { deleteQuizCascade } from './deleteQuizCascade'
 import { startAttempt, getAttempt, autosaveAnswers, submitAttempt } from './attemptService'
-import { getQuizResult } from './resultService'
+import { getQuizResult, setQuestionGradeOverride } from './resultService'
 
 const projectId = 'demo-peerly-collab'
 let environment: RulesTestEnvironment
@@ -110,5 +110,24 @@ describe('quiz Firestore services', () => {
     expect(resumedRead?.questionOrder).toEqual(firstRead?.questionOrder)
     expect(resumedRead?.optionOrder).toEqual(firstRead?.optionOrder)
     expect(new Set(firstRead?.optionOrder[choiceId])).toEqual(new Set(['one', 'two', 'three']))
+  })
+
+  it('lets only the owner override a typed answer and restore its automatic grade', async () => {
+    await users()
+    const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+    const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
+    const quizId = await createQuiz('teacher', 'Teacher', quizInput('Typed answers'), owner)
+    const questionId = await saveQuestionAndKey(quizId, null,
+      { type: 'identification', order: 0, prompt: 'Name it', points: 2 },
+      { type: 'identification', acceptedAnswers: ['correct'], explanation: '', caseSensitive: false }, owner)
+    await publishQuiz(quizId, owner)
+    const attemptId = await startAttempt(quizId, 'student', 'Student', student)
+    await autosaveAnswers(quizId, attemptId, { [questionId]: 'close enough' }, student)
+    await submitAttempt(quizId, attemptId, 8, student)
+    await setQuestionGradeOverride(quizId, attemptId, questionId, 2, owner)
+    expect((await getQuizResult(quizId, attemptId, owner))?.perQuestion[questionId]).toMatchObject({ pointsAwarded: 2, overridden: true })
+    await setQuestionGradeOverride(quizId, attemptId, questionId, null, owner)
+    expect((await getQuizResult(quizId, attemptId, owner))?.perQuestion[questionId]).toMatchObject({ pointsAwarded: 0, correct: false, overridden: false })
+    await expect(setQuestionGradeOverride(quizId, attemptId, questionId, 2, student)).rejects.toThrow()
   })
 })
