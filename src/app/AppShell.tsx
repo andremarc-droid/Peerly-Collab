@@ -59,7 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 export function AppShellLoading() {
   return (
     <div className="app-shell" aria-busy="true">
-      <header className="app-shell__header"><Skeleton className="app-shell__logo-skeleton" label="Loading Cool-lab" /><Skeleton className="app-shell__account-skeleton" label="Loading account" /></header>
+      <header className="app-shell__header"><Skeleton className="app-shell__logo-skeleton" label="Loading Peerly Collab" /><Skeleton className="app-shell__account-skeleton" label="Loading account" /></header>
       <div className="app-shell__page"><main className="app-shell__content app-shell__loading"><Skeleton className="app-shell__title-skeleton" /><Skeleton className="app-shell__card-skeleton" label="Loading dashboard" /></main></div>
     </div>
   )

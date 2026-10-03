@@ -82,7 +82,7 @@ function SigninForm({ role }: { role: UserRole }) {
           <PasswordField label="Password" name="current-password" autoComplete="current-password" value={password} onChange={(value) => { setPassword(value); setErrors((previous) => ({ ...previous, password: undefined })) }} error={errors.password} visible={showPassword} onToggle={() => setShowPassword(!showPassword)} disabled={busy} />
           <Button type="submit" className="auth-submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'} <ArrowRight size={17} aria-hidden="true" /></Button>
         </form>
-        <p className="auth-card__footer">New to Cool-lab? <Link to="/role?mode=signup">Get started</Link></p>
+        <p className="auth-card__footer">New to Peerly Collab? <Link to="/role?mode=signup">Get started</Link></p>
       </AuthCard>
     </AuthShell>
   )

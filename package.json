@@ -1,5 +1,5 @@
 {
-  "name": "cool-lab",
+  "name": "peerly-collab",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "lint": "oxlint",
-    "test": "cross-env XDG_CONFIG_HOME=node_modules/.cache/firebase-cli-config firebase emulators:exec --only auth,firestore --project demo-cool-lab \"vitest run\"",
-    "emulators": "firebase emulators:start --project demo-cool-lab",
+    "test": "cross-env XDG_CONFIG_HOME=node_modules/.cache/firebase-cli-config firebase emulators:exec --only auth,firestore --project demo-peerly-collab \"vitest run\"",
+    "emulators": "firebase emulators:start --project demo-peerly-collab",
     "preview": "vite preview"
   },
   "dependencies": {

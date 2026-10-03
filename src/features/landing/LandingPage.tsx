@@ -37,7 +37,7 @@ const copyrightYear = new Date().getFullYear()
 
 function ProductPreview() {
   return (
-    <div className="preview-wrap" aria-label="Preview of a Cool-lab quiz question">
+    <div className="preview-wrap" aria-label="Preview of a Peerly Collab quiz question">
       <div className="preview-orbit preview-orbit--one" aria-hidden="true" />
       <div className="preview-orbit preview-orbit--two" aria-hidden="true" />
       <Card className="quiz-preview" elevated>
@@ -116,7 +116,7 @@ export function LandingPage() {
         </section>
 
         <Section id="features" className="features-section">
-          <div className="section-heading"><Badge>WHY COOL-LAB</Badge><h2>Practice with a purpose.</h2><p>Every part of the experience is designed to make learning last longer than the lesson.</p></div>
+          <div className="section-heading"><Badge>WHY PEERLY COLLAB</Badge><h2>Practice with a purpose.</h2><p>Every part of the experience is designed to make learning last longer than the lesson.</p></div>
           <div className="feature-grid">{features.map(({ icon: Icon, title, text }, index) => <Reveal key={title} delay={index % 2 ? 'short' : 'none'}><Card className="feature-card"><span className="feature-icon"><Icon size={22} aria-hidden="true" /></span><span className="feature-index">0{index + 1}</span><h3>{title}</h3><p>{text}</p><span className="feature-arrow" aria-hidden="true"><ArrowRight size={18} /></span></Card></Reveal>)}</div>
           <div className="feature-footnote"><BookOpenCheck size={18} aria-hidden="true" /><span>Missed a question? It comes back when you’re ready.</span></div>
         </Section>
@@ -133,7 +133,7 @@ export function LandingPage() {
           <Container className="closing-inner"><div><Badge>READY WHEN YOU ARE</Badge><h2>Make your next<br />practice count.</h2><p>Start a quiz, join your group, and see what you can learn.</p></div><div className="closing-actions"><Button to="/role?mode=signup">Get started <ArrowRight size={18} aria-hidden="true" /></Button><Button to="/role?mode=signin" variant="secondary">Sign in</Button></div><span className="closing-spark" aria-hidden="true"><Sparkles size={25} /></span></Container>
         </section>
       </main>
-      <footer className="site-footer"><Container className="site-footer__inner"><Logo /><span className="footer-copy">© {copyrightYear} Cool-lab. Learn boldly.</span><nav aria-label="Footer navigation"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="mailto:hello@cool-lab.example">Contact</a></nav></Container></footer>
+      <footer className="site-footer"><Container className="site-footer__inner"><Logo /><span className="footer-copy">© {copyrightYear} Peerly Collab. Learn boldly.</span><nav aria-label="Footer navigation"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="mailto:hello@peerly-collab.example">Contact</a></nav></Container></footer>
     </>
   )
 }

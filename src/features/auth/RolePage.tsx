@@ -95,7 +95,7 @@ export function RolePage() {
         </div>
         {continueError && <Alert tone="error" label="Role not saved">{continueError}</Alert>}
         <Button type="button" className="role-continue" disabled={!selectedRole || continuing} onClick={handleContinue}>{continuing ? 'Saving…' : 'Continue'} <ArrowRight size={18} aria-hidden="true" /></Button>
-        <p className="role-privacy">Your choice helps us make Cool-lab feel like yours.</p>
+        <p className="role-privacy">Your choice helps us make Peerly Collab feel like yours.</p>
       </section>
       <p className="role-footer">LEARN IT. OWN IT. TOGETHER.</p>
     </main>

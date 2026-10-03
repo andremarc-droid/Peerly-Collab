@@ -1,4 +1,4 @@
-# Cool-lab design plan
+# Peerly Collab design plan
 
 ## Visual system
 
@@ -16,7 +16,7 @@
 
 ## In-app shell and page structure
 
-- Signed-in screens use a deep navy header with a subtle, fading white pinstripe, a white Cool-lab logo, and a keyboard-operable account menu. The menu trigger includes an avatar ring, truncated name, readable role badge, and chevron; the menu starts with the account identity, then Profile and Sign out.
+- Signed-in screens use a deep navy header with a subtle, fading white pinstripe, a white Peerly Collab logo, and a keyboard-operable account menu. The menu trigger includes an avatar ring, truncated name, readable role badge, and chevron; the menu starts with the account identity, then Profile and Sign out.
 - `PageHeader` provides a reusable full-width navy band with masked stripes, an eyebrow badge, one page title, subtitle, and optional primary action. On narrow screens the action becomes full-width beneath the heading.
 - The main content uses a white rounded panel that overlaps the page-header band by approximately 32px. Center it around 1120px with 16px mobile and 32px desktop gutters. Keep 1920px layouts purposeful by allowing content to grow to a comfortable max width.
 - Dashboard hierarchy: page header, `StatRow` of honest zero/placeholder values, then a titled content section and a helpful `EmptyState`. Do not render fake counts or dead links. Instructor creation remains visibly disabled and labelled “Coming soon” until functional.

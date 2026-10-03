@@ -1,7 +1,7 @@
-# Cool-lab
+# Peerly Collab
 
 ## Product
-Cool-lab is a quiz platform for effective, collaborative learning. Instructors create and configure quizzes; students answer individually or in groups of two or more as configured by the instructor. Question types include multiple choice, fill in the blank, identification, and flashcards, with more to come. Pacing options are self-paced, timed, or waiting until all students have answered before moving on. Learning principles: retrieval before reveal, immediate feedback with explanations, missed questions return in mastery mode, and reward practice rather than speed.
+Peerly Collab is a quiz platform for effective, collaborative learning. Instructors create and configure quizzes; students answer individually or in groups of two or more as configured by the instructor. Question types include multiple choice, fill in the blank, identification, and flashcards, with more to come. Pacing options are self-paced, timed, or waiting until all students have answered before moving on. Learning principles: retrieval before reveal, immediate feedback with explanations, missed questions return in mastery mode, and reward practice rather than speed.
 
 ## Conventions
 - Use strict TypeScript and feature-based folders: `src/app`, `src/features/<feature>`, `src/lib`, `src/shared/ui`, and `src/types`.
@@ -28,5 +28,5 @@ Cool-lab is a quiz platform for effective, collaborative learning. Instructors c
 ## USER FLOW
 - The public landing page is `/`. “Get started” opens `/role?mode=signup`; “Sign in” opens `/role?mode=signin`.
 - `/role` supports `signup`, `signin`, and `continue` modes. Let the user choose Student or Instructor with an accessible radio group; Continue is unavailable until a role is selected.
-- Save a typed role intent in sessionStorage under `coollab:roleIntent`, then continue to `/signup` or `/signin` with its mode. Those routes return users without a saved role to `/role` in the corresponding mode.
+- Save a typed role intent in sessionStorage under `peerly:roleIntent`, then continue to `/signup` or `/signin` with its mode. Those routes return users without a saved role to `/role` in the corresponding mode.
 - Signup, signin, and unknown routes remain clear, accessible placeholders until their forms and route behavior are implemented. Keep auth and Firebase wiring out of the role-choice flow until explicitly requested.

@@ -16,7 +16,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
       <StripeBackground variant="fade" />
       <header className="auth-screen__header"><Logo /><Link to="/" className="auth-home-link">Back to home</Link></header>
       <div className="auth-screen__content">{children}</div>
-      <p className="auth-screen__footer">COOL-LAB · LEARN IT. OWN IT. TOGETHER.</p>
+      <p className="auth-screen__footer">PEERLY COLLAB · LEARN IT. OWN IT. TOGETHER.</p>
     </main>
   )
 }

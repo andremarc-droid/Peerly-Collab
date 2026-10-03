@@ -11,7 +11,7 @@ export function NotFoundPage() {
         <p className="eyebrow">404 · PAGE NOT FOUND</p>
         <h1>This isn’t the<br />right question.</h1>
         <p>That page seems to have wandered off. Let’s get you back to the good stuff.</p>
-        <Button to="/"><ArrowLeft size={17} aria-hidden="true" /> Back to Cool-lab</Button>
+        <Button to="/"><ArrowLeft size={17} aria-hidden="true" /> Back to Peerly Collab</Button>
       </section>
     </main>
   )

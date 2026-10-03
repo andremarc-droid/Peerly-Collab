@@ -4,7 +4,7 @@ import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, it } from 'vitest'
 import rules from '../../../firestore.rules?raw'
 
-const projectId = 'demo-cool-lab'
+const projectId = 'demo-peerly-collab'
 let testEnvironment: RulesTestEnvironment
 
 beforeAll(async () => {

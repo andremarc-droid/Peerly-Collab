@@ -57,7 +57,7 @@ function DesignGallery() {
   return (
     <div className="design-page" id="main-content">
       <header className="design-header"><Container><Logo /><Button to="/" variant="ghost"><ArrowLeft size={16} aria-hidden="true" /> Back to site</Button></Container></header>
-      <PageHeader eyebrow="DEVELOPER PREVIEW" title="Cool-lab design system" subtitle="A working gallery of shared components, responsive layouts, and accessible interaction states." />
+      <PageHeader eyebrow="DEVELOPER PREVIEW" title="Peerly Collab design system" subtitle="A working gallery of shared components, responsive layouts, and accessible interaction states." />
       <main className="app-shell__content design-gallery">
         <SectionCard title="Page layout and empty states" description="Page headers pair a navy introduction band with a white content panel. Empty states explain what belongs here and only offer useful actions.">
           <div className="design-gallery__grid">
@@ -111,7 +111,7 @@ function DesignGallery() {
         <SectionCard title="Menus, dialogs, toasts and tooltips" description="All controls can be reached by keyboard and announce their purpose to assistive technology.">
           <div className="design-gallery__row">
             <DropdownMenu label="Preview menu" trigger={<><span className="account-avatar account-avatar--initial" aria-hidden="true">C</span><span>Component menu</span></>}>
-              <div className="account-menu__details"><strong>Design preview</strong><span>hello@cool-lab.example</span><Badge>Developer</Badge></div>
+              <div className="account-menu__details"><strong>Design preview</strong><span>hello@peerly-collab.example</span><Badge>Developer</Badge></div>
               <button type="button" role="menuitem" onClick={() => showToast('info', 'Menu item selected.')}>Open sample</button>
             </DropdownMenu>
             <Button variant="secondary" onClick={() => setDialogOpen(true)}>Open dialog</Button>
@@ -130,7 +130,7 @@ function DesignGallery() {
         </SectionCard>
       </main>
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="A reusable dialog" description="Use a dialog for a focused decision or short form."><p>Focus is contained here. Press Escape or use the close button to dismiss this panel.</p><div className="dialog__actions"><Button variant="secondary" onClick={() => setDialogOpen(false)}>Close</Button></div></Dialog>
-      <ConfirmDialog open={confirmOpen} onClose={() => setConfirmOpen(false)} onConfirm={() => showToast('success', 'Confirmation received.')} title="Confirm an action" description="This demo asks for a typed confirmation before continuing." requiredName="Cool-lab" confirmLabel="Confirm preview" />
+      <ConfirmDialog open={confirmOpen} onClose={() => setConfirmOpen(false)} onConfirm={() => showToast('success', 'Confirmation received.')} title="Confirm an action" description="This demo asks for a typed confirmation before continuing." requiredName="Peerly Collab" confirmLabel="Confirm preview" />
     </div>
   )
 }

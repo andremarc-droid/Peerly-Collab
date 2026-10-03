@@ -1,7 +1,7 @@
 import type { Location } from 'react-router-dom'
 import type { UserRole } from '../features/auth/roleIntent'
 
-export const AUTH_RETURN_TO_KEY = 'coollab:authReturnTo'
+export const AUTH_RETURN_TO_KEY = 'peerly:authReturnTo'
 
 export function dashboardPath(role: UserRole): string {
   return role === 'instructor' ? '/instructor' : '/student'

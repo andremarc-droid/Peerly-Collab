@@ -6,7 +6,7 @@ export interface RoleIntent {
   mode: RoleIntentMode
 }
 
-export const ROLE_INTENT_STORAGE_KEY = 'coollab:roleIntent'
+export const ROLE_INTENT_STORAGE_KEY = 'peerly:roleIntent'
 
 export function saveRoleIntent(intent: RoleIntent, storage: Storage = window.sessionStorage): void {
   storage.setItem(ROLE_INTENT_STORAGE_KEY, JSON.stringify(intent))
