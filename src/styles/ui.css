@@ -2,7 +2,7 @@
 .skip-link { position: fixed; z-index: 100; inset: 12px auto auto 12px; padding: 12px 18px; border-radius: 12px; color: var(--color-white); background: var(--color-navy-800); transform: translateY(-160%); transition: transform 180ms ease-out; }
 .skip-link:focus { transform: translateY(0); }
 .button { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; gap: 10px; padding: 0 21px; border: 1px solid transparent; border-radius: 999px; font-size: 14px; font-weight: 650; line-height: 1; text-decoration: none; cursor: pointer; transition: transform 180ms ease-out, box-shadow 180ms ease-out, background-color 180ms ease-out; }
-.button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 22px var(--color-navy-900-12); }
+.button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .button:active:not(:disabled) { transform: translateY(0) scale(.985); }
 .button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .button--primary { color: var(--color-white); background: var(--color-navy-800); }
@@ -12,7 +12,7 @@
 .button--inverse { color: var(--color-navy-900); background: var(--color-white); }
 .section--navy :focus-visible, .role-screen :focus-visible, .placeholder-screen :focus-visible, .not-found :focus-visible, .design-hero :focus-visible { outline-color: var(--color-white); }
 .card { padding: 28px; border: 1px solid var(--color-navy-900-08); border-radius: 20px; background: var(--color-white); }
-.card--elevated { box-shadow: var(--shadow-card); }
+.card--elevated { box-shadow: var(--shadow-md); }
 .badge { display: inline-flex; min-height: 30px; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--color-navy-900-12); border-radius: 999px; color: var(--color-navy-800); background: var(--color-white); font-size: 10px; font-weight: 750; letter-spacing: .12em; line-height: 1; }
 .section { position: relative; overflow: hidden; padding-block: 88px; }
 .section--light { color: var(--color-navy-900); background: var(--color-white); }

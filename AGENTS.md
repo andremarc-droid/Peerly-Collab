@@ -18,6 +18,12 @@ Cool-lab is a quiz platform for effective, collaborative learning. Instructors c
 - Build with generous 8px-grid spacing, 16–24px corners, subtle navy-tinted shadows, and fluid Outfit headings with Inter body copy. Use responsive typography and layouts.
 - Buttons must have 44px minimum touch targets, clear hover/pressed states, and visible focus rings. Respect reduced-motion preferences and prefer small CSS/IntersectionObserver motion effects.
 - Use lucide-react for icons. Do not hard-code colors in components; use theme tokens.
+- In signed-in areas, use the navy `AppShell` header with the white logo, a quiet pinstripe fade, and the account dropdown. Keep its identity, role badge, profile link, and sign-out action visible and keyboard operable.
+- Compose in-app pages with `PageHeader`: a navy stripe band, eyebrow, title, subtitle, and optional action. Follow it with the centered white content panel that overlaps the band by about 32px. Keep content near 1120px wide, with 16px mobile and 32px desktop gutters.
+- Use `StatTile`/`StatRow` for concise, honest counts and hints; `EmptyState` to explain what belongs in a new area; `SectionCard` to group related content; and `DataCard` for list rows. Empty-state actions must work or be visibly disabled and labelled as coming soon.
+- Use `DropdownMenu`, `Dialog`, `ConfirmDialog`, `ToastProvider`, and `Tooltip` for shared interactions. Menus and dialogs support keyboard use; dialogs label their purpose, contain focus, close on Escape, and lock background scroll. Toasts have an icon, visible status label, live announcement, dismiss button, and timeout.
+- Shared form controls (`Input`, `Textarea`, `Select`, `Switch`, `Checkbox`, `RadioGroup`, `SegmentedControl`, `Tabs`) must keep labels, hints, and errors programmatically associated with their controls. Prefer native controls where they provide equivalent accessible behavior.
+- Keep page rhythm on the 8px scale, favor a clear page heading and semantic sections, and check widths at 360px, 768px, 1280px, and 1920px. Use white/navy contrast pairs listed in `docs/contrast-report.md`; opacity tints are for surfaces and dividers, not small text.
 
 ## USER FLOW
 - The public landing page is `/`. “Get started” opens `/role?mode=signup`; “Sign in” opens `/role?mode=signin`.

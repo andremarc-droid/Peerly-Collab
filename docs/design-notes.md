@@ -14,6 +14,26 @@
 - Signup/signin placeholders: same navy/white shell, short heading and explanation, with a return-to-role path when no session role intent exists.
 - Design gallery: a developer-only route on the same visual system showing every shared component, states, focus/disabled treatments, and responsive examples. Unknown paths use a composed 404 page with a clear home action.
 
+## In-app shell and page structure
+
+- Signed-in screens use a deep navy header with a subtle, fading white pinstripe, a white Cool-lab logo, and a keyboard-operable account menu. The menu trigger includes an avatar ring, truncated name, readable role badge, and chevron; the menu starts with the account identity, then Profile and Sign out.
+- `PageHeader` provides a reusable full-width navy band with masked stripes, an eyebrow badge, one page title, subtitle, and optional primary action. On narrow screens the action becomes full-width beneath the heading.
+- The main content uses a white rounded panel that overlaps the page-header band by approximately 32px. Center it around 1120px with 16px mobile and 32px desktop gutters. Keep 1920px layouts purposeful by allowing content to grow to a comfortable max width.
+- Dashboard hierarchy: page header, `StatRow` of honest zero/placeholder values, then a titled content section and a helpful `EmptyState`. Do not render fake counts or dead links. Instructor creation remains visibly disabled and labelled “Coming soon” until functional.
+- Profile uses a `PageHeader` and `SectionCard` groups for personal details and account access; email and role stay read-only where appropriate.
+- Auth and role-choice pages retain their established behavior and navy stripe canvas, while using consistent card radii, icon-led controls, clear validation, focus, disabled, and loading states.
+- The 404 and loading states use the same navy identity, white panels, readable labels, and visible progress feedback.
+
+## Shared component guide
+
+Use `PageHeader` for page identity and a single optional page-level action. Use `EmptyState` when a list has no content; its stacked-card stripe illustration is decorative and hidden from assistive technology. Use `StatTile` and `StatRow` only for real or explicitly zero/placeholder metrics. Use `SectionCard` to group related form fields or content and `DataCard` for concise list items with title, metadata, optional badge, and real trailing actions.
+
+`DropdownMenu` is the shared pattern for account and item menus; it supports Arrow keys, Home/End, Escape, and focus return. `Dialog` is for focused decisions and forms, with a labelled title, optional description, focus containment, Escape dismissal, and scroll lock. `ConfirmDialog` is for consequential in-app actions and can require exact text entry. `ToastProvider` exposes short success/error/info messages with a visible status label, icon, live announcement, manual dismiss, and timed dismissal. `Tooltip` is supplementary only; do not hide required instructions in it.
+
+Use `Textarea`, `Select`, `Switch`, `Checkbox`, `RadioGroup`, `SegmentedControl`, and `Tabs` for their corresponding native form/selection patterns. Each control keeps label, hint, and error content associated. `Toolbar` combines a labelled search field and supplied filters; `DataCard` is the preferred reusable list-row surface. All controls keep 44px minimum touch targets, navy/white focus rings, and reduced-motion support.
+
+The developer-only `/design` gallery demonstrates these components, disabled/error/loading/focus states, and responsive behavior. Sample list values there are illustrative only and must not be mistaken for live product data.
+
 ## Responsive and accessibility rules
 
 - Use a 12-column desktop content grid capped near 1200px, collapse hero and paired content to one column at tablet/mobile widths, and preserve 24px side gutters down to 360px.

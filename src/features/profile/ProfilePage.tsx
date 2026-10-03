@@ -3,16 +3,16 @@ import { LogOut, Save } from 'lucide-react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
-import { Card } from '../../shared/ui/Card'
 import { Input } from '../../shared/ui/Input'
-import { Spinner } from '../../shared/ui/Spinner'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { SectionCard } from '../../shared/ui/SectionCard'
 import { updateProfile } from 'firebase/auth'
 import { clearRoleIntent } from '../auth/roleIntent'
 import { signOutCurrentUser } from '../auth/authService'
 import { useAuth } from '../auth/useAuth'
 import { mapFirebaseAuthError } from '../auth/authErrors'
 import { useUserProfile } from './useUserProfile'
-import { AppShell } from '../../app/AppShell'
+import { AppShell, AppShellLoading } from '../../app/AppShell'
 import { clearReturnTo } from '../../app/returnTo'
 
 export function ProfilePage() {
@@ -27,7 +27,7 @@ export function ProfilePage() {
 
   const name = editedName ?? profile?.name ?? ''
 
-  if (status === 'loading' || profileStatus === 'loading' || loading) return <main className="auth-wait"><Spinner label="Loading your profile" /></main>
+  if (status === 'loading' || profileStatus === 'loading' || loading) return <AppShellLoading />
   if (status === 'signedOut' || !user) return <Navigate to="/role?mode=signin" replace />
   if (profileStatus === 'error') return <ProfileLoadError message={profileError ?? 'We couldn’t prepare your profile.'} onRetry={retryProfileSetup} />
   if (error) return <ProfileLoadError message={error} onRetry={retryProfileSetup} />
@@ -72,28 +72,28 @@ export function ProfilePage() {
     }
   }
 
-  return (
-    <AppShell>
-      <main className="profile-page" id="main-content">
-        <Card elevated className="profile-card">
-          <span className="profile-eyebrow">YOUR ACCOUNT</span>
-          <h1>Profile settings</h1>
-          <p className="profile-intro">Keep your learning identity up to date.</p>
-          {requestError && <Alert tone="error" label="Update not completed">{requestError}</Alert>}
-          {notice && <Alert tone="success" label="Saved">{notice}</Alert>}
-          <form className="auth-form profile-form" onSubmit={handleSave}>
+  return <AppShell>
+    <PageHeader eyebrow="PROFILE & ACCOUNT" title="Profile settings" subtitle="Keep your learning identity up to date." />
+    <main className="app-shell__content profile-page" id="main-content">
+      <SectionCard title="Personal details" description="This information helps your learning space feel like yours." className="profile-card">
+        {requestError && <Alert tone="error" label="Update not completed">{requestError}</Alert>}
+        {notice && <Alert tone="success" label="Saved">{notice}</Alert>}
+        <form className="auth-form profile-form" onSubmit={handleSave}>
+          <div className="profile-details">
             <Input label="Display name" name="display-name" autoComplete="name" value={name} onChange={(event) => { setEditedName(event.target.value); setNameError(undefined); setNotice(null) }} error={nameError} disabled={busy} />
             <Input label="Email address" name="email" type="email" value={profile.email ?? user.email ?? ''} readOnly />
-            <div className="profile-role"><span>Role</span><strong>{profile.role === 'instructor' ? 'Instructor' : 'Student'}</strong></div>
-            <Button type="submit" variant="primary" disabled={busy}><Save size={16} aria-hidden="true" /> {busy ? 'Saving…' : 'Save profile'}</Button>
-          </form>
-          <Button type="button" variant="secondary" onClick={handleSignOut} disabled={busy}><LogOut size={16} aria-hidden="true" /> Sign out</Button>
-        </Card>
-      </main>
-    </AppShell>
-  )
+            <div className="profile-role" aria-label="Account role, read only"><span>Account role</span><strong>{profile.role === 'instructor' ? 'Instructor' : 'Student'}</strong><small>Role can’t be changed from profile settings.</small></div>
+          </div>
+          <div className="profile-actions"><Button type="submit" variant="primary" disabled={busy}><Save size={16} aria-hidden="true" /> {busy ? 'Saving…' : 'Save profile'}</Button></div>
+        </form>
+      </SectionCard>
+      <SectionCard title="Account access" description="Sign out when you’re finished on this device." className="profile-access-card">
+        <div className="profile-actions"><Button type="button" variant="secondary" onClick={handleSignOut} disabled={busy}><LogOut size={16} aria-hidden="true" /> Sign out</Button></div>
+      </SectionCard>
+    </main>
+  </AppShell>
 }
 
 function ProfileLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <AppShell><main className="profile-page"><Card elevated className="profile-error-card"><Alert tone="error" label="Profile unavailable">{message}</Alert><Button type="button" onClick={onRetry}>Try again</Button></Card></main></AppShell>
+  return <AppShell><PageHeader eyebrow="PROFILE & ACCOUNT" title="Profile settings" subtitle="We couldn’t load your account details just yet." /><main className="app-shell__content profile-page"><SectionCard title="Profile unavailable" className="profile-error-card"><Alert tone="error" label="Profile unavailable">{message}</Alert><Button type="button" onClick={onRetry}>Try again</Button></SectionCard></main></AppShell>
 }

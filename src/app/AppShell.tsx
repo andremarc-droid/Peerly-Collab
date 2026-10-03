@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ChevronDown, LogOut, UserRound } from 'lucide-react'
+import { LogOut, UserRound } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge } from '../shared/ui/Badge'
 import { Alert } from '../shared/ui/Alert'
 import { Button } from '../shared/ui/Button'
+import { DropdownMenu } from '../shared/ui/DropdownMenu'
 import { Logo } from '../shared/ui/Logo'
 import { Skeleton } from '../shared/ui/Skeleton'
 import { clearReturnTo } from './returnTo'
@@ -20,6 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [signOutError, setSignOutError] = useState<string | null>(null)
   const displayName = profile?.name || user?.displayName || user?.email || 'Account'
   const initial = displayName.trim().charAt(0).toUpperCase() || 'U'
+  const roleLabel = profile?.role === 'instructor' ? 'Instructor' : profile?.role === 'student' ? 'Student' : null
 
   async function handleSignOut() {
     if (signingOut) return
@@ -40,22 +42,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       <header className="app-shell__header">
-        <Logo light={false} />
-        <details className="account-menu">
-          <summary aria-label="Open account menu">
-            <span className="account-avatar account-avatar--initial" aria-hidden="true">{initial}</span>
-            <span className="account-menu__identity"><strong>{displayName}</strong>{profile?.role && <Badge>{profile.role === 'instructor' ? 'Instructor' : 'Student'}</Badge>}</span>
-            <ChevronDown size={16} aria-hidden="true" />
-          </summary>
-          <div className="account-menu__panel">
-            <Link to="/profile"><UserRound size={16} aria-hidden="true" /> Profile</Link>
-            <Button type="button" variant="ghost" onClick={handleSignOut} disabled={signingOut}><LogOut size={16} aria-hidden="true" /> {signingOut ? 'Signing out…' : 'Sign out'}</Button>
-          </div>
-        </details>
+        <Logo />
+        <DropdownMenu label="Account menu" className="account-menu" trigger={<><span className="account-avatar" aria-hidden="true">{profile?.photoURL ? <img src={profile.photoURL} alt="" /> : initial}</span><span className="account-menu__identity"><strong>{displayName}</strong>{roleLabel && <Badge>{roleLabel}</Badge>}</span></>}>
+          <div className="account-menu__details"><strong>{displayName}</strong><span>{profile?.email || user?.email}</span>{roleLabel && <Badge>{roleLabel}</Badge>}</div>
+          <Link to="/profile" role="menuitem"><UserRound size={17} aria-hidden="true" /> Profile</Link>
+          <Button type="button" role="menuitem" variant="ghost" onClick={handleSignOut} disabled={signingOut}><LogOut size={17} aria-hidden="true" /> {signingOut ? 'Signing out…' : 'Sign out'}</Button>
+        </DropdownMenu>
       </header>
       {user && !user.emailVerified && <EmailVerificationNotice />}
       {signOutError && <div className="app-shell__error"><Alert tone="error" label="Sign out failed">{signOutError}</Alert></div>}
-      <div className="app-shell__content">{children}</div>
+      <div className="app-shell__page">{children}</div>
     </div>
   )
 }
@@ -64,7 +60,7 @@ export function AppShellLoading() {
   return (
     <div className="app-shell" aria-busy="true">
       <header className="app-shell__header"><Skeleton className="app-shell__logo-skeleton" label="Loading Cool-lab" /><Skeleton className="app-shell__account-skeleton" label="Loading account" /></header>
-      <main className="app-shell__content app-shell__loading"><Skeleton className="app-shell__title-skeleton" /><Skeleton className="app-shell__card-skeleton" label="Loading dashboard" /></main>
+      <div className="app-shell__page"><main className="app-shell__content app-shell__loading"><Skeleton className="app-shell__title-skeleton" /><Skeleton className="app-shell__card-skeleton" label="Loading dashboard" /></main></div>
     </div>
   )
 }
@@ -97,11 +93,5 @@ function EmailVerificationNotice() {
     }
   }
 
-  return (
-    <div className="app-shell__notice" role="status">
-      <span>Verify your email to finish setting up your account.</span>
-      {notice && <span>{notice}</span>}
-      <Button type="button" variant="ghost" onClick={resend} disabled={busy || cooldown > 0}>{busy ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend email'}</Button>
-    </div>
-  )
+  return <div className="app-shell__notice"><Alert tone="warning" label="Verify your email" action={<Button type="button" variant="ghost" onClick={resend} disabled={busy || cooldown > 0}>{busy ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend email'}</Button>}>{notice ?? 'Confirm your email address to finish setting up your account.'}</Alert></div>
 }
