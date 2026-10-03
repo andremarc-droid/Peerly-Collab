@@ -363,6 +363,13 @@ service cloud.firestore {
               && getAfter(parentPath()).data.get('resourceCount', -1) is int
               && getAfter(parentPath()).data.get('resourceCount', -1) <= 10;
           }
+          function validResourceCreateCount(data) {
+            let countAfter = getAfter(parentPath()).data.get('resourceCount', -1);
+            return existsAfter(parentPath()) && countAfter is int && countAfter > 0 && countAfter <= 10
+              && data.order is int && data.order >= 0 && data.order < countAfter
+              && (!exists(parentPath()) || (countAfter > get(parentPath()).data.get('resourceCount', 0)
+                && data.order >= get(parentPath()).data.get('resourceCount', 0)));
+          }
           function validResource(data) {
             return data.keys().hasOnly(['type', 'title', 'order', 'url', 'driveFileId', 'driveKind', 'youtubeVideoId', 'body', 'createdAt', 'updatedAt'])
               && data.keys().hasAll(['type', 'title', 'order', 'createdAt', 'updatedAt'])
@@ -374,7 +381,8 @@ service cloud.firestore {
               && (data.type != 'youtube' || data.get('youtubeVideoId', null) is string);
           }
           allow get, list: if resourceOwner() || (isActiveMember(classId) && get(parentPath()).data.status == 'published');
-          allow create: if resourceOwnerAfter() && validResource(request.resource.data) && resourceCountWithinLimit();
+          allow create: if resourceOwnerAfter() && validResource(request.resource.data)
+            && resourceCountWithinLimit() && validResourceCreateCount(request.resource.data);
           allow update: if resourceOwner() && validResource(request.resource.data) && resourceCountWithinLimit();
           allow delete: if resourceOwner() && resourceCountWithinLimit();
         }
