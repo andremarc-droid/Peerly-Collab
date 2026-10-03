@@ -64,6 +64,7 @@ export type ClassPatch = Partial<Pick<ClassRecord, 'name' | 'section' | 'subject
 export type JoinOutcome =
   | { outcome: 'joined'; enrollment: EnrollmentWithId }
   | { outcome: 'pending_approval'; enrollment: EnrollmentWithId }
+  | { outcome: 'request_already_pending'; enrollment: EnrollmentWithId }
   | { outcome: 'already_member'; enrollment: EnrollmentWithId }
   | { outcome: 'blocked'; enrollment: EnrollmentWithId }
   | { outcome: 'joining_paused' | 'class_archived' | 'instructor_cannot_join' | 'not_found' }

@@ -18,7 +18,7 @@ async function existingOutcome(ref: ReturnType<typeof enrollmentRef>): Promise<J
   if (!snapshot.exists()) return null
   const enrollment = { ...parseEnrollment(snapshot.data()), id: snapshot.id }
   if (enrollment.status === 'blocked') return { outcome: 'blocked', enrollment }
-  if (enrollment.status === 'pending') return { outcome: 'pending_approval', enrollment }
+  if (enrollment.status === 'pending') return { outcome: 'request_already_pending', enrollment }
   return { outcome: 'already_member', enrollment }
 }
 
@@ -30,13 +30,20 @@ export async function lookupClassByCode(code: string, requesterUid: string, db: 
     recordJoinLookupFailure(requesterUid)
     return null
   }
-  const snapshot = await getDoc(doc(db, 'classCodes', normalized))
-  if (!snapshot.exists()) {
+  const preview = await getClassCodePreview(normalized, db)
+  if (!preview) {
     recordJoinLookupFailure(requesterUid)
     return null
   }
   clearJoinLookupFailures(requesterUid)
-  return parseClassCode(snapshot.data())
+  return preview
+}
+
+export async function getClassCodePreview(code: string, db: Firestore = firestore): Promise<ClassCodeRecord | null> {
+  const normalized = normalizeJoinCode(code)
+  if (!isValidJoinCode(normalized)) return null
+  const snapshot = await getDoc(doc(db, 'classCodes', normalized))
+  return snapshot.exists() ? parseClassCode(snapshot.data()) : null
 }
 
 export async function joinClass(code: string, student: JoinStudent, db: Firestore = firestore): Promise<JoinOutcome> {
@@ -46,11 +53,11 @@ export async function joinClass(code: string, student: JoinStudent, db: Firestor
   const normalized = normalizeJoinCode(code)
   const preview = await lookupClassByCode(normalized, student.uid, db)
   if (!preview) return { outcome: 'not_found' }
-  if (preview.archived) return { outcome: 'class_archived' }
-  if (!preview.joinEnabled) return { outcome: 'joining_paused' }
   const ref = enrollmentRef(db, preview.classId, student.uid)
   const existing = await existingOutcome(ref)
   if (existing) return existing
+  if (preview.archived) return { outcome: 'class_archived' }
+  if (!preview.joinEnabled) return { outcome: 'joining_paused' }
   const now = Timestamp.now()
   const enrollment = parseEnrollment({
     classId: preview.classId, ownerId: preview.ownerId, uid: student.uid,

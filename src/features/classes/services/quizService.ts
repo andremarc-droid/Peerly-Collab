@@ -39,6 +39,11 @@ export async function listPublishedQuizzesForClass(classId: string, db: Firestor
   return result.docs.map((item) => ({ ...parseQuiz(item.data()), id: item.id }))
 }
 
+export function watchPublishedQuizzesForClass(classId: string, onChange: (items: QuizRecord[]) => void, onError: (error: Error) => void, db: Firestore = firestore) {
+  return onSnapshot(query(quizCollection(db), where('classId', '==', classId), where('status', '==', 'published'), orderBy('publishedAt', 'desc')),
+    (snapshot) => onChange(snapshot.docs.map((item) => ({ ...parseQuiz(item.data()), id: item.id }))), onError)
+}
+
 export async function countClassQuizzes(classId: string, ownerId: string, db: Firestore = firestore): Promise<number> {
   const result = await getCountFromServer(query(quizCollection(db), where('ownerId', '==', ownerId), where('classId', '==', classId)))
   return result.data().count

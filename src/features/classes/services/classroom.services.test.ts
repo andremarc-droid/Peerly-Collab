@@ -6,7 +6,8 @@ import rules from '../../../../firestore.rules?raw'
 import { archiveClass, createClass, restoreClass, rotateJoinCode, updateClass } from './classService'
 import { countStudentsInClass, listEnrollments } from './enrollmentService'
 import { approveEnrollment, blockStudent, declineEnrollment, removeStudent, unblockStudent } from './enrollmentService'
-import { joinClass, lookupClassByCode } from './joinService'
+import { joinClass, lookupClassByCode, JoinLookupCooldownError } from './joinService'
+import { clearJoinLookupFailures } from '../joinCode'
 import { deleteClassCascade } from './deleteClassCascade'
 
 const projectId = 'demo-peerly-collab'
@@ -72,6 +73,41 @@ describe('classroom services', () => {
     const ownerDb = modularDb(environment.authenticatedContext('teacher').firestore())
     expect(await countStudentsInClass('class1', 'teacher', ownerDb)).toBe(1)
     expect((await listEnrollments('class1', 'teacher', ownerDb))).toHaveLength(1)
+  })
+
+  it('returns distinct student join outcomes and applies the wrong-code cooldown', async () => {
+    const cooldownUid = `cooldown-student-${Date.now()}`
+    const users = ['teacher', 'student', 'pending-student', 'blocked-student', 'member-student', cooldownUid]
+    const classes = [
+      ['WXYZ23', 'wait', true, 'active', true], ['PAU234', 'paused', false, 'active', false], ['ARC234', 'archived', true, 'archived', false],
+    ] as const
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await Promise.all([
+        ...users.map((uid) => setDoc(doc(db, `users/${uid}`), { uid, role: uid === 'teacher' ? 'instructor' : 'student' })),
+        ...classes.flatMap(([code, classId, joinEnabled, status, requireApproval]) => [
+          setDoc(doc(db, `classes/${classId}`), { ownerId: 'teacher', ownerName: 'Teacher', name: classId, section: '', subject: '', description: '', joinCode: code, joinEnabled, requireApproval, status, accent: 'pinstripe', createdAt: now, updatedAt: now, codeRotatedAt: now }),
+          setDoc(doc(db, `classCodes/${code}`), { classId, ownerId: 'teacher', className: classId, ownerName: 'Teacher', joinEnabled, requireApproval, archived: status === 'archived' }),
+        ]),
+        setDoc(doc(db, 'enrollments/wait_pending-student'), { classId: 'wait', ownerId: 'teacher', uid: 'pending-student', studentName: 'Pending', studentPhotoURL: null, className: 'wait', status: 'pending', codeUsed: 'WXYZ23', joinedAt: now, updatedAt: now }),
+        setDoc(doc(db, 'enrollments/paused_member-student'), { classId: 'paused', ownerId: 'teacher', uid: 'member-student', studentName: 'Member', studentPhotoURL: null, className: 'paused', status: 'active', codeUsed: 'PAU234', joinedAt: now, updatedAt: now }),
+        setDoc(doc(db, 'enrollments/archived_blocked-student'), { classId: 'archived', ownerId: 'teacher', uid: 'blocked-student', studentName: 'Blocked', studentPhotoURL: null, className: 'archived', status: 'blocked', codeUsed: 'ARC234', joinedAt: now, updatedAt: now }),
+      ])
+    })
+    const joinAs = (code: string, uid: string) => joinClass(code, { uid, name: uid, photoURL: null }, modularDb(environment.authenticatedContext(uid).firestore()))
+    expect((await joinAs('WXYZ23', 'student')).outcome).toBe('pending_approval')
+    expect((await joinAs('WXYZ23', 'pending-student')).outcome).toBe('request_already_pending')
+    expect((await joinAs('PAU234', 'student')).outcome).toBe('joining_paused')
+    expect((await joinAs('ARC234', 'student')).outcome).toBe('class_archived')
+    expect((await joinAs('PAU234', 'member-student')).outcome).toBe('already_member')
+    expect((await joinAs('ARC234', 'blocked-student')).outcome).toBe('blocked')
+    expect((await joinAs('BAD234', 'student')).outcome).toBe('not_found')
+    expect((await joinAs('WXYZ23', 'teacher')).outcome).toBe('instructor_cannot_join')
+
+    const cooldownDb = modularDb(environment.authenticatedContext(cooldownUid).firestore())
+    for (let attempt = 0; attempt < 5; attempt += 1) await lookupClassByCode('ZZZ234', cooldownUid, cooldownDb)
+    await expect(lookupClassByCode('ZZZ234', cooldownUid, cooldownDb)).rejects.toBeInstanceOf(JoinLookupCooldownError)
+    clearJoinLookupFailures(cooldownUid)
   })
 
   it('supports approval, decline, block, unblock, and removal actions', async () => {
