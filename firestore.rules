@@ -1,33 +1,265 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function owns(uid) {
-      return request.auth != null && request.auth.uid == uid;
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
-    match /users/{uid} {
-      allow read: if owns(uid);
-      allow create: if owns(uid)
-        && request.resource.data.uid == uid
-        && request.resource.data.role in ['student', 'instructor', null]
-        && request.resource.data.createdAt is int;
-      allow update: if owns(uid)
-        && request.resource.data.uid == resource.data.uid
-        && request.resource.data.createdAt == resource.data.createdAt
-        && (
-          (!("role" in resource.data) || resource.data.role == null)
-            ? request.resource.data.role in ['student', 'instructor', null]
-            : request.resource.data.role == resource.data.role
-        );
+    function permissionExists(noteId, uid) {
+      return exists(/databases/$(database)/documents/projectPermissions/$(noteId + '_' + uid));
+    }
+
+    function permission(noteId, uid) {
+      return get(/databases/$(database)/documents/projectPermissions/$(noteId + '_' + uid)).data;
+    }
+
+    function isOwner(noteId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/notes/$(noteId)).data.ownerId == request.auth.uid;
+    }
+
+    function hasRole(noteId, roles) {
+      return signedIn() && permissionExists(noteId, request.auth.uid)
+        && (permission(noteId, request.auth.uid).get('role', '') in roles
+          || permission(noteId, request.auth.uid).get('permission', '') in roles);
+    }
+
+    function canRead(noteId) {
+      let note = get(/databases/$(database)/documents/notes/$(noteId)).data;
+      let projectId = note.get('projectId', null);
+      return signedIn() && (note.get('ownerId', '') == request.auth.uid
+        || (note.get('collaborators', []) is list && request.auth.uid in note.get('collaborators', []))
+        || permissionExists(noteId, request.auth.uid)
+        || (projectId is string && projectId != noteId && projectMember(projectId)));
+    }
+
+    function projectMember(projectId) {
+      return isProjectUser(projectId, request.auth.uid);
+    }
+
+    function isProjectUser(projectId, uid) {
+      let project = get(/databases/$(database)/documents/notes/$(projectId)).data;
+      return signedIn() && (project.get('ownerId', '') == uid
+        || (project.get('collaborators', []) is list && uid in project.get('collaborators', []))
+        || permissionExists(projectId, uid));
+    }
+
+    function projectEditor(projectId) {
+      let project = get(/databases/$(database)/documents/notes/$(projectId)).data;
+      return signedIn() && (project.get('ownerId', '') == request.auth.uid
+        || hasRole(projectId, ['admin', 'editor'])
+        || (project.get('activityType', '') == 'group' && hasRole(projectId, ['student']))
+        || (project.get('collaborators', []) is list && request.auth.uid in project.get('collaborators', [])
+          && !permissionExists(projectId, request.auth.uid)));
+    }
+
+    function canEdit(noteId) {
+      let note = get(/databases/$(database)/documents/notes/$(noteId)).data;
+      return signedIn() && (note.get('ownerId', '') == request.auth.uid
+        || hasRole(noteId, ['admin', 'editor'])
+        || (note.get('activityType', '') == 'group' && hasRole(noteId, ['student']))
+        || (note.get('collaborators', []) is list && request.auth.uid in note.get('collaborators', [])
+          && !permissionExists(noteId, request.auth.uid))
+        || (note.get('projectId', null) is string && note.get('projectId', null) != noteId
+          && projectEditor(note.get('projectId', null))));
+    }
+
+    function canAdmin(noteId) {
+      return isOwner(noteId) || hasRole(noteId, ['admin']);
+    }
+
+    function canJoinCollaborators(noteId) {
+      let currentMembers = resource.data.get('collaborators', []);
+      let nextMembers = request.resource.data.get('collaborators', []);
+      return signedIn() && hasRole(noteId, ['viewer', 'student', 'editor', 'admin'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['collaborators'])
+        && nextMembers is list && nextMembers.hasAll(currentMembers)
+        && !(request.auth.uid in currentMembers)
+        && request.auth.uid in nextMembers
+        && nextMembers.size() == currentMembers.size() + 1;
+    }
+
+    match /notes/{noteId} {
+      allow get: if canRead(noteId);
+      allow list: if signedIn() && (resource.data.get('ownerId', '') == request.auth.uid
+        || (resource.data.get('collaborators', []) is list && request.auth.uid in resource.data.get('collaborators', []))
+        || permissionExists(noteId, request.auth.uid)
+        || (resource.data.get('projectId', null) is string
+          && projectMember(resource.data.get('projectId', null))));
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.get('projectId', null) == null
+          || projectEditor(request.resource.data.get('projectId', null)));
+      allow update: if (canAdmin(noteId) && request.resource.data.ownerId == resource.data.ownerId)
+        || (canEdit(noteId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'title', 'content', 'deltaContent', 'searchText', 'checkpoint', 'checkpointAt',
+            'updatedAt', 'lastUpdatedByPlatform', 'properties', 'parentId', 'order'
+          ]))
+        || canJoinCollaborators(noteId);
+      allow delete: if isOwner(noteId);
+
+      match /updates/{updateId} {
+        allow read, create, update, delete: if canEdit(noteId);
+      }
+      match /versions/{versionId} {
+        allow read: if canRead(noteId);
+        allow create, update, delete: if canEdit(noteId);
+      }
+      match /comments/{commentId} {
+        allow read: if canRead(noteId);
+        allow create, update, delete: if canEdit(noteId);
+      }
+      match /presence/{presenceId} {
+        allow read: if canRead(noteId);
+        allow create, update: if canRead(noteId)
+          && presenceId == request.auth.uid;
+        allow delete: if canRead(noteId) && presenceId == request.auth.uid;
+      }
+      match /instructions/{instructionId} {
+        allow read: if canRead(noteId);
+        allow write: if canAdmin(noteId);
+      }
+      match /activities/{activityId} {
+        allow read: if canRead(noteId);
+        allow create, update, delete: if canAdmin(noteId);
+
+        match /completions/{userId} {
+          allow read: if canAdmin(noteId)
+            || (signedIn() && request.auth.uid == userId && hasRole(noteId, ['student']));
+          allow create, update: if signedIn() && request.auth.uid == userId
+            && hasRole(noteId, ['student']);
+          allow delete: if canAdmin(noteId);
+        }
+      }
+      match /studentWorkspaces/{studentId} {
+        allow read: if canAdmin(noteId)
+          || (signedIn() && request.auth.uid == studentId && hasRole(noteId, ['student']));
+        allow create, update: if signedIn() && request.auth.uid == studentId
+          && hasRole(noteId, ['student']);
+        allow delete: if canAdmin(noteId)
+          || (signedIn() && request.auth.uid == studentId && hasRole(noteId, ['student']));
+
+        match /{collectionName}/{documentId} {
+          allow read: if canAdmin(noteId)
+            || (signedIn() && request.auth.uid == studentId && hasRole(noteId, ['student']));
+          allow create, update: if signedIn() && request.auth.uid == studentId
+            && hasRole(noteId, ['student']);
+          allow delete: if canAdmin(noteId)
+            || (signedIn() && request.auth.uid == studentId && hasRole(noteId, ['student']));
+
+          match /updates/{updateId} {
+            allow read: if canAdmin(noteId)
+              || (signedIn() && request.auth.uid == studentId && hasRole(noteId, ['student']));
+            allow create: if signedIn() && request.auth.uid == studentId
+              && hasRole(noteId, ['student'])
+              && request.resource.data.authorId == request.auth.uid;
+            allow update, delete: if canAdmin(noteId)
+              || (signedIn() && request.auth.uid == studentId
+                && hasRole(noteId, ['student']) && resource.data.authorId == request.auth.uid);
+          }
+        }
+      }
+    }
+
+    match /shareLinks/{token} {
+      // The unguessable token is used for a single-document lookup during acceptance.
+      allow get: if signedIn() && token.size() >= 24;
+      allow list: if signedIn() && (resource.data.createdBy == request.auth.uid
+        || canAdmin(resource.data.projectId));
+      allow create: if signedIn() && token.size() >= 24
+        && request.resource.data.createdBy == request.auth.uid
+        && canAdmin(request.resource.data.projectId)
+        && request.resource.data.permission in ['editor', 'viewer', 'student', 'admin'];
+      allow update: if signedIn()
+        && (resource.data.createdBy == request.auth.uid || canAdmin(resource.data.projectId))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isActive', 'expiresAt']);
+      allow delete: if signedIn()
+        && (resource.data.createdBy == request.auth.uid || canAdmin(resource.data.projectId));
+    }
+
+    match /projectPermissions/{permId} {
+      allow get: if signedIn() && (resource.data.userId == request.auth.uid
+        || canRead(resource.data.projectId));
+      allow list: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid
+        && request.resource.data.projectId is string
+        && request.resource.data.grantedByToken is string
+        && exists(/databases/$(database)/documents/shareLinks/$(request.resource.data.grantedByToken))
+        && get(/databases/$(database)/documents/shareLinks/$(request.resource.data.grantedByToken)).data.projectId == request.resource.data.projectId
+        && get(/databases/$(database)/documents/shareLinks/$(request.resource.data.grantedByToken)).data.isActive == true
+        && (get(/databases/$(database)/documents/shareLinks/$(request.resource.data.grantedByToken)).data.expiresAt == null
+          || request.time.toMillis() < get(/databases/$(database)/documents/shareLinks/$(request.resource.data.grantedByToken)).data.expiresAt)
+        && request.resource.data.keys().hasOnly([
+          'projectId', 'userId', 'role', 'permission', 'grantedAt', 'grantedByToken'
+        ])
+        && ((request.resource.data.keys().hasAny(['role'])
+              && !request.resource.data.keys().hasAny(['permission'])
+              && request.resource.data.role == get(/databases/$(database)/documents/shareLinks/$(request.resource.data.grantedByToken)).data.permission)
+          || (request.resource.data.keys().hasAny(['permission'])
+              && !request.resource.data.keys().hasAny(['role'])
+              && request.resource.data.permission == get(/databases/$(database)/documents/shareLinks/$(request.resource.data.grantedByToken)).data.permission));
+      allow update, delete: if signedIn() && canAdmin(resource.data.projectId);
+    }
+
+    function validUserRoleOnCreate() {
+      return !('role' in request.resource.data)
+        || request.resource.data.role == null
+        || request.resource.data.role in ['student', 'instructor'];
+    }
+
+    function validUserRoleOnUpdate() {
+      let oldRole = resource.data.get('role', null);
+      let hasNewRole = 'role' in request.resource.data;
+      let newRole = request.resource.data.get('role', null);
+      return oldRole == null
+        ? (!hasNewRole || newRole == null || newRole in ['student', 'instructor'])
+        : hasNewRole && newRole == oldRole;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn() && request.auth.uid == userId
+        && validUserRoleOnCreate();
+      allow update: if signedIn() && request.auth.uid == userId
+        && validUserRoleOnUpdate();
       allow delete: if false;
     }
 
-    match /publicProfiles/{uid} {
-      allow read: if true;
-      allow create, update: if owns(uid)
-        && request.resource.data.name is string
-        && (request.resource.data.photoURL == null || request.resource.data.photoURL is string);
-      allow delete: if false;
+    match /publicProfiles/{userId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['name', 'photoURL', 'updatedAt']);
+      allow delete: if signedIn() && request.auth.uid == userId;
     }
+
+    match /notifications/{userId}/items/{itemId} {
+      allow read, update, delete: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn() && request.resource.data.fromUser.uid == request.auth.uid
+        && request.resource.data.get('projectId', null) is string
+        && isProjectUser(request.resource.data.projectId, request.auth.uid)
+        && isProjectUser(request.resource.data.projectId, userId);
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if signedIn() && (resource.data.studentId == request.auth.uid
+        || canAdmin(resource.data.projectId));
+      allow create: if signedIn() && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.projectId is string
+        && hasRole(request.resource.data.projectId, ['student']);
+      allow update: if signedIn() && resource.data.studentId == request.auth.uid
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.projectId == resource.data.projectId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'studentName', 'submittedAt', 'status', 'components'
+        ])
+        || (signedIn() && canAdmin(resource.data.projectId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'feedback', 'score', 'gradedAt', 'status'
+          ]));
+      allow delete: if signedIn() && canAdmin(resource.data.projectId);
+    }
+
+    // Unknown paths are denied by default.
   }
 }
