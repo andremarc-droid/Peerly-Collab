@@ -30,3 +30,17 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - `/role` supports `signup`, `signin`, and `continue` modes. Let the user choose Student or Instructor with an accessible radio group; Continue is unavailable until a role is selected.
 - Save a typed role intent in sessionStorage under `peerly:roleIntent`, then continue to `/signup` or `/signin` with its mode. Those routes return users without a saved role to `/role` in the corresponding mode.
 - Signup, signin, and unknown routes remain clear, accessible placeholders until their forms and route behavior are implemented. Keep auth and Firebase wiring out of the role-choice flow until explicitly requested.
+
+## QUIZ DOMAIN
+- Quizzes live at `quizzes/{quizId}` with owner identity, title/description/tags, mode (`quiz` or `flashcards`), status (`draft`, `published`, `archived`), question count, timestamps, and settings for answer reveal, participation, score visibility/release, time limit, attempts, and shuffling.
+- Questions live at `quizzes/{quizId}/questions/{questionId}` and contain prompt, type, order, points, and options where applicable. Never store correct answers in question documents.
+- Answer keys live separately at `quizzes/{quizId}/answerKeys/{questionId}`. Participants may read them only under the access rules in `firestore.rules`; v1 browser grading means participants can inspect those keys.
+- Participants, attempts, and results are separate subcollections. Attempts store responses and ordering but no score; results store grades separately so rules enforce score visibility.
+- Support multiple choice, true/false, identification, fill-in-the-blank, and flashcards. Flashcard quizzes use neutral reveal/score defaults and flashcards are not graded.
+- Validate untrusted domain payloads at runtime. Grade with pure functions and expose the service boundary as `gradeAttempt` so grading can move to a Cloud Function later.
+
+## WORKING RULES
+- UI work uses shared components and theme tokens in `src/shared/ui`; no hard-coded colors. Unfinished features render visibly disabled with a “Coming soon” label.
+- Keep interfaces accessible and mobile-first. Keep code feature-based and modules small and focused.
+- Write tests for logic. Automated Firebase tests and scripts use only the demo emulator project; never deploy rules or touch the real Firebase project.
+- Never print secrets or read `.env.local`. Make one commit per prompt.

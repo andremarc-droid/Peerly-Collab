@@ -1,0 +1,171 @@
+import { ArrowLeft, Save } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useBeforeUnload, useNavigate, useParams } from 'react-router-dom'
+import { AppShell } from '../../../app/AppShell'
+import { useAuth } from '../../auth/useAuth'
+import { useUserProfile } from '../../profile/useUserProfile'
+import { Alert } from '../../../shared/ui/Alert'
+import { Button } from '../../../shared/ui/Button'
+import { Input } from '../../../shared/ui/Input'
+import { PageHeader } from '../../../shared/ui/PageHeader'
+import { RadioGroup } from '../../../shared/ui/RadioGroup'
+import { SectionCard } from '../../../shared/ui/SectionCard'
+import { Select } from '../../../shared/ui/Select'
+import { useToast } from '../../../shared/ui/useToast'
+import { defaultQuizSettings } from '../schemas/settings'
+import { createQuiz, getQuiz, updateQuiz } from '../services'
+import type { QuizSettings } from '../types'
+import { validateQuizForm, type QuizFormErrors, type QuizFormValues } from './validation'
+
+const revealOptions = [
+  { value: 'after_each', label: 'After each question', hint: 'See the answer and explanation right after responding.' },
+  { value: 'after_submit', label: 'After the quiz is submitted', hint: 'Work through the whole quiz before reviewing answers.' },
+  { value: 'never', label: 'Never', hint: 'Keep answers hidden during practice.' },
+]
+const scoreOptions = [
+  { value: 'immediate', label: 'Students see their score immediately', hint: 'Scores are visible as soon as their attempt is graded.' },
+  { value: 'after_release', label: 'I’ll release scores later', hint: 'Turn on score release from the results page later.' },
+  { value: 'hidden', label: 'Students never see scores', hint: 'Only you can see results for this quiz.' },
+]
+
+export function QuizEditorPage() {
+  const { quizId } = useParams()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { profile } = useUserProfile()
+  const { showToast } = useToast()
+  const [form, setForm] = useState<QuizFormValues>(() => ({ title: '', description: '', tags: '', mode: 'quiz', settings: defaultQuizSettings('quiz') }))
+  const [saved, setSaved] = useState<QuizFormValues>(() => ({ title: '', description: '', tags: '', mode: 'quiz', settings: defaultQuizSettings('quiz') }))
+  const [questionCount, setQuestionCount] = useState(0)
+  const [resolvedQuizId, setResolvedQuizId] = useState<string | null>(null)
+  const loading = Boolean(quizId && resolvedQuizId !== quizId)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<QuizFormErrors>({})
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved])
+  useBeforeUnload((event) => { if (dirty) event.preventDefault() })
+
+  useEffect(() => {
+    if (!dirty) return
+    function guardLinkNavigation(event: MouseEvent) {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const link = target.closest('a[href]')
+      if (!(link instanceof HTMLAnchorElement) || link.target === '_blank' || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      if (!window.confirm('You have unsaved changes. Leave without saving?')) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+    document.addEventListener('click', guardLinkNavigation, true)
+    return () => document.removeEventListener('click', guardLinkNavigation, true)
+  }, [dirty])
+
+  useEffect(() => {
+    if (!quizId) return
+    let active = true
+    getQuiz(quizId).then((quiz) => {
+      if (!active) return
+      if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
+      const values = { title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, settings: quiz.settings }
+      setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setResolvedQuizId(quizId)
+    }).catch((reason: unknown) => {
+      if (active) { setLoadError(reason instanceof Error ? reason.message : 'This quiz could not be loaded.'); setResolvedQuizId(quizId) }
+    })
+    return () => { active = false }
+  }, [quizId])
+
+  function updateSettings(patch: Partial<QuizSettings>) {
+    setForm((current) => ({ ...current, settings: { ...current.settings, ...patch } }))
+  }
+
+  function leaveEditor() {
+    if (!dirty || window.confirm('You have unsaved changes. Leave without saving?')) navigate('/instructor')
+  }
+
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const validation = validateQuizForm(form)
+    setErrors(validation)
+    if (Object.keys(validation).length) return
+    if (!user) return
+    setSaving(true); setSaveError(null)
+    const input = { title: form.title.trim(), description: form.description.trim(), tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean), mode: form.mode, settings: form.settings }
+    try {
+      if (quizId) {
+        await updateQuiz(quizId, input)
+        setSaved(form); showToast('success', 'Quiz settings saved.')
+      } else {
+        const created = await createQuiz(user.uid, profile?.name || user.displayName || 'Instructor', input)
+        setSaved(form); showToast('success', 'Draft quiz created.')
+        navigate(`/instructor/quizzes/${created}`, { replace: true })
+      }
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'Your quiz could not be saved.'
+      setSaveError(message); showToast('error', message)
+    } finally { setSaving(false) }
+  }
+
+  if (loading) return <AppShell><PageHeader eyebrow="QUIZ SETTINGS" title="Loading quiz…" subtitle="" /><main className="app-shell__content quiz-editor"><div className="quiz-editor-skeleton" aria-label="Loading quiz settings" /></main></AppShell>
+  if (loadError) return <AppShell><PageHeader eyebrow="QUIZ SETTINGS" title="Quiz unavailable" subtitle="We couldn’t load these settings." /><main className="app-shell__content quiz-editor"><Alert tone="error" label="Quiz not available">{loadError}</Alert><Button to="/instructor">Back to quizzes</Button></main></AppShell>
+
+  const experience = form.mode === 'flashcards'
+    ? `Students will review ${form.title.trim() || 'this set'} as flashcards and self-rate their recall.`
+    : `Students will answer ${form.title.trim() || 'this quiz'} individually${form.settings.timeLimitMinutes ? ` with ${form.settings.timeLimitMinutes} minutes` : ''}${form.settings.attemptsAllowed ? ` and ${form.settings.attemptsAllowed} ${form.settings.attemptsAllowed === 1 ? 'attempt' : 'attempts'}` : ' with unlimited attempts'}${form.settings.answerReveal === 'after_each' ? ', seeing explanations after each answer.' : form.settings.answerReveal === 'after_submit' ? ', reviewing explanations after they submit.' : ', with answers hidden.'}`
+
+  return <AppShell>
+    <PageHeader eyebrow={quizId ? 'EDIT QUIZ' : 'NEW QUIZ'} title={quizId ? 'Quiz settings.' : 'Create a quiz.'} subtitle="Set up the practice experience. Questions can be added in the next step." action={<Button type="button" variant="secondary" onClick={leaveEditor}><ArrowLeft size={17} aria-hidden="true" /> Back to quizzes</Button>} />
+    <main className="app-shell__content quiz-editor" id="main-content">
+      {saveError && <Alert tone="error" label="Could not save changes">{saveError}</Alert>}
+      <form className="quiz-editor__form" onSubmit={handleSave} noValidate>
+        <SectionCard title="Basics" description="Give learners a clear idea of what they’ll practice.">
+          <div className="quiz-editor__fields">
+            <Input label="Quiz title" name="quiz-title" value={form.title} onChange={(event) => { setForm({ ...form, title: event.target.value }); setErrors({ ...errors, title: undefined }) }} error={errors.title} required maxLength={120} />
+            <label className="field" htmlFor="quiz-description"><span className="field__label">Description</span><textarea id="quiz-description" className="field__control quiz-editor__textarea" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} /></label>
+            <Input label="Tags" name="quiz-tags" value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} hint="Separate tags with commas." />
+            <fieldset className="quiz-mode-picker"><legend>Format</legend><div className="quiz-mode-picker__grid">
+              <label className={`quiz-mode-card${form.mode === 'quiz' ? ' is-selected' : ''}`}><input type="radio" name="quiz-mode" value="quiz" checked={form.mode === 'quiz'} onChange={() => setForm({ ...form, mode: 'quiz', settings: defaultQuizSettings('quiz') })} /><strong>Quiz</strong><span>Graded questions with scores and answer feedback.</span></label>
+              <label className={`quiz-mode-card${form.mode === 'flashcards' ? ' is-selected' : ''}`}><input type="radio" name="quiz-mode" value="flashcards" checked={form.mode === 'flashcards'} onChange={() => setForm({ ...form, mode: 'flashcards', settings: defaultQuizSettings('flashcards') })} /><strong>Flashcards</strong><span>Self-rated recall with no score.</span></label>
+            </div></fieldset>
+          </div>
+        </SectionCard>
+
+        {form.mode === 'quiz' && <>
+          <SectionCard title="Answers" description="Choose when students see answers and explanations.">
+            <RadioGroup label="Answer reveal" name="answer-reveal" value={form.settings.answerReveal} options={revealOptions} onChange={(value) => updateSettings({ answerReveal: value as QuizSettings['answerReveal'] })} error={errors.settings} />
+          </SectionCard>
+          <SectionCard title="Scores" description="Decide when learners can view their results.">
+            <RadioGroup label="Score visibility" name="score-visibility" value={form.settings.scoreVisibility} options={scoreOptions} onChange={(value) => updateSettings({ scoreVisibility: value as QuizSettings['scoreVisibility'] })} />
+            {form.settings.scoreVisibility === 'after_release' && <p className="field__hint">You can release scores from the results page when it is available.</p>}
+          </SectionCard>
+        </>}
+
+        <SectionCard title="Participation" description="Choose whether learners answer alone or together.">
+          <fieldset className="quiz-mode-picker"><legend>How students participate</legend><div className="quiz-mode-picker__grid">
+            <label className="quiz-mode-card is-selected"><input type="radio" name="participation" value="individual" checked readOnly /><strong>Individual</strong><span>Each student completes their own attempt.</span></label>
+            <label className="quiz-mode-card is-disabled"><input type="radio" name="participation" value="group" disabled /><strong>Group of 2 or more</strong><span>Shared answers and group sessions.</span><span className="coming-soon">Coming soon</span></label>
+          </div></fieldset>
+          <label className="field" htmlFor="disabled-group-size"><span className="field__label">Group size · Coming soon</span><input id="disabled-group-size" className="field__control" type="number" min={2} max={10} value={2} disabled /></label>
+        </SectionCard>
+
+        <SectionCard title="Timing and attempts" description="Set a pace that supports thoughtful practice.">
+          <div className="quiz-editor__settings-grid">
+            <label className="choice-control"><input type="checkbox" checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings({ timeLimitMinutes: event.target.checked ? 10 : null })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit</strong><small>Optional time for the quiz.</small></span></label>
+            {form.settings.timeLimitMinutes !== null && <Input label="Time limit in minutes" name="time-limit" type="number" min={1} value={String(form.settings.timeLimitMinutes)} onChange={(event) => updateSettings({ timeLimitMinutes: Math.max(1, Number(event.target.value) || 1) })} />}
+            <Select label="Attempts allowed" name="attempts-allowed" value={form.settings.attemptsAllowed === null ? 'unlimited' : String(form.settings.attemptsAllowed)} onChange={(event) => updateSettings({ attemptsAllowed: event.target.value === 'unlimited' ? null : Number(event.target.value) })} options={[{ label: 'Unlimited', value: 'unlimited' }, { label: '1 attempt', value: '1' }, { label: '2 attempts', value: '2' }, { label: '3 attempts', value: '3' }]} />
+            <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleQuestions} onChange={(event) => updateSettings({ shuffleQuestions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle questions</strong></span></label>
+            <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleOptions} onChange={(event) => updateSettings({ shuffleOptions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle answer options</strong></span></label>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Questions" description="Build questions and answer keys after saving these settings.">
+          <div className="quiz-question-placeholder"><strong>{questionCount} {questionCount === 1 ? 'question' : 'questions'} added</strong><Button type="button" variant="secondary" disabled aria-label="Add questions, coming soon">Add questions · Coming soon</Button></div>
+        </SectionCard>
+
+        <SectionCard title="How students will experience this quiz"><p className="quiz-experience-summary" aria-live="polite">{experience}</p></SectionCard>
+        <div className="quiz-editor__save"><Button type="submit" disabled={saving}><Save size={17} aria-hidden="true" />{saving ? 'Saving…' : 'Save settings'}</Button>{dirty && <span role="status">Unsaved changes</span>}</div>
+      </form>
+    </main>
+  </AppShell>
+}

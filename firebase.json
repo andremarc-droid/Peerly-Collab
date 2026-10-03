@@ -5,5 +5,5 @@
     "ui": { "enabled": false },
     "singleProjectMode": true
   },
-  "firestore": { "rules": "firestore.rules" }
+  "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" }
 }
