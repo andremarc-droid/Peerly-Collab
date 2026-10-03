@@ -1,6 +1,6 @@
 import { ArrowLeft, Save } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useBeforeUnload, useNavigate, useParams } from 'react-router-dom'
+import { useBeforeUnload, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
 import { useUserProfile } from '../../profile/useUserProfile'
@@ -14,6 +14,8 @@ import { Select } from '../../../shared/ui/Select'
 import { useToast } from '../../../shared/ui/useToast'
 import { defaultQuizSettings } from '../schemas/settings'
 import { createQuiz, getQuiz, updateQuiz } from '../services'
+import { watchMyClasses } from '../../classes/services/classService'
+import type { ClassWithId } from '../../classes/types'
 import type { QuizSettings } from '../types'
 import { validateQuizForm, type QuizFormErrors, type QuizFormValues } from './validation'
 
@@ -30,12 +32,16 @@ const scoreOptions = [
 
 export function QuizEditorPage() {
   const { quizId } = useParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const ownerId = user?.uid
   const { profile } = useUserProfile()
   const { showToast } = useToast()
-  const [form, setForm] = useState<QuizFormValues>(() => ({ title: '', description: '', tags: '', mode: 'quiz', settings: defaultQuizSettings('quiz') }))
-  const [saved, setSaved] = useState<QuizFormValues>(() => ({ title: '', description: '', tags: '', mode: 'quiz', settings: defaultQuizSettings('quiz') }))
+  const [form, setForm] = useState<QuizFormValues>(() => ({ classId: searchParams.get('classId') ?? '', title: '', description: '', tags: '', mode: 'quiz', settings: defaultQuizSettings('quiz') }))
+  const [saved, setSaved] = useState<QuizFormValues>(() => ({ classId: searchParams.get('classId') ?? '', title: '', description: '', tags: '', mode: 'quiz', settings: defaultQuizSettings('quiz') }))
+  const [classes, setClasses] = useState<ClassWithId[]>([])
+  const [classesLoaded, setClassesLoaded] = useState(false)
   const [questionCount, setQuestionCount] = useState(0)
   const [resolvedQuizId, setResolvedQuizId] = useState<string | null>(null)
   const loading = Boolean(quizId && resolvedQuizId !== quizId)
@@ -45,6 +51,11 @@ export function QuizEditorPage() {
   const [saving, setSaving] = useState(false)
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved])
   useBeforeUnload((event) => { if (dirty) event.preventDefault() })
+
+  useEffect(() => {
+    if (!ownerId) return undefined
+    return watchMyClasses(ownerId, (items) => { setClasses(items); setClassesLoaded(true) }, (reason) => { setLoadError(reason.message); setClassesLoaded(true) })
+  }, [ownerId])
 
   useEffect(() => {
     if (!dirty) return
@@ -68,7 +79,7 @@ export function QuizEditorPage() {
     getQuiz(quizId).then((quiz) => {
       if (!active) return
       if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
-      const values = { title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, settings: quiz.settings }
+      const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, settings: quiz.settings }
       setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setResolvedQuizId(quizId)
     }).catch((reason: unknown) => {
       if (active) { setLoadError(reason instanceof Error ? reason.message : 'This quiz could not be loaded.'); setResolvedQuizId(quizId) }
@@ -80,18 +91,20 @@ export function QuizEditorPage() {
     setForm((current) => ({ ...current, settings: { ...current.settings, ...patch } }))
   }
 
+  const backPath = form.classId ? `/instructor/classes/${form.classId}` : '/instructor/quizzes'
   function leaveEditor() {
-    if (!dirty || window.confirm('You have unsaved changes. Leave without saving?')) navigate('/instructor')
+    if (!dirty || window.confirm('You have unsaved changes. Leave without saving?')) navigate(backPath)
   }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const validation = validateQuizForm(form)
+    if (form.classId && classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active')) validation.classId = 'Choose an active class before saving this quiz.'
     setErrors(validation)
     if (Object.keys(validation).length) return
     if (!user) return
     setSaving(true); setSaveError(null)
-    const input = { title: form.title.trim(), description: form.description.trim(), tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean), mode: form.mode, settings: form.settings }
+    const input = { classId: form.classId, title: form.title.trim(), description: form.description.trim(), tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean), mode: form.mode, settings: form.settings }
     try {
       if (quizId) {
         await updateQuiz(quizId, input)
@@ -108,19 +121,22 @@ export function QuizEditorPage() {
   }
 
   if (loading) return <AppShell><PageHeader eyebrow="QUIZ SETTINGS" title="Loading quiz…" subtitle="" /><main className="app-shell__content quiz-editor"><div className="quiz-editor-skeleton" aria-label="Loading quiz settings" /></main></AppShell>
-  if (loadError) return <AppShell><PageHeader eyebrow="QUIZ SETTINGS" title="Quiz unavailable" subtitle="We couldn’t load these settings." /><main className="app-shell__content quiz-editor"><Alert tone="error" label="Quiz not available">{loadError}</Alert><Button to="/instructor">Back to quizzes</Button></main></AppShell>
+  if (loadError) return <AppShell><PageHeader eyebrow="QUIZ SETTINGS" title="Quiz unavailable" subtitle="We couldn’t load these settings." /><main className="app-shell__content quiz-editor"><Alert tone="error" label="Quiz not available">{loadError}</Alert><Button to="/instructor/quizzes">Back to all quizzes</Button></main></AppShell>
 
   const experience = form.mode === 'flashcards'
     ? `Students will review ${form.title.trim() || 'this set'} as flashcards and self-rate their recall.`
     : `Students will answer ${form.title.trim() || 'this quiz'} individually${form.settings.timeLimitMinutes ? ` with ${form.settings.timeLimitMinutes} minutes` : ''}${form.settings.attemptsAllowed ? ` and ${form.settings.attemptsAllowed} ${form.settings.attemptsAllowed === 1 ? 'attempt' : 'attempts'}` : ' with unlimited attempts'}${form.settings.answerReveal === 'after_each' ? ', seeing explanations after each answer.' : form.settings.answerReveal === 'after_submit' ? ', reviewing explanations after they submit.' : ', with answers hidden.'}`
 
   return <AppShell>
-    <PageHeader eyebrow={quizId ? 'EDIT QUIZ' : 'NEW QUIZ'} title={quizId ? 'Quiz settings.' : 'Create a quiz.'} subtitle="Set up the practice experience. Questions can be added in the next step." action={<Button type="button" variant="secondary" onClick={leaveEditor}><ArrowLeft size={17} aria-hidden="true" /> Back to quizzes</Button>} />
+    <PageHeader eyebrow={quizId ? 'EDIT QUIZ' : 'NEW QUIZ'} title={quizId ? 'Quiz settings.' : 'Create a quiz.'} subtitle="Set up the practice experience. Questions can be added in the next step." action={<Button type="button" variant="secondary" onClick={leaveEditor}><ArrowLeft size={17} aria-hidden="true" /> Back</Button>} />
     <main className="app-shell__content quiz-editor" id="main-content">
       {saveError && <Alert tone="error" label="Could not save changes">{saveError}</Alert>}
+      {quizId && (!form.classId || (classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active'))) && <Alert tone="warning" label="Assign this quiz to a class">Choose an active class below and save to keep this quiz in the classroom catalog.</Alert>}
+      {classesLoaded && !classes.some((item) => item.status === 'active') && <Alert tone="warning" label="Create a class first">Quizzes must belong to an active class. <Button to="/instructor" variant="secondary">Create a class</Button></Alert>}
       <form className="quiz-editor__form" onSubmit={handleSave} noValidate>
         <SectionCard title="Basics" description="Give learners a clear idea of what they’ll practice.">
           <div className="quiz-editor__fields">
+            <Select label="Class" name="quiz-class" value={classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active') ? '' : form.classId} onChange={(event) => { setForm({ ...form, classId: event.target.value }); setErrors({ ...errors, classId: undefined }) }} options={[{ label: classesLoaded ? 'Choose an active class' : 'Loading classes…', value: '' }, ...classes.filter((item) => item.status === 'active').map((item) => ({ label: item.name, value: item.id }))]} error={errors.classId} required hint="Quizzes are published to one class at a time." />
             <Input label="Quiz title" name="quiz-title" value={form.title} onChange={(event) => { setForm({ ...form, title: event.target.value }); setErrors({ ...errors, title: undefined }) }} error={errors.title} required maxLength={120} />
             <label className="field" htmlFor="quiz-description"><span className="field__label">Description</span><textarea id="quiz-description" className="field__control quiz-editor__textarea" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} /></label>
             <Input label="Tags" name="quiz-tags" value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} hint="Separate tags with commas." />
@@ -164,7 +180,7 @@ export function QuizEditorPage() {
         </SectionCard>
 
         <SectionCard title="How students will experience this quiz"><p className="quiz-experience-summary" aria-live="polite">{experience}</p></SectionCard>
-        <div className="quiz-editor__save"><Button type="submit" disabled={saving}><Save size={17} aria-hidden="true" />{saving ? 'Saving…' : 'Save settings'}</Button>{dirty && <span role="status">Unsaved changes</span>}</div>
+        <div className="quiz-editor__save"><Button type="submit" disabled={saving || !classesLoaded}><Save size={17} aria-hidden="true" />{saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : 'Save settings'}</Button>{dirty && <span role="status">Unsaved changes</span>}</div>
       </form>
     </main>
   </AppShell>

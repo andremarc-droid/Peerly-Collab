@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { LogOut, UserRound } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { Badge } from '../shared/ui/Badge'
 import { Alert } from '../shared/ui/Alert'
 import { Button } from '../shared/ui/Button'
@@ -43,11 +43,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <header className="app-shell__header">
         <Logo />
-        <DropdownMenu label="Account menu" className="account-menu" trigger={<><span className="account-avatar" aria-hidden="true">{profile?.photoURL ? <img src={profile.photoURL} alt="" /> : initial}</span><span className="account-menu__identity"><strong>{displayName}</strong>{roleLabel && <Badge>{roleLabel}</Badge>}</span></>}>
+        <DropdownMenu label="Account menu" className="account-menu order-2 sm:order-3" trigger={<><span className="account-avatar" aria-hidden="true">{profile?.photoURL ? <img src={profile.photoURL} alt="" /> : initial}</span><span className="account-menu__identity"><strong>{displayName}</strong>{roleLabel && <Badge>{roleLabel}</Badge>}</span></>}>
           <div className="account-menu__details"><strong>{displayName}</strong><span>{profile?.email || user?.email}</span>{roleLabel && <Badge>{roleLabel}</Badge>}</div>
           <Link to="/profile" role="menuitem"><UserRound size={17} aria-hidden="true" /> Profile</Link>
           <Button type="button" role="menuitem" variant="ghost" onClick={handleSignOut} disabled={signingOut}><LogOut size={17} aria-hidden="true" /> {signingOut ? 'Signing out…' : 'Sign out'}</Button>
         </DropdownMenu>
+        {roleLabel === 'Instructor' && <nav aria-label="Instructor navigation" className="order-3 flex basis-full items-center gap-2 sm:order-2 sm:basis-auto"><NavLink to="/instructor" end className={({ isActive }) => `min-h-11 rounded-full px-3 py-2 text-xs font-semibold no-underline transition-colors sm:px-4 sm:text-sm ${isActive ? 'bg-white text-navy-900' : 'text-white hover:bg-white-12'}`}>Classes</NavLink><NavLink to="/instructor/quizzes" className={({ isActive }) => `min-h-11 rounded-full px-3 py-2 text-xs font-semibold no-underline transition-colors sm:px-4 sm:text-sm ${isActive ? 'bg-white text-navy-900' : 'text-white hover:bg-white-12'}`}>Quizzes</NavLink></nav>}
       </header>
       {user && !user.emailVerified && <EmailVerificationNotice />}
       {signOutError && <div className="app-shell__error"><Alert tone="error" label="Sign out failed">{signOutError}</Alert></div>}

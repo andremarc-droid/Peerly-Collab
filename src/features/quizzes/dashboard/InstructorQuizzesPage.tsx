@@ -14,6 +14,8 @@ import { Skeleton } from '../../../shared/ui/Skeleton'
 import { StatRow, StatTile } from '../../../shared/ui/StatTile'
 import { Toolbar } from '../../../shared/ui/Toolbar'
 import { useToast } from '../../../shared/ui/useToast'
+import { watchMyClasses } from '../../classes/services/classService'
+import type { ClassWithId } from '../../classes/types'
 import { archiveQuiz, duplicateQuiz, publishQuiz, restoreQuiz, unpublishQuiz, watchOwnerQuizzes, type QuizRecord } from '../services'
 import { countQuizAttempts, deleteQuizCascade } from '../services/deleteQuizCascade'
 import { filterAndSortQuizzes, type QuizFilter, type QuizSort } from './quizList'
@@ -34,12 +36,14 @@ export function InstructorQuizzesPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
   const [quizzes, setQuizzes] = useState<QuizRecord[]>([])
+  const [classes, setClasses] = useState<ClassWithId[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<QuizFilter>('all')
   const [sort, setSort] = useState<QuizSort>('recent')
+  const [classFilter, setClassFilter] = useState('all')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [deleteSelection, setDeleteSelection] = useState<DeleteSelection | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -49,7 +53,12 @@ export function InstructorQuizzesPage() {
     return watchOwnerQuizzes(user.uid, (items) => { setQuizzes(items); setLoading(false) }, (reason) => { setError(reason.message); setLoading(false) })
   }, [user, refresh])
 
-  const visible = useMemo(() => filterAndSortQuizzes(quizzes, search, status, sort), [quizzes, search, status, sort])
+  useEffect(() => {
+    if (!user) return undefined
+    return watchMyClasses(user.uid, setClasses, (reason) => showToast('error', reason.message))
+  }, [user, showToast])
+
+  const visible = useMemo(() => filterAndSortQuizzes(quizzes, search, status, sort, classFilter), [quizzes, search, status, sort, classFilter])
   const published = quizzes.filter((quiz) => quiz.status === 'published').length
   const drafts = quizzes.filter((quiz) => quiz.status === 'draft').length
 
@@ -77,31 +86,32 @@ export function InstructorQuizzesPage() {
   }
 
   return <AppShell>
-    <PageHeader eyebrow="INSTRUCTOR LIBRARY" title="Your quizzes." subtitle="Create a practice space, then shape it around your learners." action={<Button to="/instructor/quizzes/new"><Plus size={18} aria-hidden="true" /> Create quiz</Button>} />
+    <PageHeader eyebrow="INSTRUCTOR LIBRARY" title="All quizzes." subtitle="Find every class quiz and draft from one place." action={classes.some((item) => item.status === 'active') ? <Button to="/instructor/quizzes/new"><Plus size={18} aria-hidden="true" /> Create quiz</Button> : <Button to="/instructor"><Plus size={18} aria-hidden="true" /> Create a class first</Button>} />
     <main className="app-shell__content quiz-dashboard" id="main-content">
       <StatRow><StatTile label="Quizzes" value={String(quizzes.length)} hint="All quizzes in your library" /><StatTile label="Published" value={String(published)} hint="Visible in the learner catalog" /><StatTile label="Drafts" value={String(drafts)} hint="Still being prepared" /></StatRow>
       <section className="dashboard-section" aria-labelledby="quiz-library-title">
         <header className="dashboard-section__heading"><div><span className="section-kicker">YOUR LIBRARY</span><h2 id="quiz-library-title">All quizzes</h2></div><span className="dashboard-section__count">{visible.length} {visible.length === 1 ? 'quiz' : 'quizzes'}</span></header>
         <Toolbar query={search} onQueryChange={setSearch} placeholder="Search by title" filters={<>
           <Select label="Status" name="quiz-status" value={status} onChange={(event) => setStatus(event.target.value as QuizFilter)} options={[{ label: 'All statuses', value: 'all' }, { label: 'Draft', value: 'draft' }, { label: 'Published', value: 'published' }, { label: 'Archived', value: 'archived' }]} />
+          <Select label="Class" name="quiz-class" value={classFilter} onChange={(event) => setClassFilter(event.target.value)} options={[{ label: 'All classes', value: 'all' }, ...classes.map((item) => ({ label: item.name, value: item.id })), { label: 'Unassigned legacy', value: 'unassigned' }]} />
           <Select label="Sort" name="quiz-sort" value={sort} onChange={(event) => setSort(event.target.value as QuizSort)} options={[{ label: 'Recently updated', value: 'recent' }, { label: 'Title', value: 'title' }]} />
         </>} />
         {error && <Alert tone="error" label="Quizzes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(null); setRefresh((value) => value + 1) }}>Retry</Button>}>{error}</Alert>}
         {loading ? <div className="quiz-skeleton-list" aria-label="Loading quizzes">{[0, 1, 2].map((item) => <Skeleton key={item} className="quiz-skeleton" label="Loading quiz" />)}</div> : visible.length === 0
           ? quizzes.length === 0 && !search && status === 'all'
-            ? <EmptyState title="Your quiz library is ready" description="Create your first quiz and begin planning a thoughtful practice session." action={<Button to="/instructor/quizzes/new"><Plus size={17} aria-hidden="true" /> Create your first quiz</Button>} />
+            ? <EmptyState title="Your quiz library is ready" description={classes.some((item) => item.status === 'active') ? 'Create your first quiz and begin planning a thoughtful practice session.' : 'Create a class first, then make quizzes for its students.'} action={classes.some((item) => item.status === 'active') ? <Button to="/instructor/quizzes/new"><Plus size={17} aria-hidden="true" /> Create your first quiz</Button> : <Button to="/instructor"><Plus size={17} aria-hidden="true" /> Create your first class</Button>} />
             : <p className="quiz-empty-filter" role="status">No quizzes match these filters.</p>
-          : <div className="quiz-list">{visible.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} busy={busyId === quiz.id || deleteLoading} onAction={runAction} onDelete={() => void beginDelete(quiz)} />)}</div>}
+          : <div className="quiz-list">{visible.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} classLabel={quiz.classId ? classes.find((item) => item.id === quiz.classId)?.name ?? 'Assigned class' : 'Unassigned legacy'} busy={busyId === quiz.id || deleteLoading} onAction={runAction} onDelete={() => void beginDelete(quiz)} />)}</div>}
       </section>
     </main>
     <ConfirmDialog open={Boolean(deleteSelection)} onClose={() => setDeleteSelection(null)} onConfirm={() => void removeQuiz()} title="Delete this quiz?" description={deleteSelection ? `Deleting “${deleteSelection.quiz.title}” will permanently erase ${deleteSelection.submissions} student ${deleteSelection.submissions === 1 ? 'submission' : 'submissions'} and all quiz content. Archive it instead if you may want it later.` : ''} requiredName={deleteSelection?.quiz.title} confirmLabel="Delete quiz" />
   </AppShell>
 }
 
-function QuizCard({ quiz, busy, onAction, onDelete }: { quiz: QuizRecord; busy: boolean; onAction: (id: string, label: string, action: () => Promise<unknown>) => void; onDelete: () => void }) {
+function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRecord; classLabel: string; busy: boolean; onAction: (id: string, label: string, action: () => Promise<unknown>) => void; onDelete: () => void }) {
   const statusLabel = quiz.status[0].toUpperCase() + quiz.status.slice(1)
   const updated = quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })
-  return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><Badge>{quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards'}</Badge></div>}>
+  return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><Badge>{quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards'}</Badge><Badge>{classLabel}</Badge></div>}>
     <div className="quiz-settings-badges">{settingBadges(quiz).map((label) => <span key={label}>{label}</span>)}</div>
     <div className="quiz-card__actions">
       <Button to={`/instructor/quizzes/${quiz.id}`} variant="secondary"><Pencil size={15} aria-hidden="true" /> Edit</Button>

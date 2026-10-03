@@ -56,6 +56,10 @@ export async function getClass(classId: string, db: Firestore = firestore): Prom
   return snapshot.exists() ? record(snapshot.id, snapshot.data()) : null
 }
 
+export function watchClass(classId: string, onChange: (value: ClassWithId | null) => void, onError: (error: Error) => void, db: Firestore = firestore) {
+  return onSnapshot(classRef(db, classId), (snapshot) => onChange(snapshot.exists() ? record(snapshot.id, snapshot.data()) : null), onError)
+}
+
 export async function updateClass(classId: string, value: ClassPatch, db: Firestore = firestore): Promise<void> {
   const patch = validateClassPatch(value)
   if (!Object.keys(patch).length) return

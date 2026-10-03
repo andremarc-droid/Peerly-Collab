@@ -5,7 +5,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import rules from '../../../../firestore.rules?raw'
 import { archiveClass, createClass, restoreClass, rotateJoinCode, updateClass } from './classService'
 import { countStudentsInClass, listEnrollments } from './enrollmentService'
+import { approveEnrollment, blockStudent, declineEnrollment, removeStudent, unblockStudent } from './enrollmentService'
 import { joinClass, lookupClassByCode } from './joinService'
+import { deleteClassCascade } from './deleteClassCascade'
 
 const projectId = 'demo-peerly-collab'
 let environment: RulesTestEnvironment
@@ -46,6 +48,7 @@ describe('classroom services', () => {
     expect((await getDoc(doc(db, 'classCodes/GHJ234'))).data()?.archived).toBe(true)
     await restoreClass(created.id, db)
     expect((await getDoc(doc(db, 'classCodes/GHJ234'))).data()?.archived).toBe(false)
+    await deleteClassCascade(created.id, db)
   })
 
   it('looks up a code, creates an enrollment, and serves owner roster counts with constrained queries', async () => {
@@ -69,5 +72,33 @@ describe('classroom services', () => {
     const ownerDb = modularDb(environment.authenticatedContext('teacher').firestore())
     expect(await countStudentsInClass('class1', 'teacher', ownerDb)).toBe(1)
     expect((await listEnrollments('class1', 'teacher', ownerDb))).toHaveLength(1)
+  })
+
+  it('supports approval, decline, block, unblock, and removal actions', async () => {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await Promise.all([
+        setDoc(doc(db, 'users/teacher'), { uid: 'teacher', role: 'instructor' }),
+        setDoc(doc(db, 'users/one'), { uid: 'one', role: 'student' }),
+        setDoc(doc(db, 'users/two'), { uid: 'two', role: 'student' }),
+        setDoc(doc(db, 'users/three'), { uid: 'three', role: 'student' }),
+        setDoc(doc(db, 'classes/class1'), {
+          ownerId: 'teacher', ownerName: 'Teacher', name: 'Math', section: '', subject: '', description: '', joinCode: 'ABC234',
+          joinEnabled: true, requireApproval: true, status: 'active', accent: 'pinstripe', createdAt: now, updatedAt: now, codeRotatedAt: now,
+        }),
+        setDoc(doc(db, 'classCodes/ABC234'), { classId: 'class1', ownerId: 'teacher', className: 'Math', ownerName: 'Teacher', joinEnabled: true, requireApproval: true, archived: false }),
+        ...['one', 'two', 'three'].map((uid, index) => setDoc(doc(db, `enrollments/class1_${uid}`), {
+          classId: 'class1', ownerId: 'teacher', uid, studentName: uid, studentPhotoURL: null, className: 'Math',
+          status: index === 0 ? 'pending' : 'active', codeUsed: 'ABC234', joinedAt: now, updatedAt: now,
+        })),
+      ])
+    })
+    const ownerDb = modularDb(environment.authenticatedContext('teacher').firestore())
+    await approveEnrollment('class1', 'one', ownerDb)
+    await blockStudent('class1', 'two', ownerDb)
+    await unblockStudent('class1', 'two', ownerDb)
+    await declineEnrollment('class1', 'one', ownerDb)
+    await removeStudent('class1', 'two', ownerDb)
+    expect((await getDoc(doc(ownerDb, 'enrollments/class1_three'))).data()?.status).toBe('active')
   })
 })

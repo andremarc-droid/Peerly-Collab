@@ -20,4 +20,9 @@ describe('filterAndSortQuizzes', () => {
     expect(filterAndSortQuizzes(quizzes, '', 'all', 'title').map(({ title }) => title)).toEqual(['Algebra', 'Biology', 'Zoology'])
     expect(filterAndSortQuizzes(quizzes, '', 'all', 'recent').map(({ id }) => id)).toEqual(['2', '1', '3'])
   })
+  it('filters class assignments and keeps legacy unassigned quizzes discoverable', () => {
+    const assigned = { ...quizzes[0], classId: 'class-a' }
+    expect(filterAndSortQuizzes([assigned, ...quizzes], '', 'all', 'recent', 'class-a')).toEqual([assigned])
+    expect(filterAndSortQuizzes(quizzes, '', 'all', 'recent', 'unassigned')).toHaveLength(3)
+  })
 })

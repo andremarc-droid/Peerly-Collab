@@ -1,4 +1,4 @@
-import { deleteDoc, doc, getCountFromServer, getDoc, getDocs, orderBy, query, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore'
+import { deleteDoc, doc, getCountFromServer, getDoc, getDocs, onSnapshot, orderBy, query, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
 import { parseEnrollment } from '../schemas'
 import type { EnrollmentRecord, EnrollmentStatus, EnrollmentWithId } from '../types'
@@ -9,6 +9,11 @@ export async function listEnrollments(classId: string, ownerId: string, db: Fire
   return result.docs.map((item) => ({ ...parseEnrollment(item.data()), id: item.id }))
 }
 
+export function watchEnrollments(classId: string, ownerId: string, onChange: (items: EnrollmentWithId[]) => void, onError: (error: Error) => void, db: Firestore = firestore) {
+  return onSnapshot(query(enrollmentsRef(db), where('ownerId', '==', ownerId), where('classId', '==', classId), orderBy('joinedAt', 'desc')),
+    (snapshot) => onChange(snapshot.docs.map((item) => ({ ...parseEnrollment(item.data()), id: item.id }))), onError)
+}
+
 export async function countStudentsInClass(classId: string, ownerId: string, db: Firestore = firestore): Promise<number> {
   const result = await getCountFromServer(query(enrollmentsRef(db), where('ownerId', '==', ownerId), where('classId', '==', classId), where('status', '==', 'active')))
   return result.data().count
@@ -16,6 +21,11 @@ export async function countStudentsInClass(classId: string, ownerId: string, db:
 
 export async function countPendingEnrollments(classId: string, ownerId: string, db: Firestore = firestore): Promise<number> {
   const result = await getCountFromServer(query(enrollmentsRef(db), where('ownerId', '==', ownerId), where('classId', '==', classId), where('status', '==', 'pending')))
+  return result.data().count
+}
+
+export async function countClassEnrollments(classId: string, ownerId: string, db: Firestore = firestore): Promise<number> {
+  const result = await getCountFromServer(query(enrollmentsRef(db), where('ownerId', '==', ownerId), where('classId', '==', classId)))
   return result.data().count
 }
 

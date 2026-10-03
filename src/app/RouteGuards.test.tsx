@@ -24,6 +24,8 @@ function renderRoutes(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/instructor" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><h1>Instructor dashboard</h1></RoleRoute></ProtectedRoute>} />
+        <Route path="/instructor/quizzes" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><h1>All quizzes</h1></RoleRoute></ProtectedRoute>} />
+        <Route path="/instructor/classes/:classId" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><h1>Class details</h1></RoleRoute></ProtectedRoute>} />
         <Route path="/student" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><h1>Student dashboard</h1></RoleRoute></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><h1>Profile page</h1></ProtectedRoute>} />
         <Route path="/signin" element={<PublicRoute><h1>Sign in form</h1></PublicRoute>} />
@@ -63,6 +65,13 @@ describe('application route guards', () => {
     mocks.auth.status = 'signedIn'
     mocks.profile.profile = { uid: 'user-1', name: 'Sam', email: 'sam@example.com', photoURL: null, role: 'student', createdAt: 1, updatedAt: 1 }
     renderRoutes('/instructor')
+    expect(await screen.findByRole('heading', { name: 'Student dashboard' })).toBeInTheDocument()
+  })
+
+  it('redirects a student away from instructor classes and quizzes', async () => {
+    mocks.auth.status = 'signedIn'
+    mocks.profile.profile = { uid: 'user-1', name: 'Sam', email: 'sam@example.com', photoURL: null, role: 'student', createdAt: 1, updatedAt: 1 }
+    renderRoutes('/instructor/classes/class-1')
     expect(await screen.findByRole('heading', { name: 'Student dashboard' })).toBeInTheDocument()
   })
 

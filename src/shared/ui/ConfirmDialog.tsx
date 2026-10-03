@@ -12,9 +12,11 @@ interface ConfirmDialogProps {
   description: string
   confirmLabel?: string
   requiredName?: string
+  busy?: boolean
+  closeOnConfirm?: boolean
 }
 
-export function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = 'Confirm', requiredName }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = 'Confirm', requiredName, busy = false, closeOnConfirm = true }: ConfirmDialogProps) {
   const [typedName, setTypedName] = useState('')
   const confirmed = !requiredName || typedName === requiredName
   function close() { setTypedName(''); onClose() }
@@ -24,7 +26,7 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, description, co
       {requiredName && <label className="field"><span className="field__label">Type <strong>{requiredName}</strong> to confirm</span><input className="field__control" value={typedName} onChange={(event) => setTypedName(event.target.value)} autoComplete="off" /></label>}
       <div className="dialog__actions">
         <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
-        <Button type="button" variant="primary" className="button--destructive" disabled={!confirmed} onClick={() => { onConfirm(); close() }}><TriangleAlert size={17} aria-hidden="true" />{confirmLabel}</Button>
+        <Button type="button" variant="primary" className="button--destructive" disabled={!confirmed || busy} onClick={() => { onConfirm(); if (closeOnConfirm) close() }}><TriangleAlert size={17} aria-hidden="true" />{busy ? 'Working…' : confirmLabel}</Button>
       </div>
     </Dialog>
   )

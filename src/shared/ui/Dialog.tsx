@@ -9,9 +9,10 @@ interface DialogProps {
   description?: string
   children: ReactNode
   labelledBy?: string
+  className?: string
 }
 
-export function Dialog({ open, onClose, title, description, children, labelledBy }: DialogProps) {
+export function Dialog({ open, onClose, title, description, children, labelledBy, className = '' }: DialogProps) {
   const titleId = useId()
   const descriptionId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -44,7 +45,7 @@ export function Dialog({ open, onClose, title, description, children, labelledBy
   if (!open) return null
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <section ref={dialogRef} className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleLabel} aria-describedby={description ? descriptionId : undefined} tabIndex={-1} onKeyDown={handleKeyDown}>
+      <section ref={dialogRef} className={`dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleLabel} aria-describedby={description ? descriptionId : undefined} tabIndex={-1} onKeyDown={handleKeyDown}>
         <header className="dialog__header">
           <div><h2 id={titleId}>{title}</h2>{description && <p id={descriptionId}>{description}</p>}</div>
           <Button type="button" variant="ghost" className="dialog__close" aria-label="Close dialog" onClick={onClose}><X size={20} aria-hidden="true" /></Button>

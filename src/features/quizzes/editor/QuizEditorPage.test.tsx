@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -7,6 +8,7 @@ import { QuizEditorPage } from './QuizEditorPage'
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'teacher', displayName: 'Teacher' } }) }))
 vi.mock('../../profile/useUserProfile', () => ({ useUserProfile: () => ({ profile: { name: 'Teacher' } }) }))
 vi.mock('../services', () => ({ createQuiz: vi.fn(), getQuiz: vi.fn(), updateQuiz: vi.fn() }))
+vi.mock('../../classes/services/classService', () => ({ watchMyClasses: (_uid: string, onChange: (items: never[]) => void) => { onChange([]); return () => undefined } }))
 vi.mock('../../../shared/ui/useToast', () => ({ useToast: () => ({ showToast: vi.fn() }) }))
 
 afterEach(cleanup)
@@ -16,6 +18,8 @@ describe('quiz editor and deletion confirmation', () => {
     render(<MemoryRouter><QuizEditorPage /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
     expect(await screen.findByText('Enter a quiz title.')).toBeTruthy()
+    expect(screen.getByText('Choose a class before saving this quiz.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create a class' })).toHaveAttribute('href', '/instructor')
     expect(screen.getByText('Coming soon')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /add questions/i })).toBeNull()
   })

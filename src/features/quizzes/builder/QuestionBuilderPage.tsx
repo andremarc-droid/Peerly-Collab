@@ -120,15 +120,15 @@ export function QuestionBuilderPage() {
   }
 
   async function publish() {
-    if (!canPublish) return
+    if (!canPublish || !quiz) return
     setPublishBusy(true)
-    try { await publishQuiz(quizId); showToast('success', 'Quiz published and ready for students.'); navigate('/instructor') }
+    try { await publishQuiz(quizId); showToast('success', 'Quiz published and ready for students.'); navigate(quiz.classId ? `/instructor/classes/${quiz.classId}` : '/instructor/quizzes') }
     catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Quiz could not be published.') }
     finally { setPublishBusy(false) }
   }
 
   if (loading) return <AppShell><PageHeader eyebrow="QUESTION BUILDER" title="Loading quiz…" subtitle="" /><main className="app-shell__content question-builder"><Skeleton label="Loading quiz questions" className="question-builder__skeleton" /></main></AppShell>
-  if (loadError || !quiz) return <AppShell><PageHeader eyebrow="QUESTION BUILDER" title="Quiz unavailable" subtitle="We couldn’t open these questions." /><main className="app-shell__content question-builder"><Alert tone="error" label="Questions unavailable">{loadError ?? 'This quiz could not be found.'}</Alert><Button to="/instructor"><ArrowLeft size={17} aria-hidden="true" /> Back to quizzes</Button></main></AppShell>
+  if (loadError || !quiz) return <AppShell><PageHeader eyebrow="QUESTION BUILDER" title="Quiz unavailable" subtitle="We couldn’t open these questions." /><main className="app-shell__content question-builder"><Alert tone="error" label="Questions unavailable">{loadError ?? 'This quiz could not be found.'}</Alert><Button to="/instructor/quizzes"><ArrowLeft size={17} aria-hidden="true" /> Back to all quizzes</Button></main></AppShell>
 
   return <AppShell>
     <PageHeader eyebrow={quiz.mode === 'quiz' ? 'QUESTION BUILDER · QUIZ' : 'QUESTION BUILDER · FLASHCARDS'} title="Shape the practice." subtitle="Each question and answer key is saved together as you work." action={<Button to={`/instructor/quizzes/${quizId}`} variant="secondary"><ArrowLeft size={17} aria-hidden="true" /> Quiz settings</Button>} />

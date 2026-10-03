@@ -1,4 +1,4 @@
-import { collection, doc, getCountFromServer, getDoc, getDocs, orderBy, query, where, type Firestore } from 'firebase/firestore'
+import { collection, doc, getCountFromServer, getDoc, getDocs, onSnapshot, orderBy, query, where, type Firestore } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
 import { duplicateQuiz } from '../../quizzes/services/duplicateQuiz'
 import { parseQuiz } from '../../quizzes/schemas'
@@ -27,6 +27,11 @@ export async function copyQuizToClass(quizId: string, classId: string, db: Fires
 export async function listQuizzesForClass(classId: string, ownerId: string, db: Firestore = firestore): Promise<QuizRecord[]> {
   const result = await getDocs(query(quizCollection(db), where('ownerId', '==', ownerId), where('classId', '==', classId), orderBy('updatedAt', 'desc')))
   return result.docs.map((item) => ({ ...parseQuiz(item.data()), id: item.id }))
+}
+
+export function watchQuizzesForClass(classId: string, ownerId: string, onChange: (items: QuizRecord[]) => void, onError: (error: Error) => void, db: Firestore = firestore) {
+  return onSnapshot(query(quizCollection(db), where('ownerId', '==', ownerId), where('classId', '==', classId), orderBy('updatedAt', 'desc')),
+    (snapshot) => onChange(snapshot.docs.map((item) => ({ ...parseQuiz(item.data()), id: item.id }))), onError)
 }
 
 export async function listPublishedQuizzesForClass(classId: string, db: Firestore = firestore): Promise<QuizRecord[]> {
