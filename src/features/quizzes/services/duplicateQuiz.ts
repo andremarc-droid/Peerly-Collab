@@ -3,7 +3,7 @@ import { firestore } from '../../../lib/firebase/firestore'
 import { parseQuiz, validateQuestionAnswerPair } from '../schemas'
 import { answerKeysRef, questionsRef, quizRef } from './paths'
 
-export async function duplicateQuiz(quizId: string, db: Firestore = firestore): Promise<string> {
+export async function duplicateQuiz(quizId: string, db: Firestore = firestore, classIdOverride?: string): Promise<string> {
   const sourceRef = quizRef(db, quizId)
   const sourceSnapshot = await getDoc(sourceRef)
   if (!sourceSnapshot.exists()) throw new Error('Quiz not found')
@@ -11,10 +11,12 @@ export async function duplicateQuiz(quizId: string, db: Firestore = firestore): 
     getDocs(questionsRef(db, quizId)), getDocs(answerKeysRef(db, quizId)),
   ])
   const source = parseQuiz(sourceSnapshot.data())
+  const classId = classIdOverride ?? source.classId
+  if (!classId) throw new Error('Assign this unassigned quiz to a class before duplicating it.')
   const copyId = doc(collection(db, 'quizzes')).id
   const copyRef = quizRef(db, copyId)
   const now = Timestamp.now()
-  const copiedQuiz = { ...source, title: `Copy of ${source.title}`, status: 'draft' as const, questionCount: 0, createdAt: now, updatedAt: now, publishedAt: null, settings: { ...source.settings, scoresReleased: false } }
+  const copiedQuiz = { ...source, classId, title: `Copy of ${source.title}`, status: 'draft' as const, questionCount: 0, createdAt: now, updatedAt: now, publishedAt: null, settings: { ...source.settings, scoresReleased: false } }
   const keysByQuestion = new Map(keySnapshot.docs.map((key) => [key.id, key.data()]))
   const operations = questionSnapshot.docs.map((snapshot) => {
     const { id } = snapshot

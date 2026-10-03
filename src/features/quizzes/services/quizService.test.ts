@@ -1,5 +1,5 @@
 import { assertFails, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { doc, setDoc, getDoc } from 'firebase/firestore'
+import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore'
 import type { Firestore } from 'firebase/firestore'
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -20,7 +20,7 @@ afterEach(async () => environment.clearFirestore())
 afterAll(async () => environment.cleanup())
 
 function quizInput(title: string) {
-  return { title, description: '', tags: ['practice'], mode: 'quiz' as const, settings: defaultQuizSettings('quiz') }
+  return { title, description: '', tags: ['practice'], mode: 'quiz' as const, classId: 'class1', settings: defaultQuizSettings('quiz') }
 }
 
 async function users() {
@@ -29,6 +29,8 @@ async function users() {
     await Promise.all([
       setDoc(doc(db, 'users/teacher'), { uid: 'teacher', role: 'instructor' }),
       setDoc(doc(db, 'users/student'), { uid: 'student', role: 'student' }),
+      setDoc(doc(db, 'classes/class1'), { ownerId: 'teacher', ownerName: 'Teacher', name: 'Math', section: '', subject: '', description: '', joinCode: 'ABC234', joinEnabled: true, requireApproval: false, status: 'active', accent: 'pinstripe', createdAt: Timestamp.fromMillis(1000), updatedAt: Timestamp.fromMillis(1000), codeRotatedAt: Timestamp.fromMillis(1000) }),
+      setDoc(doc(db, 'enrollments/class1_student'), { classId: 'class1', ownerId: 'teacher', uid: 'student', studentName: 'Student', studentPhotoURL: null, className: 'Math', status: 'active', codeUsed: 'ABC234', joinedAt: Timestamp.fromMillis(1000), updatedAt: Timestamp.fromMillis(1000) }),
     ])
   })
 }

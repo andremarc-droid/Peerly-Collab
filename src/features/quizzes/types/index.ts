@@ -24,6 +24,7 @@ export interface QuizSettings {
 export interface Quiz {
   ownerId: string
   ownerName: string
+  classId: string | null
   title: string
   description: string
   tags: string[]
@@ -146,5 +147,5 @@ export interface QuizParticipant {
   activeAttemptId: string | null
 }
 
-export type NewQuiz = Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings'>
-export type QuizPatch = Partial<Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings'>>
+export type NewQuiz = Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings'> & { classId?: string }
+export type QuizPatch = Partial<Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings' | 'classId'>>

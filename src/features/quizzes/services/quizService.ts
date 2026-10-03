@@ -1,5 +1,5 @@
 import {
-  collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, setDoc, Timestamp, where,
+  collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, Timestamp, where,
   type Firestore,
 } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
@@ -16,14 +16,20 @@ function cleanFlashcardSettings(mode: Quiz['mode'], settings: Quiz['settings']) 
 }
 
 export async function createQuiz(ownerId: string, ownerName: string, input: NewQuiz, db: Firestore = firestore): Promise<string> {
+  if (!input.classId?.trim()) throw new Error('Choose an active class before creating a quiz.')
   const ref = doc(collection(db, 'quizzes'))
   const now = Timestamp.now()
   const quiz: Quiz = {
-    ownerId, ownerName, title: input.title, description: input.description, tags: input.tags,
+    ownerId, ownerName, classId: input.classId, title: input.title, description: input.description, tags: input.tags,
     mode: input.mode, status: 'draft', questionCount: 0, createdAt: now, updatedAt: now,
     publishedAt: null, settings: cleanFlashcardSettings(input.mode, input.settings),
   }
-  await setDoc(ref, parseQuiz(quiz))
+  const parsed = parseQuiz(quiz)
+  await runTransaction(db, async (transaction) => {
+    const classSnapshot = await transaction.get(doc(db, 'classes', input.classId!))
+    if (!classSnapshot.exists() || classSnapshot.data().ownerId !== ownerId || classSnapshot.data().status !== 'active') throw new Error('Choose an active class that you own.')
+    transaction.set(ref, parsed)
+  })
   return ref.id
 }
 
@@ -35,8 +41,14 @@ export async function updateQuiz(quizId: string, patch: QuizPatch, db: Firestore
     const existing = parseQuiz(snapshot.data())
     const mode = patch.mode ?? existing.mode
     const settings = cleanFlashcardSettings(mode, patch.settings ?? existing.settings)
-    const next = parseQuiz({ ...existing, ...patch, mode, settings, updatedAt: Timestamp.now() })
-    transaction.set(ref, { ...patch, mode, settings, updatedAt: next.updatedAt }, { merge: true })
+    const classId = patch.classId ?? existing.classId
+    if (classId !== existing.classId) {
+      if (existing.status !== 'draft' || !classId) throw new Error('A quiz can only be assigned to an active class while it is a draft.')
+      const classSnapshot = await transaction.get(doc(db, 'classes', classId))
+      if (!classSnapshot.exists() || classSnapshot.data().ownerId !== existing.ownerId || classSnapshot.data().status !== 'active') throw new Error('Choose an active class that you own.')
+    }
+    const next = parseQuiz({ ...existing, ...patch, ...(classId ? { classId } : {}), mode, settings, updatedAt: Timestamp.now() })
+    transaction.set(ref, { ...patch, ...(classId ? { classId } : {}), mode, settings, updatedAt: next.updatedAt }, { merge: true })
   })
 }
 
@@ -47,11 +59,6 @@ export async function getQuiz(quizId: string, db: Firestore = firestore): Promis
 
 export async function listOwnerQuizzes(ownerId: string, db: Firestore = firestore): Promise<QuizRecord[]> {
   const result = await getDocs(query(collection(db, 'quizzes'), where('ownerId', '==', ownerId), orderBy('updatedAt', 'desc')))
-  return result.docs.map((snapshot) => asRecord(snapshot.id, snapshot.data()))
-}
-
-export async function listPublishedQuizzes(db: Firestore = firestore): Promise<QuizRecord[]> {
-  const result = await getDocs(query(collection(db, 'quizzes'), where('status', '==', 'published'), orderBy('publishedAt', 'desc')))
   return result.docs.map((snapshot) => asRecord(snapshot.id, snapshot.data()))
 }
 
@@ -69,6 +76,9 @@ async function setStatus(quizId: string, status: QuizStatus, db: Firestore): Pro
     if (status === 'published') {
       if (!quiz.title.trim()) throw new Error('A title is required before publishing')
       if (quiz.questionCount < 1) throw new Error('Add at least one question before publishing')
+      if (!quiz.classId) throw new Error('Assign this quiz to an active class before publishing.')
+      const classSnapshot = await transaction.get(doc(db, 'classes', quiz.classId))
+      if (!classSnapshot.exists() || classSnapshot.data().ownerId !== quiz.ownerId || classSnapshot.data().status !== 'active') throw new Error('Publishing requires an active class that you own.')
     }
     transaction.update(ref, { status, updatedAt: Timestamp.now(), ...(status === 'published' ? { publishedAt: Timestamp.now() } : status === 'draft' ? { publishedAt: null } : {}) })
   })

@@ -265,6 +265,117 @@ service cloud.firestore {
         && request.auth.token.get('firebase', {}).get('sign_in_provider', '') != 'anonymous';
     }
 
+    function isInstructor() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', null) == 'instructor';
+    }
+
+    function isStudent() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', null) == 'student';
+    }
+
+    function isClassOwner(classId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/classes/$(classId))
+        && get(/databases/$(database)/documents/classes/$(classId)).data.ownerId == request.auth.uid;
+    }
+
+    function isActiveMember(classId) {
+      let enrollmentPath = /databases/$(database)/documents/enrollments/$(classId + '_' + request.auth.uid);
+      return signedIn() && exists(enrollmentPath) && get(enrollmentPath).data.status == 'active';
+    }
+
+    function validJoinCode(code) {
+      return code is string && code.matches('^[A-HJ-NP-Z2-9]{6}$');
+    }
+
+    function validClass(data) {
+      return data.keys().hasOnly(['ownerId', 'ownerName', 'name', 'section', 'subject', 'description', 'joinCode', 'joinEnabled', 'requireApproval', 'status', 'accent', 'createdAt', 'updatedAt', 'codeRotatedAt'])
+        && data.keys().hasAll(['ownerId', 'ownerName', 'name', 'section', 'subject', 'description', 'joinCode', 'joinEnabled', 'requireApproval', 'status', 'accent', 'createdAt', 'updatedAt', 'codeRotatedAt'])
+        && data.ownerId is string && data.ownerName is string && data.name is string && data.name.size() > 0
+        && data.section is string && data.subject is string && data.description is string
+        && validJoinCode(data.joinCode) && data.joinEnabled is bool && data.requireApproval is bool
+        && data.status in ['active', 'archived'] && data.accent in ['pinstripe', 'stripeFade', 'solid']
+        && data.createdAt is timestamp && data.updatedAt is timestamp && data.codeRotatedAt is timestamp;
+    }
+
+    function validClassCode(data, code) {
+      return data.keys().hasOnly(['classId', 'ownerId', 'className', 'ownerName', 'joinEnabled', 'requireApproval', 'archived'])
+        && data.keys().hasAll(['classId', 'ownerId', 'className', 'ownerName', 'joinEnabled', 'requireApproval', 'archived'])
+        && validJoinCode(code) && data.classId is string && data.ownerId == request.auth.uid
+        && data.className is string && data.ownerName is string && data.joinEnabled is bool
+        && data.requireApproval is bool && data.archived is bool;
+    }
+
+    function classCodeMatchesClass(data, code, classId) {
+      let classPath = /databases/$(database)/documents/classes/$(classId);
+      return existsAfter(classPath)
+        && getAfter(classPath).data.ownerId == request.auth.uid
+        && getAfter(classPath).data.joinCode == code
+        && data.classId == classId
+        && data.className == getAfter(classPath).data.name
+        && data.ownerName == getAfter(classPath).data.ownerName
+        && data.joinEnabled == getAfter(classPath).data.joinEnabled
+        && data.requireApproval == getAfter(classPath).data.requireApproval
+        && data.archived == (getAfter(classPath).data.status == 'archived');
+    }
+
+    match /classes/{classId} {
+      allow get, list: if signedIn() && (resource.data.ownerId == request.auth.uid || isActiveMember(classId));
+      allow create: if isInstructor()
+        && request.resource.data.ownerId == request.auth.uid
+        && validClass(request.resource.data)
+        && existsAfter(/databases/$(database)/documents/classCodes/$(request.resource.data.joinCode))
+        && classCodeMatchesClass(getAfter(/databases/$(database)/documents/classCodes/$(request.resource.data.joinCode)).data, request.resource.data.joinCode, classId);
+      allow update: if isClassOwner(classId)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validClass(request.resource.data)
+        && existsAfter(/databases/$(database)/documents/classCodes/$(request.resource.data.joinCode))
+        && classCodeMatchesClass(getAfter(/databases/$(database)/documents/classCodes/$(request.resource.data.joinCode)).data, request.resource.data.joinCode, classId);
+      allow delete: if isClassOwner(classId);
+    }
+
+    match /classCodes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update: if isInstructor()
+        && validClassCode(request.resource.data, code)
+        && classCodeMatchesClass(request.resource.data, code, request.resource.data.classId);
+      allow delete: if isInstructor() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /enrollments/{enrollmentId} {
+      allow get: if signedIn()
+        && ((!exists(/databases/$(database)/documents/enrollments/$(enrollmentId))
+            && enrollmentId.matches('^.+_' + request.auth.uid + '$'))
+          || resource.data.uid == request.auth.uid || resource.data.ownerId == request.auth.uid);
+      allow list: if signedIn() && (resource.data.uid == request.auth.uid || resource.data.ownerId == request.auth.uid);
+      allow create: if isStudent()
+        && request.resource.data.uid == request.auth.uid
+        && enrollmentId == request.resource.data.classId + '_' + request.auth.uid
+        && !exists(/databases/$(database)/documents/enrollments/$(enrollmentId))
+        && request.resource.data.keys().hasOnly(['classId', 'ownerId', 'uid', 'studentName', 'studentPhotoURL', 'className', 'status', 'codeUsed', 'joinedAt', 'updatedAt'])
+        && request.resource.data.keys().hasAll(['classId', 'ownerId', 'uid', 'studentName', 'studentPhotoURL', 'className', 'status', 'codeUsed', 'joinedAt', 'updatedAt'])
+        && request.resource.data.classId is string && request.resource.data.ownerId is string
+        && request.resource.data.studentName is string
+        && (request.resource.data.studentPhotoURL == null || request.resource.data.studentPhotoURL is string)
+        && request.resource.data.className is string && validJoinCode(request.resource.data.codeUsed)
+        && request.resource.data.joinedAt is timestamp && request.resource.data.updatedAt is timestamp
+        && exists(/databases/$(database)/documents/classes/$(request.resource.data.classId))
+        && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.ownerId == request.resource.data.ownerId
+        && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.joinCode == request.resource.data.codeUsed
+        && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.joinEnabled == true
+        && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.status == 'active'
+        && request.resource.data.status == (get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.requireApproval ? 'pending' : 'active');
+      allow update: if isClassOwner(resource.data.classId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status in ['active', 'pending', 'blocked'];
+      allow delete: if isClassOwner(resource.data.classId)
+        || (signedIn() && resource.data.uid == request.auth.uid && resource.data.status != 'blocked');
+    }
+
     function quizOwner(quizId) {
       return quizSignedIn()
         && exists(/databases/$(database)/documents/quizzes/$(quizId))
@@ -278,8 +389,11 @@ service cloud.firestore {
     }
 
     function quizPublished(quizId) {
-      return exists(/databases/$(database)/documents/quizzes/$(quizId))
-        && get(/databases/$(database)/documents/quizzes/$(quizId)).data.status == 'published';
+      let quizPath = /databases/$(database)/documents/quizzes/$(quizId);
+      return exists(quizPath)
+        && get(quizPath).data.status == 'published'
+        && get(quizPath).data.get('classId', null) is string
+        && isActiveMember(get(quizPath).data.classId);
     }
 
     function quizHasParticipant(quizId, uid) {
@@ -312,11 +426,12 @@ service cloud.firestore {
     }
 
     function validQuiz(data) {
-      return data.keys().hasOnly(['ownerId', 'ownerName', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings'])
+      return data.keys().hasOnly(['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings'])
         && data.keys().hasAll(['ownerId', 'ownerName', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings'])
         && data.ownerId is string && data.ownerName is string && data.title is string && data.description is string
         && data.tags is list && data.mode in ['quiz', 'flashcards']
         && data.status in ['draft', 'published', 'archived']
+        && (!data.keys().hasAny(['classId']) || data.classId is string)
         && data.questionCount is int && data.questionCount >= 0
         && data.createdAt is timestamp && data.updatedAt is timestamp
         && (data.publishedAt == null || data.publishedAt is timestamp)
@@ -379,31 +494,42 @@ service cloud.firestore {
       allow get: if quizSignedIn()
         && (!exists(/databases/$(database)/documents/quizzes/$(quizId))
           || resource.data.ownerId == request.auth.uid
-        || (hasQuizRole('student') && resource.data.status == 'published'));
+        || (isStudent() && resource.data.status == 'published'
+          && resource.data.get('classId', null) is string && isActiveMember(resource.data.classId)));
       allow list: if quizSignedIn() && (resource.data.ownerId == request.auth.uid
-        || (hasQuizRole('student') && resource.data.status == 'published'));
-      allow create: if hasQuizRole('instructor')
+        || (isStudent() && resource.data.status == 'published'
+          && resource.data.get('classId', null) is string && isActiveMember(resource.data.classId)));
+      allow create: if isInstructor()
         && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.classId is string && isClassOwner(request.resource.data.classId)
+        && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.status == 'active'
         && request.resource.data.status == 'draft'
         && request.resource.data.questionCount == 0
         && validQuiz(request.resource.data);
       allow update: if quizOwner(quizId)
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
+        && (request.resource.data.get('classId', null) == resource.data.get('classId', null)
+          || (resource.data.status == 'draft' && request.resource.data.get('classId', null) is string
+            && isClassOwner(request.resource.data.classId)
+            && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.status == 'active'))
         && (request.resource.data.status != 'published'
-          || (request.resource.data.title.size() > 0 && request.resource.data.questionCount > 0 && request.resource.data.publishedAt is timestamp))
+          || (request.resource.data.title.size() > 0 && request.resource.data.questionCount > 0 && request.resource.data.publishedAt is timestamp
+            && request.resource.data.get('classId', null) is string
+            && isClassOwner(request.resource.data.classId)
+            && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.status == 'active'))
         && validQuiz(request.resource.data);
       allow delete: if quizOwner(quizId);
 
       match /questions/{questionId} {
-        allow read: if quizOwner(quizId) || (hasQuizRole('student') && quizPublished(quizId));
+        allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId));
         allow create, update: if quizOwner(quizId) && validQuestion(request.resource.data);
         allow delete: if quizOwner(quizId);
       }
 
       match /answerKeys/{questionId} {
         allow read: if quizOwner(quizId)
-          || (hasQuizRole('student') && quizPublished(quizId) && quizHasParticipant(quizId, request.auth.uid));
+          || (isStudent() && quizPublished(quizId) && quizHasParticipant(quizId, request.auth.uid));
         allow create, update: if quizOwner(quizId)
           && validAnswerKey(request.resource.data)
           && matchingAnswerKey(quizId, questionId, request.resource.data);
@@ -411,10 +537,10 @@ service cloud.firestore {
       }
 
       match /participants/{uid} {
-        allow get: if quizOwner(quizId) || (quizSignedIn() && request.auth.uid == uid);
+        allow get: if quizOwner(quizId) || (isStudent() && request.auth.uid == uid && quizPublished(quizId));
         allow list: if quizOwner(quizId);
         allow create: if quizSignedIn() && request.auth.uid == uid
-          && hasQuizRole('student') && quizPublished(quizId)
+          && isStudent() && quizPublished(quizId)
           && request.resource.data.keys().hasOnly(['userId', 'userName', 'createdAt', 'updatedAt', 'attemptCount', 'activeAttemptId'])
           && request.resource.data.keys().hasAll(['userId', 'userName', 'createdAt', 'updatedAt', 'attemptCount', 'activeAttemptId'])
           && request.resource.data.userId == uid
@@ -445,15 +571,15 @@ service cloud.firestore {
       }
 
       match /attempts/{attemptId} {
-        allow get, list: if quizOwner(quizId) || (hasQuizRole('student') && resource.data.userId == request.auth.uid);
-        allow create: if hasQuizRole('student') && quizPublished(quizId)
+        allow get, list: if quizOwner(quizId) || (isStudent() && quizPublished(quizId) && resource.data.userId == request.auth.uid);
+        allow create: if isStudent() && quizPublished(quizId)
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.status == 'in_progress'
           && request.resource.data.submittedAt == null
           && existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid))
           && getAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid)).data.activeAttemptId == attemptId
           && validAttempt(request.resource.data);
-        allow update: if hasQuizRole('student') && resource.data.userId == request.auth.uid
+        allow update: if isStudent() && quizPublished(quizId) && resource.data.userId == request.auth.uid
           && resource.data.status == 'in_progress'
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.status in ['in_progress', 'submitted']
@@ -469,11 +595,11 @@ service cloud.firestore {
 
       match /results/{attemptId} {
         allow get, list: if quizOwner(quizId)
-          || (hasQuizRole('student') && resource.data.userId == request.auth.uid
+          || (isStudent() && quizPublished(quizId) && resource.data.userId == request.auth.uid
             && (get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.scoreVisibility == 'immediate'
               || (get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.scoreVisibility == 'after_release'
                 && get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.scoresReleased == true)));
-        allow create: if hasQuizRole('student') && validResult(request.resource.data)
+        allow create: if isStudent() && quizPublished(quizId) && validResult(request.resource.data)
           && request.resource.data.userId == request.auth.uid
           && exists(/databases/$(database)/documents/quizzes/$(quizId)/attempts/$(attemptId))
           && get(/databases/$(database)/documents/quizzes/$(quizId)/attempts/$(attemptId)).data.status == 'in_progress'

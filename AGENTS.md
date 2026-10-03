@@ -44,3 +44,11 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Keep interfaces accessible and mobile-first. Keep code feature-based and modules small and focused.
 - Write tests for logic. Automated Firebase tests and scripts use only the demo emulator project; never deploy rules or touch the real Firebase project.
 - Never print secrets or read `.env.local`. Make one commit per prompt.
+
+## CLASSROOMS
+- Classes live at `classes/{classId}` and are owned by instructors. Students only see published quizzes for classes where their enrollment is active.
+- `classCodes/{CODE}` is a lookup preview index, never an authority; use the class document and Firestore rules for authoritative join checks. Codes are six characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, generated with Web Crypto and normalized by uppercasing and removing spaces and hyphens.
+- `enrollments/{classId}_{uid}` is the canonical membership record. Status is `active`, `pending`, or `blocked`; pending membership needs instructor approval and blocked students cannot recreate their enrollment.
+- New quizzes require a `classId`. Legacy quizzes without one remain visible to their owner as unassigned and cannot be published. Quiz assignment changes are allowed only while draft and to an active class owned by the same instructor.
+- Never keep client-updated class member counters. Use Firestore count queries for enrollments, pending approvals, and class quizzes.
+- Join lookup throttling is a client-side deterrent only; security is enforced by rules. Quiz grading remains browser-side in v1, so answer keys are not protected from a determined participant.

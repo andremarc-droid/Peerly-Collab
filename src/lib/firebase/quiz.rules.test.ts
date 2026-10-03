@@ -1,5 +1,5 @@
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { Timestamp, collection, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
+import { Timestamp, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, it } from 'vitest'
 import rules from '../../../firestore.rules?raw'
@@ -12,7 +12,7 @@ const settings = {
   timeLimitMinutes: null, attemptsAllowed: 1, shuffleQuestions: false, shuffleOptions: false,
 }
 const quizData = (ownerId = 'teacher', status = 'published') => ({
-  ownerId, ownerName: 'Teacher', title: 'Algebra practice', description: '', tags: [], mode: 'quiz', status,
+  ownerId, ownerName: 'Teacher', classId: 'class1', title: 'Algebra practice', description: '', tags: [], mode: 'quiz', status,
   questionCount: 1, createdAt: now, updatedAt: now, publishedAt: status === 'published' ? now : null, settings,
 })
 const question = { order: 0, type: 'multiple_choice', prompt: 'Pick', points: 2, options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] }
@@ -39,6 +39,8 @@ async function seed(data: { status?: string; visibility?: string } = {}) {
       setDoc(doc(db, 'users/teacher'), { uid: 'teacher', role: 'instructor' }),
       setDoc(doc(db, 'users/student'), { uid: 'student', role: 'student' }),
       setDoc(doc(db, 'users/other'), { uid: 'other', role: 'student' }),
+      setDoc(doc(db, 'classes/class1'), { ownerId: 'teacher', ownerName: 'Teacher', name: 'Math', section: '', subject: '', description: '', joinCode: 'ABC234', joinEnabled: true, requireApproval: false, status: 'active', accent: 'pinstripe', createdAt: now, updatedAt: now, codeRotatedAt: now }),
+      setDoc(doc(db, 'enrollments/class1_student'), { classId: 'class1', ownerId: 'teacher', uid: 'student', studentName: 'Student', studentPhotoURL: null, className: 'Math', status: 'active', codeUsed: 'ABC234', joinedAt: now, updatedAt: now }),
       setDoc(doc(db, 'quizzes/qz'), { ...quizData('teacher', data.status ?? 'published'), settings: { ...settings, scoreVisibility: data.visibility ?? 'immediate' } }),
       setDoc(doc(db, 'quizzes/qz/questions/q'), question),
       setDoc(doc(db, 'quizzes/qz/answerKeys/q'), key),
@@ -75,10 +77,20 @@ describe('quiz Firestore rules', () => {
     const owner = environment.authenticatedContext('teacher').firestore()
     await assertSucceeds(getDoc(doc(student, 'quizzes/qz')))
     await assertSucceeds(getDoc(doc(student, 'quizzes/qz/questions/q')))
-    await assertSucceeds(getDocs(collection(environment.authenticatedContext('other').firestore(), 'quizzes/qz/questions')))
+    await assertSucceeds(getDocs(collection(student, 'quizzes/qz/questions')))
+    await assertFails(getDoc(doc(environment.authenticatedContext('other').firestore(), 'quizzes/qz')))
+    await assertFails(getDocs(collection(environment.authenticatedContext('other').firestore(), 'quizzes/qz/questions')))
     await assertFails(updateDoc(doc(student, 'quizzes/qz/questions/q'), { prompt: 'Tampered' }))
     await assertSucceeds(updateDoc(doc(owner, 'quizzes/qz/questions/q'), { prompt: 'Updated' }))
     await assertFails(setDoc(doc(owner, 'quizzes/qz/questions/bad'), { ...question, answer: 'b' }))
+  })
+
+  it('requires active class membership in the published class quiz list query', async () => {
+    await seed()
+    const member = environment.authenticatedContext('student').firestore()
+    const outsider = environment.authenticatedContext('other').firestore()
+    await assertSucceeds(getDocs(query(collection(member, 'quizzes'), where('classId', '==', 'class1'), where('status', '==', 'published'))))
+    await assertFails(getDocs(query(collection(outsider, 'quizzes'), where('classId', '==', 'class1'), where('status', '==', 'published'))))
   })
 
   it('restricts answer keys to owners and participants in published quizzes', async () => {

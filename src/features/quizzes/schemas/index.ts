@@ -39,7 +39,7 @@ const oneOf = <T extends string>(value: unknown, values: readonly T[], name: str
   return value as T
 }
 
-const quizKeys = ['ownerId', 'ownerName', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings']
+const quizKeys = ['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings']
 const settingsKeys = ['answerReveal', 'participation', 'scoreVisibility', 'scoresReleased', 'timeLimitMinutes', 'attemptsAllowed', 'shuffleQuestions', 'shuffleOptions']
 
 export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSettings {
@@ -78,6 +78,7 @@ export function parseQuiz(value: unknown): Quiz {
   if (!Array.isArray(quiz.tags) || !quiz.tags.every((tag) => typeof tag === 'string')) throw new DomainValidationError('tags must be a list of strings')
   return {
     ownerId: string(quiz.ownerId, 'ownerId'), ownerName: string(quiz.ownerName, 'ownerName'),
+    classId: quiz.classId === undefined || quiz.classId === null ? null : string(quiz.classId, 'classId'),
     title: string(quiz.title, 'title', true), description: string(quiz.description, 'description', true),
     tags: quiz.tags as string[], mode, status: oneOf(quiz.status, ['draft', 'published', 'archived'] as const, 'status'),
     questionCount: integer(quiz.questionCount, 'questionCount'), createdAt: timestamp(quiz.createdAt, 'createdAt'),

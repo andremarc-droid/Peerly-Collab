@@ -5,7 +5,7 @@ import type { QuizRecord } from '../services/quizService'
 import { defaultQuizSettings } from '../schemas/settings'
 
 const makeQuiz = (id: string, title: string, status: QuizRecord['status'], updatedAt: number): QuizRecord => ({
-  id, ownerId: 'teacher', ownerName: 'Teacher', title, description: '', tags: [], mode: 'quiz', status,
+  id, ownerId: 'teacher', ownerName: 'Teacher', classId: null, title, description: '', tags: [], mode: 'quiz', status,
   questionCount: 1, createdAt: Timestamp.fromMillis(1), updatedAt: Timestamp.fromMillis(updatedAt), publishedAt: null,
   settings: defaultQuizSettings('quiz'),
 })
