@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { Timestamp } from 'firebase/firestore'
 import type { QuizAttempt, QuizResult } from '../types'
-import { applyQuestionOverride, bestAttempts, recalculateAutomaticGrade, resultsCsv, summarizeAttempts, type AttemptResult } from './resultLogic'
+import type { EnrollmentWithId } from '../../classes/types'
+import { applyQuestionOverride, bestAttempts, buildRosterRows, recalculateAutomaticGrade, resultsCsv, summarizeAttempts, type AttemptResult } from './resultLogic'
 
 const time = Timestamp.fromMillis(10)
 const baseAttempt: QuizAttempt = { userId: 'u1', userName: 'A "Student"', attemptNumber: 1, status: 'submitted', answers: { q: 'wrong' }, questionOrder: ['q'], optionOrder: {}, startedAt: time, submittedAt: time, timeSpentSeconds: 65 }
@@ -29,10 +30,22 @@ describe('quiz result logic', () => {
   })
 
   it('exports one escaped CSV row per attempt', () => {
-    const csv = resultsCsv([row('attempt-1', 'u1', 8), { ...row('attempt-2', 'u2', 4, 1, 'in_progress'), submittedAt: null }])
+    const csv = resultsCsv([row('attempt-1', 'u1', 8), { ...row('attempt-2', 'u2', 4, 1, 'in_progress'), submittedAt: null }], false, 'Science, "North"')
     expect(csv.split('\r\n')).toHaveLength(3)
     expect(csv).toContain('"A ""Student"""')
+    expect(csv).toContain('"Science, ""North"""')
     expect(csv).toContain('"8/10"')
     expect(csv).toContain('""')
+  })
+
+  it('includes enrolled students with no attempts and retains departed students’ attempts', () => {
+    const enrollment = (uid: string, status: EnrollmentWithId['status'] = 'active'): EnrollmentWithId => ({
+      id: `class_${uid}`, classId: 'class', ownerId: 'teacher', uid, studentName: `Name ${uid}`, studentPhotoURL: null,
+      className: 'Science', status, codeUsed: 'ABC234', joinedAt: time, updatedAt: time,
+    })
+    const rows = buildRosterRows([enrollment('started'), enrollment('fresh')], [row('old-attempt', 'departed', 6), row('current-attempt', 'started', 8)])
+    expect(rows.find((item) => item.userId === 'fresh')).toMatchObject({ attempt: null, membership: 'not_started', userName: 'Name fresh' })
+    expect(rows.find((item) => item.userId === 'departed')).toMatchObject({ attempt: { id: 'old-attempt' }, membership: 'no_longer_enrolled' })
+    expect(rows.find((item) => item.userId === 'started')?.membership).toBe('enrolled')
   })
 })

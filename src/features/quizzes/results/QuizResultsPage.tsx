@@ -18,13 +18,16 @@ import { Skeleton } from '../../../shared/ui/Skeleton'
 import { StatRow, StatTile } from '../../../shared/ui/StatTile'
 import { Switch } from '../../../shared/ui/Switch'
 import { useToast } from '../../../shared/ui/useToast'
+import { getClass } from '../../classes/services/classService'
+import { listEnrollments } from '../../classes/services/enrollmentService'
+import type { ClassWithId, EnrollmentWithId } from '../../classes/types'
 import { getQuiz, updateQuiz } from '../services/quizService'
 import { listQuizAttempts } from '../services/attemptService'
 import { getQuizResult } from '../services/resultService'
 import { watchQuestionPairs, type SavedQuestion } from '../services/questionService'
 import type { QuizRecord } from '../services/quizService'
 import type { QuizResult } from '../types'
-import { resultsCsv, summarizeAttempts, typedWrongAnswerCounts, type AttemptResult } from './resultLogic'
+import { buildRosterRows, resultsCsv, summarizeAttempts, typedWrongAnswerCounts, type AttemptResult, type ResultListRow } from './resultLogic'
 import { AttemptDetail } from './AttemptDetail'
 
 type SortMode = 'recent' | 'student' | 'score'
@@ -36,6 +39,8 @@ export function QuizResultsPage() {
   const [quiz, setQuiz] = useState<QuizRecord | null>(null)
   const [attempts, setAttempts] = useState<AttemptResult[]>([])
   const [questions, setQuestions] = useState<SavedQuestion[]>([])
+  const [classroom, setClassroom] = useState<ClassWithId | null>(null)
+  const [enrollments, setEnrollments] = useState<EnrollmentWithId[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -52,14 +57,17 @@ export function QuizResultsPage() {
       stop = watchQuestionPairs(quizId, (items) => { stop(); resolve(items) }, (reason) => { stop(); reject(reason) })
     })])
     const joined = await Promise.all(rawAttempts.map(async (attempt) => ({ ...attempt, result: attempt.status === 'submitted' ? await getQuizResult(quizId, attempt.id) : null })))
-    return { quiz: found, attempts: joined, questions: rawQuestions }
+    const [linkedClass, classEnrollments] = found.classId
+      ? await Promise.all([getClass(found.classId), listEnrollments(found.classId, found.ownerId)])
+      : [null, []]
+    return { quiz: found, attempts: joined, questions: rawQuestions, classroom: linkedClass, enrollments: classEnrollments }
   }, [quizId, user])
 
   useEffect(() => {
     let active = true
     void load().then((data) => {
       if (!active || !data) return
-      setError(''); setQuiz(data.quiz); setAttempts(data.attempts); setQuestions(data.questions)
+      setError(''); setQuiz(data.quiz); setAttempts(data.attempts); setQuestions(data.questions); setClassroom(data.classroom); setEnrollments(data.enrollments)
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : 'Results could not be loaded.')
     }).finally(() => { if (active) setLoading(false) })
@@ -67,9 +75,9 @@ export function QuizResultsPage() {
   }, [load])
 
   const visible = useMemo(() => {
-    const filtered = attempts.filter((item) => item.userName.toLowerCase().includes(search.toLowerCase()) || item.userId.toLowerCase().includes(search.toLowerCase()))
-    return filtered.sort((a, b) => sort === 'student' ? a.userName.localeCompare(b.userName) : sort === 'score' ? (b.result?.score ?? -1) - (a.result?.score ?? -1) : (b.submittedAt?.toMillis() ?? b.startedAt.toMillis()) - (a.submittedAt?.toMillis() ?? a.startedAt.toMillis()))
-  }, [attempts, search, sort])
+    const filtered = buildRosterRows(enrollments, attempts).filter((row) => row.userName.toLowerCase().includes(search.toLowerCase()) || row.userId.toLowerCase().includes(search.toLowerCase()))
+    return filtered.sort((a, b) => compareResultRows(a, b, sort))
+  }, [attempts, enrollments, search, sort])
   const summary = summarizeAttempts(attempts, quiz?.mode === 'flashcards')
 
   async function releaseScores(value: boolean) {
@@ -84,7 +92,7 @@ export function QuizResultsPage() {
 
   function exportCsv() {
     try {
-      const blob = new Blob([resultsCsv(attempts, quiz?.mode === 'flashcards')], { type: 'text/csv;charset=utf-8' })
+      const blob = new Blob([resultsCsv(attempts, quiz?.mode === 'flashcards', classroom?.name ?? 'Unassigned')], { type: 'text/csv;charset=utf-8' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a'); link.href = url; link.download = `${quiz?.title || 'quiz'}-results.csv`; link.click(); URL.revokeObjectURL(url)
       showToast('success', 'Results CSV downloaded.')
@@ -92,18 +100,19 @@ export function QuizResultsPage() {
   }
 
   if (loading) return <AppShell><main className="app-shell__content grid gap-4"><Skeleton label="Loading quiz results" className="h-40 rounded-3xl" /><Skeleton label="Loading submissions" className="h-96 rounded-3xl" /></main></AppShell>
-  if (error || !quiz) return <AppShell><PageHeader eyebrow="QUIZ RESULTS" title="Results unavailable." subtitle="We couldn’t load this quiz’s submissions." /><main className="app-shell__content"><Alert tone="error" label="Results unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(''); void load().then((data) => { if (data) { setQuiz(data.quiz); setAttempts(data.attempts); setQuestions(data.questions) } }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Results could not be loaded.')).finally(() => setLoading(false)) }}>Retry</Button>}>{error}</Alert></main></AppShell>
+  if (error || !quiz) return <AppShell><PageHeader eyebrow="QUIZ RESULTS" title="Results unavailable." subtitle="We couldn’t load this quiz’s submissions." /><main className="app-shell__content"><Alert tone="error" label="Results unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(''); void load().then((data) => { if (data) { setQuiz(data.quiz); setAttempts(data.attempts); setQuestions(data.questions); setClassroom(data.classroom); setEnrollments(data.enrollments) } }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Results could not be loaded.')).finally(() => setLoading(false)) }}>Retry</Button>}>{error}</Alert></main></AppShell>
 
   return <AppShell>
     <PageHeader eyebrow="INSTRUCTOR · RESULTS" title={quiz.title || 'Quiz results'} subtitle="Review submissions, question performance and score release." action={<Button type="button" variant="secondary" onClick={exportCsv}><Download size={17} aria-hidden="true" /> Export CSV</Button>} />
     <main className="app-shell__content grid gap-6" id="main-content">
+      <p className="m-0"><Badge>Class · {classroom?.name ?? 'Unassigned quiz'}</Badge></p>
       {quiz.settings.scoreVisibility === 'after_release' && <SectionCard title="Score release" description="Students can see their results after you release them. You can turn release off again at any time."><Switch checked={quiz.settings.scoresReleased} onChange={(event) => setReleasePrompt(event.currentTarget.checked)} label="Release scores to students" hint={quiz.settings.scoresReleased ? 'Scores are visible to students now.' : 'Scores are currently held back.'} /></SectionCard>}
       <StatRow><StatTile label="Submissions" value={String(summary.submissions)} hint={`${summary.inProgress} in progress · ${summary.submitted} submitted`} /><StatTile label="Average score" value={summary.average === null ? '—' : `${summary.average}%`} hint={quiz.mode === 'flashcards' ? 'Flashcards are not graded' : `Across ${summary.bestStudentCount} students’ best attempts`} /><StatTile label="Highest" value={summary.highest === null ? '—' : `${summary.highest}%`} hint="Best student result" /><StatTile label="Lowest" value={summary.lowest === null ? '—' : `${summary.lowest}%`} hint="Best student result" /><StatTile label="Completion" value={`${summary.inProgress} / ${summary.submitted}`} hint="In progress / submitted" /></StatRow>
       <section className="grid gap-4" aria-labelledby="submission-heading"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="submission-heading" className="m-0 font-heading text-2xl">Submissions</h2><p className="m-0">Each attempt is listed; summary scores use each student’s best attempt.</p></div></header>
         <div className="grid gap-3 md:grid-cols-2"><Input label="Search students" name="results-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or student ID" /><Select label="Sort submissions" name="results-sort" value={sort} onChange={(event) => setSort(event.target.value as SortMode)} options={[{ value: 'recent', label: 'Recently submitted' }, { value: 'student', label: 'Student name' }, { value: 'score', label: 'Score' }]} /></div>
-        {attempts.length === 0 ? <EmptyState title="No submissions yet" description="Student attempts will appear here after they submit this quiz." /> : visible.length === 0 ? <p role="status">No submissions match this search.</p> : <>
-          <div className="hidden overflow-x-auto md:block"><table className="w-full border-collapse text-left"><caption className="sr-only">Quiz submissions</caption><thead><tr>{['Student', 'Attempt', 'Status', 'Score', 'Time spent', 'Submitted', ''].map((heading) => <th key={heading} scope="col" className="border-b border-navy/20 px-3 py-3">{heading}</th>)}</tr></thead><tbody>{visible.map((item) => <tr key={item.id} className="border-b border-navy/10"><td className="px-3 py-3">{item.userName || item.userId}</td><td className="px-3 py-3">{item.attemptNumber}</td><td className="px-3 py-3"><Badge>{item.status === 'submitted' ? 'Submitted' : 'In progress'}</Badge></td><td className="px-3 py-3">{scoreLabel(item, quiz.mode === 'flashcards')}</td><td className="px-3 py-3">{formatDuration(item.timeSpentSeconds)}</td><td className="px-3 py-3">{item.submittedAt?.toDate().toLocaleString() ?? '—'}</td><td className="px-3 py-3"><Button type="button" variant="secondary" disabled={item.status !== 'submitted'} onClick={() => setSelected(item)}><Eye size={16} aria-hidden="true" /> Review</Button></td></tr>)}</tbody></table></div>
-          <div className="grid gap-3 md:hidden">{visible.map((item) => <DataCard key={item.id} title={item.userName || item.userId} meta={`Attempt ${item.attemptNumber} · ${formatDuration(item.timeSpentSeconds)} · ${item.submittedAt?.toDate().toLocaleString() ?? 'Not submitted'}`} badge={<Badge>{item.status === 'submitted' ? 'Submitted' : 'In progress'}</Badge>}><p className="m-0">Score: {scoreLabel(item, quiz.mode === 'flashcards')}</p><Button type="button" variant="secondary" disabled={item.status !== 'submitted'} onClick={() => setSelected(item)}><Eye size={16} aria-hidden="true" /> Review attempt</Button></DataCard>)}</div>
+        {visible.length === 0 && attempts.length === 0 && !enrollments.some((item) => item.status === 'active') ? <EmptyState title="No submissions yet" description="Student attempts will appear here after they submit this quiz." /> : visible.length === 0 ? <p role="status">No submissions match this search.</p> : <>
+          <div className="hidden overflow-x-auto md:block"><table className="w-full border-collapse text-left"><caption className="sr-only">Quiz submissions</caption><thead><tr>{['Student', 'Attempt', 'Status', 'Score', 'Time spent', 'Submitted', ''].map((heading) => <th key={heading} scope="col" className="border-b border-navy/20 px-3 py-3">{heading}</th>)}</tr></thead><tbody>{visible.map((row) => <tr key={row.attempt?.id ?? row.userId} className="border-b border-navy/10"><td className="px-3 py-3">{row.userName}<MembershipBadge row={row} /></td><td className="px-3 py-3">{row.attempt?.attemptNumber ?? '—'}</td><td className="px-3 py-3"><Badge>{row.attempt?.status === 'submitted' ? 'Submitted' : row.attempt ? 'In progress' : 'Not started'}</Badge></td><td className="px-3 py-3">{row.attempt ? scoreLabel(row.attempt, quiz.mode === 'flashcards') : '—'}</td><td className="px-3 py-3">{row.attempt ? formatDuration(row.attempt.timeSpentSeconds) : '—'}</td><td className="px-3 py-3">{row.attempt?.submittedAt?.toDate().toLocaleString() ?? '—'}</td><td className="px-3 py-3">{row.attempt && <Button type="button" variant="secondary" disabled={row.attempt.status !== 'submitted'} onClick={() => setSelected(row.attempt!)}><Eye size={16} aria-hidden="true" /> Review</Button>}</td></tr>)}</tbody></table></div>
+          <div className="grid gap-3 md:hidden">{visible.map((row) => <DataCard key={row.attempt?.id ?? row.userId} title={row.userName} meta={row.attempt ? `Attempt ${row.attempt.attemptNumber} · ${formatDuration(row.attempt.timeSpentSeconds)} · ${row.attempt.submittedAt?.toDate().toLocaleString() ?? 'Not submitted'}` : 'Has not started'} badge={<Badge>{row.attempt?.status === 'submitted' ? 'Submitted' : row.attempt ? 'In progress' : 'Not started'}</Badge>}><MembershipBadge row={row} />{row.attempt && <><p className="m-0">Score: {scoreLabel(row.attempt, quiz.mode === 'flashcards')}</p><Button type="button" variant="secondary" disabled={row.attempt.status !== 'submitted'} onClick={() => setSelected(row.attempt!)}><Eye size={16} aria-hidden="true" /> Review attempt</Button></>}</DataCard>)}</div>
         </>}
       </section>
       {quiz.mode === 'quiz' && <QuestionAnalytics questions={questions} attempts={attempts} />}
@@ -117,6 +126,15 @@ export function QuizResultsPage() {
 
 function scoreLabel(item: AttemptResult, ungraded: boolean) { return ungraded ? 'Self-rated' : item.result ? `${item.result.score} / ${item.result.maxScore}` : 'Awaiting grade' }
 function formatDuration(seconds: number) { return `${Math.floor(seconds / 60)}m ${seconds % 60}s` }
+function compareResultRows(a: ResultListRow, b: ResultListRow, sort: SortMode) {
+  if (sort === 'student') return a.userName.localeCompare(b.userName)
+  if (sort === 'score') return (b.attempt?.result?.score ?? -1) - (a.attempt?.result?.score ?? -1)
+  return (b.attempt?.submittedAt?.toMillis() ?? b.attempt?.startedAt.toMillis() ?? 0) - (a.attempt?.submittedAt?.toMillis() ?? a.attempt?.startedAt.toMillis() ?? 0)
+}
+function MembershipBadge({ row }: { row: ResultListRow }) {
+  if (row.membership === 'enrolled') return null
+  return <span className="ml-2 inline-flex"><Badge>{row.membership === 'no_longer_enrolled' ? 'No longer enrolled' : 'Enrolled · not started'}</Badge></span>
+}
 
 function QuestionAnalytics({ questions, attempts }: { questions: SavedQuestion[]; attempts: AttemptResult[] }) {
   const submitted = attempts.filter((item) => item.status === 'submitted' && item.result)

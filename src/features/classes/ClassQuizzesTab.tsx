@@ -1,4 +1,4 @@
-import { Archive, Copy, Plus, RotateCcw, Send, Trash2 } from 'lucide-react'
+import { Archive, BarChart3, Copy, Plus, RotateCcw, Send, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
@@ -66,6 +66,7 @@ export function ClassQuizzesTab({ classroom, classes }: { classroom: ClassWithId
         <p className="m-0 flex flex-wrap gap-2 text-sm text-navy-800-72"><span>{quiz.settings.participation.type === 'group' ? `Group of ${quiz.settings.participation.groupSize}` : 'Individual'}</span><span>{quiz.settings.answerReveal === 'never' ? 'Answers hidden' : quiz.settings.answerReveal === 'after_each' ? 'Answers after each question' : 'Answers after submission'}</span><span>{quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} minutes` : 'Untimed'}</span></p>
         <div className="flex flex-wrap gap-2">
           <Button to={`/instructor/quizzes/${quiz.id}`} variant="secondary">Edit</Button>
+          <Button to={`/instructor/quizzes/${quiz.id}/results`} variant="secondary"><BarChart3 size={15} aria-hidden="true" /> Results</Button>
           <Button type="button" variant="secondary" disabled={busyId === quiz.id || deleteBusy} onClick={() => void action(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}><Copy size={15} aria-hidden="true" /> Duplicate</Button>
           {targets.length ? <Button type="button" variant="secondary" disabled={busyId === quiz.id || deleteBusy} onClick={() => { setCopySelection(quiz); setTargetClass(targets[0].id) }}><Copy size={15} aria-hidden="true" /> Copy to another class</Button> : <Link to="/instructor" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-navy-900-12 px-4 text-sm font-semibold text-navy-800 no-underline">Create another active class to copy</Link>}
           {quiz.status === 'published' ? <Button type="button" variant="secondary" disabled={busyId === quiz.id} onClick={() => void action(quiz.id, 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}><Send size={15} aria-hidden="true" /> Unpublish</Button> : <Button type="button" variant="secondary" disabled={busyId === quiz.id || classroom.status !== 'active' || quiz.questionCount < 1 || !quiz.title.trim()} title={classroom.status !== 'active' ? 'Restore this class first' : quiz.questionCount < 1 || !quiz.title.trim() ? 'Add a title and at least one question first' : undefined} onClick={() => void action(quiz.id, 'Quiz published.', () => publishQuiz(quiz.id))}><Send size={15} aria-hidden="true" /> Publish</Button>}

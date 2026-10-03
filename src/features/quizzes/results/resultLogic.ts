@@ -1,8 +1,22 @@
 import { gradeAttempt, type QuizQuestionRecord } from '../grading/grade'
 import { normalizeAnswer } from '../grading/normalize'
 import type { AnswerKey, QuizAttempt, QuizResult } from '../types'
+import type { EnrollmentWithId } from '../../classes/types'
 
 export type AttemptResult = QuizAttempt & { id: string; result: QuizResult | null }
+export type ResultListRow = { userId: string; userName: string; attempt: AttemptResult | null; membership: 'enrolled' | 'not_started' | 'no_longer_enrolled' }
+
+export function buildRosterRows(enrollments: EnrollmentWithId[], attempts: AttemptResult[]): ResultListRow[] {
+  const active = new Map(enrollments.filter((item) => item.status === 'active').map((item) => [item.uid, item]))
+  const rows: ResultListRow[] = attempts.map((attempt) => ({
+    userId: attempt.userId, userName: attempt.userName || active.get(attempt.userId)?.studentName || attempt.userId,
+    attempt, membership: active.has(attempt.userId) ? 'enrolled' : 'no_longer_enrolled',
+  }))
+  for (const enrollment of active.values()) {
+    if (!attempts.some((attempt) => attempt.userId === enrollment.uid)) rows.push({ userId: enrollment.uid, userName: enrollment.studentName || enrollment.uid, attempt: null, membership: 'not_started' })
+  }
+  return rows
+}
 
 export function bestAttempts(attempts: AttemptResult[]) {
   const best = new Map<string, AttemptResult>()
@@ -72,10 +86,10 @@ export function typedWrongAnswerCounts(input: {
 }
 
 const csvCell = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`
-export function resultsCsv(attempts: AttemptResult[], ungraded = false): string {
-  const rows: Array<Array<string | number>> = [['Student', 'User ID', 'Attempt', 'Status', 'Score', 'Time spent (seconds)', 'Submitted at']]
+export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = ''): string {
+  const rows: Array<Array<string | number>> = [['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Score', 'Time spent (seconds)', 'Submitted at']]
   for (const attempt of attempts) rows.push([
-    attempt.userName, attempt.userId, attempt.attemptNumber, attempt.status,
+    attempt.userName, attempt.userId, className, attempt.attemptNumber, attempt.status,
     ungraded || !attempt.result ? 'Ungraded' : `${attempt.result.score}/${attempt.result.maxScore}`,
     attempt.timeSpentSeconds, attempt.submittedAt?.toDate().toISOString() ?? '',
   ])

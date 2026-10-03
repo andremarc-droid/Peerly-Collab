@@ -37,6 +37,7 @@ async function seed(data: { status?: string; visibility?: string } = {}) {
     const db = context.firestore()
     await Promise.all([
       setDoc(doc(db, 'users/teacher'), { uid: 'teacher', role: 'instructor' }),
+      setDoc(doc(db, 'users/otherTeacher'), { uid: 'otherTeacher', role: 'instructor' }),
       setDoc(doc(db, 'users/student'), { uid: 'student', role: 'student' }),
       setDoc(doc(db, 'users/other'), { uid: 'other', role: 'student' }),
       setDoc(doc(db, 'classes/class1'), { ownerId: 'teacher', ownerName: 'Teacher', name: 'Math', section: '', subject: '', description: '', joinCode: 'ABC234', joinEnabled: true, requireApproval: false, status: 'active', accent: 'pinstripe', createdAt: now, updatedAt: now, codeRotatedAt: now }),
@@ -161,6 +162,25 @@ describe('quiz Firestore rules', () => {
     await assertFails(updateDoc(doc(student, 'quizzes/qz/results/att'), { score: 0 }))
     await assertSucceeds(updateDoc(doc(owner, 'quizzes/qz/results/att'), { score: 1 }))
     await assertFails(setDoc(doc(student, 'quizzes/qz/results/fake'), result()))
+    await assertFails(setDoc(doc(student, 'quizzes/qz/results/other-att'), result('other')))
+    await assertFails(updateDoc(doc(student, 'quizzes/qz/results/att'), { score: 1 }))
+    await assertFails(updateDoc(doc(environment.authenticatedContext('otherTeacher').firestore(), 'quizzes/qz/results/att'), { score: 1 }))
+  })
+
+  it('allows only the quiz owner to apply result overrides', async () => {
+    await seed()
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/qz/attempts/att'), attempt('student', 'submitted'))
+      await setDoc(doc(db, 'quizzes/qz/results/att'), result())
+    })
+    const owner = environment.authenticatedContext('teacher').firestore()
+    const otherInstructor = environment.authenticatedContext('otherTeacher').firestore()
+    const student = environment.authenticatedContext('student').firestore()
+    await assertSucceeds(updateDoc(doc(owner, 'quizzes/qz/results/att'), { score: 1, perQuestion: { q: { correct: false, pointsAwarded: 1, overridden: true } } }))
+    await assertFails(updateDoc(doc(otherInstructor, 'quizzes/qz/results/att'), { score: 1 }))
+    await assertFails(updateDoc(doc(student, 'quizzes/qz/results/att'), { score: 1 }))
+    await assertFails(setDoc(doc(student, 'quizzes/qz/results/other-att'), result('other')))
   })
 
   it('allows scores after release and denies student score reads before release', async () => {
@@ -168,8 +188,13 @@ describe('quiz Firestore rules', () => {
     await environment.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore()
       await setDoc(doc(db, 'quizzes/qz/results/att'), result())
+    })
+    const student = environment.authenticatedContext('student').firestore()
+    await assertFails(getDoc(doc(student, 'quizzes/qz/results/att')))
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
       await updateDoc(doc(db, 'quizzes/qz'), { settings: { ...settings, scoreVisibility: 'after_release', scoresReleased: true } })
     })
-    await assertSucceeds(getDoc(doc(environment.authenticatedContext('student').firestore(), 'quizzes/qz/results/att')))
+    await assertSucceeds(getDoc(doc(student, 'quizzes/qz/results/att')))
   })
 })
