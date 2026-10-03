@@ -73,7 +73,6 @@ describe('classroom interactions', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove student' }))
     await waitFor(() => expect(mocked.removeStudent).toHaveBeenCalledWith('class-1', 'two'))
     fireEvent.click(screen.getByRole('button', { name: 'More actions for Alex Student' }))
-    fireEvent.click(screen.getByRole('button', { name: 'More actions for Alex Student' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Block student' }))
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Block student' }))
     await waitFor(() => expect(mocked.blockStudent).toHaveBeenCalledWith('class-1', 'two'))

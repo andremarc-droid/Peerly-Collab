@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
 import { Alert } from '../../shared/ui/Alert'
@@ -17,6 +18,7 @@ import { ClassCodePanel } from './ClassCodePanel'
 import { ClassPeopleTab } from './ClassPeopleTab'
 import { ClassQuizzesTab } from './ClassQuizzesTab'
 import { ClassSettingsTab } from './ClassSettingsTab'
+import { ModulesTab } from '../modules/ModulesTab'
 
 interface ClassCounts { students: number; pending: number; enrollments: number; quizzes: number }
 const emptyCounts: ClassCounts = { students: 0, pending: 0, enrollments: 0, quizzes: 0 }
@@ -28,6 +30,7 @@ export function ClassPage() {
   const { showToast } = useToast()
   const location = useLocation()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [classroom, setClassroom] = useState<ClassWithId | null>(null)
   const [classes, setClasses] = useState<ClassWithId[]>([])
   const [enrollments, setEnrollments] = useState<EnrollmentWithId[]>([])
@@ -98,17 +101,21 @@ export function ClassPage() {
 
   const subtitle = [classroom.section, classroom.subject].filter(Boolean).join(' · ') || 'Manage learners, class quizzes, and invitations.'
   const tabs = [
+    { label: 'Modules', content: <ModulesTab key={classroom.id} classroom={classroom} /> },
     { label: 'Quizzes', count: counts.quizzes, content: <ClassQuizzesTab key={classroom.id} classroom={classroom} classes={classes} /> },
     { label: 'People', count: counts.students + counts.pending, content: <ClassPeopleTab key={classroom.id} classroom={classroom} enrollments={enrollments} counts={counts} /> },
     { label: 'Settings', content: <ClassSettingsTab key={classroom.id} classroom={classroom} counts={{ students: counts.enrollments, quizzes: counts.quizzes }} /> },
   ]
+  const tabNames = ['modules', 'quizzes', 'people', 'settings']
+  const selectedTab = tabNames.indexOf(searchParams.get('tab') ?? 'modules')
+  const defaultTab = selectedTab < 0 ? 0 : selectedTab
 
   return <AppShell>
     <PageHeader eyebrow={classroom.status === 'active' ? 'ACTIVE CLASS' : 'ARCHIVED CLASS'} title={`${classroom.name}.`} subtitle={subtitle} action={<Button to="/instructor" variant="secondary">Back to My classes</Button>} />
     <main className="app-shell__content grid gap-6" id="main-content">
       <StatRow><StatTile label="Students" value={String(counts.students)} hint="Active enrollments" /><StatTile label="Pending requests" value={String(counts.pending)} hint="Waiting for approval" /><StatTile label="Quizzes" value={String(counts.quizzes)} hint="Assigned to this class" /></StatRow>
       <ClassCodePanel classroom={classroom} onJoiningChange={(open) => void toggleJoining(open)} onRegenerate={regenerate} busy={mutating} shareOnOpen={shareOnOpen} />
-      <Tabs label={`${classroom.name} sections`} tabs={tabs} />
+      <Tabs key={`${classroom.id}:${defaultTab}`} label={`${classroom.name} sections`} tabs={tabs} defaultIndex={defaultTab} onChange={(index) => setSearchParams({ tab: tabNames[index] ?? 'modules' })} />
     </main>
   </AppShell>
 }

@@ -27,6 +27,7 @@ function renderRoutes(path: string) {
         <Route path="/instructor/quizzes" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><h1>All quizzes</h1></RoleRoute></ProtectedRoute>} />
         <Route path="/instructor/quizzes/:quizId/results" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><h1>Quiz results</h1></RoleRoute></ProtectedRoute>} />
         <Route path="/instructor/classes/:classId" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><h1>Class details</h1></RoleRoute></ProtectedRoute>} />
+        <Route path="/instructor/classes/:classId/modules/:moduleId" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><h1>Module workspace</h1></RoleRoute></ProtectedRoute>} />
         <Route path="/student" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><h1>Student dashboard</h1></RoleRoute></ProtectedRoute>} />
         <Route path="/student/classes/:classId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><h1>Student class</h1></RoleRoute></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><h1>Profile page</h1></ProtectedRoute>} />
@@ -75,6 +76,20 @@ describe('application route guards', () => {
     mocks.profile.profile = { uid: 'user-1', name: 'Sam', email: 'sam@example.com', photoURL: null, role: 'student', createdAt: 1, updatedAt: 1 }
     renderRoutes('/instructor/classes/class-1')
     expect(await screen.findByRole('heading', { name: 'Student dashboard' })).toBeInTheDocument()
+  })
+
+  it('redirects a student away from the instructor module workspace', async () => {
+    mocks.auth.status = 'signedIn'
+    mocks.profile.profile = { uid: 'user-1', name: 'Sam', email: 'sam@example.com', photoURL: null, role: 'student', createdAt: 1, updatedAt: 1 }
+    renderRoutes('/instructor/classes/class-1/modules/module-1')
+    expect(await screen.findByRole('heading', { name: 'Student dashboard' })).toBeInTheDocument()
+  })
+
+  it('allows an instructor to open the instructor module workspace', () => {
+    mocks.auth.status = 'signedIn'
+    mocks.profile.profile = { uid: 'user-1', name: 'Lee', email: 'lee@example.com', photoURL: null, role: 'instructor', createdAt: 1, updatedAt: 1 }
+    renderRoutes('/instructor/classes/class-1/modules/module-1')
+    expect(screen.getByRole('heading', { name: 'Module workspace' })).toBeInTheDocument()
   })
 
   it('redirects a student away from instructor quiz results', async () => {

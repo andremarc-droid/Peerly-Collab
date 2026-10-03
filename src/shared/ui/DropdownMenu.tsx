@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 interface DropdownMenuProps {
@@ -44,8 +44,12 @@ export function DropdownMenu({ label, trigger, children, className = '' }: Dropd
     if (event.key === 'Tab') setOpen(false)
   }
 
+  function handleClick(event: MouseEvent<HTMLDivElement>) {
+    if (event.target instanceof Element && event.target.closest('[role="menuitem"]')) setOpen(false)
+  }
+
   return (
-    <div className={`dropdown-menu ${className}`.trim()} ref={rootRef} onKeyDown={handleKeyDown}>
+    <div className={`dropdown-menu ${className}`.trim()} ref={rootRef} onKeyDown={handleKeyDown} onClick={handleClick}>
       <button ref={triggerRef} className="dropdown-menu__trigger" type="button" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen((value) => !value)}>
         {trigger}<ChevronDown size={17} aria-hidden="true" />
       </button>
