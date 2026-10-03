@@ -1,5 +1,5 @@
 import { ArrowLeft, Plus, Save } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { lazy, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useBeforeUnload, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
@@ -13,11 +13,13 @@ import { SectionCard } from '../../../shared/ui/SectionCard'
 import { Select } from '../../../shared/ui/Select'
 import { useToast } from '../../../shared/ui/useToast'
 import { defaultQuizSettings } from '../schemas/settings'
-import { createQuiz, getQuiz, updateQuiz } from '../services'
+import { createQuiz, getQuiz, updateQuiz, watchQuestionPairs, type SavedQuestion } from '../services'
 import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
 import type { QuizSettings } from '../types'
 import { validateQuizForm, type QuizFormErrors, type QuizFormValues } from './validation'
+import { QuickCreateQuiz } from '../authoring/QuickCreateQuiz'
+const QuestionBuilderPage = lazy(() => import('../builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
 
 const revealOptions = [
   { value: 'after_each', label: 'After each question', hint: 'See the answer and explanation right after responding.' },
@@ -123,7 +125,12 @@ export function QuizEditorPage() {
   }
 
   if (loading) return <AppShell><PageHeader eyebrow="QUIZ SETTINGS" title="Loading quiz…" subtitle="" /><main className="app-shell__content quiz-editor"><div className="quiz-editor-skeleton" aria-label="Loading quiz settings" /></main></AppShell>
+  if (!quizId) return <QuickCreateQuiz />
   if (loadError) return <AppShell><PageHeader eyebrow="QUIZ SETTINGS" title="Quiz unavailable" subtitle="We couldn’t load these settings." /><main className="app-shell__content quiz-editor"><Alert tone="error" label="Quiz not available">{loadError}</Alert><Button to="/instructor/quizzes">Back to all quizzes</Button></main></AppShell>
+
+  const activeTab = searchParams.get('tab') ?? 'questions'
+  if (activeTab === 'questions') return <QuestionBuilderPage />
+  if (activeTab === 'preview') return <QuizPreviewTab quizId={quizId} />
 
   const experience = form.mode === 'flashcards'
     ? `Students will review ${form.title.trim() || 'this set'} as flashcards and self-rate their recall.`
@@ -132,6 +139,7 @@ export function QuizEditorPage() {
   return <AppShell>
     <PageHeader eyebrow={quizId ? 'EDIT QUIZ' : 'NEW QUIZ'} title={quizId ? 'Quiz settings.' : 'Create a quiz.'} subtitle="Set up the practice experience. Questions can be added in the next step." action={<Button type="button" variant="secondary" onClick={leaveEditor}><ArrowLeft size={17} aria-hidden="true" /> Back</Button>} />
     <main className="app-shell__content quiz-editor" id="main-content">
+      <nav aria-label="Quiz workspace" className="mb-4 flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} aria-current="page" variant="secondary">Settings</Button><Button to={`/instructor/quizzes/${quizId}?tab=preview`} variant="secondary">Preview</Button><Button to={`/instructor/quizzes/${quizId}/results`} variant="ghost">Results</Button></nav>
       {saveError && <Alert tone="error" label="Could not save changes">{saveError}</Alert>}
       {quizId && (!form.classId || (classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active'))) && <Alert tone="warning" label="Assign this quiz to a class">Choose an active class below and save to keep this quiz in the classroom catalog.</Alert>}
       {classesLoaded && !classes.some((item) => item.status === 'active') && <Alert tone="warning" label="Create a class first">Quizzes must belong to an active class. <Button to="/instructor" variant="secondary">Create a class</Button></Alert>}
@@ -186,4 +194,11 @@ export function QuizEditorPage() {
       </form>
     </main>
   </AppShell>
+}
+
+function QuizPreviewTab({ quizId }: { quizId: string }) {
+  const [title, setTitle] = useState('Quiz preview')
+  const [items, setItems] = useState<SavedQuestion[]>([])
+  useEffect(() => { let active = true; void getQuiz(quizId).then((quiz) => { if (active && quiz) setTitle(quiz.title || 'Quiz preview') }); const stop = watchQuestionPairs(quizId, (questions) => { if (active) setItems(questions) }, () => undefined); return () => { active = false; stop() } }, [getQuiz, quizId, watchQuestionPairs])
+  return <AppShell><PageHeader eyebrow="QUIZ PREVIEW" title={title} subtitle="A student-facing preview of your current questions." action={<Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button>} /><main className="app-shell__content quiz-editor"><nav aria-label="Quiz workspace" className="flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button><span className="section-kicker">Preview</span><Button to={`/instructor/quizzes/${quizId}/results`} variant="secondary">Results</Button></nav><p>Students answer {items.length} {items.length === 1 ? 'question' : 'questions'} with answers {items.length ? 'according to the quiz settings' : 'once you add them'}.</p><ol className="grid gap-4">{items.map(({ id, question }) => <li key={id} className="rounded-2xl border border-navy-200 p-4"><strong>{question.prompt}</strong>{'options' in question && <ul>{question.options.map((option) => <li key={option.id}>{option.text}</li>)}</ul>}</li>)}</ol></main></AppShell>
 }

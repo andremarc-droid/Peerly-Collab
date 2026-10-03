@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Outlet, Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import { LandingPage } from '../features/landing/LandingPage'
 import { RolePage } from '../features/auth/RolePage'
 import { SignupPage } from '../features/auth/SignupPage'
@@ -16,8 +16,8 @@ const ClassesPage = lazy(() => import('../features/classes/ClassesPage').then((m
 const ClassPage = lazy(() => import('../features/classes/ClassPage').then((module) => ({ default: module.ClassPage })))
 const InstructorQuizzesPage = lazy(() => import('../features/quizzes/dashboard/InstructorQuizzesPage').then((module) => ({ default: module.InstructorQuizzesPage })))
 const QuizEditorPage = lazy(() => import('../features/quizzes/editor/QuizEditorPage').then((module) => ({ default: module.QuizEditorPage })))
-const QuestionBuilderPage = lazy(() => import('../features/quizzes/builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
 const QuizResultsPage = lazy(() => import('../features/quizzes/results/QuizResultsPage').then((module) => ({ default: module.QuizResultsPage })))
+function LegacyQuestionsRedirect() { const { quizId } = useParams(); return <Navigate replace to={`/instructor/quizzes/${quizId}?tab=questions`} /> }
 const StudentClassPage = lazy(() => import('../features/classes/StudentClassPage').then((module) => ({ default: module.StudentClassPage })))
 const JoinClassPage = lazy(() => import('../features/classes/JoinClassPage').then((module) => ({ default: module.JoinClassPage })))
 const StudentQuizCatalogPage = lazy(() => import('../features/studentQuizzes/StudentQuizCatalogPage').then((module) => ({ default: module.StudentQuizCatalogPage })))
@@ -43,7 +43,7 @@ export function AppRoutes() {
         <Route path="quizzes" element={<InstructorQuizzesPage />} />
         <Route path="quizzes/new" element={<QuizEditorPage />} />
         <Route path="quizzes/:quizId" element={<QuizEditorPage />} />
-        <Route path="quizzes/:quizId/questions" element={<QuestionBuilderPage />} />
+        <Route path="quizzes/:quizId/questions" element={<LegacyQuestionsRedirect />} />
         <Route path="quizzes/:quizId/results" element={<QuizResultsPage />} />
       </Route>
       <Route path="/student" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentQuizCatalogPage /></ToastProvider></RoleRoute></ProtectedRoute>} />

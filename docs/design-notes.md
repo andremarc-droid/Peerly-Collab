@@ -40,3 +40,12 @@ The developer-only `/design` gallery demonstrates these components, disabled/err
 - Keep stripes decorative and away from paragraph text; content sits on solid panels. Use semantic landmarks, one page-level heading, a skip link, labeled controls, keyboard-operable radio selection, and non-color status cues.
 - Verify 360px, 768px, and 1280px layouts in a browser when available, checking for horizontal overflow and alignment.
 - See [the contrast report](./contrast-report.md) for measured WCAG ratios across text, surface, and feedback token pairs.
+
+## Quiz authoring UX
+- Use quick create for the required title, quiz type, and class, then open the Questions workspace.
+- Organize authoring into Questions, Settings, and Preview with title and description in the workspace header.
+- Save edits automatically with an explicit status and retry path. Keep incomplete questions visible but out of counts and publishing.
+- Present plain-language presets before detailed settings, and keep the student experience summary live.
+- Provide a live publish checklist, class context, breadcrumbs, and a back action that returns to the originating class or quiz list.
+- Favor undo for low-risk question deletion and keyboard-first question entry.
+

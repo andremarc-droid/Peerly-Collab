@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowDown, ArrowUp, Copy, GripVertical, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
 import { Alert } from '../../../shared/ui/Alert'
@@ -21,6 +21,7 @@ type SaveStatus = 'saved' | 'waiting' | 'saving' | 'error'
 export function QuestionBuilderPage() {
   const { quizId = '' } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const { showToast } = useToast()
   const [quiz, setQuiz] = useState<Awaited<ReturnType<typeof getQuiz>>>(null)
@@ -52,6 +53,13 @@ export function QuestionBuilderPage() {
     if (!quiz || !quizId) return
     return watchQuestionPairs(quizId, (items) => setQuestions(items), (reason) => setLoadError(reason.message))
   }, [quiz, quizId])
+
+  useEffect(() => {
+    if (!quiz || searchParams.get('newQuestion') !== '1' || draft) return
+    setDraft(createQuestionDraft(quiz.mode === 'flashcards' ? 'flashcard' : 'multiple_choice', 0))
+    setQuestionId(null); setSavedSignature(null); setSaveStatus('waiting')
+    searchParams.delete('newQuestion'); setSearchParams(searchParams, { replace: true })
+  }, [quiz, searchParams, draft, setSearchParams])
 
   useEffect(() => {
     if (!draft || !quiz || !user) return
@@ -131,8 +139,9 @@ export function QuestionBuilderPage() {
   if (loadError || !quiz) return <AppShell><PageHeader eyebrow="QUESTION BUILDER" title="Quiz unavailable" subtitle="We couldn’t open these questions." /><main className="app-shell__content question-builder"><Alert tone="error" label="Questions unavailable">{loadError ?? 'This quiz could not be found.'}</Alert><Button to="/instructor/quizzes"><ArrowLeft size={17} aria-hidden="true" /> Back to all quizzes</Button></main></AppShell>
 
   return <AppShell>
-    <PageHeader eyebrow={quiz.mode === 'quiz' ? 'QUESTION BUILDER · QUIZ' : 'QUESTION BUILDER · FLASHCARDS'} title="Shape the practice." subtitle="Each question and answer key is saved together as you work." action={<Button to={`/instructor/quizzes/${quizId}`} variant="secondary"><ArrowLeft size={17} aria-hidden="true" /> Quiz settings</Button>} />
+    <PageHeader eyebrow={quiz.mode === 'quiz' ? 'QUESTION BUILDER · QUIZ' : 'QUESTION BUILDER · FLASHCARDS'} title="Shape the practice." subtitle="Each question and answer key is saved together as you work." action={<Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary"><ArrowLeft size={17} aria-hidden="true" /> Settings</Button>} />
     <main className="app-shell__content question-builder" id="main-content">
+      <nav aria-label="Quiz workspace" className="mb-4 flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} aria-current="page" variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button><Button to={`/instructor/quizzes/${quizId}?tab=preview`} variant="secondary">Preview</Button><Button to={`/instructor/quizzes/${quizId}/results`} variant="ghost">Results</Button></nav>
       <SectionCard title="Publish checklist" description="Your quiz is ready when each item is complete.">
         <ul className="question-checklist">{checklistItems.map(({ complete, label }) => <li key={label}><span aria-hidden="true">{complete ? '✓' : '○'}</span><span>{label}</span></li>)}</ul>
         <Button type="button" disabled={!canPublish || publishBusy || saveStatus === 'saving'} onClick={() => void publish()}>{publishBusy ? 'Publishing…' : 'Publish quiz'}</Button>

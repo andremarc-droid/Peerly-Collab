@@ -52,3 +52,12 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - New quizzes require a `classId`. Legacy quizzes without one remain visible to their owner as unassigned and cannot be published. Quiz assignment changes are allowed only while draft and to an active class owned by the same instructor.
 - Never keep client-updated class member counters. Use Firestore count queries for enrollments, pending approvals, and class quizzes.
 - Join lookup throttling is a client-side deterrent only; security is enforced by rules. Quiz grading remains browser-side in v1, so answer keys are not protected from a determined participant.
+
+## QUIZ AUTHORING UX
+- Start with sensible defaults and let instructors create a draft with only the information needed to begin.
+- Use progressive disclosure: question content comes before advanced settings.
+- Save valid edits automatically and show a clear save state; routine authoring should not depend on a Save button.
+- Keep incomplete work clearly identified and exclude it from publishing.
+- Prefer undo over confirmation for low-risk actions such as deleting a question.
+- Keep navigation clear with Questions, Settings, and Preview tabs, a reliable back action, and class breadcrumbs.
+
