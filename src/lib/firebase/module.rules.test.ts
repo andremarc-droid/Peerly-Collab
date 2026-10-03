@@ -46,12 +46,20 @@ describe('module access rules and query proofs', () => {
     const removed = environment.authenticatedContext('removed').firestore()
     const blocked = environment.authenticatedContext('blocked').firestore()
     const pending = environment.authenticatedContext('pending').firestore()
+    const otherInstructor = environment.authenticatedContext('another-instructor').firestore()
     await assertFails(getDocs(query(collection(outside, 'classes/class-a/modules'), where('status', '==', 'published'))))
     await assertFails(getDocs(query(collection(removed, 'classes/class-a/modules'), where('status', '==', 'published'))))
     await assertFails(getDocs(query(collection(blocked, 'classes/class-a/modules'), where('status', '==', 'published'))))
     await assertFails(getDocs(query(collection(pending, 'classes/class-a/modules'), where('status', '==', 'published'))))
     await assertFails(getDoc(doc(outside, 'classes/class-a/modules/pub')))
-    await assertFails(getDoc(doc(environment.authenticatedContext('another-instructor').firestore(), 'classes/class-a/modules/pub')))
+    await assertFails(getDoc(doc(outside, 'classes/class-a/modules/draft')))
+    await assertFails(getDoc(doc(otherInstructor, 'classes/class-a/modules/pub')))
+    await assertFails(getDoc(doc(otherInstructor, 'classes/class-a/modules/draft')))
+    await assertFails(getDoc(doc(otherInstructor, 'classes/class-a/modules/draft/resources/draft-resource')))
+    await assertFails(setDoc(doc(environment.authenticatedContext('student').firestore(), 'classes/class-a/modules/student-created'), {
+      ownerId: 'student', title: 'Not allowed', description: '', order: 2, status: 'draft', quizIds: [], resourceCount: 0,
+      createdAt: new Date(), updatedAt: new Date(), publishedAt: null,
+    }))
   })
   it('allows the owner to create, read, update and delete modules and resources', async () => {
     const owner = environment.authenticatedContext('owner').firestore()

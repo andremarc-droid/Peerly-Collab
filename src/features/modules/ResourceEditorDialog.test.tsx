@@ -12,6 +12,9 @@ describe('resource authoring dialogs', () => {
     expect(await screen.findByText('Folders are not supported, share a single file.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save resource' })).toBeDisabled()
 
+    fireEvent.change(document.querySelector<HTMLInputElement>('#resource-url')!, { target: { value: 'https://example.com/file/d/abcdefghijk/view' } })
+    expect(await screen.findByText('Use a Google Drive or Docs file link.')).toBeInTheDocument()
+
     fireEvent.change(document.querySelector<HTMLInputElement>('#resource-url')!, { target: { value: 'https://docs.google.com/document/d/abcdefghijk/edit?usp=sharing' } })
     expect(await screen.findByText('Detected:')).toBeInTheDocument()
     expect(screen.getByTitle(/Google Doc .* preview/)).toHaveAttribute('src', 'https://docs.google.com/document/d/abcdefghijk/preview')

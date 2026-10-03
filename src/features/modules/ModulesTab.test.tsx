@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Timestamp } from 'firebase/firestore'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -29,6 +29,7 @@ function LocationText() { const location = useLocation(); return <p>{location.pa
 function renderTab() { return render(<MemoryRouter initialEntries={['/instructor/classes/class-1?tab=modules']}><Routes><Route path="/instructor/classes/class-1" element={<ModulesTab classroom={classroom} />} /><Route path="/instructor/classes/class-1/modules/:moduleId" element={<LocationText />} /></Routes></MemoryRouter>) }
 
 afterEach(() => { vi.clearAllMocks(); mocks.items = [] })
+afterEach(cleanup)
 
 describe('instructor modules list', () => {
   it('creates the first module and navigates to its workspace with resource focus', async () => {
@@ -46,5 +47,15 @@ describe('instructor modules list', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More actions for Module 1' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Move down' }))
     await waitFor(() => expect(mocks.reorder).toHaveBeenCalledWith('class-1', ['two', 'one']))
+  })
+
+  it('explains that deleting a module does not delete its Google Drive files', async () => {
+    mocks.items = [moduleItem('one', 0)]
+    renderTab()
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions for Module 1' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText(/Google Drive files themselves are not deleted/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Delete module' })).toBeInTheDocument()
   })
 })

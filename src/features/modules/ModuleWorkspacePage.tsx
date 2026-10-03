@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, CirclePlay, FileText, FileVideo, Link2, MoveDown, MoveUp, Plus, Send, Undo2 } from 'lucide-react'
+import { ArrowLeft, BookOpenText, CirclePlay, FileText, FileVideo, Link2, MoveDown, MoveUp, Plus, Send } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
@@ -42,6 +42,8 @@ export function ModuleWorkspacePage() {
   const [resourceDialog, setResourceDialog] = useState<{ open: boolean; initial?: ModuleResourceWithId; type?: ResourceType }>({ open: false })
   const [removingId, setRemovingId] = useState('')
   const [draggedResource, setDraggedResource] = useState('')
+  const undoResourceRef = useRef<ModuleResourceWithId | null>(null)
+  const resourcesRef = useRef<ModuleResourceWithId[]>([])
 
   useEffect(() => {
     if (!classId) return undefined
@@ -61,7 +63,7 @@ export function ModuleWorkspacePage() {
 
   useEffect(() => {
     if (!classId || !moduleId || module?.id !== moduleId) return undefined
-    return subscribeToResources(classId, moduleId, setResources, (reason) => setLoadError(reason.message))
+    return subscribeToResources(classId, moduleId, (items) => { resourcesRef.current = items; setResources(items) }, (reason) => setLoadError(reason.message))
   }, [classId, moduleId, module?.id, retry])
 
   useEffect(() => {
@@ -103,7 +105,8 @@ export function ModuleWorkspacePage() {
     setRemovingId(removed.id)
     try {
       await deleteResource(classId, moduleId, removed.id)
-      showToast('info', 'Resource removed. Use Undo below to restore it.')
+      undoResourceRef.current = removed
+      showToast('info', 'Resource removed.', { label: 'Undo', onClick: () => { void undoRemove() } })
       setUndoResource(removed)
     } catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Resource could not be removed.') }
     finally { setRemovingId('') }
@@ -112,21 +115,21 @@ export function ModuleWorkspacePage() {
   const [undoResource, setUndoResource] = useState<ModuleResourceWithId | null>(null)
   useEffect(() => {
     if (!undoResource) return undefined
-    const timer = window.setTimeout(() => setUndoResource(null), 10000)
+    const timer = window.setTimeout(() => { undoResourceRef.current = null; setUndoResource(null) }, 10000)
     return () => window.clearTimeout(timer)
   }, [undoResource])
 
   async function undoRemove() {
-    if (!undoResource) return
-    const restore = undoResource
+    const restore = undoResourceRef.current
+    if (!restore) return
     try {
       const { id: _id, order: _order, createdAt: _createdAt, updatedAt: _updatedAt, ...input } = restore
       const newId = await addResource(classId, moduleId, input)
-      const ids = [...resources.filter((item) => item.id !== restore.id).map((item) => item.id), newId]
+      const ids = [...resourcesRef.current.filter((item) => item.id !== restore.id).map((item) => item.id), newId]
       const target = Math.min(restore.order, ids.length - 1)
       ids.splice(ids.indexOf(newId), 1); ids.splice(target, 0, newId)
       await reorderResources(classId, moduleId, ids)
-      setUndoResource(null); showToast('success', 'Resource restored.')
+      undoResourceRef.current = null; setUndoResource(null); showToast('success', 'Resource restored.')
     } catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'The resource could not be restored.') }
   }
 
@@ -178,7 +181,6 @@ export function ModuleWorkspacePage() {
         </DropdownMenu>}>
         {resources.length ? <ol className="resource-list" aria-label="Module resources in order">{resources.map((resource, index) => <ResourceRow key={resource.id} resource={resource} index={index} total={resources.length} busy={Boolean(removingId)} onEdit={() => setResourceDialog({ open: true, initial: resource })} onRemove={() => void removeResource(resource)} onMove={moveResource} onDragStart={() => setDraggedResource(resource.id)} onDrop={() => dropResource(resource.id)} onDragEnd={() => setDraggedResource('')} />)}</ol>
           : <EmptyState title="Add your first resource" description="Add a Drive file, video, link, or plain-text note to start this module." action={<Button type="button" onClick={() => setResourceDialog({ open: true, type: 'drive' })}><Plus size={16} aria-hidden="true" /> Add resource</Button>} />}
-        {undoResource && <div className="module-undo" role="status" aria-live="polite"><span>“{undoResource.title}” removed.</span><Button type="button" variant="secondary" onClick={() => void undoRemove()}><Undo2 size={16} aria-hidden="true" /> Undo</Button></div>}
       </SectionCard>
 
       <AttachedQuizzesSection classroom={classroom} module={module} />

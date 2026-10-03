@@ -1,6 +1,7 @@
 import { BookOpenText, MoveDown, MoveUp, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { SectionCard } from '../../shared/ui/SectionCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -49,7 +50,7 @@ export function AttachedQuizzesSection({ classroom, module }: { classroom: Class
           <legend>Quizzes in this class</legend>
           {quizzes.map((quiz) => <label className="attached-quiz-option" key={quiz.id}>
             <input type="checkbox" checked={selected.has(quiz.id)} onChange={(event) => toggle(quiz.id, event.target.checked)} />
-            <span><strong>{quiz.title || 'Untitled quiz'}</strong><small>{quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards'} · <span className="capitalize">{quiz.status}</span></small>{quiz.status === 'draft' && <small>Students will see this once the quiz is published.</small>}</span>
+            <span><strong>{quiz.title || 'Untitled quiz'}</strong><small>{quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards'} · <Badge>{quiz.status}</Badge></small>{quiz.status === 'draft' && <small>Students will see this once the quiz is published.</small>}</span>
           </label>)}
         </fieldset>
         <div className="attached-quiz-selected" aria-label="Attached quiz order">
@@ -61,5 +62,5 @@ export function AttachedQuizzesSection({ classroom, module }: { classroom: Class
 }
 
 function AttachedQuizRow({ quiz, index, total, busy, onMove, onRemove }: { quiz: QuizRecord | null; index: number; total: number; busy: boolean; onMove: (index: number, offset: -1 | 1) => void; onRemove: () => void }) {
-  return <div className="attached-quiz-row"><div><strong>{quiz?.title ?? 'Unavailable quiz'}</strong><small>{quiz ? (quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards') + ' · ' + quiz.status : 'This quiz was removed or is no longer available.'}</small></div><div className="attached-quiz-row__actions"><Button type="button" variant="ghost" aria-label={'Move ' + (quiz?.title ?? 'quiz') + ' up'} disabled={busy || index === 0} onClick={() => onMove(index, -1)}><MoveUp size={16} aria-hidden="true" /></Button><Button type="button" variant="ghost" aria-label={'Move ' + (quiz?.title ?? 'quiz') + ' down'} disabled={busy || index === total - 1} onClick={() => onMove(index, 1)}><MoveDown size={16} aria-hidden="true" /></Button><Button type="button" variant="ghost" aria-label={'Remove ' + (quiz?.title ?? 'unavailable quiz')} disabled={busy} onClick={onRemove}><X size={16} aria-hidden="true" /></Button></div></div>
+  return <div className="attached-quiz-row"><div><strong>{quiz?.title ?? 'Unavailable quiz'}</strong><small>{quiz ? (quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards') : 'This quiz was removed or is no longer available.'} {quiz && <Badge>{quiz.status}</Badge>}</small></div><div className="attached-quiz-row__actions"><Button type="button" variant="ghost" aria-label={'Move ' + (quiz?.title ?? 'quiz') + ' up'} disabled={busy || index === 0} onClick={() => onMove(index, -1)}><MoveUp size={16} aria-hidden="true" /></Button><Button type="button" variant="ghost" aria-label={'Move ' + (quiz?.title ?? 'quiz') + ' down'} disabled={busy || index === total - 1} onClick={() => onMove(index, 1)}><MoveDown size={16} aria-hidden="true" /></Button><Button type="button" variant="ghost" aria-label={'Remove ' + (quiz?.title ?? 'unavailable quiz')} disabled={busy} onClick={onRemove}><X size={16} aria-hidden="true" /></Button></div></div>
 }
