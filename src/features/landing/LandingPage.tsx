@@ -41,17 +41,17 @@ function ProductPreview() {
       <div className="preview-orbit preview-orbit--one" aria-hidden="true" />
       <div className="preview-orbit preview-orbit--two" aria-hidden="true" />
       <Card className="quiz-preview" elevated>
-        <div className="quiz-preview__top"><span className="quiz-preview__course">BIOLOGY · UNIT 04</span><span className="quiz-preview__counter">04 <span>/ 12</span></span></div>
+        <div className="quiz-preview__top"><span className="quiz-preview__course">COMPUTER SCIENCE · ALGORITHMS</span><span className="quiz-preview__counter">04 <span>/ 12</span></span></div>
         <div className="quiz-progress" aria-label="4 of 12 questions"><span /></div>
         <p className="quiz-preview__eyebrow">MULTIPLE CHOICE</p>
-        <h2>What is the main role of mitochondria?</h2>
+        <h2>What is the worst-case time complexity of binary search?</h2>
         <ul className="answer-list" aria-label="Answer choices">
-          <li><span className="answer-key">A</span><span>Store genetic information</span></li>
-          <li className="answer-option--correct"><span className="answer-key">B</span><span>Produce energy for the cell</span><Check size={17} aria-label="Correct answer" /></li>
-          <li><span className="answer-key">C</span><span>Build proteins from amino acids</span></li>
-          <li><span className="answer-key">D</span><span>Control what enters the cell</span></li>
+          <li><span className="answer-key">A</span><span>O(1) — Constant time</span></li>
+          <li className="answer-option--correct"><span className="answer-key">B</span><span>O(log n) — Logarithmic time</span><Check size={17} aria-label="Correct answer" /></li>
+          <li><span className="answer-key">C</span><span>O(n) — Linear time</span></li>
+          <li><span className="answer-key">D</span><span>O(n log n) — Linearithmic time</span></li>
         </ul>
-        <div className="preview-feedback"><span className="feedback-icon"><Check size={15} /></span><div><strong>Exactly right</strong><span>Mitochondria convert nutrients into ATP, the cell’s usable energy.</span></div></div>
+        <div className="preview-feedback"><span className="feedback-icon"><Check size={15} /></span><div><strong>Exactly right</strong><span>Binary search cuts the search space in half with every step, running in O(log n) time.</span></div></div>
       </Card>
       <div className="group-chip"><span className="group-chip__avatars" aria-hidden="true"><i>A</i><i>M</i><i>J</i></span><span><strong>Group of 3</strong><small>answering together</small></span><span className="group-chip__live" aria-label="Live" /></div>
       <div className="preview-note"><Sparkles size={16} aria-hidden="true" /><span>Practice that builds mastery</span></div>
