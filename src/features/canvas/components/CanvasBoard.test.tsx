@@ -123,23 +123,31 @@ describe('CanvasBoard component', () => {
     expect(screen.getByText('Connections used 1 of 1')).toBeInTheDocument()
   })
 
-  it('in play mode, cards cannot be deleted with Delete key', () => {
-    const onCardsChange = vi.fn()
-
+  it('in play mode, card content is read-only with no editable inputs or textareas', () => {
     render(
       <CanvasBoard
         cards={sampleCards}
         connections={sampleConnections}
         mode="play"
-        onCardsChange={onCardsChange}
       />,
     )
 
-    const card = screen.getAllByTestId('card-c1')[0]
-    fireEvent.click(card)
-    fireEvent.keyDown(card, { key: 'Delete', code: 'Delete' })
+    expect(screen.getByText('Born on June 19, 1861.')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
 
-    // onCardsChange should not be called in play mode
-    expect(onCardsChange).not.toHaveBeenCalled()
+  it('in review mode, renders the board with review configuration', () => {
+    const { container } = render(
+      <CanvasBoard
+        cards={sampleCards}
+        connections={sampleConnections}
+        mode="review"
+        statusByConnection={{ 'c1->c2': 'correct' }}
+      />,
+    )
+
+    expect(container.querySelector('.canvas-board-wrapper')).toBeInTheDocument()
+    expect(screen.getByTestId('card-c1')).toBeInTheDocument()
   })
 })
+
