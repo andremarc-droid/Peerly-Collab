@@ -488,7 +488,11 @@ service cloud.firestore {
             && settings.participation.groupSize >= 2
             && settings.participation.groupSize <= 10))
         && (mode != 'flashcards'
-          || (settings.answerReveal == 'never' && settings.scoreVisibility == 'hidden' && settings.scoresReleased == false));
+          || (settings.answerReveal == 'never' && settings.scoreVisibility == 'hidden' && settings.scoresReleased == false))
+        && (mode != 'canvas'
+          || (settings.participation.type == 'individual'
+            && settings.shuffleQuestions == false
+            && settings.shuffleOptions == false));
     }
 
     function validQuiz(data) {
@@ -497,7 +501,7 @@ service cloud.firestore {
         && data.ownerId is string && data.ownerName is string
         && data.title is string && data.title.size() <= 200
         && data.description is string && data.description.size() <= 2000
-        && data.tags is list && data.tags.size() <= 20 && data.mode in ['quiz', 'flashcards']
+        && data.tags is list && data.tags.size() <= 20 && data.mode in ['quiz', 'flashcards', 'canvas']
         && data.status in ['draft', 'published', 'archived']
         && (!data.keys().hasAny(['classId']) || data.classId is string)
         && data.questionCount is int && data.questionCount >= 0
@@ -537,6 +541,27 @@ service cloud.firestore {
           : !data.keys().hasAny(['options']));
     }
 
+    function validCanvasQuestion(data) {
+      return data.keys().hasOnly(['order', 'type', 'prompt', 'points', 'layoutMode', 'directed', 'wrongPenalty', 'cards'])
+        && data.keys().hasAll(['order', 'type', 'prompt', 'points', 'layoutMode', 'directed', 'wrongPenalty', 'cards'])
+        && data.order is int && data.order >= 0
+        && data.type == 'canvas'
+        && data.prompt is string && data.prompt.size() <= 2000
+        && data.points is int && data.points >= 1 && data.points <= 1000
+        && data.layoutMode in ['scattered', 'fixed']
+        && data.directed is bool
+        && data.wrongPenalty in ['none', 'half', 'full']
+        && data.cards is list && data.cards.size() <= 50;
+    }
+
+    function validQuestionForQuiz(quizId, questionId, data) {
+      let quizPath = /databases/$(database)/documents/quizzes/$(quizId);
+      let quizMode = existsAfter(quizPath) ? getAfter(quizPath).data.mode : get(quizPath).data.mode;
+      return (quizMode == 'canvas'
+        ? questionId == 'board' && validCanvasQuestion(data)
+        : validQuestion(data));
+    }
+
     function matchingAnswerKey(quizId, questionId, data) {
       let questionPath = /databases/$(database)/documents/quizzes/$(quizId)/questions/$(questionId);
       let questionType = existsAfter(questionPath) ? getAfter(questionPath).data.type : get(questionPath).data.type;
@@ -544,17 +569,23 @@ service cloud.firestore {
         && ((questionType in ['multiple_choice', 'true_false'] && data.type == 'choice')
           || (questionType == 'identification' && data.type == 'identification')
           || (questionType == 'fill_blank' && data.type == 'fill_blank')
-          || (questionType == 'flashcard' && data.type == 'flashcard'));
+          || (questionType == 'flashcard' && data.type == 'flashcard')
+          || (questionType == 'canvas' && data.type == 'canvas' && questionId == 'board'));
     }
 
     function validAnswerKey(data) {
-      return data.keys().hasOnly(['type', 'correctOptionId', 'acceptedAnswers', 'blanks', 'back', 'explanation', 'caseSensitive'])
-        && data.keys().hasAll(['type', 'explanation', 'caseSensitive'])
-        && data.explanation is string && data.caseSensitive is bool
-        && ((data.type == 'choice' && data.keys().hasOnly(['type', 'correctOptionId', 'explanation', 'caseSensitive']) && data.correctOptionId is string)
-          || (data.type == 'identification' && data.keys().hasOnly(['type', 'acceptedAnswers', 'explanation', 'caseSensitive']) && data.acceptedAnswers is list && data.acceptedAnswers.size() > 0)
-          || (data.type == 'fill_blank' && data.keys().hasOnly(['type', 'blanks', 'explanation', 'caseSensitive']) && data.blanks is list && data.blanks.size() > 0)
-          || (data.type == 'flashcard' && data.keys().hasOnly(['type', 'back', 'explanation', 'caseSensitive']) && data.back is string));
+      return (data.type == 'canvas'
+        ? data.keys().hasOnly(['type', 'explanation', 'connections'])
+          && data.keys().hasAll(['type', 'explanation', 'connections'])
+          && data.explanation is string && data.explanation.size() <= 2000
+          && data.connections is list && data.connections.size() <= 80
+        : data.keys().hasOnly(['type', 'correctOptionId', 'acceptedAnswers', 'blanks', 'back', 'explanation', 'caseSensitive'])
+          && data.keys().hasAll(['type', 'explanation', 'caseSensitive'])
+          && data.explanation is string && data.caseSensitive is bool
+          && ((data.type == 'choice' && data.keys().hasOnly(['type', 'correctOptionId', 'explanation', 'caseSensitive']) && data.correctOptionId is string)
+            || (data.type == 'identification' && data.keys().hasOnly(['type', 'acceptedAnswers', 'explanation', 'caseSensitive']) && data.acceptedAnswers is list && data.acceptedAnswers.size() > 0)
+            || (data.type == 'fill_blank' && data.keys().hasOnly(['type', 'blanks', 'explanation', 'caseSensitive']) && data.blanks is list && data.blanks.size() > 0)
+            || (data.type == 'flashcard' && data.keys().hasOnly(['type', 'back', 'explanation', 'caseSensitive']) && data.back is string)));
     }
 
     function validAttempt(data) {
@@ -563,7 +594,10 @@ service cloud.firestore {
         && data.userId is string && data.userName is string
         && data.attemptNumber is int && data.attemptNumber > 0
         && data.status in ['in_progress', 'submitted']
-        && data.answers is map && data.answers.size() <= 200 && data.questionOrder is list && data.optionOrder is map
+        && data.answers is map && data.answers.size() <= 200
+        && (!data.answers.keys().hasAny(['board']) || (data.answers.board is list && data.answers.board.size() <= 80))
+        && (!data.answers.keys().hasAny(['layout']) || (data.answers.layout is list && data.answers.layout.size() <= 50))
+        && data.questionOrder is list && data.optionOrder is map
         && data.startedAt is timestamp
         && (data.submittedAt == null || data.submittedAt is timestamp)
         && data.timeSpentSeconds is int && data.timeSpentSeconds >= 0;
@@ -604,13 +638,15 @@ service cloud.firestore {
           || (request.resource.data.title.size() > 0 && request.resource.data.questionCount > 0 && request.resource.data.publishedAt is timestamp
             && request.resource.data.get('classId', null) is string
             && isClassOwner(request.resource.data.classId)
-            && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.status == 'active'))
+            && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.status == 'active'
+            && (request.resource.data.mode != 'canvas' || request.resource.data.questionCount == 1)))
         && validQuiz(request.resource.data);
       allow delete: if quizOwner(quizId);
 
       match /questions/{questionId} {
         allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId));
-        allow create, update: if quizOwner(quizId) && validQuestion(request.resource.data);
+        allow create, update: if quizOwner(quizId)
+          && validQuestionForQuiz(quizId, questionId, request.resource.data);
         allow delete: if quizOwner(quizId);
       }
 

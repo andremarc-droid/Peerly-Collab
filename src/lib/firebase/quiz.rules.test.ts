@@ -430,3 +430,343 @@ describe('quiz Firestore rules', () => {
     await assertSucceeds(validAnswersBatch.commit())
   })
 })
+
+describe('canvas mode Firestore rules', () => {
+  const canvasSettings = {
+    answerReveal: 'after_submit',
+    participation: { type: 'individual' },
+    scoreVisibility: 'immediate',
+    scoresReleased: false,
+    timeLimitMinutes: null,
+    attemptsAllowed: 1,
+    shuffleQuestions: false,
+    shuffleOptions: false,
+  }
+
+  const canvasQuiz = (ownerId = 'teacher', status = 'draft', overrides: Record<string, unknown> = {}) => ({
+    ownerId,
+    ownerName: 'Teacher',
+    classId: 'class1',
+    title: 'Circuit Canvas',
+    description: 'Canvas quiz test',
+    tags: [],
+    mode: 'canvas',
+    status,
+    questionCount: status === 'published' ? 1 : 0,
+    createdAt: now,
+    updatedAt: now,
+    publishedAt: status === 'published' ? now : null,
+    settings: canvasSettings,
+    ...overrides,
+  })
+
+  const canvasQuestion = (cardsCount = 2, overrides: Record<string, unknown> = {}) => ({
+    order: 0,
+    type: 'canvas',
+    prompt: 'Connect the components',
+    points: 100,
+    layoutMode: 'scattered',
+    directed: true,
+    wrongPenalty: 'half',
+    cards: Array.from({ length: cardsCount }, (_, i) => ({
+      id: `c${i}`,
+      type: 'note',
+      content: `Card ${i}`,
+      position: { x: 0, y: 0 },
+    })),
+    ...overrides,
+  })
+
+  const canvasKey = (connectionsCount = 1, overrides: Record<string, unknown> = {}) => ({
+    type: 'canvas',
+    explanation: 'Wiring guide',
+    connections: Array.from({ length: connectionsCount }, (_, i) => ({
+      id: `k${i}`,
+      from: 'c0',
+      to: 'c1',
+      points: 1,
+    })),
+    ...overrides,
+  })
+
+  it('enforces quiz settings: group participation and shuffle true denied', async () => {
+    await seed()
+    const owner = environment.authenticatedContext('teacher').firestore()
+
+    // Group participation denied for canvas
+    await assertFails(
+      setDoc(doc(owner, 'quizzes/c-grp'), {
+        ...canvasQuiz(),
+        settings: { ...canvasSettings, participation: { type: 'group', groupSize: 2 } },
+      }),
+    )
+
+    // shuffleQuestions true denied
+    await assertFails(
+      setDoc(doc(owner, 'quizzes/c-shuf-q'), {
+        ...canvasQuiz(),
+        settings: { ...canvasSettings, shuffleQuestions: true },
+      }),
+    )
+
+    // shuffleOptions true denied
+    await assertFails(
+      setDoc(doc(owner, 'quizzes/c-shuf-o'), {
+        ...canvasQuiz(),
+        settings: { ...canvasSettings, shuffleOptions: true },
+      }),
+    )
+
+    // Valid canvas quiz succeeds
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/c-valid'), canvasQuiz()))
+  })
+
+  it('enforces publishing requirement: questionCount must be 1', async () => {
+    await seed()
+    const owner = environment.authenticatedContext('teacher').firestore()
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/c-pub-draft'), canvasQuiz('teacher', 'draft'))
+    })
+
+    // questionCount == 0 denied
+    await assertFails(
+      updateDoc(doc(owner, 'quizzes/c-pub-draft'), {
+        status: 'published',
+        publishedAt: now,
+        questionCount: 0,
+      }),
+    )
+
+    // questionCount == 2 denied
+    await assertFails(
+      updateDoc(doc(owner, 'quizzes/c-pub-draft'), {
+        status: 'published',
+        publishedAt: now,
+        questionCount: 2,
+      }),
+    )
+
+    // questionCount == 1 allowed
+    await assertSucceeds(
+      updateDoc(doc(owner, 'quizzes/c-pub-draft'), {
+        status: 'published',
+        publishedAt: now,
+        questionCount: 1,
+      }),
+    )
+  })
+
+  it('enforces question rules: card limit, layoutMode, wrongPenalty, doc ID, and quiz mode', async () => {
+    await seed()
+    const owner = environment.authenticatedContext('teacher').firestore()
+    const student = environment.authenticatedContext('student').firestore()
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/canvasQz'), canvasQuiz())
+    })
+
+    // 51 cards denied, 50 cards allowed
+    await assertFails(setDoc(doc(owner, 'quizzes/canvasQz/questions/board'), canvasQuestion(51)))
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/canvasQz/questions/board'), canvasQuestion(50)))
+
+    // Invalid wrongPenalty denied
+    await assertFails(
+      setDoc(doc(owner, 'quizzes/canvasQz/questions/board'), canvasQuestion(2, { wrongPenalty: 'invalid' })),
+    )
+
+    // Invalid layoutMode denied
+    await assertFails(
+      setDoc(doc(owner, 'quizzes/canvasQz/questions/board'), canvasQuestion(2, { layoutMode: 'floating' })),
+    )
+
+    // Question ID other than 'board' denied
+    await assertFails(setDoc(doc(owner, 'quizzes/canvasQz/questions/otherId'), canvasQuestion(2)))
+
+    // Canvas question in normal quiz denied
+    await assertFails(setDoc(doc(owner, 'quizzes/qz/questions/board'), canvasQuestion(2)))
+
+    // Normal question in canvas quiz denied
+    await assertFails(setDoc(doc(owner, 'quizzes/canvasQz/questions/board'), question))
+
+    // Student cannot write questions
+    await assertFails(setDoc(doc(student, 'quizzes/canvasQz/questions/board'), canvasQuestion(2)))
+  })
+
+  it('enforces answer key rules: connection limit, matchingAnswerKey, student access', async () => {
+    await seed()
+    const owner = environment.authenticatedContext('teacher').firestore()
+    const student = environment.authenticatedContext('student').firestore()
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/canvasQz'), canvasQuiz())
+      await setDoc(doc(db, 'quizzes/canvasQz/questions/board'), canvasQuestion(2))
+    })
+
+    // 81 connections denied, 80 allowed
+    await assertFails(setDoc(doc(owner, 'quizzes/canvasQz/answerKeys/board'), canvasKey(81)))
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/canvasQz/answerKeys/board'), canvasKey(80)))
+
+    // Key id other than 'board' denied
+    await assertFails(setDoc(doc(owner, 'quizzes/canvasQz/answerKeys/other'), canvasKey(1)))
+
+    // Student cannot write answer keys
+    await assertFails(setDoc(doc(student, 'quizzes/canvasQz/answerKeys/board'), canvasKey(1)))
+
+    // Key for normal question in canvas quiz denied
+    await assertFails(setDoc(doc(owner, 'quizzes/canvasQz/answerKeys/board'), key))
+
+    // Canvas key for normal question in normal quiz denied
+    await assertFails(setDoc(doc(owner, 'quizzes/qz/answerKeys/q'), canvasKey(1)))
+  })
+
+  it('governs student answer key read access: before vs after starting attempt', async () => {
+    await seed()
+    const student = environment.authenticatedContext('student').firestore()
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/canvasPub'), canvasQuiz('teacher', 'published'))
+      await setDoc(doc(db, 'quizzes/canvasPub/questions/board'), canvasQuestion(2))
+      await setDoc(doc(db, 'quizzes/canvasPub/answerKeys/board'), canvasKey(2))
+    })
+
+    // Before starting (no participant document): read denied
+    await assertFails(getDoc(doc(student, 'quizzes/canvasPub/answerKeys/board')))
+
+    // Start attempt (create participant + attempt): read succeeds
+    const startBatch = writeBatch(student)
+    startBatch.set(doc(student, 'quizzes/canvasPub/participants/student'), participant('student', 'att-canvas-1'))
+    startBatch.set(
+      doc(student, 'quizzes/canvasPub/attempts/att-canvas-1'),
+      attempt('student', 'in_progress', { questionOrder: ['board'], optionOrder: {} }),
+    )
+    await assertSucceeds(startBatch.commit())
+
+    // After starting: student can read answer key
+    await assertSucceeds(getDoc(doc(student, 'quizzes/canvasPub/answerKeys/board')))
+  })
+
+  it('enforces attempt answer caps for board and layout, while normal attempts are unaffected', async () => {
+    await seed()
+    const student = environment.authenticatedContext('student').firestore()
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/canvasPub'), canvasQuiz('teacher', 'published'))
+      await setDoc(doc(db, 'quizzes/canvasPub/questions/board'), canvasQuestion(2))
+      await setDoc(doc(db, 'quizzes/canvasPub/answerKeys/board'), canvasKey(2))
+    })
+
+    // Normal quiz attempt is unaffected
+    const normalBatch = writeBatch(student)
+    normalBatch.set(doc(student, 'quizzes/qz/participants/student'), participant('student', 'att-norm'))
+    normalBatch.set(doc(student, 'quizzes/qz/attempts/att-norm'), attempt('student', 'in_progress', { answers: { q: 'b' } }))
+    await assertSucceeds(normalBatch.commit())
+
+    // answers.board with 81 items denied
+    const tooManyBoard = Array.from({ length: 81 }, (_, i) => `c0->c1-${i}`)
+    const failBoardBatch = writeBatch(student)
+    failBoardBatch.set(doc(student, 'quizzes/canvasPub/participants/student'), participant('student', 'att-b-81'))
+    failBoardBatch.set(
+      doc(student, 'quizzes/canvasPub/attempts/att-b-81'),
+      attempt('student', 'in_progress', { answers: { board: tooManyBoard } }),
+    )
+    await assertFails(failBoardBatch.commit())
+
+    // answers.layout with 51 items denied
+    const tooManyLayout = Array.from({ length: 51 }, (_, i) => `c${i}:10:20`)
+    const failLayoutBatch = writeBatch(student)
+    failLayoutBatch.set(doc(student, 'quizzes/canvasPub/participants/student'), participant('student', 'att-l-51'))
+    failLayoutBatch.set(
+      doc(student, 'quizzes/canvasPub/attempts/att-l-51'),
+      attempt('student', 'in_progress', { answers: { layout: tooManyLayout } }),
+    )
+    await assertFails(failLayoutBatch.commit())
+
+    // 80 board connections and 50 layout items allowed
+    const validBoard = Array.from({ length: 80 }, (_, i) => `c0->c1-${i}`)
+    const validLayout = Array.from({ length: 50 }, (_, i) => `c${i}:10:20`)
+    const successBatch = writeBatch(student)
+    successBatch.set(doc(student, 'quizzes/canvasPub/participants/student'), participant('student', 'att-valid-c'))
+    successBatch.set(
+      doc(student, 'quizzes/canvasPub/attempts/att-valid-c'),
+      attempt('student', 'in_progress', { answers: { board: validBoard, layout: validLayout } }),
+    )
+    await assertSucceeds(successBatch.commit())
+  })
+
+  it('enforces attempt-limit and late-submission rules for canvas attempts', async () => {
+    await seed()
+    const student = environment.authenticatedContext('student').firestore()
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(
+        doc(db, 'quizzes/canvasTimed'),
+        canvasQuiz('teacher', 'published', {
+          settings: { ...canvasSettings, attemptsAllowed: 1, timeLimitMinutes: 1 },
+        }),
+      )
+      await setDoc(doc(db, 'quizzes/canvasTimed/questions/board'), canvasQuestion(2))
+      await setDoc(doc(db, 'quizzes/canvasTimed/answerKeys/board'), canvasKey(2))
+    })
+
+    // Start 1st attempt succeeds
+    const startBatch = writeBatch(student)
+    startBatch.set(doc(student, 'quizzes/canvasTimed/participants/student'), participant('student', 'att-1'))
+    startBatch.set(
+      doc(student, 'quizzes/canvasTimed/attempts/att-1'),
+      attempt('student', 'in_progress', { questionOrder: ['board'], optionOrder: {} }),
+    )
+    await assertSucceeds(startBatch.commit())
+
+    // Submit attempt on time succeeds
+    const submitBatch = writeBatch(student)
+    submitBatch.update(doc(student, 'quizzes/canvasTimed/participants/student'), {
+      activeAttemptId: null,
+      updatedAt: now,
+    })
+    submitBatch.update(doc(student, 'quizzes/canvasTimed/attempts/att-1'), {
+      status: 'submitted',
+      submittedAt: serverTimestamp(),
+      timeSpentSeconds: 30,
+    })
+    submitBatch.set(doc(student, 'quizzes/canvasTimed/results/att-1'), result('student'))
+    await assertSucceeds(submitBatch.commit())
+
+    // Late submission passes rules and is flagged as late by isLate
+    const tenMinsAgo = Timestamp.fromMillis(Date.now() - 10 * 60 * 1000)
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await updateDoc(doc(db, 'quizzes/canvasTimed'), { 'settings.attemptsAllowed': 2 })
+      await setDoc(doc(db, 'quizzes/canvasTimed/participants/student'), {
+        userId: 'student', userName: 'Student', createdAt: tenMinsAgo, updatedAt: tenMinsAgo, attemptCount: 2, activeAttemptId: 'att-late',
+      })
+      await setDoc(doc(db, 'quizzes/canvasTimed/attempts/att-late'), attempt('student', 'in_progress', { attemptNumber: 2, startedAt: tenMinsAgo }))
+    })
+
+    const lateSubmit = writeBatch(student)
+    lateSubmit.update(doc(student, 'quizzes/canvasTimed/participants/student'), { activeAttemptId: null, updatedAt: serverTimestamp() })
+    lateSubmit.update(doc(student, 'quizzes/canvasTimed/attempts/att-late'), {
+      status: 'submitted',
+      submittedAt: serverTimestamp(),
+      timeSpentSeconds: 600,
+    })
+    lateSubmit.set(doc(student, 'quizzes/canvasTimed/results/att-late'), result('student'))
+    await assertSucceeds(lateSubmit.commit())
+
+    const lateAttemptDoc = await getDoc(doc(student, 'quizzes/canvasTimed/attempts/att-late'))
+    const lateData = lateAttemptDoc.data()!
+    const lateCheck = isLate(lateData.startedAt, lateData.submittedAt, 1)
+    expect(lateCheck.late).toBe(true)
+
+    // Third attempt denied since attemptsAllowed == 2
+    const thirdBatch = writeBatch(student)
+    thirdBatch.update(doc(student, 'quizzes/canvasTimed/participants/student'), { activeAttemptId: 'att-3', attemptCount: 3, updatedAt: serverTimestamp() })
+    thirdBatch.set(doc(student, 'quizzes/canvasTimed/attempts/att-3'), attempt('student', 'in_progress', { attemptNumber: 3, questionOrder: ['board'], optionOrder: {} }))
+    await assertFails(thirdBatch.commit())
+  })
+})

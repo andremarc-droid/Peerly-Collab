@@ -67,13 +67,23 @@ This document details the security hardening updates applied to `firestore.rules
   * **Payload Flooding / Resource Exhaustion**: Malicious clients sending multi-megabyte payloads to exhaust client rendering performance or inflate Firestore storage and bandwidth costs.
   * **Client Synchronization**: Form validators and schemas (`schemas/index.ts`, `questionDraft.ts`, `validation.ts`, `ClassPage.tsx`, `ProfilePage.tsx`) enforce identical limits with user-friendly error messages before reaching Firestore rules.
 
+### 1.7 Canvas Mode Security Rules (`quizzes/{quizId}`, `questions/board`, `answerKeys/board`, `attempts/{attemptId}`)
+* **Rule Change**:
+  * Quiz documents: `mode` may be `'canvas'`. Canvas quizzes require `settings.participation.type == 'individual'`, `settings.shuffleQuestions == false`, `settings.shuffleOptions == false`. Publishing requires `questionCount == 1`.
+  * Questions: Document ID must be `'board'` and quiz mode must be `'canvas'`. Normal questions are denied in canvas quizzes, and canvas questions are denied in standard quizzes. Caps: `prompt` <= 2000 chars, `points` 1..1000, `layoutMode` in `['scattered', 'fixed']`, `directed` is bool, `wrongPenalty` in `['none', 'half', 'full']`, `cards` list <= 50 items.
+  * Answer keys: `type == 'canvas'` restricted to document ID `'board'` and verified via `matchingAnswerKey`. Caps: `explanation` <= 2000 chars, `connections` list <= 80 items. Student read access is granted only after participant document creation.
+  * Attempts: `answers.board` list <= 80 items; `answers.layout` list <= 50 items.
+* **List Iteration Architectural Limit**:
+  * Firestore security rules cannot loop over lists. Consequently, rules enforce list-level caps (`cards.size() <= 50`, `connections.size() <= 80`, `answers.board.size() <= 80`, `answers.layout.size() <= 50`) and top-level scalar fields.
+  * Per-card attributes (types, lengths, positions, Google Drive file IDs) and per-connection endpoints are validated client-side by domain schemas (`validateCanvasDefinition`, `validateCanvasKey`), and all card URLs are validated against domain allowlists upon rendering.
+
 ---
 
 ## 2. Known Remaining Limitations
 
 1. **Client-Side Grading and Answer Key Visibility**:
-   * *Status*: In v1, attempt grading occurs in the browser.
-   * *Risk*: Answer keys are readable by enrolled participants who start an attempt. A determined student using browser Developer Tools can inspect answer keys during quiz taking or submit forged result grades if writing to results directly.
+   * *Status*: In v1, attempt grading (including canvas graph grading) occurs in the browser.
+   * *Risk*: Answer keys (including `answerKeys/board` connection lists) are readable by enrolled participants who start an attempt. A determined student using browser Developer Tools can inspect answer keys during quiz taking or submit forged result grades if writing to results directly. This is acceptable for practice/formative learning, but not high-stakes assessments.
    * *Mitigation Plan*: Transition `gradeAttempt` and results creation to a trusted Cloud Function / backend service with Firestore Admin SDK privileges in v2.
 2. **Question Exposure Prior to Attempt**:
    * *Status*: Questions for published quizzes are readable by any student actively enrolled in the quiz's class.
