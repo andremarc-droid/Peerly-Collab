@@ -108,13 +108,13 @@ export function QuizEditorPage() {
     if (Object.keys(validation).length) return
     if (!user) return
     setSaving(true); setSaveError(null)
-    const input = { classId: form.classId, title: form.title.trim(), description: form.description.trim(), tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean), mode: form.mode, settings: form.settings }
+    const input = { classId: form.classId, title: form.title.trim(), description: form.description.trim(), tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean), settings: form.settings }
     try {
       if (quizId) {
         await updateQuiz(quizId, input)
         setSaved(form); showToast('success', 'Quiz settings saved.')
       } else {
-        const created = await createQuiz(user.uid, profile?.name || user.displayName || 'Instructor', input)
+        const created = await createQuiz(user.uid, profile?.name || user.displayName || 'Instructor', { ...input, mode: form.mode })
         setSaved(form); showToast('success', 'Draft quiz created.')
         navigate(`/instructor/quizzes/${created}${addQuestionsAfterSave ? '/questions' : ''}`, { replace: true })
       }
@@ -134,6 +134,8 @@ export function QuizEditorPage() {
 
   const experience = form.mode === 'flashcards'
     ? `Students will review ${form.title.trim() || 'this set'} as flashcards and self-rate their recall.`
+    : form.mode === 'canvas'
+    ? `Students will connect cards on the canvas board individually.`
     : `Students will answer ${form.title.trim() || 'this quiz'} individually${form.settings.timeLimitMinutes ? ` with ${form.settings.timeLimitMinutes} minutes` : ''}${form.settings.attemptsAllowed ? ` and ${form.settings.attemptsAllowed} ${form.settings.attemptsAllowed === 1 ? 'attempt' : 'attempts'}` : ' with unlimited attempts'}${form.settings.answerReveal === 'after_each' ? ', seeing explanations after each answer.' : form.settings.answerReveal === 'after_submit' ? ', reviewing explanations after they submit.' : ', with answers hidden.'}`
 
   return <AppShell>
@@ -150,10 +152,11 @@ export function QuizEditorPage() {
             <Input label="Quiz title" name="quiz-title" value={form.title} onChange={(event) => { setForm({ ...form, title: event.target.value }); setErrors({ ...errors, title: undefined }) }} error={errors.title} required maxLength={120} />
             <label className="field" htmlFor="quiz-description"><span className="field__label">Description</span><textarea id="quiz-description" className="field__control quiz-editor__textarea" value={form.description} onChange={(event) => { setForm({ ...form, description: event.target.value }); setErrors({ ...errors, description: undefined }) }} rows={3} maxLength={2000} />{errors.description && <span className="field__error" role="alert">{errors.description}</span>}</label>
             <Input label="Tags" name="quiz-tags" value={form.tags} onChange={(event) => { setForm({ ...form, tags: event.target.value }); setErrors({ ...errors, tags: undefined }) }} error={errors.tags} hint="Separate tags with commas (up to 20 tags)." />
-            <fieldset className="quiz-mode-picker"><legend>Format</legend><div className="quiz-mode-picker__grid">
-              <label className={`quiz-mode-card${form.mode === 'quiz' ? ' is-selected' : ''}`}><input type="radio" name="quiz-mode" value="quiz" checked={form.mode === 'quiz'} onChange={() => setForm({ ...form, mode: 'quiz', settings: defaultQuizSettings('quiz') })} /><strong>Quiz</strong><span>Graded questions with scores and answer feedback.</span></label>
-              <label className={`quiz-mode-card${form.mode === 'flashcards' ? ' is-selected' : ''}`}><input type="radio" name="quiz-mode" value="flashcards" checked={form.mode === 'flashcards'} onChange={() => setForm({ ...form, mode: 'flashcards', settings: defaultQuizSettings('flashcards') })} /><strong>Flashcards</strong><span>Self-rated recall with no score.</span></label>
-            </div></fieldset>
+            <div className="field">
+              <span className="field__label">
+                Type: {form.mode === 'canvas' ? 'Canvas' : form.mode === 'flashcards' ? 'Flashcards' : 'Quiz'}, cannot be changed after creation
+              </span>
+            </div>
           </div>
         </SectionCard>
 
@@ -199,6 +202,6 @@ export function QuizEditorPage() {
 function QuizPreviewTab({ quizId }: { quizId: string }) {
   const [title, setTitle] = useState('Quiz preview')
   const [items, setItems] = useState<SavedQuestion[]>([])
-  useEffect(() => { let active = true; void getQuiz(quizId).then((quiz) => { if (active && quiz) setTitle(quiz.title || 'Quiz preview') }); const stop = watchQuestionPairs(quizId, (questions) => { if (active) setItems(questions) }, () => undefined); return () => { active = false; stop() } }, [getQuiz, quizId, watchQuestionPairs])
+  useEffect(() => { let active = true; void getQuiz(quizId).then((quiz) => { if (active && quiz) setTitle(quiz.title || 'Quiz preview') }); const stop = watchQuestionPairs(quizId, (questions) => { if (active) setItems(questions) }, () => undefined); return () => { active = false; stop() } }, [quizId])
   return <AppShell><PageHeader eyebrow="QUIZ PREVIEW" title={title} subtitle="A student-facing preview of your current questions." action={<Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button>} /><main className="app-shell__content quiz-editor"><nav aria-label="Quiz workspace" className="flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button><span className="section-kicker">Preview</span><Button to={`/instructor/quizzes/${quizId}/results`} variant="secondary">Results</Button></nav><p>Students answer {items.length} {items.length === 1 ? 'question' : 'questions'} with answers {items.length ? 'according to the quiz settings' : 'once you add them'}.</p><ol className="grid gap-4">{items.map(({ id, question }) => <li key={id} className="rounded-2xl border border-navy-200 p-4"><strong>{question.prompt}</strong>{'options' in question && <ul>{question.options.map((option) => <li key={option.id}>{option.text}</li>)}</ul>}</li>)}</ol></main></AppShell>
 }

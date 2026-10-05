@@ -20,7 +20,9 @@ export async function duplicateQuiz(quizId: string, db: Firestore = firestore, c
   const keysByQuestion = new Map(keySnapshot.docs.map((key) => [key.id, key.data()]))
   const operations = questionSnapshot.docs.map((snapshot) => {
     const { id } = snapshot
-    const questionRef = doc(collection(db, 'quizzes', copyId, 'questions'))
+    const questionRef = source.mode === 'canvas' && id === 'board'
+      ? doc(db, 'quizzes', copyId, 'questions', 'board')
+      : doc(collection(db, 'quizzes', copyId, 'questions'))
     const answerKey = keysByQuestion.get(id)
     if (!answerKey) throw new Error(`Missing answer key for question ${id}`)
     const pair = validateQuestionAnswerPair(snapshot.data(), answerKey)

@@ -629,6 +629,7 @@ service cloud.firestore {
         && validQuiz(request.resource.data);
       allow update: if quizOwner(quizId)
         && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.mode == resource.data.mode
         && request.resource.data.createdAt == resource.data.createdAt
         && (request.resource.data.get('classId', null) == resource.data.get('classId', null)
           || (resource.data.status == 'draft' && request.resource.data.get('classId', null) is string

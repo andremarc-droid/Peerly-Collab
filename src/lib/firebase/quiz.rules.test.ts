@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import rules from '../../../firestore.rules?raw'
 import { isLate } from '../../features/quizzes/results/resultLogic'
 import { listResults } from '../../features/quizzes/services/resultService'
+import { duplicateQuiz } from '../../features/quizzes/services/duplicateQuiz'
 
 const projectId = 'demo-peerly-collab'
 let environment: RulesTestEnvironment
@@ -768,5 +769,93 @@ describe('canvas mode Firestore rules', () => {
     thirdBatch.update(doc(student, 'quizzes/canvasTimed/participants/student'), { activeAttemptId: 'att-3', attemptCount: 3, updatedAt: serverTimestamp() })
     thirdBatch.set(doc(student, 'quizzes/canvasTimed/attempts/att-3'), attempt('student', 'in_progress', { attemptNumber: 3, questionOrder: ['board'], optionOrder: {} }))
     await assertFails(thirdBatch.commit())
+  })
+
+  it('enforces quiz mode immutability on draft and published quizzes while permitting valid updates, creation of each mode, and duplicate mode copying', async () => {
+    await seed()
+    const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+
+    const flashcardSettings = {
+      answerReveal: 'never',
+      participation: { type: 'individual' },
+      scoreVisibility: 'hidden',
+      scoresReleased: false,
+      timeLimitMinutes: null,
+      attemptsAllowed: 1,
+      shuffleQuestions: false,
+      shuffleOptions: false,
+    }
+
+    // 1. Creating each mode still works
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/new-quiz'), { ...quizData('teacher', 'draft'), mode: 'quiz', questionCount: 0, publishedAt: null }))
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/new-flash'), { ...quizData('teacher', 'draft'), mode: 'flashcards', settings: flashcardSettings, questionCount: 0, publishedAt: null }))
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/new-canvas'), canvasQuiz('teacher', 'draft')))
+
+    // Seed draft and published versions of quiz and canvas
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/qz-draft'), { ...quizData('teacher', 'draft'), questionCount: 0, publishedAt: null })
+      await setDoc(doc(db, 'quizzes/cv-draft'), canvasQuiz('teacher', 'draft'))
+      await setDoc(doc(db, 'quizzes/cv-pub'), canvasQuiz('teacher', 'published'))
+      await setDoc(doc(db, 'quizzes/cv-pub/questions/board'), canvasQuestion(2))
+      await setDoc(doc(db, 'quizzes/cv-pub/answerKeys/board'), canvasKey(1))
+    })
+
+    // 2. Owner cannot change mode on draft quizzes:
+    // quiz -> canvas denied
+    await assertFails(updateDoc(doc(owner, 'quizzes/qz-draft'), { mode: 'canvas' }))
+    // canvas -> quiz denied
+    await assertFails(updateDoc(doc(owner, 'quizzes/cv-draft'), { mode: 'quiz' }))
+    // quiz -> flashcards denied
+    await assertFails(updateDoc(doc(owner, 'quizzes/qz-draft'), { mode: 'flashcards' }))
+
+    // 3. Owner cannot change mode on published quizzes:
+    // quiz -> canvas denied
+    await assertFails(updateDoc(doc(owner, 'quizzes/qz'), { mode: 'canvas' }))
+    // canvas -> quiz denied
+    await assertFails(updateDoc(doc(owner, 'quizzes/cv-pub'), { mode: 'quiz' }))
+    // quiz -> flashcards denied
+    await assertFails(updateDoc(doc(owner, 'quizzes/qz'), { mode: 'flashcards' }))
+
+    // 4. Owner CAN still update title, settings, and status
+    await assertSucceeds(updateDoc(doc(owner, 'quizzes/qz-draft'), { title: 'Renamed Quiz', updatedAt: now }))
+    await assertSucceeds(updateDoc(doc(owner, 'quizzes/qz-draft'), { 'settings.timeLimitMinutes': 20, updatedAt: now }))
+    await assertSucceeds(updateDoc(doc(owner, 'quizzes/qz-draft'), { status: 'archived', updatedAt: now }))
+
+    // 5. Duplicating copies the mode for quiz, flashcards, and canvas
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/fc-to-dup'), {
+        ...quizData('teacher', 'draft'),
+        mode: 'flashcards',
+        settings: flashcardSettings,
+        questionCount: 1,
+        publishedAt: null,
+      })
+      await setDoc(doc(db, 'quizzes/fc-to-dup/questions/q1'), {
+        order: 0,
+        type: 'flashcard',
+        prompt: 'Front',
+        points: 1,
+      })
+      await setDoc(doc(db, 'quizzes/fc-to-dup/answerKeys/q1'), {
+        type: 'flashcard',
+        back: 'Back',
+        explanation: '',
+        caseSensitive: false,
+      })
+    })
+
+    const quizCopyId = await duplicateQuiz('qz', owner)
+    const quizCopySnap = await getDoc(doc(owner, 'quizzes', quizCopyId))
+    expect(quizCopySnap.data()?.mode).toBe('quiz')
+
+    const flashCopyId = await duplicateQuiz('fc-to-dup', owner)
+    const flashCopySnap = await getDoc(doc(owner, 'quizzes', flashCopyId))
+    expect(flashCopySnap.data()?.mode).toBe('flashcards')
+
+    const canvasCopyId = await duplicateQuiz('cv-pub', owner)
+    const canvasCopySnap = await getDoc(doc(owner, 'quizzes', canvasCopyId))
+    expect(canvasCopySnap.data()?.mode).toBe('canvas')
   })
 })

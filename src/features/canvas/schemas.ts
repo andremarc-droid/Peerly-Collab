@@ -193,16 +193,18 @@ export function validateCanvasDefinition(value: unknown): CanvasQuestion {
     const x = numberField(pos.x ?? 0, `cards[${index}].position.x`, -100000)
     const y = numberField(pos.y ?? 0, `cards[${index}].position.y`, -100000)
 
-    return {
+    const card: CanvasCard = {
       id,
       type: cardType,
-      title,
       content,
-      url,
-      driveFileId,
-      driveKind,
       position: { x, y },
     }
+    if (title !== undefined) card.title = title
+    if (url !== undefined) card.url = url
+    if (driveFileId !== undefined) card.driveFileId = driveFileId
+    if (driveKind !== undefined) card.driveKind = driveKind
+
+    return card
   })
 
   return {

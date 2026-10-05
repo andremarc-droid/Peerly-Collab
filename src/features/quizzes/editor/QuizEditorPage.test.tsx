@@ -49,5 +49,24 @@ describe('quick create and quiz deletion confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete quiz' }))
     expect(onConfirm).toHaveBeenCalledOnce()
   })
+
+  it('renders mode as a read-only label on existing quiz and omits mode on update', async () => {
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-1?tab=settings']}>
+        <Routes>
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Type: Quiz, cannot be changed after creation')).toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: /format/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /practice quiz/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /flashcard deck/i })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Quiz title'), { target: { value: 'Updated Title' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+    expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.not.objectContaining({ mode: expect.anything() }))
+    expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.objectContaining({ title: 'Updated Title' }))
+  })
 })
 

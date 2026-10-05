@@ -151,4 +151,4 @@ export interface QuizParticipant {
 }
 
 export type NewQuiz = Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings'> & { classId?: string }
-export type QuizPatch = Partial<Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings' | 'classId'>>
+export type QuizPatch = Partial<Pick<Quiz, 'title' | 'description' | 'tags' | 'settings' | 'classId'>>
