@@ -1,5 +1,92 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { ArrowLeft, CircleCheck, Mail, UserRound } from 'lucide-react'
+import type { CanvasBoardMode, CanvasCard, CanvasConnection } from '../canvas'
+
+const LazyCanvasBoard = lazy(() => import('../canvas/components/CanvasBoard'))
+
+const sampleRizalCards: CanvasCard[] = [
+  {
+    id: 'rizal-1',
+    type: 'note',
+    title: '1. Birth in Calamba (1861)',
+    content: 'Born on June 19, 1861 to Francisco Mercado and Teodora Alonso in Calamba, Laguna.',
+    position: { x: 40, y: 40 },
+  },
+  {
+    id: 'rizal-2',
+    type: 'paragraph',
+    title: '2. Education at Ateneo & UST',
+    content: 'Completed Bachelor of Arts at Ateneo Municipal, then studied Medicine and Philosophy at UST.',
+    position: { x: 260, y: 40 },
+  },
+  {
+    id: 'rizal-3',
+    type: 'link',
+    title: '3. Noli Me Tangere (1887)',
+    content: 'Published in Berlin exposing the social cancer and abuses under colonial rule.',
+    url: 'https://nhcp.gov.ph/resources/noli-me-tangere',
+    position: { x: 480, y: 40 },
+  },
+  {
+    id: 'rizal-4',
+    type: 'paragraph',
+    title: '4. El Filibusterismo (1891)',
+    content: 'Published in Ghent, Belgium, dedicated to the memory of martyred priests GOMBURZA.',
+    position: { x: 700, y: 40 },
+  },
+  {
+    id: 'rizal-5',
+    type: 'note',
+    title: '5. La Liga Filipina (1892)',
+    content: 'Founded on July 3, 1892 in Tondo to unite the archipelago into a peaceful reform society.',
+    position: { x: 40, y: 220 },
+  },
+  {
+    id: 'rizal-6',
+    type: 'image',
+    title: '6. Exile in Dapitan (1892-1896)',
+    content: 'Deported to Dapitan where he operated an eye clinic and taught community students.',
+    driveFileId: '1RizalDapitanHistoricalArchiveFile',
+    driveKind: 'file',
+    url: 'https://drive.google.com/file/d/1RizalDapitanHistoricalArchiveFile/view',
+    position: { x: 260, y: 220 },
+  },
+  {
+    id: 'rizal-7',
+    type: 'note',
+    title: '7. Trial at Fort Santiago (1896)',
+    content: 'Arrested en route to Cuba and court-martialed for rebellion, sedition, and conspiracy.',
+    position: { x: 480, y: 220 },
+  },
+  {
+    id: 'rizal-8',
+    type: 'paragraph',
+    title: '8. Execution at Bagumbayan',
+    content: 'Executed on Dec 30, 1896. His martyrdom and poem Mi Ultimo Adios inspired the revolution.',
+    position: { x: 700, y: 220 },
+  },
+]
+
+const sampleRizalConnections: CanvasConnection[] = [
+  { id: 'rizal-1->rizal-2', from: 'rizal-1', to: 'rizal-2' },
+  { id: 'rizal-2->rizal-3', from: 'rizal-2', to: 'rizal-3' },
+  { id: 'rizal-3->rizal-4', from: 'rizal-3', to: 'rizal-4' },
+  { id: 'rizal-4->rizal-5', from: 'rizal-4', to: 'rizal-5' },
+  { id: 'rizal-5->rizal-6', from: 'rizal-5', to: 'rizal-6' },
+  { id: 'rizal-6->rizal-7', from: 'rizal-6', to: 'rizal-7' },
+  { id: 'rizal-7->rizal-8', from: 'rizal-7', to: 'rizal-8' },
+]
+
+const sampleReviewStatus: Record<string, 'correct' | 'missed' | 'wrong'> = {
+  'rizal-1->rizal-2': 'correct',
+  'rizal-2->rizal-3': 'correct',
+  'rizal-3->rizal-4': 'correct',
+  'rizal-4->rizal-5': 'correct',
+  'rizal-5->rizal-6': 'correct',
+  'rizal-6->rizal-7': 'missed',
+  'rizal-7->rizal-8': 'correct',
+  'rizal-1->rizal-8': 'wrong',
+}
 import { Alert } from '../../shared/ui/Alert'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
@@ -57,6 +144,10 @@ function DesignGallery() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [galleryColor, setGalleryColor] = useState<ClassColor>('ocean')
+  const [canvasMode, setCanvasMode] = useState<CanvasBoardMode>('play')
+  const [demoCards, setDemoCards] = useState<CanvasCard[]>(sampleRizalCards)
+  const [demoConnections, setDemoConnections] = useState<CanvasConnection[]>(sampleRizalConnections)
+  const [demoPositions, setDemoPositions] = useState<Record<string, { x: number; y: number }>>({})
   const { showToast } = useToast()
   const visibleSamples = samples.filter((sample) => sample.title.toLowerCase().includes(query.toLowerCase()) && (type === 'All types' || sample.type === type))
 
@@ -203,6 +294,53 @@ function DesignGallery() {
                   onToggleArchive={() => showToast('info', 'Restore clicked.')}
                 />
               </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Interactive canvas board"
+          description="A concept mapping board for individual student practice and instructor authoring. Try all three modes below."
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <SegmentedControl
+                label="Canvas mode"
+                value={canvasMode}
+                onChange={(val) => setCanvasMode(val as CanvasBoardMode)}
+                options={[
+                  { label: 'Play mode (student)', value: 'play' },
+                  { label: 'Edit mode (instructor)', value: 'edit' },
+                  { label: 'Review mode (feedback)', value: 'review' },
+                ]}
+              />
+              <span className="text-xs text-navy-900-72">
+                {canvasMode === 'play' && 'Play: move cards, draw/delete connections, card content is read-only.'}
+                {canvasMode === 'edit' && 'Edit: author cards, move, delete connections or cards.'}
+                {canvasMode === 'review' && 'Review: read-only feedback graph with status icons and text labels.'}
+              </span>
+            </div>
+
+            <div className="h-[520px] w-full">
+              <Suspense
+                fallback={
+                  <div className="h-full w-full flex items-center justify-center rounded-2xl border border-navy-900-12 bg-white">
+                    <Spinner label="Loading canvas board..." />
+                  </div>
+                }
+              >
+                <LazyCanvasBoard
+                  cards={demoCards}
+                  connections={canvasMode === 'review' ? [...demoConnections, { id: 'rizal-1->rizal-8', from: 'rizal-1', to: 'rizal-8' }] : demoConnections}
+                  mode={canvasMode}
+                  positions={demoPositions}
+                  statusByConnection={canvasMode === 'review' ? sampleReviewStatus : undefined}
+                  maxConnections={12}
+                  onConnectionsChange={setDemoConnections}
+                  onPositionsChange={setDemoPositions}
+                  onCardsChange={setDemoCards}
+                />
+              </Suspense>
             </div>
           </div>
         </SectionCard>

@@ -45,6 +45,10 @@ export function cardsToNodes(
       },
       width: CANVAS_CARD_WIDTH,
       height: CANVAS_CARD_HEIGHT,
+      measured: {
+        width: CANVAS_CARD_WIDTH,
+        height: CANVAS_CARD_HEIGHT,
+      },
       style: {
         width: CANVAS_CARD_WIDTH,
         height: CANVAS_CARD_HEIGHT,
