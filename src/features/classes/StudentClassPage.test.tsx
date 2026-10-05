@@ -22,6 +22,7 @@ vi.mock('./services/joinService', () => ({
 }))
 vi.mock('./services/classService', () => ({ watchClass: mocks.watchClass }))
 vi.mock('./services/quizService', () => ({ watchPublishedQuizzesForClass: mocks.watchQuizzes }))
+vi.mock('../quizzes/services/attemptService', () => ({ listUserAttempts: vi.fn(async () => []) }))
 
 const now = Timestamp.fromMillis(1_700_000_000_000)
 const classroom: ClassWithId = {
@@ -78,6 +79,7 @@ describe('student class page', () => {
     mocks.watchQuizzes.mockImplementation((_id: string, onChange: (items: QuizRecord[]) => void) => { onChange([quiz]); return () => undefined })
     renderPage()
     expect(await screen.findByRole('heading', { name: 'Cell basics' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to classes' })).toHaveAttribute('href', '/student')
     const start = screen.getByRole('link', { name: 'Start' })
     expect(start).toBeEnabled()
     fireEvent.click(start)

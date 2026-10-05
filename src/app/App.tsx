@@ -21,7 +21,7 @@ const QuizResultsPage = lazy(() => import('../features/quizzes/results/QuizResul
 function LegacyQuestionsRedirect() { const { quizId } = useParams(); return <Navigate replace to={`/instructor/quizzes/${quizId}?tab=questions`} /> }
 const StudentClassPage = lazy(() => import('../features/classes/StudentClassPage').then((module) => ({ default: module.StudentClassPage })))
 const JoinClassPage = lazy(() => import('../features/classes/JoinClassPage').then((module) => ({ default: module.JoinClassPage })))
-const StudentQuizCatalogPage = lazy(() => import('../features/studentQuizzes/StudentQuizCatalogPage').then((module) => ({ default: module.StudentQuizCatalogPage })))
+const StudentClassesPage = lazy(() => import('../features/classes/StudentClassesPage').then((module) => ({ default: module.StudentClassesPage })))
 const QuizIntroPage = lazy(() => import('../features/studentQuizzes/QuizIntroPage').then((module) => ({ default: module.QuizIntroPage })))
 const QuizTakingPage = lazy(() => import('../features/studentQuizzes/QuizTakingPage').then((module) => ({ default: module.QuizTakingPage })))
 const QuizResultPage = lazy(() => import('../features/studentQuizzes/QuizResultPage').then((module) => ({ default: module.QuizResultPage })))
@@ -48,7 +48,7 @@ export function AppRoutes() {
         <Route path="quizzes/:quizId/questions" element={<LegacyQuestionsRedirect />} />
         <Route path="quizzes/:quizId/results" element={<QuizResultsPage />} />
       </Route>
-      <Route path="/student" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentQuizCatalogPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
+      <Route path="/student" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentClassesPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentClassPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><QuizIntroPage /></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId/attempts/:attemptId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><QuizTakingPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
