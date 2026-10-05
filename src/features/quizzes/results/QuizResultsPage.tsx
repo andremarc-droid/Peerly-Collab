@@ -23,11 +23,11 @@ import { listEnrollments } from '../../classes/services/enrollmentService'
 import type { ClassWithId, EnrollmentWithId } from '../../classes/types'
 import { getQuiz, updateQuiz } from '../services/quizService'
 import { listQuizAttempts } from '../services/attemptService'
-import { getQuizResult } from '../services/resultService'
+import { listResults } from '../services/resultService'
 import { watchQuestionPairs, type SavedQuestion } from '../services/questionService'
 import type { QuizRecord } from '../services/quizService'
 import type { QuizResult } from '../types'
-import { buildRosterRows, isLate, resultsCsv, summarizeAttempts, typedWrongAnswerCounts, type AttemptResult, type ResultListRow } from './resultLogic'
+import { buildRosterRows, computeTimeSpent, isLate, resultsCsv, summarizeAttempts, typedWrongAnswerCounts, type AttemptResult, type ResultListRow } from './resultLogic'
 import { AttemptDetail } from './AttemptDetail'
 
 type SortMode = 'recent' | 'student' | 'score'
@@ -52,11 +52,19 @@ export function QuizResultsPage() {
     if (!user) return null
     const found = await getQuiz(quizId)
     if (!found || found.ownerId !== user.uid) throw new Error('These results are only available to the quiz owner.')
-    const [rawAttempts, rawQuestions] = await Promise.all([listQuizAttempts(quizId), new Promise<SavedQuestion[]>((resolve, reject) => {
-      let stop = () => {}
-      stop = watchQuestionPairs(quizId, (items) => { stop(); resolve(items) }, (reason) => { stop(); reject(reason) })
-    })])
-    const joined = await Promise.all(rawAttempts.map(async (attempt) => ({ ...attempt, result: attempt.status === 'submitted' ? await getQuizResult(quizId, attempt.id) : null })))
+    const [rawAttempts, rawResults, rawQuestions] = await Promise.all([
+      listQuizAttempts(quizId),
+      listResults(quizId),
+      new Promise<SavedQuestion[]>((resolve, reject) => {
+        let stop = () => {}
+        stop = watchQuestionPairs(quizId, (items) => { stop(); resolve(items) }, (reason) => { stop(); reject(reason) })
+      }),
+    ])
+    const resultsMap = new Map(rawResults.map((item) => [item.id, item]))
+    const joined = rawAttempts.map((attempt) => ({
+      ...attempt,
+      result: attempt.status === 'submitted' ? (resultsMap.get(attempt.id) ?? null) : null,
+    }))
     const [linkedClass, classEnrollments] = found.classId
       ? await Promise.all([getClass(found.classId), listEnrollments(found.classId, found.ownerId)])
       : [null, []]
@@ -120,7 +128,14 @@ export function QuizResultsPage() {
               return <div className="flex flex-wrap items-center gap-1.5"><Badge>{row.attempt.status === 'submitted' ? 'Submitted' : 'In progress'}</Badge>{lateInfo && lateInfo.late && <Badge className="inline-flex items-center gap-1"><Clock3 size={12} aria-hidden="true" /> Late</Badge>}</div>
             }, sortValue: (row) => row.attempt?.status ?? 'not started' },
             { key: 'score', header: 'Score', cell: (row) => row.attempt ? scoreLabel(row.attempt, quiz.mode === 'flashcards') : '—', sortValue: (row) => row.attempt?.result?.score ?? -1 },
-            { key: 'duration', header: 'Time spent', cell: (row) => row.attempt ? formatDuration(row.attempt.timeSpentSeconds) : '—', sortValue: (row) => row.attempt?.timeSpentSeconds ?? 0 },
+            { key: 'duration', header: 'Time spent', cell: (row) => {
+              if (!row.attempt || row.attempt.status !== 'submitted') return '—'
+              const seconds = computeTimeSpent(row.attempt.startedAt, row.attempt.submittedAt)
+              return seconds !== null ? formatDuration(seconds) : '—'
+            }, sortValue: (row) => {
+              if (!row.attempt || row.attempt.status !== 'submitted') return -1
+              return computeTimeSpent(row.attempt.startedAt, row.attempt.submittedAt) ?? -1
+            } },
             { key: 'submitted', header: 'Submitted', cell: (row) => {
               if (!row.attempt) return '—'
               const lateInfo = row.attempt.status === 'submitted' ? isLate(row.attempt.startedAt, row.attempt.submittedAt, quiz.settings.timeLimitMinutes) : { late: false, lateBySeconds: 0 }

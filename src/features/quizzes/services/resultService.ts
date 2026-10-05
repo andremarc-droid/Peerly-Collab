@@ -15,10 +15,12 @@ export async function listStudentResults(quizId: string, userId: string, db: Fir
   return snapshot.docs.map((item) => ({ ...parseQuizResult(item.data()), id: item.id }))
 }
 
-export async function listQuizResults(quizId: string, db: Firestore = firestore): Promise<Array<QuizResult & { id: string }>> {
-  const snapshot = await getDocs(query(collection(db, 'quizzes', quizId, 'results'), orderBy('gradedAt', 'desc')))
+export async function listResults(quizId: string, db: Firestore = firestore): Promise<Array<QuizResult & { id: string }>> {
+  const snapshot = await getDocs(collection(db, 'quizzes', quizId, 'results'))
   return snapshot.docs.map((item) => ({ ...parseQuizResult(item.data()), id: item.id }))
 }
+
+export const listQuizResults = listResults
 
 export async function overrideResult(
   quizId: string,

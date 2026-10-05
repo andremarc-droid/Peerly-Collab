@@ -9,7 +9,7 @@ import type { SavedQuestion } from '../services/questionService'
 import type { AttemptResult } from './resultLogic'
 
 const mocks = vi.hoisted(() => ({
-  getQuiz: vi.fn(), listQuizAttempts: vi.fn(), getQuizResult: vi.fn(), watchQuestionPairs: vi.fn(), getClass: vi.fn(), listEnrollments: vi.fn(),
+  getQuiz: vi.fn(), listQuizAttempts: vi.fn(), listResults: vi.fn(), getQuizResult: vi.fn(), watchQuestionPairs: vi.fn(), getClass: vi.fn(), listEnrollments: vi.fn(),
   updateQuiz: vi.fn(), setQuestionGradeOverride: vi.fn(), toast: vi.fn(),
 }))
 
@@ -18,7 +18,7 @@ vi.mock('../../../app/AppShell', () => ({ AppShell: ({ children }: { children: R
 vi.mock('../../../shared/ui/useToast', () => ({ useToast: () => ({ showToast: mocks.toast }) }))
 vi.mock('../services/quizService', () => ({ getQuiz: mocks.getQuiz, updateQuiz: mocks.updateQuiz }))
 vi.mock('../services/attemptService', () => ({ listQuizAttempts: mocks.listQuizAttempts }))
-vi.mock('../services/resultService', () => ({ getQuizResult: mocks.getQuizResult, setQuestionGradeOverride: mocks.setQuestionGradeOverride }))
+vi.mock('../services/resultService', () => ({ getQuizResult: mocks.getQuizResult, listResults: mocks.listResults, setQuestionGradeOverride: mocks.setQuestionGradeOverride }))
 vi.mock('../services/questionService', () => ({ watchQuestionPairs: mocks.watchQuestionPairs }))
 vi.mock('../../classes/services/classService', () => ({ getClass: mocks.getClass }))
 vi.mock('../../classes/services/enrollmentService', () => ({ listEnrollments: mocks.listEnrollments }))
@@ -26,7 +26,7 @@ vi.mock('../../classes/services/enrollmentService', () => ({ listEnrollments: mo
 const now = Timestamp.fromMillis(1000)
 const quiz = { id: 'quiz-1', ownerId: 'teacher', ownerName: 'Teacher', classId: 'class-1', title: 'Practice', description: '', tags: [], mode: 'quiz', status: 'published', questionCount: 1, createdAt: now, updatedAt: now, publishedAt: now, settings: { answerReveal: 'after_each', participation: { type: 'individual' }, scoreVisibility: 'after_release', scoresReleased: false, timeLimitMinutes: null, attemptsAllowed: 1, shuffleQuestions: false, shuffleOptions: false } }
 const question: SavedQuestion = { id: 'q1', question: { type: 'identification', prompt: 'Name a planet', points: 2, order: 0 }, answerKey: { type: 'identification', acceptedAnswers: ['Mars'], explanation: 'Mars is red.', caseSensitive: false } }
-const attempt: AttemptResult = { id: 'attempt-1', userId: 'student', userName: 'Sam Student', attemptNumber: 1, status: 'submitted', answers: { q1: 'Mars' }, questionOrder: ['q1'], optionOrder: {}, startedAt: now, submittedAt: now, timeSpentSeconds: 28, result: { userId: 'student', score: 2, maxScore: 2, perQuestion: { q1: { correct: true, pointsAwarded: 2, overridden: false } }, gradedAt: now } }
+const attempt: AttemptResult = { id: 'attempt-1', userId: 'student', userName: 'Sam Student', attemptNumber: 1, status: 'submitted', answers: { q1: 'Mars' }, questionOrder: ['q1'], optionOrder: {}, startedAt: now, submittedAt: Timestamp.fromMillis(71_000), timeSpentSeconds: 28, result: { userId: 'student', score: 2, maxScore: 2, perQuestion: { q1: { correct: true, pointsAwarded: 2, overridden: false } }, gradedAt: now } }
 
 function renderPage() {
   return render(<MemoryRouter initialEntries={['/instructor/quizzes/quiz-1/results']}><Routes><Route path="/instructor/quizzes/:quizId/results" element={<QuizResultsPage />} /></Routes></MemoryRouter>)
@@ -36,6 +36,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.getQuiz.mockResolvedValue(quiz)
   mocks.listQuizAttempts.mockResolvedValue([attempt])
+  mocks.listResults.mockResolvedValue(attempt.result ? [{ ...attempt.result, id: attempt.id }] : [])
   mocks.getQuizResult.mockResolvedValue(attempt.result)
   mocks.watchQuestionPairs.mockImplementation((_id: string, onChange: (items: typeof question[]) => void) => { onChange([question]); return vi.fn() })
   mocks.getClass.mockResolvedValue({ id: 'class-1', name: 'Science, North' })
@@ -46,15 +47,18 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('instructor quiz results page', () => {
-  it('shows class label, submission stats and attempt detail', async () => {
+  it('shows class label, submission stats and attempt detail with computed duration', async () => {
     renderPage()
     expect(await screen.findByText('Class · Science, North')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Submissions' })).toBeInTheDocument()
+    expect(mocks.listResults).toHaveBeenCalledWith('quiz-1')
+    expect(screen.getByText('1m 10s')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Review$/ }))
     expect(await screen.findByText('Student answer')).toBeInTheDocument()
     expect(screen.getByText('Correct answer')).toBeInTheDocument()
     expect(screen.getByRole('dialog')).toHaveTextContent('Student answerMars')
     expect(screen.getByRole('dialog')).toHaveTextContent('Correct answerMars')
+    expect(screen.getByText(/70 seconds/)).toBeInTheDocument()
   })
 
   it('confirms score release before updating settings', async () => {
@@ -82,6 +86,7 @@ describe('instructor quiz results page', () => {
     }
     mocks.getQuiz.mockResolvedValue({ ...quiz, settings: { ...quiz.settings, timeLimitMinutes: 10 } })
     mocks.listQuizAttempts.mockResolvedValue([lateAttempt])
+    mocks.listResults.mockResolvedValue(lateAttempt.result ? [{ ...lateAttempt.result, id: lateAttempt.id }] : [])
     mocks.getQuizResult.mockResolvedValue(lateAttempt.result)
     renderPage()
     expect(await screen.findByText('Late submissions')).toBeInTheDocument()

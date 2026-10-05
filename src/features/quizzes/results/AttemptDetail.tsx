@@ -8,7 +8,7 @@ import { useToast } from '../../../shared/ui/useToast'
 import { setQuestionGradeOverride } from '../services/resultService'
 import type { QuizResult } from '../types'
 import type { SavedQuestion } from '../services/questionService'
-import { isLate, type AttemptResult } from './resultLogic'
+import { computeTimeSpent, isLate, type AttemptResult } from './resultLogic'
 
 interface Props { quizId: string; attempt: AttemptResult; questions: SavedQuestion[]; ungraded: boolean; onGradeChanged: (result: QuizResult) => void; timeLimitMinutes?: number | null }
 
@@ -32,10 +32,12 @@ export function AttemptDetail({ quizId, attempt, questions, ungraded, onGradeCha
     finally { setBusy(null) }
   }
 
+  const timeSpent = attempt.status === 'submitted' ? computeTimeSpent(attempt.startedAt, attempt.submittedAt) : null
+
   return <div className="grid gap-4">
     <SectionCard
       title="Attempt summary"
-      description={`${attempt.submittedAt?.toDate().toLocaleString() ?? 'Submitted'} · ${attempt.timeSpentSeconds} seconds`}
+      description={`${attempt.submittedAt?.toDate().toLocaleString() ?? 'Submitted'} · ${timeSpent !== null ? `${timeSpent} seconds` : '—'}`}
       action={
         lateInfo.late ? (
           <span className="flex items-center gap-2">

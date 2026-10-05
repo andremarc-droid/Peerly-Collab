@@ -1,9 +1,10 @@
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { serverTimestamp, Timestamp, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { serverTimestamp, Timestamp, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore'
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import rules from '../../../firestore.rules?raw'
 import { isLate } from '../../features/quizzes/results/resultLogic'
+import { listResults } from '../../features/quizzes/services/resultService'
 
 const projectId = 'demo-peerly-collab'
 let environment: RulesTestEnvironment
@@ -198,6 +199,35 @@ describe('quiz Firestore rules', () => {
       await updateDoc(doc(db, 'quizzes/qz'), { settings: { ...settings, scoreVisibility: 'after_release', scoresReleased: true } })
     })
     await assertSucceeds(getDoc(doc(student, 'quizzes/qz/results/att')))
+  })
+
+  it('allows the quiz owner to list results and prevents students from listing results or another student’s results', async () => {
+    await seed({ visibility: 'immediate' })
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/qz/attempts/att-student'), attempt('student', 'submitted'))
+      await setDoc(doc(db, 'quizzes/qz/results/att-student'), result('student'))
+      await setDoc(doc(db, 'quizzes/qz/attempts/att-other'), attempt('other', 'submitted'))
+      await setDoc(doc(db, 'quizzes/qz/results/att-other'), result('other'))
+    })
+
+    const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+    const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
+
+    // 1. Owner can list all results for the quiz using listResults
+    const ownerResults = await assertSucceeds(listResults('qz', owner))
+    expect(ownerResults).toHaveLength(2)
+
+    // 2. Student cannot list results for the quiz using listResults
+    await assertFails(listResults('qz', student))
+
+    // 3. Student cannot list another student's results
+    await assertFails(getDocs(query(collection(student, 'quizzes/qz/results'), where('userId', '==', 'other'))))
+
+    // 4. Student can list only their own results
+    const studentResults = await assertSucceeds(getDocs(query(collection(student, 'quizzes/qz/results'), where('userId', '==', 'student'))))
+    expect(studentResults.docs).toHaveLength(1)
+    expect(studentResults.docs[0].id).toBe('att-student')
   })
 
   it('enforces attempt limits and synchronizes attemptNumber with participant attemptCount', async () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Timestamp } from 'firebase/firestore'
 import type { QuizAttempt, QuizResult } from '../types'
 import type { EnrollmentWithId } from '../../classes/types'
-import { applyQuestionOverride, bestAttempts, buildRosterRows, isLate, recalculateAutomaticGrade, resultsCsv, summarizeAttempts, type AttemptResult } from './resultLogic'
+import { applyQuestionOverride, bestAttempts, buildRosterRows, computeTimeSpent, csvCell, isLate, recalculateAutomaticGrade, resultsCsv, summarizeAttempts, type AttemptResult } from './resultLogic'
 
 const time = Timestamp.fromMillis(10)
 const baseAttempt: QuizAttempt = { userId: 'u1', userName: 'A "Student"', attemptNumber: 1, status: 'submitted', answers: { q: 'wrong' }, questionOrder: ['q'], optionOrder: {}, startedAt: time, submittedAt: time, timeSpentSeconds: 65 }
@@ -29,14 +29,79 @@ describe('quiz result logic', () => {
     expect(() => applyQuestionOverride(initial, 'q', 4, 3)).toThrow('between 0 and 3')
   })
 
-  it('exports one escaped CSV row per attempt', () => {
-    const csv = resultsCsv([row('attempt-1', 'u1', 8), { ...row('attempt-2', 'u2', 4, 1, 'in_progress'), submittedAt: null }], false, 'Science, "North"')
+  it('exports one escaped CSV row per attempt with server timestamp duration', () => {
+    const csv = resultsCsv([
+      { ...row('attempt-1', 'u1', 8), startedAt: Timestamp.fromMillis(10_000), submittedAt: Timestamp.fromMillis(75_000) },
+      { ...row('attempt-2', 'u2', 4, 1, 'in_progress'), startedAt: Timestamp.fromMillis(10_000), submittedAt: null },
+    ], false, 'Science, "North"')
     expect(csv.split('\r\n')).toHaveLength(3)
     expect(csv).toContain('"A ""Student"""')
     expect(csv).toContain('"Science, ""North"""')
     expect(csv).toContain('"8/10"')
+    expect(csv).toContain('"65"')
+    expect(csv).toContain('"—"')
     expect(csv).toContain('""')
   })
+
+  it('prevents CSV formula injection for names starting with =, +, -, @, tab, or carriage return while preserving numbers', () => {
+    const maliciousNames = [
+      '=HYPERLINK("http://evil","x")',
+      '+1+1',
+      '-2+3',
+      '@SUM(A1)',
+      '\tEvilTab',
+      '\rEvilCR',
+      'Normal, "Student"',
+    ]
+    const attempts = maliciousNames.map((name, index) => ({
+      ...row(`att-${index}`, `user-${index}`, 10),
+      userName: name,
+      startedAt: Timestamp.fromMillis(1_000_000),
+      submittedAt: Timestamp.fromMillis(1_065_000),
+    }))
+
+    const csv = resultsCsv(attempts, false, 'Class 101')
+
+    // 1. =HYPERLINK("http://evil","x") -> prefixed with single quote before quoting
+    expect(csv).toContain('"\'=HYPERLINK(""http://evil"",""x"")"')
+    // 2. +1+1 -> prefixed with single quote
+    expect(csv).toContain('"\'+1+1"')
+    // 3. -2+3 -> prefixed with single quote
+    expect(csv).toContain('"\'-2+3"')
+    // 4. @SUM(A1) -> prefixed with single quote
+    expect(csv).toContain('"\'@SUM(A1)"')
+    // 5. tab -> prefixed with single quote
+    expect(csv).toContain('"\'\tEvilTab"')
+    // 6. carriage return -> prefixed with single quote
+    expect(csv).toContain('"\'\rEvilCR"')
+    // 7. Normal name with comma and quotes -> no single quote prefix, properly escaped double quotes
+    expect(csv).toContain('"Normal, ""Student"""')
+    // 8. Numbers stay numbers
+    expect(csv).toContain('"65"')
+    expect(csv).toContain('"1"')
+
+    // csvCell unit tests
+    expect(csvCell('=FORMULA()')).toBe('"\'=FORMULA()"')
+    expect(csvCell('+1+1')).toBe('"\'+1+1"')
+    expect(csvCell('-2+3')).toBe('"\'-2+3"')
+    expect(csvCell('@SUM(A1)')).toBe('"\'@SUM(A1)"')
+    expect(csvCell('\ttab')).toBe('"\'\ttab"')
+    expect(csvCell('\rcarriage')).toBe('"\'\rcarriage"')
+    expect(csvCell('Normal, "Name"')).toBe('"Normal, ""Name"""')
+    expect(csvCell(42)).toBe('"42"')
+    expect(csvCell(0)).toBe('"0"')
+  })
+
+  it('computes time spent from server timestamps and handles missing timestamps', () => {
+    const started = Timestamp.fromMillis(10_000)
+    const submitted = Timestamp.fromMillis(75_000)
+    expect(computeTimeSpent(started, submitted)).toBe(65)
+    expect(computeTimeSpent(started, null)).toBeNull()
+    expect(computeTimeSpent(null, submitted)).toBeNull()
+    expect(computeTimeSpent(undefined, undefined)).toBeNull()
+    expect(computeTimeSpent(new Date(10_000), new Date(25_000))).toBe(15)
+  })
+
 
   it('includes enrolled students with no attempts and retains departed students’ attempts', () => {
     const enrollment = (uid: string, status: EnrollmentWithId['status'] = 'active'): EnrollmentWithId => ({

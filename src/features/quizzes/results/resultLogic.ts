@@ -30,6 +30,23 @@ export function bestAttempts(attempts: AttemptResult[]) {
   return [...best.values()]
 }
 
+export function computeTimeSpent(
+  startedAt: { toMillis?: () => number } | Date | number | null | undefined,
+  submittedAt: { toMillis?: () => number } | Date | number | null | undefined,
+): number | null {
+  if (!startedAt || !submittedAt) return null
+  const toMs = (val: { toMillis?: () => number } | Date | number): number | null => {
+    if (typeof val === 'number') return val
+    if (val instanceof Date) return val.getTime()
+    if (typeof val === 'object' && 'toMillis' in val && typeof val.toMillis === 'function') return val.toMillis()
+    return null
+  }
+  const startMs = toMs(startedAt)
+  const submitMs = toMs(submittedAt)
+  if (startMs === null || submitMs === null) return null
+  return Math.max(0, Math.floor((submitMs - startMs) / 1000))
+}
+
 export function isLate(
   startedAt: { toMillis?: () => number } | Date | number | null | undefined,
   submittedAt: { toMillis?: () => number } | Date | number | null | undefined,
@@ -39,18 +56,10 @@ export function isLate(
   if (timeLimitMinutes == null || timeLimitMinutes <= 0 || !startedAt || !submittedAt) {
     return { late: false, lateBySeconds: 0 }
   }
-  const toMs = (val: { toMillis?: () => number } | Date | number): number | null => {
-    if (typeof val === 'number') return val
-    if (val instanceof Date) return val.getTime()
-    if (typeof val === 'object' && 'toMillis' in val && typeof val.toMillis === 'function') return val.toMillis()
-    return null
-  }
-  const startMs = toMs(startedAt)
-  const submitMs = toMs(submittedAt)
-  if (startMs === null || submitMs === null) {
+  const elapsedSeconds = computeTimeSpent(startedAt, submittedAt)
+  if (elapsedSeconds === null) {
     return { late: false, lateBySeconds: 0 }
   }
-  const elapsedSeconds = Math.max(0, Math.floor((submitMs - startMs) / 1000))
   const limitSeconds = timeLimitMinutes * 60
   if (elapsedSeconds <= limitSeconds + graceSeconds) {
     return { late: false, lateBySeconds: 0 }
@@ -117,7 +126,14 @@ export function typedWrongAnswerCounts(input: {
   return [...counts].map(([answer, count]) => ({ answer, count })).sort((a, b) => b.count - a.count || a.answer.localeCompare(b.answer)).slice(0, 5)
 }
 
-const csvCell = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`
+export const csvCell = (value: string | number): string => {
+  if (typeof value === 'number') return `"${value}"`
+  const text = String(value)
+  const isFormula = /^[=+\-@\t\r]/.test(text)
+  const safeText = isFormula ? `'${text}` : text
+  return `"${safeText.replaceAll('"', '""')}"`
+}
+
 export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = '', timeLimitMinutes: number | null = null): string {
   const rows: Array<Array<string | number>> = [['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Score', 'Late', 'Time spent (seconds)', 'Submitted at']]
   for (const attempt of attempts) {
@@ -125,11 +141,15 @@ export function resultsCsv(attempts: AttemptResult[], ungraded = false, classNam
     const lateCell = attempt.status === 'submitted'
       ? (lateInfo.late ? `Late (${Math.max(1, Math.round(lateInfo.lateBySeconds / 60))} min)` : 'No')
       : '—'
+    const timeSpent = attempt.status === 'submitted'
+      ? computeTimeSpent(attempt.startedAt, attempt.submittedAt)
+      : null
     rows.push([
       attempt.userName, attempt.userId, className, attempt.attemptNumber, attempt.status,
       ungraded || !attempt.result ? 'Ungraded' : `${attempt.result.score}/${attempt.result.maxScore}`,
       lateCell,
-      attempt.timeSpentSeconds, attempt.submittedAt?.toDate().toISOString() ?? '',
+      timeSpent !== null ? timeSpent : '—',
+      attempt.submittedAt?.toDate().toISOString() ?? '',
     ])
   }
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n')
