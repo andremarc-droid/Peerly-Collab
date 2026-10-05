@@ -46,7 +46,13 @@
 .dialog__header p { font-size: 14px; }
 .dialog__actions { padding-top: 16px; border-top: 1px solid var(--color-navy-900-10); }
 .dialog__actions .button--secondary { margin-right: auto; }
-.button--destructive { display: inline-flex; align-items: center; gap: 8px; }
+.button--destructive { display: inline-flex; align-items: center; gap: 8px; border-color: var(--color-danger); color: var(--color-white); background: var(--color-danger); box-shadow: 0 2px 8px rgb(220 38 38 / 20%); }
+.button--destructive:hover:not(:disabled) { border-color: var(--color-danger-hover); color: var(--color-white); background: var(--color-danger-hover); box-shadow: 0 4px 12px rgb(185 28 28 / 28%); }
+.button--destructive:active:not(:disabled) { border-color: var(--color-danger-active); background: var(--color-danger-active); }
+.button--destructive:focus-visible { outline-color: var(--color-danger); }
+.button--secondary.button--destructive { border-color: var(--color-danger-border); color: var(--color-danger-hover); background: var(--color-white); box-shadow: none; }
+.button--secondary.button--destructive:hover:not(:disabled) { border-color: var(--color-danger); color: var(--color-white); background: var(--color-danger); }
+.button--secondary.button--destructive:active:not(:disabled) { border-color: var(--color-danger-active); color: var(--color-white); background: var(--color-danger-active); }
 .data-table { width: 100%; overflow: auto; border: 1px solid var(--color-navy-900-10); border-radius: 18px; background: var(--color-white); box-shadow: var(--shadow-sm); }
 .data-table:focus-visible { outline-offset: 3px; }
 .data-table table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
@@ -97,7 +103,12 @@
 .attempt-status { display: inline-flex; min-height: 36px; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--color-navy-900-10); border-radius: 999px; color: var(--color-navy-900); background: var(--color-white); font-size: 13px; font-weight: 700; }
 .attempt-status--correct { border-color: transparent; color: var(--color-feedback-success); background: var(--color-feedback-success-bg); }
 .attempt-status--incorrect { border-color: transparent; color: var(--color-feedback-error); background: var(--color-feedback-error-bg); }
-.danger-zone { border-color: var(--color-navy-800); box-shadow: inset 4px 0 var(--color-navy-800), var(--shadow-card); }
+.danger-zone { border-color: var(--color-danger-border); background: var(--color-danger-bg); box-shadow: inset 4px 0 var(--color-danger), var(--shadow-card); }
+.danger-zone .section-card__header { border-bottom: 1px solid var(--color-danger-border); }
+.danger-zone .section-card__icon { border-color: var(--color-danger); color: var(--color-white); background: var(--color-danger); box-shadow: 0 2px 8px rgb(220 38 38 / 25%); }
+.danger-zone .section-card__copy h2 { color: var(--color-danger-text); }
+.danger-zone .section-card__copy p { color: var(--color-danger-text); opacity: 0.85; }
+.danger-zone p { color: var(--color-navy-900); }
 .quiz-taking__card { border-color: var(--color-navy-900-10); box-shadow: var(--shadow-lg); }
 .quiz-taking__option { min-height: 56px; border: 1px solid var(--color-navy-900-12); border-radius: 16px; background: var(--color-white); transition: border-color 150ms ease-out, background-color 150ms ease-out, box-shadow 150ms ease-out; }
 .quiz-taking__option:has(input:checked) { border-color: var(--color-navy-800); background: var(--color-navy-900-08); box-shadow: inset 0 0 0 1px var(--color-navy-800); }

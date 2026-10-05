@@ -21,6 +21,12 @@
   --color-feedback-warning-bg: #f3eedf;
   --color-feedback-error: #743f46;
   --color-feedback-error-bg: #f2e6e7;
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-danger-active: #991b1b;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fca5a5;
+  --color-danger-text: #991b1b;
   --stripe: rgb(255 255 255 / 50%);
   --font-heading: "Outfit Variable", "Outfit", sans-serif;
   --font-sans: "Inter Variable", "Inter", sans-serif;
