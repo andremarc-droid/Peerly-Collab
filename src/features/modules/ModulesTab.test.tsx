@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   items: [] as Array<Record<string, unknown>>,
   create: vi.fn(async () => 'new-id'),
   reorder: vi.fn(async () => undefined),
+  error: null as Error | null,
 }))
 vi.mock('./services', () => ({
   createModule: mocks.create,
@@ -18,7 +19,11 @@ vi.mock('./services', () => ({
   publishModule: vi.fn(async () => undefined),
   unpublishModule: vi.fn(async () => undefined),
   reorderModules: mocks.reorder,
-  subscribeToModules: (_classId: string, _role: string, onChange: (items: unknown[]) => void) => { onChange(mocks.items); return () => undefined },
+  subscribeToModules: (_classId: string, _role: string, onChange: (items: unknown[]) => void, onError?: (err: Error) => void) => {
+    if (mocks.error) onError?.(mocks.error)
+    else onChange(mocks.items)
+    return () => undefined
+  },
 }))
 vi.mock('../../shared/ui/useToast', () => ({ useToast: () => ({ showToast: vi.fn() }) }))
 
@@ -28,7 +33,7 @@ const moduleItem = (id: string, order: number) => ({ id, classId: classroom.id, 
 function LocationText() { const location = useLocation(); return <p>{location.pathname + location.search}</p> }
 function renderTab() { return render(<MemoryRouter initialEntries={['/instructor/classes/class-1?tab=modules']}><Routes><Route path="/instructor/classes/class-1" element={<ModulesTab classroom={classroom} />} /><Route path="/instructor/classes/class-1/modules/:moduleId" element={<LocationText />} /></Routes></MemoryRouter>) }
 
-afterEach(() => { vi.clearAllMocks(); mocks.items = [] })
+afterEach(() => { vi.clearAllMocks(); mocks.items = []; mocks.error = null })
 afterEach(cleanup)
 
 describe('instructor modules list', () => {
@@ -57,5 +62,15 @@ describe('instructor modules list', () => {
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText(/Google Drive files themselves are not deleted/)).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Delete module' })).toBeInTheDocument()
+  })
+
+  it('shows only the error alert and not the empty state when loading modules fails', async () => {
+    mocks.error = new Error('Missing or insufficient permissions.')
+    renderTab()
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.getByText('Modules unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Missing or insufficient permissions.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.queryByText('Start with a module')).not.toBeInTheDocument()
   })
 })
