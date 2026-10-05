@@ -1,0 +1,354 @@
+@import "@xyflow/react/dist/style.css";
+
+/* ==========================================================================
+   Canvas Board Styles
+   Strict brand colors: navy and white with existing theme tokens.
+   ========================================================================== */
+
+.canvas-board-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 480px;
+  background-color: var(--color-white);
+  border-radius: 1.5rem;
+  overflow: hidden;
+  border: 1px solid var(--color-navy-900-12);
+  box-shadow: var(--shadow-sm);
+}
+
+.canvas-board-wrapper:focus-within {
+  border-color: var(--color-navy-800);
+}
+
+/* React Flow board container */
+.canvas-flow-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Node card shell */
+.canvas-node {
+  width: 180px;
+  height: 100px;
+  box-sizing: border-box;
+  background-color: var(--color-white);
+  border-radius: 1rem;
+  border: 1.5px solid var(--color-navy-900-12);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  user-select: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  overflow: visible; /* To allow handles to be positioned on borders */
+}
+
+.canvas-node:hover {
+  border-color: var(--color-navy-800);
+  box-shadow: var(--shadow-md);
+}
+
+.canvas-node.is-selected,
+.canvas-node:focus-visible,
+.canvas-node:focus-within {
+  outline: none;
+  border-color: var(--color-navy-700);
+  box-shadow: 0 0 0 2px var(--color-white), 0 0 0 4px var(--color-navy-800);
+}
+
+/* Inner content area with clamped scroll */
+.canvas-node__body {
+  width: 100%;
+  height: 100%;
+  padding: 0.625rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: calc(1rem - 1.5px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollbar styling for clamped node content */
+.canvas-node__body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.canvas-node__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.canvas-node__body::-webkit-scrollbar-thumb {
+  background: var(--color-navy-900-12);
+  border-radius: 2px;
+}
+
+.canvas-node__body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-navy-900-22);
+}
+
+/* Note Card: Sticky note style */
+.canvas-node--note {
+  background: linear-gradient(180deg, var(--color-white) 0%, rgba(245, 246, 255, 0.8) 100%);
+  border-left: 3px solid var(--color-navy-800);
+}
+
+.canvas-node__title {
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-navy-900);
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-node__text {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--color-navy-900-88);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Paragraph Card */
+.canvas-node--paragraph .canvas-node__text {
+  font-size: 0.7rem;
+  color: var(--color-navy-900);
+}
+
+/* Link Card */
+.canvas-node--link .canvas-node__host {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--color-navy-800);
+  text-decoration: none;
+  margin-top: auto;
+  padding-top: 0.25rem;
+}
+
+.canvas-node--link .canvas-node__host:hover,
+.canvas-node--link .canvas-node__host:focus-visible {
+  text-decoration: underline;
+  color: var(--color-navy-700);
+}
+
+/* Image Card */
+.canvas-node--image .canvas-node__body {
+  padding: 0.25rem;
+}
+
+.canvas-node__image-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background-color: var(--color-navy-700-05);
+}
+
+.canvas-node__iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+
+.canvas-node__image-fallback {
+  position: absolute;
+  bottom: 0.25rem;
+  right: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 500;
+  background-color: var(--color-white);
+  color: var(--color-navy-900);
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.25rem;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-navy-900-12);
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.canvas-node__image-fallback:hover,
+.canvas-node__image-fallback:focus-visible {
+  opacity: 1;
+  background-color: var(--color-navy-800);
+  color: var(--color-white);
+}
+
+/* Handles: 24px minimum hit area, centered indicator */
+.canvas-handle {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 9999px !important;
+  background: transparent !important;
+  border: none !important;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 10;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Visual indicator inside the 24px hit area */
+.canvas-handle::after {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background-color: var(--color-navy-900);
+  border: 1.5px solid var(--color-white);
+  box-shadow: 0 0 0 1px var(--color-navy-900-22);
+  transition: transform 0.1s ease, background-color 0.1s ease;
+}
+
+.canvas-handle:hover::after,
+.canvas-handle:focus-visible::after {
+  transform: scale(1.35);
+  background-color: var(--color-navy-700);
+}
+
+/* Handles visible on hover, focus-within, or touch */
+.canvas-node:hover .canvas-handle,
+.canvas-node:focus-within .canvas-handle,
+.canvas-handle:focus-visible,
+.canvas-handle:active {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .canvas-handle {
+    opacity: 0.75;
+  }
+}
+
+/* Handle positions adjusting for 24px hit box centering */
+.canvas-handle--top {
+  top: -12px !important;
+}
+
+.canvas-handle--right {
+  right: -12px !important;
+}
+
+.canvas-handle--bottom {
+  bottom: -12px !important;
+}
+
+.canvas-handle--left {
+  left: -12px !important;
+}
+
+/* Custom Edge */
+.canvas-edge__path {
+  stroke: var(--color-navy-900);
+  stroke-width: 2;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+}
+
+.canvas-edge__path.is-selected {
+  stroke: var(--color-navy-700);
+  stroke-width: 3.5;
+}
+
+.canvas-edge__path--correct {
+  stroke: var(--color-feedback-success) !important;
+}
+
+.canvas-edge__path--missed {
+  stroke: var(--color-navy-800-72) !important;
+  stroke-dasharray: 6 4;
+}
+
+.canvas-edge__path--wrong {
+  stroke: var(--color-danger) !important;
+}
+
+/* Edge status label badges in review mode */
+.canvas-edge-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: var(--shadow-sm);
+  pointer-events: all;
+  background-color: var(--color-white);
+  border: 1px solid currentColor;
+}
+
+.canvas-edge-badge--correct {
+  color: var(--color-feedback-success);
+  background-color: var(--color-feedback-success-bg);
+  border-color: var(--color-feedback-success);
+}
+
+.canvas-edge-badge--missed {
+  color: var(--color-navy-900);
+  background-color: var(--color-white);
+  border-color: var(--color-navy-900-22);
+}
+
+.canvas-edge-badge--wrong {
+  color: var(--color-danger-text);
+  background-color: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+}
+
+/* Control buttons: 44px touch targets */
+.canvas-controls-button {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  border-radius: 0.75rem !important;
+  background-color: var(--color-white) !important;
+  color: var(--color-navy-900) !important;
+  border: 1px solid var(--color-navy-900-12) !important;
+  box-shadow: var(--shadow-sm) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer;
+}
+
+.canvas-controls-button:hover {
+  background-color: rgba(245, 246, 255, 0.9) !important;
+  color: var(--color-navy-800) !important;
+}
+
+.canvas-controls-button:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--color-white), 0 0 0 4px var(--color-navy-800) !important;
+}
+
+/* Minimap responsiveness: hidden below 768px */
+@media (max-width: 767px) {
+  .canvas-minimap {
+    display: none !important;
+  }
+}
+
+/* Keep React Flow attribution visible per instructions */
+.react-flow__attribution {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 0.8 !important;
+}
