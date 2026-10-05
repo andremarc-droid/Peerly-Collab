@@ -64,12 +64,14 @@ export function parseEnrollment(value: unknown): EnrollmentRecord {
   const item = data(value, 'enrollment')
   exactKeys(item, enrollmentKeys, 'enrollment')
   const photo = item.studentPhotoURL
-  if (photo !== null && typeof photo !== 'string') throw new ClassValidationError('studentPhotoURL must be a string or null')
+  if (photo !== null && (typeof photo !== 'string' || photo.length > 2000)) throw new ClassValidationError('studentPhotoURL must be a string under 2000 characters or null')
+  const studentName = text(item.studentName, 'studentName')
+  if (studentName.length > 120) throw new ClassValidationError('studentName must not exceed 120 characters')
   const codeUsed = text(item.codeUsed, 'codeUsed')
   if (!isValidJoinCode(codeUsed)) throw new ClassValidationError('codeUsed must be a valid join code')
   return {
     classId: text(item.classId, 'classId'), ownerId: text(item.ownerId, 'ownerId'), uid: text(item.uid, 'uid'),
-    studentName: text(item.studentName, 'studentName'), studentPhotoURL: photo,
+    studentName, studentPhotoURL: photo,
     className: text(item.className, 'className'), status: oneOf(item.status, ['active', 'pending', 'blocked'] as const satisfies readonly EnrollmentStatus[], 'status'),
     codeUsed, joinedAt: timestamp(item.joinedAt, 'joinedAt'), updatedAt: timestamp(item.updatedAt, 'updatedAt'),
   }

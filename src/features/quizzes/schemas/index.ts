@@ -76,10 +76,15 @@ export function parseQuiz(value: unknown): Quiz {
   exactKeys(quiz, quizKeys, 'quiz')
   const mode = oneOf(quiz.mode, ['quiz', 'flashcards'] as const, 'mode')
   if (!Array.isArray(quiz.tags) || !quiz.tags.every((tag) => typeof tag === 'string')) throw new DomainValidationError('tags must be a list of strings')
+  if (quiz.tags.length > 20) throw new DomainValidationError('tags must not exceed 20 items')
+  const title = string(quiz.title, 'title', true)
+  if (title.length > 200) throw new DomainValidationError('title must not exceed 200 characters')
+  const description = string(quiz.description, 'description', true)
+  if (description.length > 2000) throw new DomainValidationError('description must not exceed 2000 characters')
   return {
     ownerId: string(quiz.ownerId, 'ownerId'), ownerName: string(quiz.ownerName, 'ownerName'),
     classId: quiz.classId === undefined || quiz.classId === null ? null : string(quiz.classId, 'classId'),
-    title: string(quiz.title, 'title', true), description: string(quiz.description, 'description', true),
+    title, description,
     tags: quiz.tags as string[], mode, status: oneOf(quiz.status, ['draft', 'published', 'archived'] as const, 'status'),
     questionCount: integer(quiz.questionCount, 'questionCount'), createdAt: timestamp(quiz.createdAt, 'createdAt'),
     updatedAt: timestamp(quiz.updatedAt, 'updatedAt'),
@@ -93,14 +98,18 @@ export function parseQuestion(value: unknown): QuizQuestion {
   const type = oneOf(question.type, ['multiple_choice', 'true_false', 'identification', 'fill_blank', 'flashcard'] as const, 'question.type')
   const hasOptions = type === 'multiple_choice' || type === 'true_false'
   exactKeys(question, hasOptions ? ['order', 'type', 'prompt', 'options', 'points'] : ['order', 'type', 'prompt', 'points'], 'question')
-  const base = { order: integer(question.order, 'order'), prompt: string(question.prompt, 'prompt'), points: integer(question.points, 'points', 1) }
+  const prompt = string(question.prompt, 'prompt')
+  if (prompt.length > 2000) throw new DomainValidationError('prompt must not exceed 2000 characters')
+  const base = { order: integer(question.order, 'order'), prompt, points: integer(question.points, 'points', 1) }
   if (type === 'identification' || type === 'fill_blank' || type === 'flashcard') return { ...base, type }
   if (!Array.isArray(question.options) || question.options.length < 2 || question.options.length > 6) throw new DomainValidationError(`${type} requires 2–6 options`)
   if (type === 'true_false' && question.options.length !== 2) throw new DomainValidationError('true_false requires exactly two options')
   const options = question.options.map((item, index) => {
     const option = record(item, `options[${index}]`)
     exactKeys(option, ['id', 'text'], 'option')
-    return { id: string(option.id, 'option.id'), text: string(option.text, 'option.text') }
+    const text = string(option.text, 'option.text')
+    if (text.length > 500) throw new DomainValidationError('option text must not exceed 500 characters')
+    return { id: string(option.id, 'option.id'), text }
   })
   if (new Set(options.map(({ id }) => id)).size !== options.length) throw new DomainValidationError('Option ids must be unique')
   return { ...base, type, options }
@@ -147,6 +156,7 @@ export function parseQuizAttempt(value: unknown): QuizAttempt {
   const attempt = record(value, 'attempt')
   exactKeys(attempt, ['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds'], 'attempt')
   const answers = record(attempt.answers, 'answers')
+  if (Object.keys(answers).length > 200) throw new DomainValidationError('answers must not exceed 200 items')
   for (const [id, answer] of Object.entries(answers)) {
     string(id, 'answer question id')
     if (typeof answer !== 'string' && !(Array.isArray(answer) && answer.every((item) => typeof item === 'string'))) throw new DomainValidationError('answers must be strings or lists of strings')

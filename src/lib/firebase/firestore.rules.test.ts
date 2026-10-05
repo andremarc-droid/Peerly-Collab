@@ -1,5 +1,5 @@
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore'
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, it } from 'vitest'
 import rules from '../../../firestore.rules?raw'
@@ -81,6 +81,7 @@ describe('Firestore security rules', () => {
     })
     const other = testEnvironment.authenticatedContext('sam').firestore()
     await assertSucceeds(getDoc(doc(other, 'publicProfiles/alex')))
+    await assertFails(getDocs(collection(other, 'publicProfiles')))
     await assertFails(updateDoc(doc(other, 'publicProfiles/alex'), { name: 'Sam' }))
     await assertFails(getDoc(doc(testEnvironment.unauthenticatedContext().firestore(), 'publicProfiles/alex')))
 

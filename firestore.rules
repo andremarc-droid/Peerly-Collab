@@ -227,7 +227,8 @@ service cloud.firestore {
     }
 
     match /publicProfiles/{userId} {
-      allow read: if signedIn();
+      allow get: if signedIn();
+      allow list: if false;
       allow create, update: if signedIn() && request.auth.uid == userId
         && request.resource.data.keys().hasOnly(['name', 'photoURL', 'updatedAt']);
       allow delete: if signedIn() && request.auth.uid == userId;
@@ -376,7 +377,10 @@ service cloud.firestore {
               && data.type in ['drive', 'youtube', 'link', 'text'] && data.title is string && data.title.size() > 0 && data.title.size() <= 120
               && data.order is number && data.createdAt is timestamp && data.updatedAt is timestamp
               && (data.type == 'text' ? data.get('body', null) is string && data.get('body', '').size() <= 5000
-                : data.get('url', null) is string && data.get('url', '').size() <= 2000 && data.get('url', '').matches('^https://[^ ]+$'))
+                : data.get('url', null) is string && data.get('url', '').size() <= 2000
+                  && ((data.type == 'link' && data.get('url', '').matches('^https://[^ ]+$'))
+                    || (data.type == 'drive' && data.get('url', '').matches('^https://(drive|docs)\\.google\\.com/.*'))
+                    || (data.type == 'youtube' && data.get('url', '').matches('^https://(www\\.)?(youtube\\.com|youtu\\.be|youtube-nocookie\\.com)/.*'))))
               && (data.type != 'drive' || (data.get('driveFileId', null) is string && data.get('driveKind', null) in ['file', 'doc', 'sheet', 'slides']))
               && (data.type != 'youtube' || data.get('youtubeVideoId', null) is string);
           }
@@ -392,7 +396,12 @@ service cloud.firestore {
     match /classCodes/{code} {
       allow get: if signedIn();
       allow list: if false;
-      allow create, update: if isInstructor()
+      allow create: if isInstructor()
+        && validClassCode(request.resource.data, code)
+        && classCodeMatchesClass(request.resource.data, code, request.resource.data.classId);
+      allow update: if isInstructor()
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.classId == request.resource.data.classId
         && validClassCode(request.resource.data, code)
         && classCodeMatchesClass(request.resource.data, code, request.resource.data.classId);
       allow delete: if isInstructor() && resource.data.ownerId == request.auth.uid;
@@ -411,8 +420,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['classId', 'ownerId', 'uid', 'studentName', 'studentPhotoURL', 'className', 'status', 'codeUsed', 'joinedAt', 'updatedAt'])
         && request.resource.data.keys().hasAll(['classId', 'ownerId', 'uid', 'studentName', 'studentPhotoURL', 'className', 'status', 'codeUsed', 'joinedAt', 'updatedAt'])
         && request.resource.data.classId is string && request.resource.data.ownerId is string
-        && request.resource.data.studentName is string
-        && (request.resource.data.studentPhotoURL == null || request.resource.data.studentPhotoURL is string)
+        && request.resource.data.studentName is string && request.resource.data.studentName.size() > 0 && request.resource.data.studentName.size() <= 120
+        && (request.resource.data.studentPhotoURL == null || (request.resource.data.studentPhotoURL is string && request.resource.data.studentPhotoURL.size() <= 2000))
         && request.resource.data.className is string && validJoinCode(request.resource.data.codeUsed)
         && request.resource.data.joinedAt is timestamp && request.resource.data.updatedAt is timestamp
         && exists(/databases/$(database)/documents/classes/$(request.resource.data.classId))
@@ -480,8 +489,10 @@ service cloud.firestore {
     function validQuiz(data) {
       return data.keys().hasOnly(['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings'])
         && data.keys().hasAll(['ownerId', 'ownerName', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings'])
-        && data.ownerId is string && data.ownerName is string && data.title is string && data.description is string
-        && data.tags is list && data.mode in ['quiz', 'flashcards']
+        && data.ownerId is string && data.ownerName is string
+        && data.title is string && data.title.size() <= 200
+        && data.description is string && data.description.size() <= 2000
+        && data.tags is list && data.tags.size() <= 20 && data.mode in ['quiz', 'flashcards']
         && data.status in ['draft', 'published', 'archived']
         && (!data.keys().hasAny(['classId']) || data.classId is string)
         && data.questionCount is int && data.questionCount >= 0
@@ -490,15 +501,34 @@ service cloud.firestore {
         && validQuizSettings(data.settings, data.mode);
     }
 
+    function validOptionItem(item) {
+      return item is map
+        && item.keys().hasOnly(['id', 'text'])
+        && item.keys().hasAll(['id', 'text'])
+        && item.id is string
+        && item.text is string
+        && item.text.size() <= 500;
+    }
+
+    function validOptionsList(options) {
+      return validOptionItem(options[0])
+        && validOptionItem(options[1])
+        && (options.size() < 3 || validOptionItem(options[2]))
+        && (options.size() < 4 || validOptionItem(options[3]))
+        && (options.size() < 5 || validOptionItem(options[4]))
+        && (options.size() < 6 || validOptionItem(options[5]));
+    }
+
     function validQuestion(data) {
       return data.keys().hasOnly(['order', 'type', 'prompt', 'options', 'points'])
         && data.keys().hasAll(['order', 'type', 'prompt', 'points'])
         && data.order is int && data.order >= 0
         && data.type in ['multiple_choice', 'true_false', 'identification', 'fill_blank', 'flashcard']
-        && data.prompt is string && data.points is int && data.points > 0
+        && data.prompt is string && data.prompt.size() <= 2000 && data.points is int && data.points > 0
         && ((data.type == 'multiple_choice' || data.type == 'true_false')
           ? data.keys().hasAll(['options']) && data.options is list && data.options.size() >= 2 && data.options.size() <= 6
             && (data.type != 'true_false' || data.options.size() == 2)
+            && validOptionsList(data.options)
           : !data.keys().hasAny(['options']));
     }
 
@@ -528,7 +558,7 @@ service cloud.firestore {
         && data.userId is string && data.userName is string
         && data.attemptNumber is int && data.attemptNumber > 0
         && data.status in ['in_progress', 'submitted']
-        && data.answers is map && data.questionOrder is list && data.optionOrder is map
+        && data.answers is map && data.answers.size() <= 200 && data.questionOrder is list && data.optionOrder is map
         && data.startedAt is timestamp
         && (data.submittedAt == null || data.submittedAt is timestamp)
         && data.timeSpentSeconds is int && data.timeSpentSeconds >= 0;
@@ -612,6 +642,8 @@ service cloud.firestore {
           && ((resource.data.activeAttemptId == null
               && request.resource.data.activeAttemptId is string
               && request.resource.data.attemptCount == resource.data.attemptCount + 1
+              && (get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.attemptsAllowed == null
+                || request.resource.data.attemptCount <= get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.attemptsAllowed)
               && existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/attempts/$(request.resource.data.activeAttemptId))
               && getAfter(/databases/$(database)/documents/quizzes/$(quizId)/attempts/$(request.resource.data.activeAttemptId)).data.userId == uid
               && getAfter(/databases/$(database)/documents/quizzes/$(quizId)/attempts/$(request.resource.data.activeAttemptId)).data.status == 'in_progress')
@@ -628,8 +660,10 @@ service cloud.firestore {
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.status == 'in_progress'
           && request.resource.data.submittedAt == null
+          && request.resource.data.startedAt == request.time
           && existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid))
           && getAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid)).data.activeAttemptId == attemptId
+          && request.resource.data.attemptNumber == getAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid)).data.attemptCount
           && validAttempt(request.resource.data);
         allow update: if isStudent() && quizPublished(quizId) && resource.data.userId == request.auth.uid
           && resource.data.status == 'in_progress'
@@ -639,7 +673,9 @@ service cloud.firestore {
           && validAttempt(request.resource.data)
           && (request.resource.data.status == 'in_progress' || request.resource.data.submittedAt is timestamp)
           && (request.resource.data.status != 'submitted'
-            || (existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid))
+            || ((get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.timeLimitMinutes == null
+                || request.time <= resource.data.startedAt + duration.value(get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.timeLimitMinutes * 60 + 120, 's'))
+              && existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid))
               && getAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid)).data.activeAttemptId == null
               && existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/results/$(attemptId))));
         allow delete: if quizOwner(quizId);

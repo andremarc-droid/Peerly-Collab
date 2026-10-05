@@ -1,5 +1,5 @@
 import {
-  collection, doc, getDoc, getDocs, orderBy, query, runTransaction, Timestamp, where,
+  collection, doc, getDoc, getDocs, orderBy, query, runTransaction, serverTimestamp, Timestamp, where,
   type Firestore,
 } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
@@ -38,14 +38,13 @@ export async function startAttempt(quizId: string, userId: string, userName: str
     for (const { id, question } of ordered) {
       if ('options' in question) optionOrder[id] = quiz.settings.shuffleOptions ? shuffle(question.options).map(({ id: optionId }) => optionId) : question.options.map(({ id: optionId }) => optionId)
     }
-    const now = Timestamp.now()
-    const next: QuizAttempt = {
-      userId, userName, attemptNumber: attemptCount + 1, status: 'in_progress', answers: {},
-      questionOrder: ordered.map(({ id }) => id), optionOrder, startedAt: now, submittedAt: null, timeSpentSeconds: 0,
+    const next = {
+      userId, userName, attemptNumber: attemptCount + 1, status: 'in_progress' as const, answers: {},
+      questionOrder: ordered.map(({ id }) => id), optionOrder, startedAt: serverTimestamp(), submittedAt: null, timeSpentSeconds: 0,
     }
     transaction.set(attempt, next)
     transaction.set(participant, {
-      userId, userName, createdAt: priorParticipant?.createdAt ?? now, updatedAt: now,
+      userId, userName, createdAt: priorParticipant?.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp(),
       attemptCount: attemptCount + 1, activeAttemptId: attempt.id,
     })
   })
@@ -65,6 +64,7 @@ export async function autosaveAnswers(
     const attempt = parseQuizAttempt(snapshot.data())
     if (attempt.status !== 'in_progress') throw new Error('Submitted attempts cannot be changed')
     const answers = { ...attempt.answers, ...answerPatch }
+    if (Object.keys(answers).length > 200) throw new Error('Answers map cannot exceed 200 items')
     transaction.update(ref, { answers })
   })
 }

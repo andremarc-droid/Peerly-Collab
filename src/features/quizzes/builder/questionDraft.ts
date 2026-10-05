@@ -31,9 +31,11 @@ export function validateQuestionDraft(draft: QuestionDraft, mode: QuizMode): Que
   const errors: QuestionErrors = {}
   if ((mode === 'flashcards') !== (draft.type === 'flashcard')) errors.type = 'Question type must match the quiz format.'
   if (!draft.prompt.trim()) errors.prompt = 'Enter a prompt.'
+  else if (draft.prompt.trim().length > 2000) errors.prompt = 'Keep prompt under 2000 characters.'
   if (!/^\d+$/.test(draft.points) || Number(draft.points) < 1) errors.points = 'Points must be a whole number of at least 1.'
   if (draft.type === 'multiple_choice' || draft.type === 'true_false') {
     if (draft.options.length < 2 || draft.options.length > 6 || draft.options.some((option) => !option.text.trim())) errors.options = 'Add 2–6 non-empty options.'
+    else if (draft.options.some((option) => option.text.trim().length > 500)) errors.options = 'Keep option text under 500 characters.'
     else if (draft.options.filter((option) => option.correct).length !== 1) errors.options = 'Mark the correct option.'
   }
   if (draft.type === 'identification' && !draft.acceptedAnswers.split('\n').some((answer) => answer.trim())) errors.acceptedAnswers = 'Add at least one accepted answer.'

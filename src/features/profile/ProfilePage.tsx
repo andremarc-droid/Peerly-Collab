@@ -40,6 +40,10 @@ export function ProfilePage() {
       setNameError('Enter your name.')
       return
     }
+    if (normalizedName.length > 120) {
+      setNameError('Keep your name under 120 characters.')
+      return
+    }
     if (!user) return
     setBusy(true)
     setRequestError(null)
@@ -80,7 +84,7 @@ export function ProfilePage() {
         {notice && <Alert tone="success" label="Saved">{notice}</Alert>}
         <form className="auth-form profile-form" onSubmit={handleSave}>
           <div className="profile-details">
-            <Input label="Display name" name="display-name" autoComplete="name" value={name} onChange={(event) => { setEditedName(event.target.value); setNameError(undefined); setNotice(null) }} error={nameError} disabled={busy} />
+            <Input label="Display name" name="display-name" autoComplete="name" maxLength={120} value={name} onChange={(event) => { setEditedName(event.target.value); setNameError(undefined); setNotice(null) }} error={nameError} disabled={busy} />
             <Input label="Email address" name="email" type="email" value={profile.email ?? user.email ?? ''} readOnly />
             <div className="profile-role" aria-label="Account role, read only"><span>Account role</span><strong>{profile.role === 'instructor' ? 'Instructor' : 'Student'}</strong><small>Role can’t be changed from profile settings.</small></div>
           </div>

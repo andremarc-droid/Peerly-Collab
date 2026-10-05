@@ -131,4 +131,69 @@ describe('module access rules and query proofs', () => {
     for (let index = 0; index < 3; index += 1) batch.set(doc(owner, `classes/class-a/modules/multi/resources/r${index}`), { type: 'text', title: `Notes ${index}`, body: 'Text', order: index, createdAt: now, updatedAt: now })
     await assertSucceeds(batch.commit())
   })
+
+  it('validates resource host URLs strictly for drive, youtube, and generic links', async () => {
+    const owner = environment.authenticatedContext('owner').firestore()
+    const now = new Date()
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc('classes/class-a/modules/url-tests').set({
+        ownerId: 'owner', title: 'URL tests', description: '', order: 5, status: 'draft', quizIds: [], resourceCount: 0, createdAt: now, updatedAt: now, publishedAt: null,
+      })
+    })
+
+    const testUrl = async (type: 'drive' | 'youtube' | 'link', url: string, shouldPass: boolean) => {
+      const extraFields = type === 'drive'
+        ? { driveFileId: 'abc1234567', driveKind: 'doc' as const }
+        : type === 'youtube'
+          ? { youtubeVideoId: '12345678901' }
+          : {}
+      const batch = writeBatch(owner)
+      batch.update(doc(owner, 'classes/class-a/modules/url-tests'), { resourceCount: 1 })
+      batch.set(doc(owner, 'classes/class-a/modules/url-tests/resources/r0'), {
+        type, title: 'Resource', order: 0, url, createdAt: now, updatedAt: now, ...extraFields,
+      })
+      if (shouldPass) {
+        await assertSucceeds(batch.commit())
+        const cleanup = writeBatch(owner)
+        cleanup.delete(doc(owner, 'classes/class-a/modules/url-tests/resources/r0'))
+        cleanup.update(doc(owner, 'classes/class-a/modules/url-tests'), { resourceCount: 0 })
+        await cleanup.commit()
+      } else {
+        await assertFails(batch.commit())
+      }
+    }
+
+    // Drive allowed
+    await testUrl('drive', 'https://drive.google.com/file/d/123/view', true)
+    await testUrl('drive', 'https://docs.google.com/document/d/123/edit', true)
+
+    // Drive denied lookalikes and invalid hosts
+    await testUrl('drive', 'https://drive.google.com.evil.com/file', false)
+    await testUrl('drive', 'https://docs.google.com.evil.com/doc', false)
+    await testUrl('drive', 'https://evil.com/drive.google.com/file', false)
+    await testUrl('drive', 'http://drive.google.com/file', false)
+
+    // YouTube allowed
+    await testUrl('youtube', 'https://www.youtube.com/watch?v=123', true)
+    await testUrl('youtube', 'https://youtube.com/watch?v=123', true)
+    await testUrl('youtube', 'https://youtu.be/123', true)
+    await testUrl('youtube', 'https://www.youtube-nocookie.com/embed/123', true)
+    await testUrl('youtube', 'https://youtube-nocookie.com/embed/123', true)
+
+    // YouTube denied lookalikes and invalid hosts
+    await testUrl('youtube', 'https://youtube.com.evil.com/video', false)
+    await testUrl('youtube', 'https://youtu.be.evil.com/video', false)
+    await testUrl('youtube', 'https://youtube-nocookie.com.evil.com/embed/123', false)
+    await testUrl('youtube', 'https://evil.com/youtube.com/watch', false)
+    await testUrl('youtube', 'http://youtube.com/watch?v=123', false)
+
+    // Link allowed (any https URL)
+    await testUrl('link', 'https://example.com/notes', true)
+    await testUrl('link', 'https://my-school.edu/guide.pdf', true)
+
+    // Link denied (non-https)
+    await testUrl('link', 'http://example.com/insecure', false)
+    await testUrl('link', 'javascript:alert(1)', false)
+  })
 })

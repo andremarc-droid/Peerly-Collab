@@ -1,5 +1,5 @@
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { Timestamp, collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore'
+import { Timestamp, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, it } from 'vitest'
 import rules from '../../../../firestore.rules?raw'
@@ -33,6 +33,7 @@ async function seed(overrides: { class?: Record<string, unknown>; code?: Record<
     const db = context.firestore()
     await Promise.all([
       setDoc(doc(db, 'users/teacher'), { uid: 'teacher', role: 'instructor' }),
+      setDoc(doc(db, 'users/teacherB'), { uid: 'teacherB', role: 'instructor' }),
       setDoc(doc(db, 'users/student'), { uid: 'student', role: 'student' }),
       setDoc(doc(db, 'users/other'), { uid: 'other', role: 'student' }),
       setDoc(doc(db, 'users/other2'), { uid: 'other2', role: 'student' }),
@@ -131,4 +132,71 @@ describe('classroom Firestore rules', () => {
     await assertFails(setDoc(doc(db, 'quizzes/legacy'), { ...legacy, status: 'published', publishedAt: now }))
   })
 
+  it('prevents classCodes hijack and allows legitimate code lifecycle operations', async () => {
+    await seed()
+    const teacherB = environment.authenticatedContext('teacherB').firestore()
+    const owner = environment.authenticatedContext('teacher').firestore()
+
+    // 1. Instructor B cannot overwrite instructor A's classCodes document by creating a class with the same joinCode
+    const hijackBatch = writeBatch(teacherB)
+    hijackBatch.set(doc(teacherB, 'classes/classB'), classData({ ownerId: 'teacherB', ownerName: 'Teacher B', name: 'Science', joinCode: 'ABC234' }))
+    hijackBatch.set(doc(teacherB, 'classCodes/ABC234'), codeData({ classId: 'classB', ownerId: 'teacherB', className: 'Science', ownerName: 'Teacher B' }))
+    await assertFails(hijackBatch.commit())
+
+    // 2. Instructor B cannot update A's classCodes document directly
+    await assertFails(updateDoc(doc(teacherB, 'classCodes/ABC234'), { className: 'Hacked' }))
+
+    // 3. The owner can still update their own (class edits, archive, code rotation)
+    const editBatch = writeBatch(owner)
+    editBatch.update(doc(owner, 'classes/class1'), { name: 'Advanced Math', updatedAt: now })
+    editBatch.update(doc(owner, 'classCodes/ABC234'), { className: 'Advanced Math' })
+    await assertSucceeds(editBatch.commit())
+
+    const archiveBatch = writeBatch(owner)
+    archiveBatch.update(doc(owner, 'classes/class1'), { status: 'archived', updatedAt: now })
+    archiveBatch.update(doc(owner, 'classCodes/ABC234'), { archived: true })
+    await assertSucceeds(archiveBatch.commit())
+
+    const rotateBatch = writeBatch(owner)
+    rotateBatch.delete(doc(owner, 'classCodes/ABC234'))
+    rotateBatch.set(doc(owner, 'classCodes/XYZ789'), codeData({ classId: 'class1', ownerId: 'teacher', className: 'Advanced Math', archived: true }))
+    rotateBatch.update(doc(owner, 'classes/class1'), { joinCode: 'XYZ789', codeRotatedAt: now, updatedAt: now })
+    await assertSucceeds(rotateBatch.commit())
+
+    // 4. A class rotating to a code that already exists is denied
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'classes/classB'), classData({ ownerId: 'teacherB', ownerName: 'Teacher B', joinCode: 'BBB234' }))
+      await setDoc(doc(db, 'classCodes/BBB234'), codeData({ classId: 'classB', ownerId: 'teacherB', joinCode: 'BBB234' }))
+    })
+
+    const collisionRotateBatch = writeBatch(owner)
+    collisionRotateBatch.delete(doc(owner, 'classCodes/XYZ789'))
+    collisionRotateBatch.set(doc(owner, 'classCodes/BBB234'), codeData({ classId: 'class1', ownerId: 'teacher', className: 'Advanced Math', archived: true }))
+    collisionRotateBatch.update(doc(owner, 'classes/class1'), { joinCode: 'BBB234', codeRotatedAt: now, updatedAt: now })
+    await assertFails(collisionRotateBatch.commit())
+  })
+
+  it('enforces size caps on enrollment studentName and studentPhotoURL', async () => {
+    await seed()
+    const student = environment.authenticatedContext('other').firestore()
+
+    // studentName > 120 is denied
+    const longName = 'A'.repeat(121)
+    await assertFails(setDoc(doc(student, 'enrollments/class1_other'), enrollmentData('other', { studentName: longName })))
+
+    // studentName <= 120 is allowed
+    const validName = 'A'.repeat(120)
+    await assertSucceeds(setDoc(doc(student, 'enrollments/class1_other'), enrollmentData('other', { studentName: validName })))
+    await environment.clearFirestore()
+    await seed()
+
+    // studentPhotoURL > 2000 is denied
+    const longPhoto = 'https://example.com/' + 'p'.repeat(2000)
+    await assertFails(setDoc(doc(student, 'enrollments/class1_other'), enrollmentData('other', { studentPhotoURL: longPhoto })))
+
+    // studentPhotoURL <= 2000 is allowed
+    const validPhoto = 'https://example.com/' + 'p'.repeat(100)
+    await assertSucceeds(setDoc(doc(student, 'enrollments/class1_other'), enrollmentData('other', { studentPhotoURL: validPhoto })))
+  })
 })

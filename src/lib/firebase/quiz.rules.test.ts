@@ -1,5 +1,5 @@
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { Timestamp, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { serverTimestamp, Timestamp, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, it } from 'vitest'
 import rules from '../../../firestore.rules?raw'
@@ -17,9 +17,10 @@ const quizData = (ownerId = 'teacher', status = 'published') => ({
 })
 const question = { order: 0, type: 'multiple_choice', prompt: 'Pick', points: 2, options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] }
 const key = { type: 'choice', correctOptionId: 'b', explanation: 'Because.', caseSensitive: false }
-const attempt = (userId = 'student', status = 'in_progress') => ({
+const attempt = (userId = 'student', status = 'in_progress', overrides: Record<string, unknown> = {}) => ({
   userId, userName: 'Student', attemptNumber: 1, status, answers: {}, questionOrder: ['q'], optionOrder: { q: ['a', 'b'] },
-  startedAt: now, submittedAt: status === 'submitted' ? now : null, timeSpentSeconds: status === 'submitted' ? 4 : 0,
+  startedAt: serverTimestamp(), submittedAt: status === 'submitted' ? now : null, timeSpentSeconds: status === 'submitted' ? 4 : 0,
+  ...overrides,
 })
 const participant = (uid = 'student', activeAttemptId: string | null = 'att') => ({
   userId: uid, userName: 'Student', createdAt: now, updatedAt: now, attemptCount: 1, activeAttemptId,
@@ -196,5 +197,179 @@ describe('quiz Firestore rules', () => {
       await updateDoc(doc(db, 'quizzes/qz'), { settings: { ...settings, scoreVisibility: 'after_release', scoresReleased: true } })
     })
     await assertSucceeds(getDoc(doc(student, 'quizzes/qz/results/att')))
+  })
+
+  it('enforces attempt limits and synchronizes attemptNumber with participant attemptCount', async () => {
+    await seed()
+    const student = environment.authenticatedContext('student').firestore()
+
+    // Setup an initial completed attempt for student with attemptsAllowed = 1
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/qz/participants/student'), {
+        userId: 'student', userName: 'Student', createdAt: now, updatedAt: now, attemptCount: 1, activeAttemptId: null,
+      })
+      await setDoc(doc(db, 'quizzes/qz/attempts/att-1'), attempt('student', 'submitted', { attemptNumber: 1, startedAt: now }))
+      await setDoc(doc(db, 'quizzes/qz/results/att-1'), result())
+    })
+
+    // 1. Direct write starting a second attempt with attemptsAllowed = 1 is denied
+    const secondAttemptBatch = writeBatch(student)
+    secondAttemptBatch.update(doc(student, 'quizzes/qz/participants/student'), {
+      activeAttemptId: 'att-2', attemptCount: 2, updatedAt: now,
+    })
+    secondAttemptBatch.set(doc(student, 'quizzes/qz/attempts/att-2'), attempt('student', 'in_progress', { attemptNumber: 2 }))
+    await assertFails(secondAttemptBatch.commit())
+
+    // 2. attemptsAllowed: null allows starting a second attempt
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await updateDoc(doc(db, 'quizzes/qz'), { 'settings.attemptsAllowed': null })
+    })
+
+    const allowedBatch = writeBatch(student)
+    allowedBatch.update(doc(student, 'quizzes/qz/participants/student'), {
+      activeAttemptId: 'att-2', attemptCount: 2, updatedAt: now,
+    })
+    allowedBatch.set(doc(student, 'quizzes/qz/attempts/att-2'), attempt('student', 'in_progress', { attemptNumber: 2 }))
+    await assertSucceeds(allowedBatch.commit())
+
+    // 3. Attempt creation where attemptNumber does not match participant's attemptCount is denied
+    const mismatchBatch = writeBatch(student)
+    mismatchBatch.update(doc(student, 'quizzes/qz/participants/student'), {
+      activeAttemptId: 'att-3', attemptCount: 3, updatedAt: now,
+    })
+    mismatchBatch.set(doc(student, 'quizzes/qz/attempts/att-3'), attempt('student', 'in_progress', { attemptNumber: 99 }))
+    await assertFails(mismatchBatch.commit())
+  })
+
+  it('enforces time integrity on attempt create and submission', async () => {
+    await seed()
+    const student = environment.authenticatedContext('student').firestore()
+
+    // 1. Attempt creation with backdated startedAt is denied
+    const backdatedBatch = writeBatch(student)
+    backdatedBatch.set(doc(student, 'quizzes/qz/participants/student'), participant('student', 'att-backdated'))
+    backdatedBatch.set(doc(student, 'quizzes/qz/attempts/att-backdated'), attempt('student', 'in_progress', { startedAt: Timestamp.fromMillis(1000) }))
+    await assertFails(backdatedBatch.commit())
+
+    // 2. Attempt creation with serverTimestamp() succeeds
+    const validBatch = writeBatch(student)
+    validBatch.set(doc(student, 'quizzes/qz/participants/student'), participant('student', 'att-valid'))
+    validBatch.set(doc(student, 'quizzes/qz/attempts/att-valid'), attempt('student', 'in_progress', { startedAt: serverTimestamp() }))
+    await assertSucceeds(validBatch.commit())
+
+    // 3. Timed quiz: submitting within limit passes
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await updateDoc(doc(db, 'quizzes/qz'), { 'settings.timeLimitMinutes': 10 })
+      // Seed an attempt started 5 minutes ago (well within 10 min + 2 min grace)
+      const fiveMinsAgo = Timestamp.fromMillis(Date.now() - 5 * 60 * 1000)
+      await setDoc(doc(db, 'quizzes/qz/participants/student'), {
+        userId: 'student', userName: 'Student', createdAt: fiveMinsAgo, updatedAt: fiveMinsAgo, attemptCount: 1, activeAttemptId: 'att-ontime',
+      })
+      await setDoc(doc(db, 'quizzes/qz/attempts/att-ontime'), attempt('student', 'in_progress', { startedAt: fiveMinsAgo }))
+    })
+
+    const onTimeSubmit = writeBatch(student)
+    onTimeSubmit.update(doc(student, 'quizzes/qz/attempts/att-ontime'), { status: 'submitted', submittedAt: now, timeSpentSeconds: 300 })
+    onTimeSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: now })
+    onTimeSubmit.set(doc(student, 'quizzes/qz/results/att-ontime'), result('student'))
+    await assertSucceeds(onTimeSubmit.commit())
+
+    // 4. Timed quiz: submitting after limit plus grace (10 + 2 = 12 mins) is denied
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      // Seed an attempt started 15 minutes ago
+      const fifteenMinsAgo = Timestamp.fromMillis(Date.now() - 15 * 60 * 1000)
+      await setDoc(doc(db, 'quizzes/qz/participants/student'), {
+        userId: 'student', userName: 'Student', createdAt: fifteenMinsAgo, updatedAt: fifteenMinsAgo, attemptCount: 2, activeAttemptId: 'att-expired',
+      })
+      await setDoc(doc(db, 'quizzes/qz/attempts/att-expired'), attempt('student', 'in_progress', { attemptNumber: 2, startedAt: fifteenMinsAgo }))
+    })
+
+    const lateSubmit = writeBatch(student)
+    lateSubmit.update(doc(student, 'quizzes/qz/attempts/att-expired'), { status: 'submitted', submittedAt: now, timeSpentSeconds: 900 })
+    lateSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: now })
+    lateSubmit.set(doc(student, 'quizzes/qz/results/att-expired'), result('student'))
+    await assertFails(lateSubmit.commit())
+
+    // 5. Untimed quiz is unaffected by old startedAt
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await updateDoc(doc(db, 'quizzes/qz'), { 'settings.timeLimitMinutes': null })
+      const longAgo = Timestamp.fromMillis(Date.now() - 60 * 60 * 1000)
+      await setDoc(doc(db, 'quizzes/qz/participants/student'), {
+        userId: 'student', userName: 'Student', createdAt: longAgo, updatedAt: longAgo, attemptCount: 3, activeAttemptId: 'att-untimed',
+      })
+      await setDoc(doc(db, 'quizzes/qz/attempts/att-untimed'), attempt('student', 'in_progress', { attemptNumber: 3, startedAt: longAgo }))
+    })
+
+    const untimedSubmit = writeBatch(student)
+    untimedSubmit.update(doc(student, 'quizzes/qz/attempts/att-untimed'), { status: 'submitted', submittedAt: now, timeSpentSeconds: 3600 })
+    untimedSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: now })
+    untimedSubmit.set(doc(student, 'quizzes/qz/results/att-untimed'), result('student'))
+    await assertSucceeds(untimedSubmit.commit())
+  })
+
+  it('enforces size caps on quiz, question, options, and attempt answers', async () => {
+    await seed()
+    const owner = environment.authenticatedContext('teacher').firestore()
+    const student = environment.authenticatedContext('student').firestore()
+
+    // 1. Quiz title: > 200 chars denied, <= 200 chars allowed
+    const longTitleQuiz = { ...quizData('teacher', 'draft'), questionCount: 0, title: 'T'.repeat(201) }
+    await assertFails(setDoc(doc(owner, 'quizzes/long-title'), longTitleQuiz))
+    const validTitleQuiz = { ...quizData('teacher', 'draft'), questionCount: 0, title: 'T'.repeat(200) }
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/valid-title'), validTitleQuiz))
+
+    // 2. Quiz description: > 2000 chars denied, <= 2000 chars allowed
+    const longDescQuiz = { ...quizData('teacher', 'draft'), questionCount: 0, description: 'D'.repeat(2001) }
+    await assertFails(setDoc(doc(owner, 'quizzes/long-desc'), longDescQuiz))
+    const validDescQuiz = { ...quizData('teacher', 'draft'), questionCount: 0, description: 'D'.repeat(2000) }
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/valid-desc'), validDescQuiz))
+
+    // 3. Quiz tags list: > 20 items denied, <= 20 items allowed
+    const tooManyTags = Array.from({ length: 21 }, (_, i) => `tag-${i}`)
+    const longTagsQuiz = { ...quizData('teacher', 'draft'), questionCount: 0, tags: tooManyTags }
+    await assertFails(setDoc(doc(owner, 'quizzes/long-tags'), longTagsQuiz))
+    const validTags = Array.from({ length: 20 }, (_, i) => `tag-${i}`)
+    const validTagsQuiz = { ...quizData('teacher', 'draft'), questionCount: 0, tags: validTags }
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/valid-tags'), validTagsQuiz))
+
+    // 4. Question prompt: > 2000 chars denied, <= 2000 chars allowed
+    const longPromptQ = { ...question, prompt: 'P'.repeat(2001) }
+    await assertFails(setDoc(doc(owner, 'quizzes/qz/questions/long-p'), longPromptQ))
+    const validPromptQ = { ...question, prompt: 'P'.repeat(2000) }
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/qz/questions/valid-p'), validPromptQ))
+
+    // 5. Options text: > 500 chars denied, <= 500 chars allowed
+    const longOptionQ = {
+      ...question,
+      options: [{ id: 'a', text: 'O'.repeat(501) }, { id: 'b', text: 'B' }],
+    }
+    await assertFails(setDoc(doc(owner, 'quizzes/qz/questions/long-opt'), longOptionQ))
+    const validOptionQ = {
+      ...question,
+      options: [{ id: 'a', text: 'O'.repeat(500) }, { id: 'b', text: 'B' }],
+    }
+    await assertSucceeds(setDoc(doc(owner, 'quizzes/qz/questions/valid-opt'), validOptionQ))
+
+    // 6. Attempt answers map: > 200 keys denied, <= 200 keys allowed
+    const tooManyAnswers: Record<string, string> = {}
+    for (let i = 0; i < 201; i += 1) tooManyAnswers[`q${i}`] = 'ans'
+
+    const tooManyAnswersBatch = writeBatch(student)
+    tooManyAnswersBatch.set(doc(student, 'quizzes/qz/participants/student'), participant('student', 'att-too-many'))
+    tooManyAnswersBatch.set(doc(student, 'quizzes/qz/attempts/att-too-many'), attempt('student', 'in_progress', { answers: tooManyAnswers }))
+    await assertFails(tooManyAnswersBatch.commit())
+
+    const validAnswers: Record<string, string> = {}
+    for (let i = 0; i < 200; i += 1) validAnswers[`q${i}`] = 'ans'
+
+    const validAnswersBatch = writeBatch(student)
+    validAnswersBatch.set(doc(student, 'quizzes/qz/participants/student'), participant('student', 'att-valid-ans'))
+    validAnswersBatch.set(doc(student, 'quizzes/qz/attempts/att-valid-ans'), attempt('student', 'in_progress', { answers: validAnswers }))
+    await assertSucceeds(validAnswersBatch.commit())
   })
 })
