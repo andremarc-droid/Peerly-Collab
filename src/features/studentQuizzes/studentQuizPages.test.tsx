@@ -118,6 +118,26 @@ describe('student quiz pages', () => {
     vi.mocked(getAttempt).mockResolvedValue({ ...attempt, startedAt: Timestamp.fromMillis(Date.now() - 61_000) })
     renderRoute('/student/quizzes/quiz-1/attempts/attempt-1', <QuizTakingPage />)
     await waitFor(() => expect(submitAttempt).toHaveBeenCalled(), { timeout: 3000 })
+    expect(showToast).toHaveBeenCalledWith('info', 'Time had run out, so your quiz was submitted.')
+  })
+
+  it('displays a calm late submission note on the student result page', async () => {
+    vi.mocked(getQuiz).mockResolvedValue({ ...quiz, settings: { ...quiz.settings, timeLimitMinutes: 1 } })
+    vi.mocked(getAttempt).mockResolvedValue({ ...submittedAttempt, startedAt: Timestamp.fromMillis(1_000_000), submittedAt: Timestamp.fromMillis(1_000_000 + 300_000) })
+    renderRoute('/student/quizzes/quiz-1/attempts/attempt-1/result', <QuizResultPage />)
+    expect(await screen.findByText('Submitted after the time limit. Your instructor may review this.')).toBeInTheDocument()
+  })
+
+  it('shows retry and back to catalog actions when submission fails', async () => {
+    vi.mocked(submitAttempt).mockRejectedValueOnce(new Error('Network offline'))
+    const user = userEvent.setup()
+    renderRoute('/student/quizzes/quiz-1/attempts/attempt-1', <QuizTakingPage />)
+    await screen.findByText('Which option is correct?')
+    await user.click(screen.getByRole('button', { name: 'Review and submit' }))
+    await user.click(await screen.findByRole('button', { name: 'Continue to submit' }))
+    await user.click(screen.getByRole('button', { name: 'Submit quiz' }))
+    expect(await screen.findByRole('button', { name: 'Retry submission' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to catalog' })).toBeInTheDocument()
   })
 
   it('redirects when the enrollment is removed during an attempt', async () => {

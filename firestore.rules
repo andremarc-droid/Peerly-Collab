@@ -671,11 +671,9 @@ service cloud.firestore {
           && request.resource.data.status in ['in_progress', 'submitted']
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers', 'status', 'submittedAt', 'timeSpentSeconds', 'optionOrder'])
           && validAttempt(request.resource.data)
-          && (request.resource.data.status == 'in_progress' || request.resource.data.submittedAt is timestamp)
+          && (request.resource.data.status == 'in_progress' || request.resource.data.submittedAt == request.time)
           && (request.resource.data.status != 'submitted'
-            || ((get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.timeLimitMinutes == null
-                || request.time <= resource.data.startedAt + duration.value(get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.timeLimitMinutes * 60 + 120, 's'))
-              && existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid))
+            || (existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid))
               && getAfter(/databases/$(database)/documents/quizzes/$(quizId)/participants/$(request.auth.uid)).data.activeAttemptId == null
               && existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/results/$(attemptId))));
         allow delete: if quizOwner(quizId);

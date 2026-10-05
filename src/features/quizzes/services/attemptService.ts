@@ -69,8 +69,8 @@ export async function autosaveAnswers(
   })
 }
 
-export async function submitAttempt(quizId: string, attemptId: string, timeSpentSeconds: number, db: Firestore = firestore) {
-  if (!Number.isInteger(timeSpentSeconds) || timeSpentSeconds < 0) throw new Error('timeSpentSeconds must be a non-negative integer')
+export async function submitAttempt(quizId: string, attemptId: string, timeSpentSeconds?: number, db: Firestore = firestore) {
+  if (timeSpentSeconds !== undefined && (!Number.isInteger(timeSpentSeconds) || timeSpentSeconds < 0)) throw new Error('timeSpentSeconds must be a non-negative integer')
   const [questionSnapshot, keySnapshot] = await Promise.all([
     getDocs(query(questionsRef(db, quizId), orderBy('order'))), getDocs(answerKeysRef(db, quizId)),
   ])
@@ -88,10 +88,12 @@ export async function submitAttempt(quizId: string, attemptId: string, timeSpent
     if (!participantSnapshot.exists()) throw new Error('Participant record not found')
     const participantData = parseQuizParticipant(participantSnapshot.data())
     if (participantData.activeAttemptId !== attemptId) throw new Error('Attempt is no longer active')
+    const computedTimeSpent = attempt.startedAt ? Math.max(0, Math.floor((Date.now() - attempt.startedAt.toMillis()) / 1000)) : (timeSpentSeconds ?? 0)
+    const spentSeconds = timeSpentSeconds ?? computedTimeSpent
     const graded = gradeAttempt({ userId: attempt.userId, questions, answerKeys, answers: attempt.answers, gradedAt: Timestamp.now() })
-    const next = { ...attempt, status: 'submitted' as const, submittedAt: Timestamp.now(), timeSpentSeconds }
-    transaction.update(ref, { status: next.status, submittedAt: next.submittedAt, timeSpentSeconds })
-    transaction.update(participant, { activeAttemptId: null, updatedAt: Timestamp.now() })
+    const next = { ...attempt, status: 'submitted' as const, submittedAt: Timestamp.now(), timeSpentSeconds: spentSeconds }
+    transaction.update(ref, { status: next.status, submittedAt: serverTimestamp(), timeSpentSeconds: spentSeconds })
+    transaction.update(participant, { activeAttemptId: null, updatedAt: serverTimestamp() })
     transaction.set(resultRef(db, quizId, attemptId), graded)
     return { attempt: next, result: graded, scoreVisibility: quiz.settings.scoreVisibility }
   })

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Timestamp } from 'firebase/firestore'
 import type { QuizAttempt, QuizResult } from '../types'
 import type { EnrollmentWithId } from '../../classes/types'
-import { applyQuestionOverride, bestAttempts, buildRosterRows, recalculateAutomaticGrade, resultsCsv, summarizeAttempts, type AttemptResult } from './resultLogic'
+import { applyQuestionOverride, bestAttempts, buildRosterRows, isLate, recalculateAutomaticGrade, resultsCsv, summarizeAttempts, type AttemptResult } from './resultLogic'
 
 const time = Timestamp.fromMillis(10)
 const baseAttempt: QuizAttempt = { userId: 'u1', userName: 'A "Student"', attemptNumber: 1, status: 'submitted', answers: { q: 'wrong' }, questionOrder: ['q'], optionOrder: {}, startedAt: time, submittedAt: time, timeSpentSeconds: 65 }
@@ -47,5 +47,35 @@ describe('quiz result logic', () => {
     expect(rows.find((item) => item.userId === 'fresh')).toMatchObject({ attempt: null, membership: 'not_started', userName: 'Name fresh' })
     expect(rows.find((item) => item.userId === 'departed')).toMatchObject({ attempt: { id: 'old-attempt' }, membership: 'no_longer_enrolled' })
     expect(rows.find((item) => item.userId === 'started')?.membership).toBe('enrolled')
+  })
+
+  it('detects late submissions accurately with grace period and handles missing limit', () => {
+    const started = Timestamp.fromMillis(1_000_000)
+    // 1. Untimed: returns not late
+    expect(isLate(started, Timestamp.fromMillis(2_000_000), null)).toEqual({ late: false, lateBySeconds: 0 })
+    expect(isLate(started, Timestamp.fromMillis(2_000_000), undefined)).toEqual({ late: false, lateBySeconds: 0 })
+
+    // 2. 10 minute limit (600s), default 120s grace:
+    // Submitted at 600s elapsed: on time
+    expect(isLate(started, Timestamp.fromMillis(1_000_000 + 600 * 1000), 10)).toEqual({ late: false, lateBySeconds: 0 })
+    // Submitted at 720s elapsed (exact limit + grace): on time
+    expect(isLate(started, Timestamp.fromMillis(1_000_000 + 720 * 1000), 10)).toEqual({ late: false, lateBySeconds: 0 })
+    // Submitted at 721s elapsed: late by 121 seconds (past the 600s limit)
+    expect(isLate(started, Timestamp.fromMillis(1_000_000 + 721 * 1000), 10)).toEqual({ late: true, lateBySeconds: 121 })
+    // Submitted at 900s elapsed (15 min): late by 300 seconds (5 min)
+    expect(isLate(started, Timestamp.fromMillis(1_000_000 + 900 * 1000), 10)).toEqual({ late: true, lateBySeconds: 300 })
+
+    // Custom graceSeconds
+    expect(isLate(started, Timestamp.fromMillis(1_000_000 + 605 * 1000), 10, 0)).toEqual({ late: true, lateBySeconds: 5 })
+
+    // summarizeAttempts counts late submissions
+    const onTimeAttempt = { ...row('ot', 'u1', 10), startedAt: started, submittedAt: Timestamp.fromMillis(1_000_000 + 500 * 1000) }
+    const lateAttempt = { ...row('lt', 'u2', 8), startedAt: started, submittedAt: Timestamp.fromMillis(1_000_000 + 900 * 1000) }
+    const summary = summarizeAttempts([onTimeAttempt, lateAttempt], false, 10)
+    expect(summary.lateSubmissions).toBe(1)
+
+    // resultsCsv includes Late column with late minutes
+    const csv = resultsCsv([{ ...row('lt', 'u2', 8), startedAt: started, submittedAt: Timestamp.fromMillis(1_000_000 + 900 * 1000) }], false, 'Class', 10)
+    expect(csv).toContain('"Late (5 min)"')
   })
 })

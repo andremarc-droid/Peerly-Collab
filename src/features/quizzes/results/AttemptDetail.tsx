@@ -1,5 +1,6 @@
-import { CircleCheck, CircleHelp, CircleX, RotateCcw } from 'lucide-react'
+import { CircleCheck, CircleHelp, CircleX, Clock3, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
+import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
 import { SectionCard } from '../../../shared/ui/SectionCard'
@@ -7,16 +8,18 @@ import { useToast } from '../../../shared/ui/useToast'
 import { setQuestionGradeOverride } from '../services/resultService'
 import type { QuizResult } from '../types'
 import type { SavedQuestion } from '../services/questionService'
-import type { AttemptResult } from './resultLogic'
+import { isLate, type AttemptResult } from './resultLogic'
 
-interface Props { quizId: string; attempt: AttemptResult; questions: SavedQuestion[]; ungraded: boolean; onGradeChanged: (result: QuizResult) => void }
+interface Props { quizId: string; attempt: AttemptResult; questions: SavedQuestion[]; ungraded: boolean; onGradeChanged: (result: QuizResult) => void; timeLimitMinutes?: number | null }
 
-export function AttemptDetail({ quizId, attempt, questions, ungraded, onGradeChanged }: Props) {
+export function AttemptDetail({ quizId, attempt, questions, ungraded, onGradeChanged, timeLimitMinutes }: Props) {
   const { showToast } = useToast()
   const [points, setPoints] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const result = attempt.result
   if (!result) return <p>This attempt is submitted, but its result is not available.</p>
+
+  const lateInfo = isLate(attempt.startedAt, attempt.submittedAt, timeLimitMinutes)
 
   async function changeGrade(questionId: string, pointsAwarded: number | null) {
     setBusy(questionId)
@@ -30,7 +33,22 @@ export function AttemptDetail({ quizId, attempt, questions, ungraded, onGradeCha
   }
 
   return <div className="grid gap-4">
-    <SectionCard title="Attempt summary" description={`${attempt.submittedAt?.toDate().toLocaleString() ?? 'Submitted'} · ${attempt.timeSpentSeconds} seconds`}>
+    <SectionCard
+      title="Attempt summary"
+      description={`${attempt.submittedAt?.toDate().toLocaleString() ?? 'Submitted'} · ${attempt.timeSpentSeconds} seconds`}
+      action={
+        lateInfo.late ? (
+          <span className="flex items-center gap-2">
+            <Badge className="inline-flex items-center gap-1">
+              <Clock3 size={13} aria-hidden="true" /> Late
+            </Badge>
+            <span className="text-sm font-medium text-navy-700">
+              Late by {Math.max(1, Math.round(lateInfo.lateBySeconds / 60))} min
+            </span>
+          </span>
+        ) : undefined
+      }
+    >
       {!ungraded && <p className="m-0">{result.score} / {result.maxScore} points</p>}
     </SectionCard>
     {questions.map(({ id, question, answerKey }, index) => {

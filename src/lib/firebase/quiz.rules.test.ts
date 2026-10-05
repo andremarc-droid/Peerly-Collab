@@ -1,8 +1,9 @@
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
 import { serverTimestamp, Timestamp, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
-import { afterAll, afterEach, beforeAll, describe, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import rules from '../../../firestore.rules?raw'
+import { isLate } from '../../features/quizzes/results/resultLogic'
 
 const projectId = 'demo-peerly-collab'
 let environment: RulesTestEnvironment
@@ -29,9 +30,9 @@ const result = (userId = 'student') => ({ userId, score: 2, maxScore: 2, perQues
 
 beforeAll(async () => {
   environment = await initializeTestEnvironment({ projectId, firestore: { host: '127.0.0.1', port: 8180, rules } })
-})
-afterEach(async () => environment.clearFirestore())
-afterAll(async () => environment.cleanup())
+}, 30_000)
+afterEach(async () => environment?.clearFirestore())
+afterAll(async () => { await environment?.cleanup() })
 
 async function seed(data: { status?: string; visibility?: string } = {}) {
   await environment.withSecurityRulesDisabled(async (context) => {
@@ -142,8 +143,8 @@ describe('quiz Firestore rules', () => {
     await assertFails(updateDoc(doc(other, 'quizzes/qz/attempts/att'), { answers: { q: 'a' } }))
     await assertFails(updateDoc(attemptRef, { userId: 'other' }))
     const submit = writeBatch(student)
-    submit.update(attemptRef, { status: 'submitted', submittedAt: now, timeSpentSeconds: 4 })
-    submit.update(participantRef, { activeAttemptId: null, updatedAt: now })
+    submit.update(attemptRef, { status: 'submitted', submittedAt: serverTimestamp(), timeSpentSeconds: 4 })
+    submit.update(participantRef, { activeAttemptId: null, updatedAt: serverTimestamp() })
     submit.set(doc(student, 'quizzes/qz/results/att'), result())
     await assertSucceeds(submit.commit())
     await assertFails(updateDoc(attemptRef, { answers: { q: 'b' } }))
@@ -272,12 +273,12 @@ describe('quiz Firestore rules', () => {
     })
 
     const onTimeSubmit = writeBatch(student)
-    onTimeSubmit.update(doc(student, 'quizzes/qz/attempts/att-ontime'), { status: 'submitted', submittedAt: now, timeSpentSeconds: 300 })
-    onTimeSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: now })
+    onTimeSubmit.update(doc(student, 'quizzes/qz/attempts/att-ontime'), { status: 'submitted', submittedAt: serverTimestamp(), timeSpentSeconds: 300 })
+    onTimeSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: serverTimestamp() })
     onTimeSubmit.set(doc(student, 'quizzes/qz/results/att-ontime'), result('student'))
     await assertSucceeds(onTimeSubmit.commit())
 
-    // 4. Timed quiz: submitting after limit plus grace (10 + 2 = 12 mins) is denied
+    // 4. Timed quiz: submitting long after the limit now PASSES and reads back as late via isLate
     await environment.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore()
       // Seed an attempt started 15 minutes ago
@@ -289,25 +290,51 @@ describe('quiz Firestore rules', () => {
     })
 
     const lateSubmit = writeBatch(student)
-    lateSubmit.update(doc(student, 'quizzes/qz/attempts/att-expired'), { status: 'submitted', submittedAt: now, timeSpentSeconds: 900 })
-    lateSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: now })
+    lateSubmit.update(doc(student, 'quizzes/qz/attempts/att-expired'), { status: 'submitted', submittedAt: serverTimestamp(), timeSpentSeconds: 900 })
+    lateSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: serverTimestamp() })
     lateSubmit.set(doc(student, 'quizzes/qz/results/att-expired'), result('student'))
-    await assertFails(lateSubmit.commit())
+    await assertSucceeds(lateSubmit.commit())
 
-    // 5. Untimed quiz is unaffected by old startedAt
+    const lateDoc = await getDoc(doc(student, 'quizzes/qz/attempts/att-expired'))
+    expect(lateDoc.exists()).toBe(true)
+    const lateData = lateDoc.data()!
+    const lateCheck = isLate(lateData.startedAt, lateData.submittedAt, 10)
+    expect(lateCheck.late).toBe(true)
+    expect(lateCheck.lateBySeconds).toBeGreaterThanOrEqual(180)
+
+    // 5. A fresh attempt can be started after a late submission when attempts remain
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await updateDoc(doc(db, 'quizzes/qz'), { 'settings.attemptsAllowed': 5 })
+    })
+    const nextAttemptBatch = writeBatch(student)
+    nextAttemptBatch.update(doc(student, 'quizzes/qz/participants/student'), {
+      activeAttemptId: 'att-fresh', attemptCount: 3, updatedAt: serverTimestamp(),
+    })
+    nextAttemptBatch.set(doc(student, 'quizzes/qz/attempts/att-fresh'), attempt('student', 'in_progress', { attemptNumber: 3, startedAt: serverTimestamp() }))
+    await assertSucceeds(nextAttemptBatch.commit())
+
+    // 6. submittedAt must equal request.time (a client-supplied past or future timestamp is denied)
+    const clientTimeSubmit = writeBatch(student)
+    clientTimeSubmit.update(doc(student, 'quizzes/qz/attempts/att-fresh'), { status: 'submitted', submittedAt: Timestamp.fromMillis(Date.now() - 1000), timeSpentSeconds: 300 })
+    clientTimeSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: serverTimestamp() })
+    clientTimeSubmit.set(doc(student, 'quizzes/qz/results/att-fresh'), result('student'))
+    await assertFails(clientTimeSubmit.commit())
+
+    // 7. Untimed quiz is unaffected by old startedAt
     await environment.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore()
       await updateDoc(doc(db, 'quizzes/qz'), { 'settings.timeLimitMinutes': null })
       const longAgo = Timestamp.fromMillis(Date.now() - 60 * 60 * 1000)
       await setDoc(doc(db, 'quizzes/qz/participants/student'), {
-        userId: 'student', userName: 'Student', createdAt: longAgo, updatedAt: longAgo, attemptCount: 3, activeAttemptId: 'att-untimed',
+        userId: 'student', userName: 'Student', createdAt: longAgo, updatedAt: longAgo, attemptCount: 4, activeAttemptId: 'att-untimed',
       })
-      await setDoc(doc(db, 'quizzes/qz/attempts/att-untimed'), attempt('student', 'in_progress', { attemptNumber: 3, startedAt: longAgo }))
+      await setDoc(doc(db, 'quizzes/qz/attempts/att-untimed'), attempt('student', 'in_progress', { attemptNumber: 4, startedAt: longAgo }))
     })
 
     const untimedSubmit = writeBatch(student)
-    untimedSubmit.update(doc(student, 'quizzes/qz/attempts/att-untimed'), { status: 'submitted', submittedAt: now, timeSpentSeconds: 3600 })
-    untimedSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: now })
+    untimedSubmit.update(doc(student, 'quizzes/qz/attempts/att-untimed'), { status: 'submitted', submittedAt: serverTimestamp(), timeSpentSeconds: 3600 })
+    untimedSubmit.update(doc(student, 'quizzes/qz/participants/student'), { activeAttemptId: null, updatedAt: serverTimestamp() })
     untimedSubmit.set(doc(student, 'quizzes/qz/results/att-untimed'), result('student'))
     await assertSucceeds(untimedSubmit.commit())
   })

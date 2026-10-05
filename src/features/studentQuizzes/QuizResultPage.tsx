@@ -15,6 +15,7 @@ import { PageHeader } from '../../shared/ui/PageHeader'
 import { SectionCard } from '../../shared/ui/SectionCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { resultVisibility, persistedQuestionOrder } from './quizLogic'
+import { isLate } from '../quizzes/results/resultLogic'
 
 type QuestionRecord = QuizQuestion & { id: string }
 type ReviewItem = { question: QuestionRecord; key: AnswerKey | null }
@@ -48,8 +49,11 @@ export function QuizResultPage() {
   if (loading) return <AppShell><main className="app-shell__content"><Skeleton className="h-80 rounded-3xl" label="Loading result" /></main></AppShell>
   if (error || !quiz || !attempt || !result) return <AppShell><PageHeader eyebrow="RESULT" title="Result unavailable." subtitle="We couldn’t load this submission." /><main className="app-shell__content grid gap-4"><Alert tone="error" label="Result unavailable">{error}</Alert><Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
   const visibility = resultVisibility(quiz, quiz.settings.answerReveal, result)
+  const late = isLate(attempt.startedAt, attempt.submittedAt, quiz.settings.timeLimitMinutes).late
   return <AppShell><PageHeader eyebrow="SUBMISSION COMPLETE" title="Your result." subtitle={quiz.title} />
-    <main className="app-shell__content grid gap-5"><SectionCard title={visibility.showScore ? 'Your score' : 'Submitted'} description={visibility.showScore ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
+    <main className="app-shell__content grid gap-5">
+      {late && <Alert tone="warning" label="Late submission">Submitted after the time limit. Your instructor may review this.</Alert>}
+      <SectionCard title={visibility.showScore ? 'Your score' : 'Submitted'} description={visibility.showScore ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
       {quiz.mode === 'flashcards' ? <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p> : visibility.showScore ? <div className="quiz-score-summary"><ScoreRing percent={result.maxScore > 0 ? Math.round(result.score / result.maxScore * 100) : 0} /><strong>{result.score} / {result.maxScore} points</strong></div> : <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>}
     </SectionCard>
     {visibility.showAnswers && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {

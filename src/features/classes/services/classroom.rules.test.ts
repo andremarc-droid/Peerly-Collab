@@ -24,9 +24,9 @@ const enrollmentData = (uid: string, overrides: Record<string, unknown> = {}) =>
 
 beforeAll(async () => {
   environment = await initializeTestEnvironment({ projectId, firestore: { host: '127.0.0.1', port: 8180, rules } })
-})
-afterEach(async () => environment.clearFirestore())
-afterAll(async () => environment.cleanup())
+}, 30_000)
+afterEach(async () => environment?.clearFirestore())
+afterAll(async () => { await environment?.cleanup() })
 
 async function seed(overrides: { class?: Record<string, unknown>; code?: Record<string, unknown>; enrollment?: Record<string, unknown> } = {}) {
   await environment.withSecurityRulesDisabled(async (context) => {

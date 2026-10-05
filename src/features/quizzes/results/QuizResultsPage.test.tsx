@@ -72,6 +72,22 @@ describe('instructor quiz results page', () => {
     expect(await screen.findByText('These results are only available to the quiz owner.')).toBeInTheDocument()
     expect(mocks.listQuizAttempts).not.toHaveBeenCalled()
   })
+
+  it('displays Late badge, summary tile count, and Late by M min for late attempts', async () => {
+    const lateAttempt: AttemptResult = {
+      ...attempt,
+      id: 'attempt-late',
+      startedAt: Timestamp.fromMillis(1_000_000),
+      submittedAt: Timestamp.fromMillis(1_000_000 + 900_000),
+    }
+    mocks.getQuiz.mockResolvedValue({ ...quiz, settings: { ...quiz.settings, timeLimitMinutes: 10 } })
+    mocks.listQuizAttempts.mockResolvedValue([lateAttempt])
+    mocks.getQuizResult.mockResolvedValue(lateAttempt.result)
+    renderPage()
+    expect(await screen.findByText('Late submissions')).toBeInTheDocument()
+    expect(screen.getByText('Late by 5 min')).toBeInTheDocument()
+    expect(screen.getAllByText('Late').length).toBeGreaterThanOrEqual(1)
+  })
 })
 
 describe('attempt detail component', () => {

@@ -30,8 +30,39 @@ export function bestAttempts(attempts: AttemptResult[]) {
   return [...best.values()]
 }
 
-export function summarizeAttempts(attempts: AttemptResult[], ungraded = false) {
+export function isLate(
+  startedAt: { toMillis?: () => number } | Date | number | null | undefined,
+  submittedAt: { toMillis?: () => number } | Date | number | null | undefined,
+  timeLimitMinutes: number | null | undefined,
+  graceSeconds = 120,
+): { late: boolean; lateBySeconds: number } {
+  if (timeLimitMinutes == null || timeLimitMinutes <= 0 || !startedAt || !submittedAt) {
+    return { late: false, lateBySeconds: 0 }
+  }
+  const toMs = (val: { toMillis?: () => number } | Date | number): number | null => {
+    if (typeof val === 'number') return val
+    if (val instanceof Date) return val.getTime()
+    if (typeof val === 'object' && 'toMillis' in val && typeof val.toMillis === 'function') return val.toMillis()
+    return null
+  }
+  const startMs = toMs(startedAt)
+  const submitMs = toMs(submittedAt)
+  if (startMs === null || submitMs === null) {
+    return { late: false, lateBySeconds: 0 }
+  }
+  const elapsedSeconds = Math.max(0, Math.floor((submitMs - startMs) / 1000))
+  const limitSeconds = timeLimitMinutes * 60
+  if (elapsedSeconds <= limitSeconds + graceSeconds) {
+    return { late: false, lateBySeconds: 0 }
+  }
+  return { late: true, lateBySeconds: elapsedSeconds - limitSeconds }
+}
+
+export function summarizeAttempts(attempts: AttemptResult[], ungraded = false, timeLimitMinutes: number | null = null) {
   const submitted = attempts.filter((item) => item.status === 'submitted')
+  const lateSubmissions = timeLimitMinutes
+    ? submitted.filter((item) => isLate(item.startedAt, item.submittedAt, timeLimitMinutes).late).length
+    : 0
   const best = bestAttempts(attempts)
   const scores = ungraded ? [] : best.flatMap(({ result }) => result && result.maxScore > 0 ? [result.score / result.maxScore * 100] : [])
   const average = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null
@@ -39,6 +70,7 @@ export function summarizeAttempts(attempts: AttemptResult[], ungraded = false) {
     submissions: submitted.length,
     inProgress: attempts.filter(({ status }) => status === 'in_progress').length,
     submitted: submitted.length,
+    lateSubmissions,
     average: average === null ? null : Math.round(average),
     highest: scores.length ? Math.round(Math.max(...scores)) : null,
     lowest: scores.length ? Math.round(Math.min(...scores)) : null,
@@ -86,12 +118,19 @@ export function typedWrongAnswerCounts(input: {
 }
 
 const csvCell = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`
-export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = ''): string {
-  const rows: Array<Array<string | number>> = [['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Score', 'Time spent (seconds)', 'Submitted at']]
-  for (const attempt of attempts) rows.push([
-    attempt.userName, attempt.userId, className, attempt.attemptNumber, attempt.status,
-    ungraded || !attempt.result ? 'Ungraded' : `${attempt.result.score}/${attempt.result.maxScore}`,
-    attempt.timeSpentSeconds, attempt.submittedAt?.toDate().toISOString() ?? '',
-  ])
+export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = '', timeLimitMinutes: number | null = null): string {
+  const rows: Array<Array<string | number>> = [['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Score', 'Late', 'Time spent (seconds)', 'Submitted at']]
+  for (const attempt of attempts) {
+    const lateInfo = isLate(attempt.startedAt, attempt.submittedAt, timeLimitMinutes)
+    const lateCell = attempt.status === 'submitted'
+      ? (lateInfo.late ? `Late (${Math.max(1, Math.round(lateInfo.lateBySeconds / 60))} min)` : 'No')
+      : '—'
+    rows.push([
+      attempt.userName, attempt.userId, className, attempt.attemptNumber, attempt.status,
+      ungraded || !attempt.result ? 'Ungraded' : `${attempt.result.score}/${attempt.result.maxScore}`,
+      lateCell,
+      attempt.timeSpentSeconds, attempt.submittedAt?.toDate().toISOString() ?? '',
+    ])
+  }
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n')
 }

@@ -26,18 +26,19 @@ This document details the security hardening updates applied to `firestore.rules
   * **Bypassing Attempt Limits**: Students attempting to circumvent UI restrictions by issuing raw Firestore batch writes could previously create unlimited attempts or inflate `attemptCount` past `attemptsAllowed`.
   * **Desynchronized Attempt Records**: Students cannot create orphan attempt documents or forge `attemptNumber` independently of their participant record.
 
-### 1.3 Time Integrity (`quizzes/{quizId}/attempts/{attemptId}`)
+### 1.3 Time Integrity & Late Submission Flagging (`quizzes/{quizId}/attempts/{attemptId}`)
 * **Rule Change**:
   * On `attempts/{attemptId}` create:
     * Requires `request.resource.data.startedAt == request.time`.
   * On `attempts/{attemptId}` update setting `status` to `'submitted'`:
-    * If `settings.timeLimitMinutes != null`, requires:
-      `request.time <= resource.data.startedAt + duration.value(settings.timeLimitMinutes * 60 + 120, 's')`.
-* **Attacks Prevented**:
+    * Requires `request.resource.data.submittedAt == request.time` (server timestamp required; client-supplied past or future timestamps are denied).
+    * Removed hard deadline denial to avoid trapping students whose attempt expired while away from the browser, which previously left the attempt in `in_progress` and locked the participant record's `activeAttemptId`.
+* **Attacks Prevented & Integrity Guarantees**:
   * **Backdated Start Times**: Students cannot fabricate a past `startedAt` timestamp to bypass timers or manipulate duration reporting.
-  * **Late Submissions**: In timed quizzes, submissions made after the allocated duration plus a 120-second network grace period are rejected at the database level.
-  * **Untimed Compatibility**: Quizzes without a time limit (`timeLimitMinutes == null`) remain unconstrained.
-  * *Note on Client Behavior*: The client timer triggers auto-submission immediately when the countdown reaches 0 (`timeLimitMinutes * 60` seconds), well within the 120-second grace window, preventing false denials caused by ordinary network jitter.
+  * **Forged Submission Timestamps**: Students cannot forge `submittedAt` using a client-side clock; it must be written using `serverTimestamp()`.
+  * **Late Submission Detection (Informational / Flag-Based)**: Late submissions are accepted by rules so attempts never become permanently wedged, but are deterministically flagged using the trusted server-generated `startedAt` and `submittedAt` timestamps via the `isLate(startedAt, submittedAt, timeLimitMinutes, graceSeconds = 120)` helper.
+  * **Instructor Visibility & Grade Discretion**: The instructor results view, attempt detail dialog, and exported CSV show a "Late" badge and "Late by M min" computed directly from server timestamps (never from client-reported duration). A "Late submissions" counter is included in the summary tiles. Instructors retain authority to override points without automated penalty locks.
+  * **Student Experience**: Expired in-progress attempts auto-submit immediately upon opening with a toast notification ("Time had run out, so your quiz was submitted."), navigating to the result page which displays a calm notice: "Submitted after the time limit. Your instructor may review this." Any failure displays a retry option and a way back to the catalog.
 
 ### 1.4 Module Resource URL Restrictions (`validResource`)
 * **Rule Change**:

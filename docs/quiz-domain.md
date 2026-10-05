@@ -15,9 +15,11 @@ Quiz mode supports multiple choice, true/false, identification, fill-in-the-blan
 
 Grading is exposed through one `gradeAttempt` pure function. Choice questions compare option IDs; identification accepts normalized alternatives; each fill blank earns an equal fraction of the question points; flashcards are not graded. Typed answers trim and collapse whitespace and compare case-insensitively unless a key opts into case sensitivity. The service boundary is designed so later server-side grading can replace browser grading.
 
+Attempt time integrity uses server-verified timestamps: `startedAt` must equal `request.time` upon creation, and `submittedAt` must equal `request.time` upon submission. Timed quizzes do not block late submissions in Firestore rules; instead, submissions after the time limit (plus 120s network grace) are accepted and flagged as late via pure helper `isLate`, preventing attempts from becoming trapped in `in_progress` and blocking subsequent attempts. Instructors see a "Late" badge, late duration ("Late by M min"), a "Late submissions" summary count, and a Late column in CSV exports, retaining discretion over grade overrides without automatic score deductions.
+
 ## Firestore access
 
-The existing collab-notes rules remain in place for their collections. Quiz reads allow the owner or signed-in users for published quiz/question documents. Only users whose `/users/{uid}` profile role is `instructor` may create an owned draft. Owners manage quiz content, answer keys, lifecycle, and overrides. Students create their own participant and in-progress attempt records for published quizzes, then can only submit their own attempt. Submitted attempts cannot be changed. Result reads are owner-only unless the quiz setting exposes them immediately or after release. Unmatched document paths remain denied.
+The existing collab-notes rules remain in place for their collections. Quiz reads allow the owner or signed-in users for published quiz/question documents. Only users whose `/users/{uid}` profile role is `instructor` may create an owned draft. Owners manage quiz content, answer keys, lifecycle, and overrides. Students create their own participant and in-progress attempt records for published quizzes, then can only submit their own attempt with a server-stamped `submittedAt`. Submitted attempts cannot be changed. Result reads are owner-only unless the quiz setting exposes them immediately or after release. Unmatched document paths remain denied.
 
 ## V1 limitation
 
