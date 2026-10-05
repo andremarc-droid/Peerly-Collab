@@ -25,6 +25,7 @@ export function gradeCanvasQuestion(
     keyMap.set(norm, c.points ?? 1)
   }
 
+  const validCardIds = new Set(question.cards.map((c) => c.id))
   const cap = Math.min(80, 2 * key.connections.length)
   const validStudentEdges: string[] = []
   const seenStudentEdges = new Set<string>()
@@ -33,6 +34,7 @@ export function gradeCanvasQuestion(
     const parsed = parseConnectionEdge(raw)
     if (!parsed) continue
     if (parsed.from === parsed.to) continue // self-connections are ignored
+    if (!validCardIds.has(parsed.from) || !validCardIds.has(parsed.to)) continue // unknown card ids are ignored
 
     const norm = normalizeConnection(parsed.from, parsed.to, question.directed)
     if (seenStudentEdges.has(norm)) continue // duplicates are ignored

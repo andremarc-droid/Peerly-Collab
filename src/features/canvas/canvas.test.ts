@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCanvasDiff,
+  CANVAS_CARD_HEIGHT,
+  CANVAS_CARD_WIDTH,
   normalizeConnection,
   parseConnectionEdge,
   scatterCards,
@@ -16,7 +18,7 @@ function makeCard(id: string, type: CanvasCard['type'] = 'note', content = 'Card
     type,
     content,
     position: { x: 0, y: 0 },
-    ...(type === 'image' ? { url: 'https://drive.google.com/file/d/123/view' } : {}),
+    ...(type === 'image' ? { url: 'https://drive.google.com/file/d/abcdefghijk/view' } : {}),
     ...(type === 'link' ? { url: 'https://example.com/info' } : {}),
   }
 }
@@ -107,39 +109,92 @@ describe('validateCanvasDefinition', () => {
     expect(() => validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards })).toThrow(/1000 characters/)
   })
 
-  it('enforces Google Drive URL regex for image cards', () => {
-    const invalidImage = {
+  it('accepts valid Google Drive file, Doc, and Slides links for image cards and stores metadata', () => {
+    const driveFile = {
       id: 'c1',
       type: 'image',
       content: '',
-      url: 'https://malicious.example.com/image.png',
+      url: 'https://drive.google.com/file/d/abcdefghijk/view',
       position: { x: 0, y: 0 },
     }
-    expect(() => validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [invalidImage] })).toThrow(
-      /Google Drive link/,
-    )
+    const docFile = {
+      id: 'c2',
+      type: 'image',
+      content: '',
+      url: 'https://docs.google.com/document/d/abcdefghijk/edit',
+      position: { x: 0, y: 0 },
+    }
+    const slidesFile = {
+      id: 'c3',
+      type: 'image',
+      content: '',
+      url: 'https://docs.google.com/presentation/d/abcdefghijk/edit',
+      position: { x: 0, y: 0 },
+    }
 
-    const validDrive = {
-      id: 'c1',
-      type: 'image',
-      content: '',
-      url: 'https://docs.google.com/drawings/d/xyz/preview',
-      position: { x: 0, y: 0 },
-    }
-    expect(validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [validDrive] }).cards[0]?.url).toBe(
-      validDrive.url,
-    )
+    const validated = validateCanvasDefinition({
+      type: 'canvas',
+      prompt: 'P',
+      cards: [driveFile, docFile, slidesFile],
+    })
+
+    expect(validated.cards[0]?.driveFileId).toBe('abcdefghijk')
+    expect(validated.cards[0]?.driveKind).toBe('file')
+    expect(validated.cards[0]?.url).toBe(driveFile.url)
+
+    expect(validated.cards[1]?.driveFileId).toBe('abcdefghijk')
+    expect(validated.cards[1]?.driveKind).toBe('doc')
+
+    expect(validated.cards[2]?.driveFileId).toBe('abcdefghijk')
+    expect(validated.cards[2]?.driveKind).toBe('slides')
   })
 
-  it('enforces HTTPS scheme for link cards', () => {
-    const httpLink = {
+  it('rejects folder links, lookalike hosts, invalid schemes, and control characters for image and link cards', () => {
+    const make = (type: 'image' | 'link', url: string) => ({
       id: 'c1',
-      type: 'link',
+      type,
       content: '',
-      url: 'http://insecure.example.com',
+      url,
       position: { x: 0, y: 0 },
-    }
-    expect(() => validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [httpLink] })).toThrow(/HTTPS link/)
+    })
+
+    // Folder links rejected
+    expect(() =>
+      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('image', 'https://drive.google.com/drive/folders/abcdefghijk')] }),
+    ).toThrow()
+
+    // Lookalike host rejected
+    expect(() =>
+      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('image', 'https://drive.google.com.evil.com/file/d/abcdefghijk/view')] }),
+    ).toThrow()
+
+    // javascript: scheme rejected
+    expect(() =>
+      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('link', 'javascript:alert(1)')] }),
+    ).toThrow()
+
+    // data: scheme rejected
+    expect(() =>
+      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('link', 'data:text/html,x')] }),
+    ).toThrow()
+
+    // http scheme rejected for link cards
+    expect(() =>
+      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('link', 'http://insecure.example.com')] }),
+    ).toThrow()
+
+    // URLs with control characters or newlines rejected
+    expect(() =>
+      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('link', 'https://example.com/test\n')] }),
+    ).toThrow(/control characters or newlines/)
+
+    expect(() =>
+      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('link', 'https://example.com/test\x00')] }),
+    ).toThrow(/control characters or newlines/)
+
+    expect(() =>
+      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('image', 'https://drive.google.com/file/d/abcdefghijk/view\r\n')] }),
+    ).toThrow(/control characters or newlines/)
   })
 })
 
@@ -290,6 +345,31 @@ describe('scatterCards', () => {
     verifyScatter(scattered)
   })
 
+  it('extends beyond small bounds when 50 cards do not fit, maintaining zero overlap', () => {
+    const cards = Array.from({ length: 50 }, (_, i) => makeCard(`c-${i}`))
+    const smallBounds = { width: 100, height: 100 }
+    const scattered = scatterCards(cards, 'small-bounds-seed', smallBounds)
+    expect(scattered.length).toBe(50)
+
+    // Layout extends beyond the 100x100 bounds
+    const maxX = Math.max(...scattered.map((c) => c.position.x + CANVAS_CARD_WIDTH))
+    const maxY = Math.max(...scattered.map((c) => c.position.y + CANVAS_CARD_HEIGHT))
+    expect(maxX).toBeGreaterThan(100)
+    expect(maxY).toBeGreaterThan(100)
+
+    // Non-overlapping check holds for all 50 cards
+    for (let i = 0; i < scattered.length; i += 1) {
+      for (let j = i + 1; j < scattered.length; j += 1) {
+        const c1 = scattered[i]!
+        const c2 = scattered[j]!
+        const r1 = { left: c1.position.x, right: c1.position.x + CANVAS_CARD_WIDTH, top: c1.position.y, bottom: c1.position.y + CANVAS_CARD_HEIGHT }
+        const r2 = { left: c2.position.x, right: c2.position.x + CANVAS_CARD_WIDTH, top: c2.position.y, bottom: c2.position.y + CANVAS_CARD_HEIGHT }
+        const overlaps = !(r1.right <= r2.left || r1.left >= r2.right || r1.bottom <= r2.top || r1.top >= r2.bottom)
+        expect(overlaps).toBe(false)
+      }
+    }
+  })
+
   it('returns empty array when cards array is empty', () => {
     expect(scatterCards([], 1, bounds)).toEqual([])
   })
@@ -301,20 +381,31 @@ describe('buildCanvasDiff', () => {
     { id: '2', from: 'b', to: 'c' },
     { id: '3', from: 'c', to: 'd' },
   ]
+  const cardIds = ['a', 'b', 'c', 'd']
 
   it('accurately identifies correct, missed, and wrong connections (directed)', () => {
-    // Student connects a->b (correct), b->a (wrong, wrong direction), d->e (wrong, unknown card)
-    const student = ['a->b', 'b->a', 'd->e']
-    const diff = buildCanvasDiff(student, keyConnections, true)
+    // Student connects a->b (correct), b->a (wrong, wrong direction), c->a (wrong, known cards)
+    const student = ['a->b', 'b->a', 'c->a']
+    const diff = buildCanvasDiff(student, keyConnections, true, cardIds)
 
     expect(diff.correct).toEqual(['a->b'])
-    expect(diff.wrong).toEqual(['b->a', 'd->e'])
+    expect(diff.wrong).toEqual(['b->a', 'c->a'])
+    expect(diff.missed).toEqual(['b->c', 'c->d'])
+  })
+
+  it('ignores student connections with unknown card IDs without counting them as wrong or consuming cap', () => {
+    // 'a' through 'd' are valid. 'd->unknown' and 'x->y' have unknown cards.
+    const student = ['a->b', 'd->unknown', 'x->y']
+    const diff = buildCanvasDiff(student, keyConnections, true, cardIds)
+
+    expect(diff.correct).toEqual(['a->b'])
+    expect(diff.wrong).toEqual([])
     expect(diff.missed).toEqual(['b->c', 'c->d'])
   })
 
   it('supports undirected matching', () => {
     const student = ['b->a', 'c->b']
-    const diff = buildCanvasDiff(student, keyConnections, false)
+    const diff = buildCanvasDiff(student, keyConnections, false, cardIds)
 
     expect(diff.correct).toEqual(['a<->b', 'b<->c'])
     expect(diff.wrong).toEqual([])
@@ -322,18 +413,20 @@ describe('buildCanvasDiff', () => {
   })
 
   it('ignores duplicate submissions and self-connections', () => {
-    const student = ['a->b', 'a->b', 'a->a', 'x->y']
-    const diff = buildCanvasDiff(student, keyConnections, true)
+    const student = ['a->b', 'a->b', 'a->a', 'c->a']
+    const diff = buildCanvasDiff(student, keyConnections, true, cardIds)
 
     expect(diff.correct).toEqual(['a->b'])
-    expect(diff.wrong).toEqual(['x->y'])
+    expect(diff.wrong).toEqual(['c->a'])
     expect(diff.missed).toEqual(['b->c', 'c->d'])
   })
 
   it('enforces connection cap: min(80, 2 x key count)', () => {
     // keyConnections.length = 3 => cap = 6
-    const student = ['a->b', 'w1->w2', 'w2->w3', 'w3->w4', 'w4->w5', 'w5->w6', 'w6->w7', 'w7->w8']
-    const diff = buildCanvasDiff(student, keyConnections, true)
+    // Use valid card IDs in a pool of known cards
+    const pool = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    const student = ['a->b', 'b->a', 'c->a', 'd->a', 'd->b', 'd->c', 'b->d', 'c->b']
+    const diff = buildCanvasDiff(student, keyConnections, true, pool)
 
     // First is correct, next 5 are wrong (total 6 capped), 7th and 8th ignored
     expect(diff.correct.length).toBe(1)

@@ -1,3 +1,5 @@
+import type { DriveKind } from '../modules/types'
+
 export type CanvasCardType = 'note' | 'paragraph' | 'image' | 'link'
 
 export interface CanvasCard {
@@ -6,6 +8,8 @@ export interface CanvasCard {
   title?: string
   content: string
   url?: string
+  driveFileId?: string
+  driveKind?: DriveKind
   position: { x: number; y: number }
 }
 

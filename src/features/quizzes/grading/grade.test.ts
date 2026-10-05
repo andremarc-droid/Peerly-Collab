@@ -214,7 +214,7 @@ describe('gradeAttempt canvas mode', () => {
       questions: [canvasQuestion({ wrongPenalty: 'half' })],
       answerKeys: keys,
       answers: {
-        board: ['c1->c2', 'c2->c3', 'w1->w2', 'w2->w3', 'w3->w4', 'w4->w5'],
+        board: ['c1->c2', 'c2->c3', 'c1->c4', 'c3->c1', 'c3->c2', 'c4->c3'],
       },
       gradedAt: Timestamp.now(),
     })
@@ -236,18 +236,17 @@ describe('gradeAttempt canvas mode', () => {
     expect(grade.score).toBe(0)
   })
 
-  it('treats unknown card IDs in student connections as wrong connections', () => {
+  it('ignores student connections with unknown card IDs without penalty or using the cap', () => {
     const keys = canvasKey([{ id: 'k1', from: 'c1', to: 'c2', points: 1 }])
     const grade = gradeAttempt({
       userId: 's',
       questions: [canvasQuestion({ wrongPenalty: 'full' })],
       answerKeys: keys,
-      answers: { board: ['c1->c2', 'unknownA->unknownB'] }, // 1 matched, 1 wrong
+      answers: { board: ['c1->c2', 'unknownA->unknownB', 'c1->unknownB'] },
       gradedAt: Timestamp.now(),
     })
 
-    // Net: 1 - (1 * 1.0) = 0
-    expect(grade.perQuestion.board?.pointsAwarded).toBe(0)
-    expect(grade.perQuestion.board?.correct).toBe(false)
+    expect(grade.perQuestion.board?.pointsAwarded).toBe(100)
+    expect(grade.perQuestion.board?.correct).toBe(true)
   })
 })

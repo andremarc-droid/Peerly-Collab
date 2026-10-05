@@ -1,4 +1,6 @@
 import { DomainValidationError } from '../quizzes/schemas'
+import { normalizeGenericUrl, parseDriveUrl } from '../modules/links'
+import type { DriveKind } from '../modules/types'
 import type {
   CanvasAnswerKey,
   CanvasBounds,
@@ -10,8 +12,9 @@ import type {
   CanvasWrongPenalty,
 } from './types'
 
-const GOOGLE_DRIVE_URL_REGEX = /^https:\/\/(drive|docs)\.google\.com\/.*$/
-const HTTPS_URL_REGEX = /^https:\/\/[^ ]+$/
+export const CANVAS_CARD_WIDTH = 180
+export const CANVAS_CARD_HEIGHT = 100
+export const CANVAS_CARD_PADDING = 20
 
 type RecordValue = Record<string, unknown>
 
@@ -62,6 +65,14 @@ export function parseConnectionEdge(edge: string): { from: string; to: string } 
   const to = parts[1]?.trim() ?? ''
   if (!from || !to) return null
   return { from, to }
+}
+
+function hasControlOrNewline(input: string): boolean {
+  for (let i = 0; i < input.length; i += 1) {
+    const code = input.charCodeAt(i)
+    if (code < 32 || code === 127) return true
+  }
+  return false
 }
 
 export function validateCanvasDefinition(value: unknown): CanvasQuestion {
@@ -126,20 +137,55 @@ export function validateCanvasDefinition(value: unknown): CanvasQuestion {
     }
 
     let url: string | undefined
+    let driveFileId: string | undefined
+    let driveKind: DriveKind | undefined
+
     if (cardType === 'image') {
-      url = string(c.url, `cards[${index}].url`)
-      if (!GOOGLE_DRIVE_URL_REGEX.test(url)) {
-        throw new DomainValidationError(`cards[${index}].url must be a valid Google Drive link`)
+      const rawUrl = string(c.url, `cards[${index}].url`)
+      if (hasControlOrNewline(rawUrl)) {
+        throw new DomainValidationError(`cards[${index}].url must not contain control characters or newlines`)
+      }
+      try {
+        const parsed = parseDriveUrl(rawUrl)
+        driveFileId = parsed.fileId
+        driveKind = parsed.kind
+        url = rawUrl.trim()
+      } catch (err) {
+        if (err instanceof DomainValidationError) throw err
+        const msg = err instanceof Error ? err.message : 'Invalid Google Drive link'
+        throw new DomainValidationError(`cards[${index}].url: ${msg}`)
       }
     } else if (cardType === 'link') {
-      url = string(c.url, `cards[${index}].url`)
-      if (!HTTPS_URL_REGEX.test(url)) {
-        throw new DomainValidationError(`cards[${index}].url must be a valid HTTPS link`)
+      const rawUrl = string(c.url, `cards[${index}].url`)
+      if (hasControlOrNewline(rawUrl)) {
+        throw new DomainValidationError(`cards[${index}].url must not contain control characters or newlines`)
+      }
+      try {
+        const normalized = normalizeGenericUrl(rawUrl)
+        if (!normalized.startsWith('https://')) {
+          throw new DomainValidationError(`cards[${index}].url must be a valid HTTPS link`)
+        }
+        url = normalized
+      } catch (err) {
+        if (err instanceof DomainValidationError) throw err
+        const msg = err instanceof Error ? err.message : 'Invalid link URL'
+        throw new DomainValidationError(`cards[${index}].url: ${msg}`)
       }
     } else if (c.url !== undefined && c.url !== null && c.url !== '') {
-      url = string(c.url, `cards[${index}].url`)
-      if (!HTTPS_URL_REGEX.test(url)) {
-        throw new DomainValidationError(`cards[${index}].url must be a valid HTTPS link`)
+      const rawUrl = string(c.url, `cards[${index}].url`)
+      if (hasControlOrNewline(rawUrl)) {
+        throw new DomainValidationError(`cards[${index}].url must not contain control characters or newlines`)
+      }
+      try {
+        const normalized = normalizeGenericUrl(rawUrl)
+        if (!normalized.startsWith('https://')) {
+          throw new DomainValidationError(`cards[${index}].url must be a valid HTTPS link`)
+        }
+        url = normalized
+      } catch (err) {
+        if (err instanceof DomainValidationError) throw err
+        const msg = err instanceof Error ? err.message : 'Invalid link URL'
+        throw new DomainValidationError(`cards[${index}].url: ${msg}`)
       }
     }
 
@@ -153,6 +199,8 @@ export function validateCanvasDefinition(value: unknown): CanvasQuestion {
       title,
       content,
       url,
+      driveFileId,
+      driveKind,
       position: { x, y },
     }
   })
@@ -264,13 +312,20 @@ function hashSeed(seed: number | string): number {
   return h
 }
 
+/**
+ * Scatters cards deterministically within the requested bounds using a pseudo-random grid jitter.
+ *
+ * NOTE: When the cards cannot fit within the provided bounds (i.e. bounds are too small for the minimum
+ * card dimensions and padding), the layout dynamically extends beyond the given bounds to ensure
+ * cards never overlap each other.
+ */
 export function scatterCards(cards: CanvasCard[], seed: number | string, bounds: CanvasBounds): CanvasCard[] {
   if (cards.length === 0) return []
 
   const rng = mulberry32(hashSeed(seed))
-  const cardW = bounds.cardWidth ?? 180
-  const cardH = bounds.cardHeight ?? 100
-  const pad = bounds.padding ?? 20
+  const cardW = bounds.cardWidth ?? CANVAS_CARD_WIDTH
+  const cardH = bounds.cardHeight ?? CANVAS_CARD_HEIGHT
+  const pad = bounds.padding ?? CANVAS_CARD_PADDING
 
   const minCellW = cardW + pad
   const minCellH = cardH + pad
@@ -322,8 +377,17 @@ export function buildCanvasDiff(
   studentConnections: string[],
   keyConnections: CanvasConnection[],
   directed: boolean,
+  cardIds?: string[] | Set<string> | CanvasCard[],
 ): CanvasDiff {
   const cap = Math.min(80, 2 * keyConnections.length)
+
+  const validCardIds = cardIds
+    ? new Set(
+        Array.isArray(cardIds)
+          ? cardIds.map((c) => (typeof c === 'string' ? c : c.id))
+          : cardIds,
+      )
+    : null
 
   const keyMap = new Map<string, CanvasConnection>()
   for (const conn of keyConnections) {
@@ -338,6 +402,9 @@ export function buildCanvasDiff(
     const parsed = parseConnectionEdge(raw)
     if (!parsed) continue
     if (parsed.from === parsed.to) continue // Ignore self-connections
+    if (validCardIds && (!validCardIds.has(parsed.from) || !validCardIds.has(parsed.to))) {
+      continue // Ignore connections with unknown card IDs
+    }
 
     const norm = normalizeConnection(parsed.from, parsed.to, directed)
     if (seenStudentEdges.has(norm)) continue // Ignore duplicates
