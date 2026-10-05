@@ -21,7 +21,11 @@ export async function saveQuestionAndKey(
     const [parentSnapshot, questionSnapshot] = await Promise.all([transaction.get(parentRef), transaction.get(ref)])
     if (!parentSnapshot.exists()) throw new Error('Quiz not found')
     const parent = parseQuiz(parentSnapshot.data())
-    if ((parent.mode === 'flashcards') !== (question.type === 'flashcard')) throw new Error('Question type must match the quiz format')
+    const matchesMode =
+      (parent.mode === 'flashcards' && question.type === 'flashcard') ||
+      (parent.mode === 'canvas' && question.type === 'canvas') ||
+      (parent.mode === 'quiz' && question.type !== 'flashcard' && question.type !== 'canvas')
+    if (!matchesMode) throw new Error('Question type must match the quiz format')
     transaction.set(ref, question)
     transaction.set(answerKeyRef(db, quizId, ref.id), answerKey)
     if (!questionSnapshot.exists()) transaction.update(parentRef, { questionCount: parent.questionCount + 1, updatedAt: Timestamp.now() })

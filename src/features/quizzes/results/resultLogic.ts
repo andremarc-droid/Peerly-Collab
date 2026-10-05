@@ -112,9 +112,10 @@ export function typedWrongAnswerCounts(input: {
   question: QuizQuestionRecord; key: AnswerKey; attempts: AttemptResult[]
 }): Array<{ answer: string; count: number }> {
   const counts = new Map<string, number>()
+  const caseSensitive = 'caseSensitive' in input.key ? input.key.caseSensitive : false
   const add = (answer: string, accepted: string[]) => {
     const cleaned = answer.trim().replace(/\s+/g, ' ')
-    if (!cleaned || accepted.some((item) => normalizeAnswer(item, input.key.caseSensitive) === normalizeAnswer(cleaned, input.key.caseSensitive))) return
+    if (!cleaned || accepted.some((item) => normalizeAnswer(item, caseSensitive) === normalizeAnswer(cleaned, caseSensitive))) return
     counts.set(cleaned, (counts.get(cleaned) ?? 0) + 1)
   }
   for (const attempt of input.attempts) {

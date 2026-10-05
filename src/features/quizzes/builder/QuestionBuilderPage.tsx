@@ -12,7 +12,7 @@ import { SectionCard } from '../../../shared/ui/SectionCard'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { useToast } from '../../../shared/ui/useToast'
 import { deleteQuestion, getQuiz, publishQuiz, reorderQuestions, saveQuestionAndKey, watchQuestionPairs, type SavedQuestion } from '../services'
-import type { QuestionType } from '../types'
+import type { QuestionType, QuizMode } from '../types'
 import { QuestionForm, QuestionPreview } from './QuestionForm'
 import { createQuestionDraft, draftFromPair, moveQuestion, toQuestionPair, validateQuestionDraft, type QuestionDraft } from './questionDraft'
 
@@ -147,7 +147,7 @@ export function QuestionBuilderPage() {
         <Button type="button" disabled={!canPublish || publishBusy || saveStatus === 'saving'} onClick={() => void publish()}>{publishBusy ? 'Publishing…' : 'Publish quiz'}</Button>
       </SectionCard>
       {loadError && <Alert tone="error" label="Some questions could not be loaded">{loadError}</Alert>}
-      {questions.length === 0 ? draft ? null : <EmptyState title="Start with a question" description={quiz.mode === 'quiz' ? 'Add a question and its answer key. Learners will see only the prompt and choices.' : 'Add a front and back for each card. Learners will self-rate their recall.'} action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} />} /> : <section className="question-builder__layout" aria-label="Question workspace">
+      {questions.length === 0 ? draft ? null : <EmptyState title="Start with a question" description={quiz.mode === 'quiz' ? 'Add a question and its answer key. Learners will see only the prompt and choices.' : quiz.mode === 'flashcards' ? 'Add a front and back for each card. Learners will self-rate their recall.' : 'Configure your canvas board.'} action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} />} /> : <section className="question-builder__layout" aria-label="Question workspace">
         <SectionCard title={`Questions · ${questions.length}`} description="Drag to reorder, or use the Move up and Move down controls.">
           <ol className="question-list">{questions.map((item, index) => <li key={item.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!dragId.current) return; const from = questions.findIndex((question) => question.id === dragId.current); const to = questions.findIndex((question) => question.id === item.id); const next = moveQuestion(questions, from, to); dragId.current = null; void reorderQuestions(quizId, next.map((question) => question.id)).catch((reason: unknown) => showToast('error', reason instanceof Error ? reason.message : 'Questions could not be reordered.')) }}>
             <div className="question-list__row"><span className="question-list__drag-handle" draggable aria-label={`Drag question ${index + 1} to reorder`} title="Drag to reorder" onDragStart={() => { dragId.current = item.id }}><GripVertical size={18} aria-hidden="true" /></span><button type="button" className="question-list__select" aria-pressed={questionId === item.id} onClick={() => selectQuestion(item)}><span><strong>{index + 1}. {item.question.prompt || 'Untitled question'}</strong><small>{item.question.type.replace('_', ' ')} · {item.question.points} {item.question.points === 1 ? 'point' : 'points'}</small></span></button><div className="question-list__actions"><Button type="button" variant="ghost" aria-label={`Move question ${index + 1} up`} disabled={index === 0} onClick={() => void move(item.id, -1)}><ArrowUp size={16} aria-hidden="true" /></Button><Button type="button" variant="ghost" aria-label={`Move question ${index + 1} down`} disabled={index === questions.length - 1} onClick={() => void move(item.id, 1)}><ArrowDown size={16} aria-hidden="true" /></Button></div></div>
@@ -165,6 +165,7 @@ export function QuestionBuilderPage() {
   </AppShell>
 }
 
-function QuestionTypeButtons({ mode, onAdd }: { mode: 'quiz' | 'flashcards'; onAdd: (type: QuestionType) => void }) {
+function QuestionTypeButtons({ mode, onAdd }: { mode: QuizMode; onAdd: (type: QuestionType) => void }) {
+  if (mode === 'canvas') return null
   return <div className="question-type-buttons">{mode === 'flashcards' ? <Button type="button" onClick={() => onAdd('flashcard')}><Plus size={17} aria-hidden="true" /> Add flashcard</Button> : <>{(['multiple_choice', 'true_false', 'identification', 'fill_blank'] as const).map((type) => <Button type="button" variant="secondary" key={type} onClick={() => onAdd(type)}><Plus size={16} aria-hidden="true" /> Add {type === 'multiple_choice' ? 'multiple choice' : type === 'true_false' ? 'true/false' : type === 'identification' ? 'identification' : 'fill in the blank'}</Button>)}</>}</div>
 }

@@ -2,6 +2,7 @@ import { Timestamp } from 'firebase/firestore'
 import type {
   AnswerKey, Quiz, QuizAttempt, QuizParticipant, QuizQuestion, QuizResult, QuizSettings,
 } from '../types'
+import { validateCanvasDefinition, validateCanvasKey } from '../../canvas/schemas'
 
 export class DomainValidationError extends Error {
   constructor(message: string) {
@@ -57,6 +58,9 @@ export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSetti
   if (mode === 'flashcards' && (answerReveal !== 'never' || scoreVisibility !== 'hidden' || settings.scoresReleased !== false)) {
     throw new DomainValidationError('Flashcard quizzes must use neutral answer and score settings')
   }
+  if (mode === 'canvas' && parsedParticipation.type !== 'individual') {
+    throw new DomainValidationError('Canvas quizzes must use individual participation')
+  }
   const timeLimitMinutes = settings.timeLimitMinutes
   const attemptsAllowed = settings.attemptsAllowed
   if (timeLimitMinutes !== null && (!Number.isInteger(timeLimitMinutes) || (timeLimitMinutes as number) < 1)) throw new DomainValidationError('timeLimitMinutes must be null or a positive integer')
@@ -74,7 +78,7 @@ export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSetti
 export function parseQuiz(value: unknown): Quiz {
   const quiz = record(value, 'quiz')
   exactKeys(quiz, quizKeys, 'quiz')
-  const mode = oneOf(quiz.mode, ['quiz', 'flashcards'] as const, 'mode')
+  const mode = oneOf(quiz.mode, ['quiz', 'flashcards', 'canvas'] as const, 'mode')
   if (!Array.isArray(quiz.tags) || !quiz.tags.every((tag) => typeof tag === 'string')) throw new DomainValidationError('tags must be a list of strings')
   if (quiz.tags.length > 20) throw new DomainValidationError('tags must not exceed 20 items')
   const title = string(quiz.title, 'title', true)
@@ -95,7 +99,8 @@ export function parseQuiz(value: unknown): Quiz {
 
 export function parseQuestion(value: unknown): QuizQuestion {
   const question = record(value, 'question')
-  const type = oneOf(question.type, ['multiple_choice', 'true_false', 'identification', 'fill_blank', 'flashcard'] as const, 'question.type')
+  const type = oneOf(question.type, ['multiple_choice', 'true_false', 'identification', 'fill_blank', 'flashcard', 'canvas'] as const, 'question.type')
+  if (type === 'canvas') return validateCanvasDefinition(question)
   const hasOptions = type === 'multiple_choice' || type === 'true_false'
   exactKeys(question, hasOptions ? ['order', 'type', 'prompt', 'options', 'points'] : ['order', 'type', 'prompt', 'points'], 'question')
   const prompt = string(question.prompt, 'prompt')
@@ -117,7 +122,8 @@ export function parseQuestion(value: unknown): QuizQuestion {
 
 export function parseAnswerKey(value: unknown): AnswerKey {
   const key = record(value, 'answerKey')
-  const type = oneOf(key.type, ['choice', 'identification', 'fill_blank', 'flashcard'] as const, 'answerKey.type')
+  const type = oneOf(key.type, ['choice', 'identification', 'fill_blank', 'flashcard', 'canvas'] as const, 'answerKey.type')
+  if (type === 'canvas') return validateCanvasKey(key)
   const base = { explanation: string(key.explanation, 'explanation', true), caseSensitive: bool(key.caseSensitive, 'caseSensitive') }
   if (type === 'choice') {
     exactKeys(key, ['type', 'correctOptionId', 'explanation', 'caseSensitive'], 'answerKey')
@@ -140,6 +146,10 @@ export function parseAnswerKey(value: unknown): AnswerKey {
 export function validateQuestionAnswerPair(questionValue: unknown, keyValue: unknown): { question: QuizQuestion; answerKey: AnswerKey } {
   const question = parseQuestion(questionValue)
   const answerKey = parseAnswerKey(keyValue)
+  if (question.type === 'canvas') {
+    if (answerKey.type !== 'canvas') throw new DomainValidationError('canvas requires a canvas answer key')
+    return { question, answerKey: validateCanvasKey(keyValue, question.cards, question.directed) }
+  }
   const expectedKeyType = question.type === 'multiple_choice' || question.type === 'true_false'
     ? 'choice'
     : question.type === 'identification' ? 'identification' : question.type

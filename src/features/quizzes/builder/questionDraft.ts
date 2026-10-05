@@ -72,7 +72,7 @@ export function draftFromPair(question: QuizQuestion, answerKey: AnswerKey): Que
     prompt: question.prompt,
     points: String(question.points),
     explanation: answerKey.explanation,
-    caseSensitive: answerKey.caseSensitive,
+    caseSensitive: 'caseSensitive' in answerKey ? answerKey.caseSensitive : false,
     options: question.type === 'multiple_choice' || question.type === 'true_false'
       ? question.options.map((option) => ({ ...option, correct: answerKey.type === 'choice' && answerKey.correctOptionId === option.id }))
       : [],

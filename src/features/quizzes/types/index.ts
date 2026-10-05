@@ -1,8 +1,9 @@
 import type { Timestamp } from 'firebase/firestore'
+import type { CanvasAnswerKey, CanvasQuestion } from '../../canvas/types'
 
-export type QuizMode = 'quiz' | 'flashcards'
+export type QuizMode = 'quiz' | 'flashcards' | 'canvas'
 export type QuizStatus = 'draft' | 'published' | 'archived'
-export type QuestionType = 'multiple_choice' | 'true_false' | 'identification' | 'fill_blank' | 'flashcard'
+export type QuestionType = 'multiple_choice' | 'true_false' | 'identification' | 'fill_blank' | 'flashcard' | 'canvas'
 export type AnswerReveal = 'after_each' | 'after_submit' | 'never'
 export type ScoreVisibility = 'immediate' | 'after_release' | 'hidden'
 
@@ -76,6 +77,7 @@ export type QuizQuestion =
   | IdentificationQuestion
   | FillBlankQuestion
   | FlashcardQuestion
+  | CanvasQuestion
 
 interface AnswerKeyBase {
   explanation: string
@@ -107,6 +109,7 @@ export type AnswerKey =
   | IdentificationAnswerKey
   | FillBlankAnswerKey
   | FlashcardAnswerKey
+  | CanvasAnswerKey
 
 export type SubmittedAnswer = string | string[]
 export type AttemptStatus = 'in_progress' | 'submitted'
