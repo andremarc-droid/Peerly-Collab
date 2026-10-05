@@ -59,3 +59,14 @@ The developer-only `/design` gallery demonstrates these components, disabled/err
 - Dialog headers, destructive confirmations, feedback banners, loading states, and empty states share their icon, spacing, contrast, and action patterns.
 - Keep the visual system to navy and white; feedback colors appear only with an icon and visible text label. Keep paragraph text at 16px or larger, metadata at 12px or larger, and controls at least 44px high.
 
+## Class identity design rules
+
+- App chrome (top navigation bar, global buttons, tabs, dialogs) strictly follows the navy-and-white brand palette. Class colors are permitted ONLY on designated class identity surfaces: `ClassTile` headers, class page `PageHeader` background bands, `ClassInitialBadge` indicators, and the `ClassColorPicker`.
+- The 11 class color keys (`navy`, `ocean`, `teal`, `green`, `amber`, `rust`, `crimson`, `rose`, `purple`, `indigo`, `slate`) are defined via `[data-class-color]` CSS tokens without inline styles.
+- Every palette color guarantees WCAG AA accessibility: white text on `--class-color` >= 4.5:1 and navy text on `--class-tint` >= 4.5:1.
+- Class colors are never used for semantic success, warning, or error states.
+- Focus rings on colored surfaces use an inverting white inner ring with a dark navy outer border (`box-shadow: 0 0 0 2px var(--color-white), 0 0 0 4px var(--color-navy-900)`).
+- Decorative patterns (`pinstripe`, `stripeFade`, `solid`) on class headers use low-opacity white stripes masked away from text and controls (occupying at most the right 40–48% of the surface).
+- Class identity never relies on color alone: the class title is always rendered prominently as readable text alongside the initial badge.
+
+

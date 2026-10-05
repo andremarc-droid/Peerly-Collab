@@ -2,7 +2,7 @@
 
 ## Records
 
-- `classes/{classId}` is the instructor-owned source of truth for class details, the six-character join code, join settings, lifecycle state, and a theme pattern accent. Member counts are never stored on this document.
+- `classes/{classId}` is the instructor-owned source of truth for class details, the six-character join code, join settings, lifecycle state, a theme pattern accent (`pinstripe`, `stripeFade`, `solid`), and an optional class identity `color` (`navy`, `ocean`, `teal`, `green`, `amber`, `rust`, `crimson`, `rose`, `purple`, `indigo`, `slate`). When `color` is missing or unrecognized, client readers default and fall back to `navy`. Member counts are never stored on this document.
 - `classCodes/{CODE}` is a direct-get-only lookup projection for class previews. It is not authoritative; enrollment rules compare the submitted code and join state to the current class document.
 - `enrollments/{classId}_{uid}` is the canonical membership record. `active` grants access to published class quizzes, `pending` waits for instructor approval, and `blocked` prevents the student from recreating the document.
 - New `quizzes/{quizId}` records include `classId`. Legacy records without it parse as unassigned, remain in the owner's library, and cannot be published. Class reassignment is restricted to drafts and active classes of the same instructor.

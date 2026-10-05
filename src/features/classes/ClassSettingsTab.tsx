@@ -11,12 +11,27 @@ import { Textarea } from '../../shared/ui/Textarea'
 import { useToast } from '../../shared/ui/useToast'
 import { archiveClass, deleteClassCascade, restoreClass, setJoinEnabled, setRequireApproval, updateClass } from './services'
 import { ClassAccentPicker } from './ClassAccentPicker'
-import type { ClassWithId } from './types'
+import { ClassColorPicker } from './ClassColorPicker'
+import type { ClassAccent, ClassColor, ClassWithId } from './types'
 
 export function ClassSettingsTab({ classroom, counts }: { classroom: ClassWithId; counts: { students: number; quizzes: number } }) {
   const { showToast } = useToast()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: classroom.name, section: classroom.section, subject: classroom.subject, description: classroom.description, accent: classroom.accent })
+  const [form, setForm] = useState<{
+    name: string
+    section: string
+    subject: string
+    description: string
+    accent: ClassAccent
+    color: ClassColor
+  }>({
+    name: classroom.name,
+    section: classroom.section,
+    subject: classroom.subject,
+    description: classroom.description,
+    accent: classroom.accent,
+    color: classroom.color ?? 'navy',
+  })
   const [joinEnabled, setJoin] = useState(classroom.joinEnabled)
   const [requireApproval, setApproval] = useState(classroom.requireApproval)
   const [saving, setSaving] = useState(false)
@@ -61,6 +76,13 @@ export function ClassSettingsTab({ classroom, counts }: { classroom: ClassWithId
       <SectionCard title="Class details" description="Keep the class information clear for your learners.">
         {error && <Alert tone="error" label="Could not save class">{error}</Alert>}
         <div className="grid gap-4 sm:grid-cols-2"><Input label="Class name" name="settings-class-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /><Input label="Section" name="settings-class-section" value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value })} /><Input label="Subject" name="settings-class-subject" value={form.subject} onChange={(event) => setForm({ ...form, subject: event.target.value })} /><Textarea label="Description" name="settings-class-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} className="sm:col-span-2" /></div>
+        <ClassColorPicker
+          value={form.color}
+          onChange={(color) => setForm({ ...form, color })}
+          accent={form.accent}
+          previewName={form.name || classroom.name}
+          previewSection={[form.section, form.subject].filter(Boolean).join(' · ') || 'Section · Subject'}
+        />
         <ClassAccentPicker value={form.accent} onChange={(accent) => setForm({ ...form, accent })} />
         <Button type="submit" disabled={saving}><Save size={16} aria-hidden="true" /> {saving ? 'Saving…' : 'Save details'}</Button>
       </SectionCard>

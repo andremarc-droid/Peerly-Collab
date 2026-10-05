@@ -5,9 +5,10 @@ import { Input } from '../../shared/ui/Input'
 import { Switch } from '../../shared/ui/Switch'
 import { Textarea } from '../../shared/ui/Textarea'
 import { ClassAccentPicker } from './ClassAccentPicker'
+import { ClassColorPicker } from './ClassColorPicker'
 import type { NewClass } from './types'
 
-const blank: NewClass = { ownerId: '', ownerName: '', name: '', section: '', subject: '', description: '', accent: 'pinstripe', requireApproval: false, joinEnabled: true }
+const blank: NewClass = { ownerId: '', ownerName: '', name: '', section: '', subject: '', description: '', accent: 'pinstripe', color: 'navy', requireApproval: false, joinEnabled: true }
 
 export function CreateClassDialog({ open, onClose, onCreate, ownerId, ownerName, busy }: {
   open: boolean; onClose: () => void; onCreate: (input: NewClass) => Promise<void>; ownerId: string; ownerName: string; busy: boolean
@@ -31,6 +32,13 @@ export function CreateClassDialog({ open, onClose, onCreate, ownerId, ownerName,
         <Input label="Subject" name="class-subject" value={form.subject} onChange={(event) => setForm({ ...form, subject: event.target.value })} />
       </div>
       <Textarea label="Description" name="class-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
+      <ClassColorPicker
+        value={form.color ?? 'navy'}
+        onChange={(color) => setForm({ ...form, color })}
+        accent={form.accent ?? 'pinstripe'}
+        previewName={form.name || 'Preview class'}
+        previewSection={[form.section, form.subject].filter(Boolean).join(' · ') || 'Section · Subject'}
+      />
       <ClassAccentPicker value={form.accent ?? 'pinstripe'} onChange={(accent) => setForm({ ...form, accent })} />
       <Switch name="require-approval" label="Require my approval to join" checked={form.requireApproval} onChange={(event) => setForm({ ...form, requireApproval: event.target.checked })} />
       <Switch name="joining-open" label="Joining open" checked={form.joinEnabled} onChange={(event) => setForm({ ...form, joinEnabled: event.target.checked })} />

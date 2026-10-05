@@ -1,6 +1,17 @@
 import { Timestamp } from 'firebase/firestore'
 import { isValidJoinCode } from './joinCode'
-import type { ClassAccent, ClassCodeRecord, ClassRecord, ClassStatus, EnrollmentRecord, EnrollmentStatus } from './types'
+import {
+  CLASS_COLORS,
+  resolveClassColor,
+  type ClassAccent,
+  type ClassCodeRecord,
+  type ClassColor,
+  type ClassPatch,
+  type ClassRecord,
+  type ClassStatus,
+  type EnrollmentRecord,
+  type EnrollmentStatus,
+} from './types'
 
 export class ClassValidationError extends Error {
   constructor(message: string) { super(message); this.name = 'ClassValidationError' }
@@ -31,7 +42,7 @@ function oneOf<T extends string>(value: unknown, values: readonly T[], label: st
   return value as T
 }
 
-const classKeys = ['ownerId', 'ownerName', 'name', 'section', 'subject', 'description', 'joinCode', 'joinEnabled', 'requireApproval', 'status', 'accent', 'createdAt', 'updatedAt', 'codeRotatedAt']
+const classKeys = ['ownerId', 'ownerName', 'name', 'section', 'subject', 'description', 'joinCode', 'joinEnabled', 'requireApproval', 'status', 'accent', 'color', 'createdAt', 'updatedAt', 'codeRotatedAt']
 const codeKeys = ['classId', 'ownerId', 'className', 'ownerName', 'joinEnabled', 'requireApproval', 'archived']
 const enrollmentKeys = ['classId', 'ownerId', 'uid', 'studentName', 'studentPhotoURL', 'className', 'status', 'codeUsed', 'joinedAt', 'updatedAt']
 
@@ -41,11 +52,12 @@ export function parseClass(value: unknown): ClassRecord {
   const joinCode = text(item.joinCode, 'joinCode')
   if (!isValidJoinCode(joinCode)) throw new ClassValidationError('joinCode must contain six valid characters')
   const accent = oneOf(item.accent, ['pinstripe', 'stripeFade', 'solid'] as const, 'accent')
+  const color = resolveClassColor(item.color)
   return {
     ownerId: text(item.ownerId, 'ownerId'), ownerName: text(item.ownerName, 'ownerName'), name: text(item.name, 'name'),
     section: text(item.section, 'section', true), subject: text(item.subject, 'subject', true), description: text(item.description, 'description', true),
     joinCode, joinEnabled: bool(item.joinEnabled, 'joinEnabled'), requireApproval: bool(item.requireApproval, 'requireApproval'),
-    status: oneOf(item.status, ['active', 'archived'] as const satisfies readonly ClassStatus[], 'status'), accent,
+    status: oneOf(item.status, ['active', 'archived'] as const satisfies readonly ClassStatus[], 'status'), accent, color,
     createdAt: timestamp(item.createdAt, 'createdAt'), updatedAt: timestamp(item.updatedAt, 'updatedAt'), codeRotatedAt: timestamp(item.codeRotatedAt, 'codeRotatedAt'),
   }
 }
@@ -77,15 +89,16 @@ export function parseEnrollment(value: unknown): EnrollmentRecord {
   }
 }
 
-export function validateClassPatch(value: unknown): Partial<Pick<ClassRecord, 'name' | 'section' | 'subject' | 'description' | 'accent'>> {
+export function validateClassPatch(value: unknown): ClassPatch {
   const item = data(value, 'class patch')
-  const allowed = ['name', 'section', 'subject', 'description', 'accent']
+  const allowed = ['name', 'section', 'subject', 'description', 'accent', 'color']
   exactKeys(item, allowed, 'class patch')
-  const patch: Partial<Pick<ClassRecord, 'name' | 'section' | 'subject' | 'description' | 'accent'>> = {}
+  const patch: ClassPatch = {}
   if ('name' in item) patch.name = text(item.name, 'name')
   if ('section' in item) patch.section = text(item.section, 'section', true)
   if ('subject' in item) patch.subject = text(item.subject, 'subject', true)
   if ('description' in item) patch.description = text(item.description, 'description', true)
   if ('accent' in item) patch.accent = oneOf(item.accent, ['pinstripe', 'stripeFade', 'solid'] as const, 'accent') as ClassAccent
+  if ('color' in item) patch.color = oneOf(item.color, CLASS_COLORS, 'color') as ClassColor
   return patch
 }

@@ -4,6 +4,43 @@ export type ClassStatus = 'active' | 'archived'
 export type EnrollmentStatus = 'active' | 'pending' | 'blocked'
 export type ClassAccent = 'pinstripe' | 'stripeFade' | 'solid'
 
+export const CLASS_COLORS = [
+  'navy',
+  'ocean',
+  'teal',
+  'green',
+  'amber',
+  'rust',
+  'crimson',
+  'rose',
+  'purple',
+  'indigo',
+  'slate',
+] as const
+
+export type ClassColor = (typeof CLASS_COLORS)[number]
+
+export function resolveClassColor(value: unknown): ClassColor {
+  if (typeof value === 'string' && (CLASS_COLORS as readonly string[]).includes(value)) {
+    return value as ClassColor
+  }
+  return 'navy'
+}
+
+export const COLOR_OPTIONS: Array<{ value: ClassColor; label: string }> = [
+  { value: 'navy', label: 'Navy' },
+  { value: 'ocean', label: 'Ocean' },
+  { value: 'teal', label: 'Teal' },
+  { value: 'green', label: 'Green' },
+  { value: 'amber', label: 'Amber' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'crimson', label: 'Crimson' },
+  { value: 'rose', label: 'Rose' },
+  { value: 'purple', label: 'Purple' },
+  { value: 'indigo', label: 'Indigo' },
+  { value: 'slate', label: 'Slate' },
+]
+
 export interface ClassRecord {
   ownerId: string
   ownerName: string
@@ -16,6 +53,7 @@ export interface ClassRecord {
   requireApproval: boolean
   status: ClassStatus
   accent: ClassAccent
+  color?: ClassColor
   createdAt: Timestamp
   updatedAt: Timestamp
   codeRotatedAt: Timestamp
@@ -57,9 +95,10 @@ export interface NewClass {
   joinEnabled?: boolean
   requireApproval?: boolean
   accent?: ClassAccent
+  color?: ClassColor
 }
 
-export type ClassPatch = Partial<Pick<ClassRecord, 'name' | 'section' | 'subject' | 'description' | 'accent'>>
+export type ClassPatch = Partial<Pick<ClassRecord, 'name' | 'section' | 'subject' | 'description' | 'accent' | 'color'>>
 
 export type JoinOutcome =
   | { outcome: 'joined'; enrollment: EnrollmentWithId }

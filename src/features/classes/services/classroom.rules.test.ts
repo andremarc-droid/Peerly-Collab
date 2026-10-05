@@ -199,4 +199,57 @@ describe('classroom Firestore rules', () => {
     const validPhoto = 'https://example.com/' + 'p'.repeat(100)
     await assertSucceeds(setDoc(doc(student, 'enrollments/class1_other'), enrollmentData('other', { studentPhotoURL: validPhoto })))
   })
+
+  it('enforces class color rules: valid color accepted, unknown rejected, non-owner denied, omitted color valid, classCodes unaffected', async () => {
+    await seed()
+    const owner = environment.authenticatedContext('teacher').firestore()
+    const student = environment.authenticatedContext('student').firestore()
+    const otherTeacher = environment.authenticatedContext('teacherB').firestore()
+
+    // 1. Classes without color are still valid (legacy backward compatibility)
+    const baseClass = classData({ joinCode: 'NCC234' })
+    delete (baseClass as Record<string, unknown>).color
+    const createNoColorBatch = writeBatch(owner)
+    createNoColorBatch.set(doc(owner, 'classes/classNoColor'), baseClass)
+    createNoColorBatch.set(doc(owner, 'classCodes/NCC234'), codeData({ classId: 'classNoColor' }))
+    await assertSucceeds(createNoColorBatch.commit())
+
+    // 2. Valid color accepted
+    const createColorBatch = writeBatch(owner)
+    createColorBatch.set(doc(owner, 'classes/classColor'), classData({ joinCode: 'SEA234', color: 'ocean' }))
+    createColorBatch.set(doc(owner, 'classCodes/SEA234'), codeData({ classId: 'classColor' }))
+    await assertSucceeds(createColorBatch.commit())
+
+    // Update with another valid color accepted
+    const updateValidBatch = writeBatch(owner)
+    updateValidBatch.update(doc(owner, 'classes/classColor'), { color: 'teal', updatedAt: now })
+    updateValidBatch.set(doc(owner, 'classCodes/SEA234'), codeData({ classId: 'classColor' }))
+    await assertSucceeds(updateValidBatch.commit())
+
+    // 3. Unknown color rejected
+    const updateUnknownBatch = writeBatch(owner)
+    updateUnknownBatch.update(doc(owner, 'classes/classColor'), { color: 'neon-yellow', updatedAt: now })
+    updateUnknownBatch.set(doc(owner, 'classCodes/SEA234'), codeData({ classId: 'classColor' }))
+    await assertFails(updateUnknownBatch.commit())
+
+    const createUnknownBatch = writeBatch(owner)
+    createUnknownBatch.set(doc(owner, 'classes/classUnknown'), classData({ joinCode: 'BAD234', color: 'magenta' }))
+    createUnknownBatch.set(doc(owner, 'classCodes/BAD234'), codeData({ classId: 'classUnknown' }))
+    await assertFails(createUnknownBatch.commit())
+
+    // 4. Non-owner cannot change it
+    const nonOwnerStudentBatch = writeBatch(student)
+    nonOwnerStudentBatch.update(doc(student, 'classes/classColor'), { color: 'crimson', updatedAt: now })
+    nonOwnerStudentBatch.set(doc(student, 'classCodes/SEA234'), codeData({ classId: 'classColor' }))
+    await assertFails(nonOwnerStudentBatch.commit())
+
+    const nonOwnerTeacherBatch = writeBatch(otherTeacher)
+    nonOwnerTeacherBatch.update(doc(otherTeacher, 'classes/classColor'), { color: 'crimson', updatedAt: now })
+    nonOwnerTeacherBatch.set(doc(otherTeacher, 'classCodes/SEA234'), codeData({ classId: 'classColor' }))
+    await assertFails(nonOwnerTeacherBatch.commit())
+
+    // 5. classCodes lookup is unaffected
+    await assertSucceeds(getDoc(doc(student, 'classCodes/SEA234')))
+    await assertSucceeds(getDoc(doc(student, 'classCodes/NCC234')))
+  })
 })

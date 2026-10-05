@@ -1,12 +1,10 @@
-import { Archive, Copy, Plus, RotateCcw, Users } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
 import { Alert } from '../../shared/ui/Alert'
-import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
-import { DataCard } from '../../shared/ui/DataCard'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Select } from '../../shared/ui/Select'
@@ -14,13 +12,14 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { StatRow, StatTile } from '../../shared/ui/StatTile'
 import { Toolbar } from '../../shared/ui/Toolbar'
 import { useToast } from '../../shared/ui/useToast'
-import { archiveClass, createClass, countMyClasses, restoreClass, watchMyClasses } from './services'
+import { archiveClass, createClass, countMyClasses, restoreClass, updateClass, watchMyClasses } from './services'
 import type { ClassWithId } from './types'
 import { countPendingEnrollments, countStudentsInClass, watchEnrollments } from './services/enrollmentService'
 import { countClassQuizzes, watchQuizzesForClass } from './services/quizService'
 import type { NewClass } from './types'
 import { CreateClassDialog } from './CreateClassDialog'
-import { ClassPattern } from './ClassPatterns'
+import { ClassTile } from './ClassTile'
+import { EditAppearanceDialog } from './EditAppearanceDialog'
 import { copyText } from './classUtilities'
 
 type ClassFilter = 'active' | 'archived' | 'all'
@@ -42,6 +41,7 @@ export function ClassesPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [editingClass, setEditingClass] = useState<ClassWithId | null>(null)
 
   const refreshCounts = useCallback(async (items: ClassWithId[]) => {
     if (!ownerId) return
@@ -103,6 +103,15 @@ export function ClassesPage() {
     finally { setBusyId(null) }
   }
 
+  async function saveAppearance(targetClass: ClassWithId, color: typeof targetClass.color, accent: typeof targetClass.accent) {
+    try {
+      await updateClass(targetClass.id, { color, accent })
+      showToast('success', 'Class appearance updated.')
+    } catch (reason) {
+      showToast('error', reason instanceof Error ? reason.message : 'Could not update appearance.')
+    }
+  }
+
   return <AppShell>
     <PageHeader eyebrow="INSTRUCTOR SPACE" title="My classes." subtitle="Organize learners, share invitations, and create class-specific practice." action={<Button type="button" onClick={() => setCreateOpen(true)}><Plus size={18} aria-hidden="true" /> Create class</Button>} />
     <main className="app-shell__content grid gap-8" id="main-content">
@@ -111,16 +120,38 @@ export function ClassesPage() {
         <header className="flex flex-wrap items-end justify-between gap-3"><div><span className="section-kicker">YOUR TEACHING SPACE</span><h2 id="classes-heading" className="m-0 font-heading text-2xl">Classes</h2></div><span className="text-sm text-navy-800-72">{visible.length} {visible.length === 1 ? 'class' : 'classes'}</span></header>
         <Toolbar query={queryText} onQueryChange={setQueryText} placeholder="Search classes" filters={<Select label="Status" name="class-status" value={filter} onChange={(event) => setFilter(event.target.value as ClassFilter)} options={[{ value: 'active', label: 'Active' }, { value: 'archived', label: 'Archived' }, { value: 'all', label: 'All classes' }]} />} />
         {error && <Alert tone="error" label="Classes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(null); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>}
-        {loading ? <div className="grid gap-4" aria-label="Loading classes">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-48 rounded-3xl" label="Loading class" />)}</div>
-          : visible.length ? <div className="grid gap-4">{visible.map((item) => <DataCard key={item.id} title={item.name} meta={[item.section, item.subject].filter(Boolean).join(' · ') || 'No section or subject'} badge={<div className="flex flex-wrap gap-2"><Badge>{item.status === 'active' ? 'Active' : 'Archived'}</Badge>{counts[item.id]?.pending ? <Badge>{counts[item.id].pending} pending</Badge> : null}</div>}>
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><ClassPattern accent={item.accent} /><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-lg font-semibold tracking-[0.2em]">{item.joinCode}</span><Button type="button" variant="secondary" onClick={() => void copyText(item.joinCode).then(() => showToast('success', 'Join code copied.')).catch((reason: unknown) => showToast('error', reason instanceof Error ? reason.message : 'Could not copy the code.'))}><Copy size={15} aria-hidden="true" /> Copy code</Button></div></div>
-            <p className="m-0 flex flex-wrap gap-x-4 gap-y-1 text-sm text-navy-800-72"><span><Users size={15} className="mr-1 inline" aria-hidden="true" />{counts[item.id]?.students ?? 0} students</span><span>{counts[item.id]?.quizzes ?? 0} quizzes</span></p>
-            <div className="flex flex-wrap gap-2"><Button to={`/instructor/classes/${item.id}`} variant="secondary">Open</Button><Button type="button" variant="secondary" disabled={busyId === item.id} onClick={() => void toggleArchive(item)}>{item.status === 'active' ? <><Archive size={15} aria-hidden="true" /> Archive</> : <><RotateCcw size={15} aria-hidden="true" /> Restore</>}</Button></div>
-          </DataCard>)}</div>
+        {loading ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" aria-label="Loading classes">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-56 rounded-3xl" label="Loading class" />)}</div>
+          : visible.length ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">{visible.map((item) => <ClassTile
+            role="instructor"
+            key={item.id}
+            id={item.id}
+            name={item.name}
+            section={item.section}
+            subject={item.subject}
+            color={item.color}
+            accent={item.accent}
+            status={item.status}
+            joinCode={item.joinCode}
+            studentsCount={counts[item.id]?.students ?? 0}
+            quizzesCount={counts[item.id]?.quizzes ?? 0}
+            pendingCount={counts[item.id]?.pending ?? 0}
+            onCopyCode={() => void copyText(item.joinCode).then(() => showToast('success', 'Join code copied.')).catch((reason: unknown) => showToast('error', reason instanceof Error ? reason.message : 'Could not copy the code.'))}
+            onEditAppearance={() => setEditingClass(item)}
+            onToggleArchive={() => void toggleArchive(item)}
+            busy={busyId === item.id}
+          />)}</div>
           : classes.length === 0 ? <EmptyState title="Create your first class" description="Classes keep student rosters, invitations, and quizzes together in one place." action={<Button type="button" onClick={() => setCreateOpen(true)}><Plus size={17} aria-hidden="true" /> Create your first class</Button>} />
             : <p role="status" className="rounded-2xl border border-navy-900-12 p-6 text-navy-800-72">No classes match your search and status filter.</p>}
       </section>
     </main>
     <CreateClassDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={create} ownerId={ownerId ?? ''} ownerName={user?.displayName ?? 'Instructor'} busy={creating} />
+    {editingClass && (
+      <EditAppearanceDialog
+        open={Boolean(editingClass)}
+        onClose={() => setEditingClass(null)}
+        classroom={editingClass}
+        onSave={(color, accent) => saveAppearance(editingClass, color, accent)}
+      />
+    )}
   </AppShell>
 }

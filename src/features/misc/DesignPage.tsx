@@ -32,6 +32,9 @@ import { ToastProvider } from '../../shared/ui/ToastProvider'
 import { useToast } from '../../shared/ui/useToast'
 import { Tooltip } from '../../shared/ui/Tooltip'
 import { Toolbar } from '../../shared/ui/Toolbar'
+import { ClassColorPicker } from '../classes/ClassColorPicker'
+import { ClassTile } from '../classes/ClassTile'
+import type { ClassColor } from '../classes/types'
 
 const samples = [
   { title: 'Retrieval practice', meta: '12 questions · Edited today', type: 'Quiz' },
@@ -53,6 +56,7 @@ function DesignGallery() {
   const [role, setRole] = useState('student')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [galleryColor, setGalleryColor] = useState<ClassColor>('ocean')
   const { showToast } = useToast()
   const visibleSamples = samples.filter((sample) => sample.title.toLowerCase().includes(query.toLowerCase()) && (type === 'All types' || sample.type === type))
 
@@ -129,6 +133,78 @@ function DesignGallery() {
           </div>
           <div className="design-gallery__sample"><span className="section-kicker">LOADING STATES</span><div className="design-gallery__row"><span className="design-load"><Spinner label="Loading sample" />Loading</span><Skeleton className="skeleton--sample" label="Loading sample card" /></div></div>
           <div className="design-gallery__sample design-gallery__dark"><StripeBackground variant="pinstripe" /><strong>Decorative white pinstripe at reduced opacity</strong></div>
+        </SectionCard>
+
+        <SectionCard title="Class identity and tiles" description="Google Classroom-style class identity pairing theme color with low-opacity masked stripes.">
+          <div className="grid gap-6">
+            <ClassColorPicker
+              value={galleryColor}
+              onChange={setGalleryColor}
+              accent="pinstripe"
+              previewName="Biology 101"
+              previewSection="Period 3 · Genetics"
+            />
+            <div className="grid gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-navy-800-72">Class tiles grid</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <ClassTile
+                  role="instructor"
+                  id="preview-inst"
+                  name="AP Computer Science"
+                  section="Period 2"
+                  subject="Algorithms"
+                  color={galleryColor}
+                  accent="pinstripe"
+                  joinCode="8VYRTY"
+                  studentsCount={28}
+                  quizzesCount={5}
+                  pendingCount={2}
+                  onCopyCode={() => showToast('success', 'Join code copied.')}
+                  onEditAppearance={() => showToast('info', 'Edit appearance clicked.')}
+                  onToggleArchive={() => showToast('info', 'Archive toggled.')}
+                />
+                <ClassTile
+                  role="student"
+                  id="preview-stu"
+                  name="Organic Chemistry"
+                  section="Section 4B"
+                  subject="Reactions"
+                  color="teal"
+                  accent="stripeFade"
+                  instructorName="Dr. Chen"
+                  availableQuizzesCount={3}
+                  enrollmentStatus="active"
+                  onLeaveClass={() => showToast('info', 'Leave class clicked.')}
+                />
+                <ClassTile
+                  role="student"
+                  id="preview-pending"
+                  name="World History"
+                  section="Period 5"
+                  subject="European History"
+                  color="amber"
+                  accent="solid"
+                  instructorName="Mr. Davis"
+                  availableQuizzesCount={0}
+                  enrollmentStatus="pending"
+                />
+                <ClassTile
+                  role="instructor"
+                  id="preview-archived"
+                  name="Past Term Physics"
+                  section="Fall 2025"
+                  subject="Mechanics"
+                  color="slate"
+                  accent="pinstripe"
+                  status="archived"
+                  joinCode="ARC123"
+                  studentsCount={31}
+                  quizzesCount={8}
+                  onToggleArchive={() => showToast('info', 'Restore clicked.')}
+                />
+              </div>
+            </div>
+          </div>
         </SectionCard>
 
         <SectionCard title="Motion" description="Short transitions support orientation. They are removed when reduced motion is requested.">

@@ -15,6 +15,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { getClassCodePreview, leaveClass, listMyEnrollments } from './services/joinService'
 import { watchClass } from './services/classService'
 import { watchPublishedQuizzesForClass } from './services/quizService'
+import { ClassInitialBadge } from './ClassInitialBadge'
 import type { ClassCodeRecord, ClassWithId, EnrollmentWithId } from './types'
 import type { QuizRecord } from '../quizzes/services/quizService'
 
@@ -125,7 +126,19 @@ function StudentClassDetail({ classId }: { classId: string }) {
   const title = classroom?.name ?? enrollment.className
   const subtitle = classroom ? [classroom.section || 'No section', `Instructor ${classroom.ownerName}`].join(' · ') : 'Your class and published practice.'
   return <AppShell>
-    <PageHeader eyebrow="YOUR CLASS" title={`${title}.`} subtitle={subtitle} action={<Button type="button" variant="secondary" onClick={() => setLeaveOpen(true)}><DoorOpen size={17} aria-hidden="true" /> Leave class</Button>} />
+    <PageHeader
+      eyebrow="YOUR CLASS"
+      title={
+        <span className="inline-flex items-center gap-2.5 flex-wrap">
+          <ClassInitialBadge name={title} color={classroom?.color ?? 'navy'} />
+          <span>{title}.</span>
+        </span>
+      }
+      subtitle={subtitle}
+      action={<Button type="button" variant="secondary" onClick={() => setLeaveOpen(true)}><DoorOpen size={17} aria-hidden="true" /> Leave class</Button>}
+      classColor={classroom?.color ?? 'navy'}
+      accent={classroom?.accent}
+    />
     <main className="app-shell__content grid gap-5" id="main-content">
       {classroom && <p className="m-0 text-sm text-navy-800-72">{classroom.section || 'No section'} · {classroom.subject || 'No subject'}</p>}
       {quizzes.length ? <section className="grid gap-4" aria-labelledby="published-quizzes-heading"><header><span className="section-kicker">CLASS PRACTICE</span><h2 id="published-quizzes-heading" className="m-0 font-heading text-2xl">Published quizzes</h2></header>{quizzes.map((quiz) => { const groupQuiz = quiz.settings.participation.type === 'group'; return <DataCard key={quiz.id} title={quiz.title} meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} minute time limit` : ' · No time limit'}`} badge={<div className="flex flex-wrap gap-2"><Badge>{quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards'}</Badge><Badge>{answerRevealLabel(quiz.settings.answerReveal)}</Badge><Badge>{scoreVisibilityLabel(quiz)}</Badge></div>}><Button to={groupQuiz ? undefined : `/student/quizzes/${quiz.id}`} variant="secondary" disabled={groupQuiz}>{groupQuiz ? <>Start · Group quizzes coming soon</> : 'Start'}</Button></DataCard>})}</section>

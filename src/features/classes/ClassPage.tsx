@@ -15,6 +15,7 @@ import { countClassEnrollments, countPendingEnrollments, countStudentsInClass, w
 import { countClassQuizzes, watchQuizzesForClass } from './services/quizService'
 import type { ClassWithId, EnrollmentWithId } from './types'
 import { ClassCodePanel } from './ClassCodePanel'
+import { ClassInitialBadge } from './ClassInitialBadge'
 import { ClassPeopleTab } from './ClassPeopleTab'
 import { ClassQuizzesTab } from './ClassQuizzesTab'
 import { ClassSettingsTab } from './ClassSettingsTab'
@@ -111,7 +112,19 @@ export function ClassPage() {
   const defaultTab = selectedTab < 0 ? 0 : selectedTab
 
   return <AppShell>
-    <PageHeader eyebrow={classroom.status === 'active' ? 'ACTIVE CLASS' : 'ARCHIVED CLASS'} title={`${classroom.name}.`} subtitle={subtitle} action={<Button to="/instructor" variant="secondary">Back to My classes</Button>} />
+    <PageHeader
+      eyebrow={classroom.status === 'active' ? 'ACTIVE CLASS' : 'ARCHIVED CLASS'}
+      title={
+        <span className="inline-flex items-center gap-2.5 flex-wrap">
+          <ClassInitialBadge name={classroom.name} color={classroom.color ?? 'navy'} />
+          <span>{classroom.name}.</span>
+        </span>
+      }
+      subtitle={subtitle}
+      action={<Button to="/instructor" variant="secondary">Back to My classes</Button>}
+      classColor={classroom.color ?? 'navy'}
+      accent={classroom.accent}
+    />
     <main className="app-shell__content grid gap-6" id="main-content">
       <StatRow><StatTile label="Students" value={String(counts.students)} hint="Active enrollments" /><StatTile label="Pending requests" value={String(counts.pending)} hint="Waiting for approval" /><StatTile label="Quizzes" value={String(counts.quizzes)} hint="Assigned to this class" /></StatRow>
       <ClassCodePanel classroom={classroom} onJoiningChange={(open) => void toggleJoining(open)} onRegenerate={regenerate} busy={mutating} shareOnOpen={shareOnOpen} />

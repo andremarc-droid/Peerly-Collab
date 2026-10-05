@@ -43,7 +43,9 @@ export async function createClass(
       ownerId: input.ownerId, ownerName: input.ownerName, name: input.name.trim(), section: input.section ?? '',
       subject: input.subject ?? '', description: input.description ?? '', joinCode: code,
       joinEnabled: input.joinEnabled ?? true, requireApproval: input.requireApproval ?? false, status: 'active',
-      accent: input.accent ?? 'pinstripe' satisfies ClassAccent, createdAt: now, updatedAt: now, codeRotatedAt: now,
+      accent: input.accent ?? 'pinstripe' satisfies ClassAccent,
+      color: input.color ?? 'navy',
+      createdAt: now, updatedAt: now, codeRotatedAt: now,
     })
     transaction.set(ref, value)
     transaction.set(classCodeRef(db, code), codeProjection(ref.id, value))

@@ -291,9 +291,14 @@ service cloud.firestore {
       return code is string && code.matches('^[A-HJ-NP-Z2-9]{6}$');
     }
 
+    function validClassColor(color) {
+      return color in ['navy', 'ocean', 'teal', 'green', 'amber', 'rust', 'crimson', 'rose', 'purple', 'indigo', 'slate'];
+    }
+
     function validClass(data) {
-      return data.keys().hasOnly(['ownerId', 'ownerName', 'name', 'section', 'subject', 'description', 'joinCode', 'joinEnabled', 'requireApproval', 'status', 'accent', 'createdAt', 'updatedAt', 'codeRotatedAt'])
+      return data.keys().hasOnly(['ownerId', 'ownerName', 'name', 'section', 'subject', 'description', 'joinCode', 'joinEnabled', 'requireApproval', 'status', 'accent', 'color', 'createdAt', 'updatedAt', 'codeRotatedAt'])
         && data.keys().hasAll(['ownerId', 'ownerName', 'name', 'section', 'subject', 'description', 'joinCode', 'joinEnabled', 'requireApproval', 'status', 'accent', 'createdAt', 'updatedAt', 'codeRotatedAt'])
+        && (!('color' in data) || validClassColor(data.color))
         && data.ownerId is string && data.ownerName is string && data.name is string && data.name.size() > 0
         && data.section is string && data.subject is string && data.description is string
         && validJoinCode(data.joinCode) && data.joinEnabled is bool && data.requireApproval is bool

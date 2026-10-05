@@ -1,16 +1,16 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, Plus } from 'lucide-react'
+import { useContext, useEffect, useState } from 'react'
+import { Plus } from 'lucide-react'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
 import { Alert } from '../../shared/ui/Alert'
-import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
-import { DataCard } from '../../shared/ui/DataCard'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Skeleton } from '../../shared/ui/Skeleton'
-import { ClassPattern } from './ClassPatterns'
-import { getClassCodePreview, listMyEnrollments } from './services/joinService'
+import { ToastContext } from '../../shared/ui/toastContext'
+import { ClassTile } from './ClassTile'
+import { getClassCodePreview, leaveClass, listMyEnrollments } from './services/joinService'
 import { watchClass } from './services/classService'
 import { watchPublishedQuizzesForClass } from './services/quizService'
 import type { ClassCodeRecord, ClassWithId, EnrollmentWithId } from './types'
@@ -21,8 +21,12 @@ interface ClassDetails { classroom?: ClassWithId | null; preview?: ClassCodeReco
 export function StudentClassesPage() {
   const { user } = useAuth()
   const uid = user?.uid
+  const toastContext = useContext(ToastContext)
+  const showToast = toastContext?.showToast ?? (() => undefined)
   const [enrollments, setEnrollments] = useState<EnrollmentWithId[]>([])
   const [details, setDetails] = useState<Record<string, ClassDetails>>({})
+  const [leaveEnrollment, setLeaveEnrollment] = useState<EnrollmentWithId | null>(null)
+  const [leaving, setLeaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [retry, setRetry] = useState(0)
@@ -53,28 +57,60 @@ export function StudentClassesPage() {
     return () => { active = false; subscriptions.forEach((unsubscribe) => unsubscribe()) }
   }, [uid, enrollments])
 
+  async function confirmLeave() {
+    if (!uid || !leaveEnrollment) return
+    setLeaving(true)
+    try {
+      await leaveClass(leaveEnrollment.classId, uid)
+      showToast('success', 'You left the class. Your past attempts are kept by the instructor.')
+      setEnrollments((current) => current.filter((e) => e.id !== leaveEnrollment.id))
+      setLeaveEnrollment(null)
+    } catch (reason) {
+      showToast('error', reason instanceof Error ? reason.message : 'Could not leave class.')
+    } finally {
+      setLeaving(false)
+    }
+  }
+
   return <AppShell>
     <PageHeader eyebrow="STUDENT SPACE" title="My classes." subtitle="Your classes and the practice shared by each instructor." action={<Button to="/join"><Plus size={18} aria-hidden="true" /> Join class</Button>} />
     <main className="app-shell__content grid gap-6" id="main-content">
       {error && <Alert tone="error" label="Classes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setError(''); setLoading(true); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>}
-      {loading ? <div className="grid gap-4 sm:grid-cols-2">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-56 rounded-3xl" label="Loading class" />)}</div>
+      {loading ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-56 rounded-3xl" label="Loading class" />)}</div>
         : enrollments.length === 0 ? <EmptyState title="Join a class to get started" description="Use the invitation code from your instructor to see class practice here." action={<Button to="/join"><Plus size={17} aria-hidden="true" /> Join a class</Button>} />
-          : <section className="grid gap-4 sm:grid-cols-2" aria-label="Your classes">{enrollments.map((enrollment) => {
+          : <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" aria-label="Your classes">{enrollments.map((enrollment) => {
             const detail = details[enrollment.id]
             const classroom = detail?.classroom
-            const pending = enrollment.status === 'pending'
-            const blocked = enrollment.status === 'blocked'
             const title = classroom?.name ?? enrollment.className
-            const section = classroom ? classroom.section || 'No section' : pending ? 'Section details after approval' : 'Section'
             const instructor = classroom?.ownerName ?? detail?.preview?.ownerName
-            const meta = [section, instructor ? `Instructor ${instructor}` : pending ? 'Instructor details available after approval' : 'Instructor'].filter(Boolean).join(' · ')
-            return <DataCard key={enrollment.id} title={title} meta={meta} badge={<div className="flex flex-wrap gap-2"><Badge>{pending ? 'Waiting for approval' : blocked ? 'Blocked' : 'Active'}</Badge>{pending && <Badge>Pending</Badge>}</div>}>
-              <ClassPattern accent={classroom?.accent ?? 'solid'} />
-              <p className="m-0 text-sm text-navy-800-72">{pending ? 'Published quizzes will appear after your instructor approves the request.' : blocked ? 'Contact your instructor about access to this class.' : `${detail?.quizzes?.length ?? 0} published ${detail?.quizzes?.length === 1 ? 'quiz' : 'quizzes'}`}</p>
-              {blocked ? <span className="inline-flex min-h-11 items-center text-sm font-semibold">Contact your instructor</span> : <Button to={`/student/classes/${enrollment.classId}`} variant="secondary">{pending ? 'View request' : 'Open class'} <ArrowRight size={16} aria-hidden="true" /></Button>}
-            </DataCard>
+            return <ClassTile
+              role="student"
+              key={enrollment.id}
+              id={enrollment.classId}
+              name={title}
+              section={classroom?.section ?? ''}
+              subject={classroom?.subject ?? ''}
+              color={classroom?.color}
+              accent={classroom?.accent}
+              instructorName={instructor}
+              availableQuizzesCount={detail?.quizzes?.length ?? 0}
+              enrollmentStatus={enrollment.status}
+              onLeaveClass={() => setLeaveEnrollment(enrollment)}
+            />
           })}</section>}
       {!loading && enrollments.some((entry) => entry.status === 'active') && <p className="sr-only" aria-live="polite">Class and published quiz counts update automatically.</p>}
     </main>
+    {leaveEnrollment && (
+      <ConfirmDialog
+        open={Boolean(leaveEnrollment)}
+        onClose={() => setLeaveEnrollment(null)}
+        onConfirm={() => void confirmLeave()}
+        title="Leave this class?"
+        description="Your instructor keeps your past quiz attempts. You can rejoin later with the class code unless the instructor has blocked you."
+        confirmLabel="Leave class"
+        busy={leaving}
+        closeOnConfirm={false}
+      />
+    )}
   </AppShell>
 }
