@@ -97,10 +97,10 @@ export function parseQuiz(value: unknown): Quiz {
   }
 }
 
-export function parseQuestion(value: unknown): QuizQuestion {
+export function parseQuestion(value: unknown, parseOptions?: { allowLegacyImages?: boolean }): QuizQuestion {
   const question = record(value, 'question')
   const type = oneOf(question.type, ['multiple_choice', 'true_false', 'identification', 'fill_blank', 'flashcard', 'canvas'] as const, 'question.type')
-  if (type === 'canvas') return validateCanvasDefinition(question)
+  if (type === 'canvas') return validateCanvasDefinition(question, parseOptions)
   const hasOptions = type === 'multiple_choice' || type === 'true_false'
   exactKeys(question, hasOptions ? ['order', 'type', 'prompt', 'options', 'points'] : ['order', 'type', 'prompt', 'points'], 'question')
   const prompt = string(question.prompt, 'prompt')
@@ -143,8 +143,12 @@ export function parseAnswerKey(value: unknown): AnswerKey {
   return { ...base, type, back: string(key.back, 'back') }
 }
 
-export function validateQuestionAnswerPair(questionValue: unknown, keyValue: unknown): { question: QuizQuestion; answerKey: AnswerKey } {
-  const question = parseQuestion(questionValue)
+export function validateQuestionAnswerPair(
+  questionValue: unknown,
+  keyValue: unknown,
+  options?: { allowLegacyImages?: boolean },
+): { question: QuizQuestion; answerKey: AnswerKey } {
+  const question = parseQuestion(questionValue, options)
   const answerKey = parseAnswerKey(keyValue)
   if (question.type === 'canvas') {
     if (answerKey.type !== 'canvas') throw new DomainValidationError('canvas requires a canvas answer key')

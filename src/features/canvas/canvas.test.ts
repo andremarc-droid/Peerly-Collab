@@ -6,6 +6,7 @@ import {
   normalizeConnection,
   parseConnectionEdge,
   renormalizeConnections,
+  isLegacyImageCard,
   scatterCards,
   validateCanvasDefinition,
   validateCanvasKey,
@@ -19,7 +20,7 @@ function makeCard(id: string, type: CanvasCard['type'] = 'note', content = 'Card
     type,
     content,
     position: { x: 0, y: 0 },
-    ...(type === 'image' ? { url: 'https://drive.google.com/file/d/abcdefghijk/view' } : {}),
+    ...(type === 'image' ? { imageId: `img-${id}`, alt: `Alt for ${id}` } : {}),
     ...(type === 'link' ? { url: 'https://example.com/info' } : {}),
   }
 }
@@ -167,11 +168,14 @@ describe('validateCanvasDefinition', () => {
       position: { x: 0, y: 0 },
     }
 
-    const validated = validateCanvasDefinition({
-      type: 'canvas',
-      prompt: 'P',
-      cards: [driveFile, docFile, slidesFile],
-    })
+    const validated = validateCanvasDefinition(
+      {
+        type: 'canvas',
+        prompt: 'P',
+        cards: [driveFile, docFile, slidesFile],
+      },
+      { allowLegacyImages: true },
+    )
 
     expect(validated.cards[0]?.driveFileId).toBe('abcdefghijk')
     expect(validated.cards[0]?.driveKind).toBe('file')
@@ -182,6 +186,131 @@ describe('validateCanvasDefinition', () => {
 
     expect(validated.cards[2]?.driveFileId).toBe('abcdefghijk')
     expect(validated.cards[2]?.driveKind).toBe('slides')
+  })
+
+  it('validates new image cards with imageId and alt, stripping driveFileId and url', () => {
+    const validated = validateCanvasDefinition({
+      type: 'canvas',
+      prompt: 'P',
+      cards: [
+        {
+          id: 'img1',
+          type: 'image',
+          imageId: 'img-123',
+          alt: 'Diagram of a plant cell',
+          url: 'https://drive.google.com/file/d/legacy/view',
+          driveFileId: 'legacy',
+          position: { x: 10, y: 20 },
+        },
+      ],
+    })
+
+    expect(validated.cards[0]?.imageId).toBe('img-123')
+    expect(validated.cards[0]?.alt).toBe('Diagram of a plant cell')
+    expect(validated.cards[0]?.url).toBeUndefined()
+    expect(validated.cards[0]?.driveFileId).toBeUndefined()
+    expect(validated.cards[0]?.driveKind).toBeUndefined()
+  })
+
+  it('rejects image cards missing imageId or alt in default mode', () => {
+    expect(() =>
+      validateCanvasDefinition({
+        type: 'canvas',
+        prompt: 'P',
+        cards: [
+          {
+            id: 'img1',
+            type: 'image',
+            imageId: '',
+            alt: 'Some alt',
+            position: { x: 0, y: 0 },
+          },
+        ],
+      }),
+    ).toThrow(/Image card requires an uploaded image/)
+
+    expect(() =>
+      validateCanvasDefinition({
+        type: 'canvas',
+        prompt: 'P',
+        cards: [
+          {
+            id: 'img1',
+            type: 'image',
+            imageId: 'img-123',
+            alt: '',
+            position: { x: 0, y: 0 },
+          },
+        ],
+      }),
+    ).toThrow(/alt/)
+  })
+
+  it('rejects image cards with alt text exceeding 200 characters', () => {
+    expect(() =>
+      validateCanvasDefinition({
+        type: 'canvas',
+        prompt: 'P',
+        cards: [
+          {
+            id: 'img1',
+            type: 'image',
+            imageId: 'img-123',
+            alt: 'x'.repeat(201),
+            position: { x: 0, y: 0 },
+          },
+        ],
+      }),
+    ).toThrow(/must not exceed 200 characters/)
+  })
+
+  it('rejects legacy image cards in default mode and requires re-upload', () => {
+    expect(() =>
+      validateCanvasDefinition({
+        type: 'canvas',
+        prompt: 'P',
+        cards: [
+          {
+            id: 'img1',
+            type: 'image',
+            url: 'https://drive.google.com/file/d/abcdefghijk/view',
+            position: { x: 0, y: 0 },
+          },
+        ],
+      }),
+    ).toThrow(/Legacy image cards must be re-uploaded/)
+  })
+
+  it('isLegacyImageCard correctly detects legacy image cards', () => {
+    expect(
+      isLegacyImageCard({
+        id: '1',
+        type: 'image',
+        url: 'https://drive.google.com/file/d/123/view',
+        content: '',
+        position: { x: 0, y: 0 },
+      }),
+    ).toBe(true)
+
+    expect(
+      isLegacyImageCard({
+        id: '2',
+        type: 'image',
+        imageId: 'img-1',
+        alt: 'A cell',
+        content: '',
+        position: { x: 0, y: 0 },
+      }),
+    ).toBe(false)
+
+    expect(
+      isLegacyImageCard({
+        id: '3',
+        type: 'note',
+        content: '',
+        position: { x: 0, y: 0 },
+      }),
+    ).toBe(false)
   })
 
   it('rejects folder links, lookalike hosts, invalid schemes, and control characters for image and link cards', () => {
@@ -195,12 +324,18 @@ describe('validateCanvasDefinition', () => {
 
     // Folder links rejected
     expect(() =>
-      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('image', 'https://drive.google.com/drive/folders/abcdefghijk')] }),
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: 'P', cards: [make('image', 'https://drive.google.com/drive/folders/abcdefghijk')] },
+        { allowLegacyImages: true },
+      ),
     ).toThrow()
 
     // Lookalike host rejected
     expect(() =>
-      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('image', 'https://drive.google.com.evil.com/file/d/abcdefghijk/view')] }),
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: 'P', cards: [make('image', 'https://drive.google.com.evil.com/file/d/abcdefghijk/view')] },
+        { allowLegacyImages: true },
+      ),
     ).toThrow()
 
     // javascript: scheme rejected
@@ -228,7 +363,10 @@ describe('validateCanvasDefinition', () => {
     ).toThrow(/control characters or newlines/)
 
     expect(() =>
-      validateCanvasDefinition({ type: 'canvas', prompt: 'P', cards: [make('image', 'https://drive.google.com/file/d/abcdefghijk/view\r\n')] }),
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: 'P', cards: [make('image', 'https://drive.google.com/file/d/abcdefghijk/view\r\n')] },
+        { allowLegacyImages: true },
+      ),
     ).toThrow(/control characters or newlines/)
   })
 })

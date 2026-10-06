@@ -110,7 +110,15 @@ function hasControlOrNewline(input: string): boolean {
   return false
 }
 
-export function validateCanvasDefinition(value: unknown): CanvasQuestion {
+export interface ValidateCanvasOptions {
+  allowLegacyImages?: boolean
+}
+
+export function isLegacyImageCard(card: CanvasCard): boolean {
+  return card.type === 'image' && (!card.imageId || Boolean(card.url || card.driveFileId))
+}
+
+export function validateCanvasDefinition(value: unknown, options?: ValidateCanvasOptions): CanvasQuestion {
   const q = record(value, 'question')
   if (q.type !== 'canvas') {
     throw new DomainValidationError('question.type must be canvas')
@@ -174,21 +182,41 @@ export function validateCanvasDefinition(value: unknown): CanvasQuestion {
     let url: string | undefined
     let driveFileId: string | undefined
     let driveKind: DriveKind | undefined
+    let imageId: string | undefined
+    let alt: string | undefined
 
     if (cardType === 'image') {
-      const rawUrl = string(c.url, `cards[${index}].url`)
-      if (hasControlOrNewline(rawUrl)) {
-        throw new DomainValidationError(`cards[${index}].url must not contain control characters or newlines`)
-      }
-      try {
-        const parsed = parseDriveUrl(rawUrl)
-        driveFileId = parsed.fileId
-        driveKind = parsed.kind
-        url = rawUrl.trim()
-      } catch (err) {
-        if (err instanceof DomainValidationError) throw err
-        const msg = err instanceof Error ? err.message : 'Invalid Google Drive link'
-        throw new DomainValidationError(`cards[${index}].url: ${msg}`)
+      const hasImageId = typeof c.imageId === 'string' && c.imageId.trim().length > 0
+      const hasLegacyDrive = Boolean(c.url || c.driveFileId)
+
+      if (hasImageId) {
+        imageId = string(c.imageId, `cards[${index}].imageId`)
+        alt = string(c.alt, `cards[${index}].alt`)
+        if (alt.length > 200) {
+          throw new DomainValidationError(`cards[${index}].alt must not exceed 200 characters`)
+        }
+      } else if (hasLegacyDrive) {
+        if (!options?.allowLegacyImages) {
+          throw new DomainValidationError(
+            `cards[${index}]: Legacy image cards must be re-uploaded before saving or publishing`,
+          )
+        }
+        const rawUrl = string(c.url, `cards[${index}].url`)
+        if (hasControlOrNewline(rawUrl)) {
+          throw new DomainValidationError(`cards[${index}].url must not contain control characters or newlines`)
+        }
+        try {
+          const parsed = parseDriveUrl(rawUrl)
+          driveFileId = parsed.fileId
+          driveKind = parsed.kind
+          url = rawUrl.trim()
+        } catch (err) {
+          if (err instanceof DomainValidationError) throw err
+          const msg = err instanceof Error ? err.message : 'Invalid Google Drive link'
+          throw new DomainValidationError(`cards[${index}].url: ${msg}`)
+        }
+      } else {
+        throw new DomainValidationError(`cards[${index}].imageId: Image card requires an uploaded image and alt text`)
       }
     } else if (cardType === 'link') {
       const rawUrl = string(c.url, `cards[${index}].url`)
@@ -235,9 +263,20 @@ export function validateCanvasDefinition(value: unknown): CanvasQuestion {
       position: { x, y },
     }
     if (title !== undefined) card.title = title
-    if (url !== undefined) card.url = url
-    if (driveFileId !== undefined) card.driveFileId = driveFileId
-    if (driveKind !== undefined) card.driveKind = driveKind
+    if (cardType === 'image') {
+      if (imageId !== undefined) {
+        card.imageId = imageId
+        card.alt = alt
+      } else {
+        if (url !== undefined) card.url = url
+        if (driveFileId !== undefined) card.driveFileId = driveFileId
+        if (driveKind !== undefined) card.driveKind = driveKind
+      }
+    } else {
+      if (url !== undefined) card.url = url
+      if (driveFileId !== undefined) card.driveFileId = driveFileId
+      if (driveKind !== undefined) card.driveKind = driveKind
+    }
 
     return card
   })

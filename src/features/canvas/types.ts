@@ -10,6 +10,8 @@ export interface CanvasCard {
   url?: string
   driveFileId?: string
   driveKind?: DriveKind
+  imageId?: string
+  alt?: string
   position: { x: number; y: number }
 }
 
