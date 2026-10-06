@@ -6,6 +6,10 @@ import rules from '../../../firestore.rules?raw'
 import { isLate } from '../../features/quizzes/results/resultLogic'
 import { listResults } from '../../features/quizzes/services/resultService'
 import { duplicateQuiz } from '../../features/quizzes/services/duplicateQuiz'
+import { autosaveAnswers, startAttempt, submitAttempt } from '../../features/quizzes/services/attemptService'
+import { saveQuestionAndKey } from '../../features/quizzes/services/questionService'
+import { gradeCanvasQuestion } from '../../features/quizzes/grading/grade'
+import type { CanvasAnswerKey, CanvasQuestion } from '../../features/canvas/types'
 
 const projectId = 'demo-peerly-collab'
 let environment: RulesTestEnvironment
@@ -857,5 +861,183 @@ describe('canvas mode Firestore rules', () => {
     const canvasCopyId = await duplicateQuiz('cv-pub', owner)
     const canvasCopySnap = await getDoc(doc(owner, 'quizzes', canvasCopyId))
     expect(canvasCopySnap.data()?.mode).toBe('canvas')
+  })
+
+  it('answer-size safety: student autosaves and submits 80 connection strings for a canvas attempt, and result is stored', async () => {
+    await seed()
+    const student = environment.authenticatedContext('student').firestore()
+
+    // Setup published canvas quiz with cards and answer key
+    const canvasQDoc = canvasQuestion(40)
+    const canvasKDoc = {
+      type: 'canvas' as const,
+      explanation: 'Key guide',
+      connections: Array.from({ length: 39 }, (_, i) => ({
+        id: `k${i}`,
+        from: `c${i}`,
+        to: `c${i + 1}`,
+        points: 1,
+      })),
+    }
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/canvasSafety'), canvasQuiz('teacher', 'published'))
+      await setDoc(doc(db, 'quizzes/canvasSafety/questions/board'), canvasQDoc)
+      await setDoc(doc(db, 'quizzes/canvasSafety/answerKeys/board'), canvasKDoc)
+    })
+
+    // 1. Student starts attempt
+    const attemptId = await startAttempt('canvasSafety', 'student', 'Student', student)
+    expect(attemptId).toBeTruthy()
+
+    // 2. Student autosaves 80 distinct connection strings (at the cap)
+    const eightyConnections: string[] = []
+    for (let i = 0; i < 40 && eightyConnections.length < 80; i += 1) {
+      for (let j = 0; j < 40 && eightyConnections.length < 80; j += 1) {
+        if (i !== j) {
+          eightyConnections.push(`c${i}->c${j}`)
+        }
+      }
+    }
+    expect(eightyConnections.length).toBe(80)
+
+    await assertSucceeds(
+      autosaveAnswers('canvasSafety', attemptId, { board: eightyConnections }, student),
+    )
+
+    // 3. 81 connection strings is rejected by firestore rules (validAttempt: board.size() <= 80)
+    const eightyOneConnections = [...eightyConnections, 'c39->c0']
+    await assertFails(
+      autosaveAnswers('canvasSafety', attemptId, { board: eightyOneConnections }, student),
+    )
+
+    // 4. Student submits attempt with the 80 valid connection strings
+    const submission = await submitAttempt('canvasSafety', attemptId, 45, student)
+    expect(submission.attempt.status).toBe('submitted')
+
+    // 5. Result document is stored and accessible
+    const resultSnap = await getDoc(doc(student, `quizzes/canvasSafety/results/${attemptId}`))
+    expect(resultSnap.exists()).toBe(true)
+    const resultData = resultSnap.data()
+    expect(resultData?.userId).toBe('student')
+    expect(resultData?.perQuestion?.board).toBeDefined()
+    expect(typeof resultData?.score).toBe('number')
+  })
+
+  it('full flow: instructor creates canvas quiz, student plays, submits, and score matches gradeCanvasQuestion', async () => {
+    await seed()
+    const owner = environment.authenticatedContext('teacher').firestore()
+    const student = environment.authenticatedContext('student').firestore()
+
+    // 1. Instructor creates canvas quiz in class1
+    const quizId = 'flow-canvas-qz'
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, `quizzes/${quizId}`), {
+        ...canvasQuiz('teacher', 'draft'),
+        title: 'Photosynthesis Canvas',
+      })
+    })
+
+    const customQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Connect light reactions to Calvin cycle',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: true,
+      wrongPenalty: 'half',
+      cards: [
+        { id: 'c1', type: 'note', title: 'Light Reactions', content: 'Thylakoid', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note', title: 'Calvin Cycle', content: 'Stroma', position: { x: 100, y: 0 } },
+        { id: 'c3', type: 'paragraph', title: 'ATP & NADPH', content: 'Energy carriers', position: { x: 200, y: 0 } },
+        { id: 'c4', type: 'paragraph', title: 'Mitochondria', content: 'Unrelated', position: { x: 300, y: 0 } },
+      ],
+    }
+
+    const customKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: 'Light reactions produce ATP & NADPH for the Calvin cycle.',
+      connections: [
+        { id: 'c1->c3', from: 'c1', to: 'c3', points: 1 },
+        { id: 'c3->c2', from: 'c3', to: 'c2', points: 1 },
+      ],
+    }
+
+    // Save question and key
+    await saveQuestionAndKey(quizId, 'board', customQuestion, customKey, owner)
+
+    // Publish quiz
+    await updateDoc(doc(owner, `quizzes/${quizId}`), {
+      status: 'published',
+      publishedAt: Timestamp.now(),
+    })
+
+    // 2. Student starts attempt
+    const attemptId = await startAttempt(quizId, 'student', 'Student', student)
+    expect(attemptId).toBeTruthy()
+
+    // 3. Student connects: 1 correct (c1->c3) and 1 wrong (c1->c4)
+    const studentConnections = ['c1->c3', 'c1->c4']
+    await autosaveAnswers(quizId, attemptId, { board: studentConnections }, student)
+
+    // 4. Student submits
+    const submission = await submitAttempt(quizId, attemptId, 30, student)
+    expect(submission.attempt.status).toBe('submitted')
+
+    // 5. Verify score exactly matches pure gradeCanvasQuestion
+    const expectedGrade = gradeCanvasQuestion(customQuestion, customKey, studentConnections)
+    expect(submission.result.score).toBe(expectedGrade.pointsAwarded)
+    expect(submission.result.perQuestion.board.correct).toBe(expectedGrade.correct)
+    expect(submission.result.perQuestion.board.pointsAwarded).toBe(expectedGrade.pointsAwarded)
+  })
+
+  it('regression: standard quiz and flashcard flows remain unchanged', async () => {
+    await seed()
+    const student = environment.authenticatedContext('student').firestore()
+
+    // 1. Standard quiz attempt
+    const quizAttemptId = await startAttempt('qz', 'student', 'Student', student)
+    expect(quizAttemptId).toBeTruthy()
+    await autosaveAnswers('qz', quizAttemptId, { q: 'b' }, student)
+    const quizSubmission = await submitAttempt('qz', quizAttemptId, 15, student)
+    expect(quizSubmission.result.score).toBe(2)
+    expect(quizSubmission.result.perQuestion.q.correct).toBe(true)
+
+    // 2. Flashcard attempt
+    const fcSettings = {
+      ...settings,
+      answerReveal: 'never' as const,
+      scoreVisibility: 'hidden' as const,
+    }
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/fc-pub'), {
+        ...quizData('teacher', 'published'),
+        mode: 'flashcards',
+        settings: fcSettings,
+        questionCount: 1,
+      })
+      await setDoc(doc(db, 'quizzes/fc-pub/questions/q1'), {
+        order: 0,
+        type: 'flashcard',
+        prompt: 'Flashcard Front',
+        points: 1,
+      })
+      await setDoc(doc(db, 'quizzes/fc-pub/answerKeys/q1'), {
+        type: 'flashcard',
+        back: 'Flashcard Back',
+        explanation: '',
+        caseSensitive: false,
+      })
+    })
+
+    const fcAttemptId = await startAttempt('fc-pub', 'student', 'Student', student)
+    expect(fcAttemptId).toBeTruthy()
+    await autosaveAnswers('fc-pub', fcAttemptId, { q1: 'knew' }, student)
+    const fcSubmission = await submitAttempt('fc-pub', fcAttemptId, 10, student)
+    expect(fcSubmission.result.perQuestion.q1.correct).toBe(null)
+    expect(fcSubmission.result.score).toBe(0)
   })
 })

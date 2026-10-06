@@ -16,6 +16,14 @@ import { getQuestionWithKey, listQuestions } from '../quizzes/services/questionS
 import { listMyEnrollments } from '../classes/services/joinService'
 import type { EnrollmentWithId } from '../classes/types'
 
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal('ResizeObserver', MockResizeObserver)
+
 vi.mock('../../app/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
 const { signedInUser } = vi.hoisted(() => ({ signedInUser: { uid: 'student-1', email: 'student@example.test', displayName: 'Student' } }))
 vi.mock('../auth/useAuth', () => ({ useAuth: () => ({ user: signedInUser, profile: { name: 'Student' } }) }))
@@ -167,5 +175,139 @@ describe('student quiz pages', () => {
     renderRoute('/student/quizzes/quiz-1/attempts/attempt-1', <QuizTakingPage />)
     expect(await screen.findByRole('radio', { name: /Second option/ })).toBeChecked()
     expect(screen.getAllByRole('radio')[0]).toHaveAccessibleName(/Second option/)
+  })
+
+  it('canvas intro page displays activity, card count, and penalty rule without key info', async () => {
+    const canvasQuiz: Quiz & { id: string } = {
+      ...quiz,
+      id: 'quiz-canvas-1',
+      mode: 'canvas',
+      title: 'Canvas Practice Test',
+    }
+    const canvasQuestion = {
+      id: 'board',
+      type: 'canvas' as const,
+      order: 0,
+      prompt: 'Link related cellular respiration stages.',
+      points: 100,
+      layoutMode: 'scattered' as const,
+      directed: true,
+      wrongPenalty: 'half' as const,
+      cards: [
+        { id: 'c1', type: 'note' as const, title: 'Glycolysis', content: 'Cytoplasm pathway', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note' as const, title: 'Krebs Cycle', content: 'Matrix pathway', position: { x: 100, y: 0 } },
+      ],
+    }
+
+    vi.mocked(getQuiz).mockResolvedValue(canvasQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([canvasQuestion])
+    vi.mocked(listUserAttempts).mockResolvedValue([])
+
+    renderRoute('/student/quizzes/quiz-canvas-1', <QuizIntroPage />)
+
+    expect(await screen.findByText('Connect the cards that belong together.')).toBeInTheDocument()
+    expect(screen.getByText('2 cards on the board.')).toBeInTheDocument()
+    expect(screen.getByText('Half penalty: incorrect connections deduct half of an average connection’s points.')).toBeInTheDocument()
+    expect(screen.getByText('CANVAS PRACTICE')).toBeInTheDocument()
+    // No answer key info revealed
+    expect(screen.queryByText(/connection/i)).not.toHaveTextContent(/answer key/i)
+  })
+
+  it('canvas taking page renders CanvasPlayPage and treats empty board as unanswered in review', async () => {
+    const user = userEvent.setup()
+    const canvasQuiz: Quiz & { id: string } = {
+      ...quiz,
+      id: 'quiz-canvas-1',
+      mode: 'canvas',
+    }
+    const canvasQuestion = {
+      id: 'board',
+      type: 'canvas' as const,
+      order: 0,
+      prompt: 'Link related cellular respiration stages.',
+      points: 100,
+      layoutMode: 'scattered' as const,
+      directed: true,
+      wrongPenalty: 'half' as const,
+      cards: [
+        { id: 'c1', type: 'note' as const, title: 'Glycolysis', content: 'Cytoplasm pathway', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note' as const, title: 'Krebs Cycle', content: 'Matrix pathway', position: { x: 100, y: 0 } },
+      ],
+    }
+    const canvasAttempt: QuizAttempt & { id: string } = {
+      ...attempt,
+      id: 'attempt-c1',
+      answers: {},
+      questionOrder: ['board'],
+      optionOrder: {},
+    }
+
+    vi.mocked(getQuiz).mockResolvedValue(canvasQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([canvasQuestion])
+    vi.mocked(getAttempt).mockResolvedValue(canvasAttempt)
+
+    renderRoute('/student/quizzes/quiz-canvas-1/attempts/attempt-c1', <QuizTakingPage />)
+
+    // Verify CanvasPlayPage is rendered with connections counter
+    expect(await screen.findByText('Connections (0 of 80)')).toBeInTheDocument()
+    expect(screen.getByText('Link related cellular respiration stages.')).toBeInTheDocument()
+
+    // Click Review and submit -> empty board counts as unanswered (0 of 1 answered, 1 unanswered)
+    await user.click(screen.getByRole('button', { name: 'Review and submit' }))
+    expect(await screen.findByRole('dialog', { name: 'Review your answers' })).toBeInTheDocument()
+    expect(screen.getByText('0 of 1 answered. 1 unanswered.')).toBeInTheDocument()
+  })
+
+  it('canvas result page renders review board and diff list with icons and text labels', async () => {
+    const canvasQuiz: Quiz & { id: string } = {
+      ...quiz,
+      id: 'quiz-canvas-1',
+      mode: 'canvas',
+      settings: { ...quiz.settings, answerReveal: 'after_submit', scoreVisibility: 'immediate' },
+    }
+    const canvasQuestion = {
+      id: 'board',
+      type: 'canvas' as const,
+      order: 0,
+      prompt: 'Link stages.',
+      points: 100,
+      layoutMode: 'scattered' as const,
+      directed: true,
+      wrongPenalty: 'half' as const,
+      cards: [
+        { id: 'c1', type: 'note' as const, title: 'Glycolysis', content: 'A', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note' as const, title: 'Krebs', content: 'B', position: { x: 100, y: 0 } },
+      ],
+    }
+    const canvasKey = {
+      type: 'canvas' as const,
+      explanation: 'Glycolysis connects to Krebs.',
+      connections: [{ id: 'c1->c2', from: 'c1', to: 'c2', points: 1 }],
+    }
+    const canvasAttempt: QuizAttempt & { id: string } = {
+      ...submittedAttempt,
+      answers: { board: ['c1->c2'] },
+      questionOrder: ['board'],
+    }
+    const canvasResult: QuizResult = {
+      userId: 'student-1',
+      score: 100,
+      maxScore: 100,
+      perQuestion: { board: { correct: true, pointsAwarded: 100, overridden: false } },
+      gradedAt: Timestamp.now(),
+    }
+
+    vi.mocked(getQuiz).mockResolvedValue(canvasQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([canvasQuestion])
+    vi.mocked(getAttempt).mockResolvedValue(canvasAttempt)
+    vi.mocked(getQuizResult).mockResolvedValue(canvasResult)
+    vi.mocked(getQuestionWithKey).mockResolvedValue({ id: 'board', question: canvasQuestion, answerKey: canvasKey })
+
+    renderRoute('/student/quizzes/quiz-canvas-1/attempts/attempt-1/result', <QuizResultPage />)
+
+    expect(await screen.findByText('100 / 100 points')).toBeInTheDocument()
+    expect(await screen.findByText('Connection breakdown')).toBeInTheDocument()
+    expect(screen.getByText('1 correct')).toBeInTheDocument()
+    expect(screen.getByText('Glycolysis connects to Krebs.')).toBeInTheDocument()
   })
 })
