@@ -1216,4 +1216,390 @@ describe('canvas mode Firestore rules', () => {
       await assertSucceeds(environment.authenticatedContext('teacher').firestore().doc('quizzes/qz/images/img1').delete ? environment.authenticatedContext('teacher').firestore().doc('quizzes/qz/images/img1').delete() : deleteDoc(doc(teacher, 'quizzes/qz/images/img1')))
     })
   })
+
+  describe('CANVAS 8a: blank board kind and manual grading rules', () => {
+    it('enforces boardKind immutability at rules level', async () => {
+      await seed()
+      const teacher = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+
+      // 1. Create a draft quiz with boardKind = 'blank'
+      const blankQuizId = 'blank-qz-create'
+      await assertSucceeds(
+        setDoc(doc(teacher, `quizzes/${blankQuizId}`), {
+          ...quizData('teacher', 'draft'),
+          mode: 'canvas',
+          boardKind: 'blank',
+          questionCount: 0,
+        }),
+      )
+
+      // 2. Updating title while preserving boardKind succeeds
+      await assertSucceeds(
+        updateDoc(doc(teacher, `quizzes/${blankQuizId}`), {
+          title: 'Updated Blank Canvas Title',
+        }),
+      )
+
+      // 3. Attempting to change boardKind from 'blank' to 'prebuilt' is rejected
+      await assertFails(
+        updateDoc(doc(teacher, `quizzes/${blankQuizId}`), {
+          boardKind: 'prebuilt',
+        }),
+      )
+
+      // 4. Prebuilt quiz cannot be changed to 'blank'
+      const prebuiltQuizId = 'prebuilt-qz-create'
+      await assertSucceeds(
+        setDoc(doc(teacher, `quizzes/${prebuiltQuizId}`), {
+          ...quizData('teacher', 'draft'),
+          mode: 'canvas',
+          boardKind: 'prebuilt',
+          questionCount: 0,
+        }),
+      )
+      await assertFails(
+        updateDoc(doc(teacher, `quizzes/${prebuiltQuizId}`), {
+          boardKind: 'blank',
+        }),
+      )
+    })
+
+    it('enforces blank canvas question shape and rejects answer keys', async () => {
+      await seed()
+      const teacher = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+      const blankQuizId = 'blank-q-rules'
+
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore()
+        await setDoc(doc(db, `quizzes/${blankQuizId}`), {
+          ...quizData('teacher', 'draft'),
+          mode: 'canvas',
+          boardKind: 'blank',
+          questionCount: 0,
+        })
+      })
+
+      const validBlankQuestion = {
+        order: 0,
+        type: 'canvas',
+        prompt: 'Build a mindmap on ecosystem energy flows',
+        points: 50,
+        cards: [],
+        rubric: 'Include 3 producers and 2 consumers.',
+        showRubricToStudents: true,
+        maxCards: 20,
+        maxConnections: 40,
+        allowedCardTypes: ['note', 'paragraph', 'link'],
+      }
+
+      // Valid blank question succeeds
+      await assertSucceeds(
+        setDoc(doc(teacher, `quizzes/${blankQuizId}/questions/board`), validBlankQuestion),
+      )
+
+      // Invalid: cards not empty
+      await assertFails(
+        setDoc(doc(teacher, `quizzes/${blankQuizId}/questions/board`), {
+          ...validBlankQuestion,
+          cards: [{ id: 'c1', type: 'note', content: 'C1', position: { x: 0, y: 0 } }],
+        }),
+      )
+
+      // Invalid: maxCards > 30
+      await assertFails(
+        setDoc(doc(teacher, `quizzes/${blankQuizId}/questions/board`), {
+          ...validBlankQuestion,
+          maxCards: 35,
+        }),
+      )
+
+      // Invalid: maxConnections > 80
+      await assertFails(
+        setDoc(doc(teacher, `quizzes/${blankQuizId}/questions/board`), {
+          ...validBlankQuestion,
+          maxConnections: 85,
+        }),
+      )
+
+      // Invalid: disallowed card type (e.g. image)
+      await assertFails(
+        setDoc(doc(teacher, `quizzes/${blankQuizId}/questions/board`), {
+          ...validBlankQuestion,
+          allowedCardTypes: ['note', 'image'],
+        }),
+      )
+
+      // Answer key creation must be rejected on a blank canvas quiz
+      await assertFails(
+        setDoc(doc(teacher, `quizzes/${blankQuizId}/answerKeys/board`), {
+          type: 'canvas',
+          explanation: 'No key allowed',
+          connections: [],
+        }),
+      )
+    })
+
+    it('validates student blank attempt answers map and rejects invalid card payload', async () => {
+      await seed()
+      const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
+      const blankQuizId = 'blank-attempt-rules'
+      const attemptId = 'att-blank-1'
+
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore()
+        await setDoc(doc(db, `quizzes/${blankQuizId}`), {
+          ...quizData('teacher', 'published'),
+          mode: 'canvas',
+          boardKind: 'blank',
+          questionCount: 1,
+        })
+        await setDoc(doc(db, `quizzes/${blankQuizId}/questions/board`), {
+          order: 0,
+          type: 'canvas',
+          prompt: 'Create your board',
+          points: 50,
+          cards: [],
+          showRubricToStudents: false,
+          maxCards: 20,
+          maxConnections: 40,
+          allowedCardTypes: ['note', 'paragraph', 'link'],
+        })
+        await setDoc(doc(db, `quizzes/${blankQuizId}/participants/student`), participant('student', attemptId))
+      })
+
+      // Initial in_progress attempt
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore()
+        await setDoc(doc(db, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          userId: 'student',
+          userName: 'Student',
+          attemptNumber: 1,
+          status: 'in_progress',
+          answers: {},
+          questionOrder: ['board'],
+          optionOrder: {},
+          startedAt: now,
+          submittedAt: null,
+          timeSpentSeconds: 0,
+        })
+      })
+
+      const validBoardAnswer = {
+        cards: [
+          { id: 'c1', type: 'note', title: 'Main Idea', content: 'Notes here', position: { x: 100, y: 150 } },
+          { id: 'c2', type: 'link', content: 'Reference link', url: 'https://example.com/source', position: { x: 300, y: 150 } },
+        ],
+        connections: ['c1->c2'],
+      }
+
+      // Valid autosave succeeds
+      await assertSucceeds(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          answers: { board: validBoardAnswer },
+          timeSpentSeconds: 10,
+        }),
+      )
+
+      // Invalid: card with http url (only https allowed)
+      await assertFails(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          answers: {
+            board: {
+              ...validBoardAnswer,
+              cards: [
+                { id: 'c3', type: 'link', content: 'Insecure', url: 'http://example.com/insecure', position: { x: 0, y: 0 } },
+              ],
+            },
+          },
+        }),
+      )
+
+      // Invalid: title > 120 chars
+      await assertFails(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          answers: {
+            board: {
+              ...validBoardAnswer,
+              cards: [
+                { id: 'c4', type: 'note', title: 'A'.repeat(121), content: 'Too long title', position: { x: 0, y: 0 } },
+              ],
+            },
+          },
+        }),
+      )
+
+      // Invalid: content > 1000 chars
+      await assertFails(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          answers: {
+            board: {
+              ...validBoardAnswer,
+              cards: [
+                { id: 'c5', type: 'note', content: 'B'.repeat(1001), position: { x: 0, y: 0 } },
+              ],
+            },
+          },
+        }),
+      )
+
+      // Invalid: disallowed card type
+      await assertFails(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          answers: {
+            board: {
+              ...validBoardAnswer,
+              cards: [
+                { id: 'c6', type: 'image', content: 'Not allowed type', position: { x: 0, y: 0 } },
+              ],
+            },
+          },
+        }),
+      )
+    })
+
+    it('enforces blank results lifecycle: student pending, self-grading denied, owner grading and permissions', async () => {
+      await seed()
+      const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
+      const teacher = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+      const otherTeacher = environment.authenticatedContext('otherTeacher').firestore() as unknown as Firestore
+      const blankQuizId = 'blank-grading-flow'
+      const attemptId = 'att-blank-grading'
+
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore()
+        await setDoc(doc(db, `quizzes/${blankQuizId}`), {
+          ...quizData('teacher', 'published'),
+          mode: 'canvas',
+          boardKind: 'blank',
+          questionCount: 1,
+        })
+        await setDoc(doc(db, `quizzes/${blankQuizId}/questions/board`), {
+          order: 0,
+          type: 'canvas',
+          prompt: 'Create your board',
+          points: 50,
+          cards: [],
+          showRubricToStudents: false,
+          maxCards: 20,
+          maxConnections: 40,
+          allowedCardTypes: ['note', 'paragraph', 'link'],
+        })
+        await setDoc(doc(db, `quizzes/${blankQuizId}/participants/student`), participant('student', attemptId))
+        await setDoc(doc(db, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          userId: 'student',
+          userName: 'Student',
+          attemptNumber: 1,
+          status: 'in_progress',
+          answers: { board: { cards: [], connections: [] } },
+          questionOrder: ['board'],
+          optionOrder: {},
+          startedAt: now,
+          submittedAt: null,
+          timeSpentSeconds: 0,
+        })
+      })
+
+      // 1. Student attempts to self-grade (score: 50, reviewStatus: 'graded') -> REJECTED
+      await assertFails(
+        environment.withSecurityRulesDisabled(async () => {}).then(async () => {
+          const batch = writeBatch(student)
+          batch.update(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+            status: 'submitted',
+            submittedAt: serverTimestamp(),
+            timeSpentSeconds: 30,
+          })
+          batch.update(doc(student, `quizzes/${blankQuizId}/participants/student`), {
+            activeAttemptId: null,
+            updatedAt: serverTimestamp(),
+          })
+          batch.set(doc(student, `quizzes/${blankQuizId}/results/${attemptId}`), {
+            userId: 'student',
+            score: 50,
+            maxScore: 50,
+            perQuestion: {},
+            gradedAt: serverTimestamp(),
+            reviewStatus: 'graded',
+          })
+          await batch.commit()
+        }),
+      )
+
+      // 2. Student submits with valid blank result (score: 0, reviewStatus: 'pending') -> SUCCEEDS
+      const validBatch = writeBatch(student)
+      validBatch.update(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+        status: 'submitted',
+        submittedAt: serverTimestamp(),
+        timeSpentSeconds: 30,
+      })
+      validBatch.update(doc(student, `quizzes/${blankQuizId}/participants/student`), {
+        activeAttemptId: null,
+        updatedAt: serverTimestamp(),
+      })
+      validBatch.set(doc(student, `quizzes/${blankQuizId}/results/${attemptId}`), {
+        userId: 'student',
+        score: 0,
+        maxScore: 50,
+        perQuestion: {},
+        gradedAt: serverTimestamp(),
+        reviewStatus: 'pending',
+      })
+      await assertSucceeds(validBatch.commit())
+
+      // 3. Student cannot update their own result
+      await assertFails(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/results/${attemptId}`), {
+          score: 45,
+          reviewStatus: 'graded',
+        }),
+      )
+
+      // 4. Non-owner instructor cannot grade the result
+      await assertFails(
+        updateDoc(doc(otherTeacher, `quizzes/${blankQuizId}/results/${attemptId}`), {
+          score: 40,
+          reviewStatus: 'graded',
+          feedback: 'Well done',
+          gradedBy: 'otherTeacher',
+          gradedAt: serverTimestamp(),
+        }),
+      )
+
+      // 5. Owner cannot give out-of-range score (> points = 50)
+      await assertFails(
+        updateDoc(doc(teacher, `quizzes/${blankQuizId}/results/${attemptId}`), {
+          score: 55,
+          reviewStatus: 'graded',
+          feedback: 'Too generous',
+          gradedBy: 'teacher',
+          gradedAt: serverTimestamp(),
+        }),
+      )
+
+      // 6. Owner cannot give negative score
+      await assertFails(
+        updateDoc(doc(teacher, `quizzes/${blankQuizId}/results/${attemptId}`), {
+          score: -5,
+          reviewStatus: 'graded',
+          feedback: 'Negative',
+          gradedBy: 'teacher',
+          gradedAt: serverTimestamp(),
+        }),
+      )
+
+      // 7. Owner grades with valid score (45/50) and feedback -> SUCCEEDS
+      await assertSucceeds(
+        updateDoc(doc(teacher, `quizzes/${blankQuizId}/results/${attemptId}`), {
+          score: 45,
+          reviewStatus: 'graded',
+          feedback: 'Great job connecting key concepts!',
+          gradedBy: 'teacher',
+          gradedAt: serverTimestamp(),
+        }),
+      )
+
+      // 8. Prebuilt quiz results remain unaffected
+      const prebuiltResult = await getDoc(doc(teacher, 'quizzes/qz/results/att'))
+      expect(prebuiltResult).toBeDefined()
+    })
+  })
 })

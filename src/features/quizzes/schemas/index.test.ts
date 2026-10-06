@@ -65,6 +65,6 @@ describe('quiz runtime schemas', () => {
       },
     )
     expect(pair.question.type).toBe('canvas')
-    expect(pair.answerKey.type).toBe('canvas')
+    expect(pair.answerKey?.type).toBe('canvas')
   })
 })

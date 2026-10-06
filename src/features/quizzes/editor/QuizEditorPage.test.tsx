@@ -11,6 +11,31 @@ const mocks = vi.hoisted(() => ({ classes: [] as Array<{ id: string; name: strin
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'teacher', displayName: 'Teacher' } }) }))
 vi.mock('../../profile/useUserProfile', () => ({ useUserProfile: () => ({ profile: { name: 'Teacher' } }) }))
 vi.mock('../services', () => ({ createQuiz: mocks.createQuiz, getQuiz: mocks.getQuiz, updateQuiz: mocks.updateQuiz, saveQuestionAndKey: mocks.saveQuestionAndKey, watchQuestionPairs: mocks.watchQuestionPairs, getQuestionWithKey: mocks.getQuestionWithKey }))
+vi.mock('../services/quizService', () => ({
+  createQuiz: mocks.createQuiz,
+  getQuiz: mocks.getQuiz,
+  updateQuiz: mocks.updateQuiz,
+  duplicateQuiz: vi.fn(),
+  deleteQuizCascade: vi.fn(),
+  publishQuiz: vi.fn(),
+  unpublishQuiz: vi.fn(),
+  archiveQuiz: vi.fn(),
+}))
+vi.mock('../services/questionService', () => ({
+  saveQuestionAndKey: mocks.saveQuestionAndKey,
+  watchQuestionPairs: mocks.watchQuestionPairs,
+  getQuestionWithKey: mocks.getQuestionWithKey,
+  listQuestions: vi.fn().mockResolvedValue([]),
+}))
+vi.mock('../../canvas/imageService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../canvas/imageService')>()
+  return {
+    ...actual,
+    listImages: vi.fn().mockResolvedValue([]),
+    reconcileImages: vi.fn().mockResolvedValue(undefined),
+    saveImage: vi.fn(),
+  }
+})
 vi.mock('../../classes/services/classService', () => ({ watchMyClasses: (_uid: string, onChange: (items: never[]) => void) => { onChange(mocks.classes as never[]); return () => undefined } }))
 vi.mock('../../../shared/ui/useToast', () => ({ useToast: () => ({ showToast: vi.fn() }) }))
 afterEach(cleanup)

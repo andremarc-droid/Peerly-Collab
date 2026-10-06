@@ -369,6 +369,89 @@ describe('validateCanvasDefinition', () => {
       ),
     ).toThrow(/control characters or newlines/)
   })
+
+  it('validates blank board definition with empty cards, limits, rubric and allowed card types', () => {
+    const valid = validateCanvasDefinition(
+      {
+        type: 'canvas',
+        prompt: 'Build a concept map explaining photosynthesis.',
+        rubric: 'Includes light and dark reactions with at least 5 connections.',
+        showRubricToStudents: true,
+        points: 50,
+        maxCards: 25,
+        maxConnections: 50,
+        allowedCardTypes: ['note', 'paragraph'],
+        cards: [],
+      },
+      { boardKind: 'blank' },
+    )
+
+    expect(valid.prompt).toBe('Build a concept map explaining photosynthesis.')
+    expect(valid.rubric).toBe('Includes light and dark reactions with at least 5 connections.')
+    expect(valid.showRubricToStudents).toBe(true)
+    expect(valid.maxCards).toBe(25)
+    expect(valid.maxConnections).toBe(50)
+    expect(valid.allowedCardTypes).toEqual(['note', 'paragraph'])
+    expect(valid.cards).toEqual([])
+  })
+
+  it('rejects blank board definition with invalid parameters', () => {
+    // Missing prompt
+    expect(() =>
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: '', cards: [] },
+        { boardKind: 'blank' },
+      ),
+    ).toThrow(/prompt must be a non-empty string/)
+
+    // Prompt > 2000 chars
+    expect(() =>
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: 'a'.repeat(2001), cards: [] },
+        { boardKind: 'blank' },
+      ),
+    ).toThrow(/must not exceed 2000/)
+
+    // Rubric > 1000 chars
+    expect(() =>
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: 'Valid', rubric: 'a'.repeat(1001), cards: [] },
+        { boardKind: 'blank' },
+      ),
+    ).toThrow(/must not exceed 1000/)
+
+    // maxCards > 30
+    expect(() =>
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: 'Valid', maxCards: 31, cards: [] },
+        { boardKind: 'blank' },
+      ),
+    ).toThrow(/maxCards must be an integer between 1 and 30/)
+
+    // maxConnections > 80
+    expect(() =>
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: 'Valid', maxConnections: 81, cards: [] },
+        { boardKind: 'blank' },
+      ),
+    ).toThrow(/maxConnections must be an integer between 0 and 80/)
+
+    // Non-empty cards
+    expect(() =>
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: 'Valid', cards: [makeCard('c1')] },
+        { boardKind: 'blank' },
+      ),
+    ).toThrow(/Blank canvas cards must be empty/)
+
+    // Invalid allowed card types
+    expect(() =>
+      validateCanvasDefinition(
+        { type: 'canvas', prompt: 'Valid', allowedCardTypes: [], cards: [] },
+        { boardKind: 'blank' },
+      ),
+    ).toThrow(/allowedCardTypes must be a non-empty list/)
+  })
 })
 
 describe('validateCanvasKey', () => {

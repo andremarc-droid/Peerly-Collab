@@ -464,6 +464,41 @@ describe('Canvas Tab and Class Page Integration', () => {
           classId: 'class-1',
           title: 'Bio Connections',
           mode: 'canvas',
+          boardKind: 'prebuilt',
+        }),
+      ),
+    )
+  })
+
+  it('QuickCreateQuiz allows choosing Blank board and submits boardKind: blank', async () => {
+    mocked.createQuiz.mockClear()
+    renderWithProviders(
+      <Routes>
+        <Route path="/instructor/quizzes/new" element={<QuickCreateQuiz />} />
+      </Routes>,
+      ['/instructor/quizzes/new?classId=class-1&mode=canvas'],
+    )
+
+    expect(await screen.findByRole('dialog', { name: 'Create canvas' })).toBeInTheDocument()
+    expect(screen.getByText('Canvas type')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Pre-built board/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Blank board/i })).toBeInTheDocument()
+
+    // Select Blank board
+    fireEvent.click(screen.getByRole('button', { name: /Blank board/i }))
+
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Blank Ecosystem Canvas' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create canvas' }))
+
+    await waitFor(() =>
+      expect(mocked.createQuiz).toHaveBeenCalledWith(
+        'teacher',
+        'Teacher',
+        expect.objectContaining({
+          classId: 'class-1',
+          title: 'Blank Ecosystem Canvas',
+          mode: 'canvas',
+          boardKind: 'blank',
         }),
       ),
     )

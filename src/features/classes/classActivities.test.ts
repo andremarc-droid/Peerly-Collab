@@ -25,5 +25,7 @@ describe('class activity helpers', () => {
   it('reports board readiness from the board question', () => {
     expect(canvasBoardStatus(items[2])).toBe('Board ready')
     expect(canvasBoardStatus(items[3])).toBe('Add cards and connections')
+    expect(canvasBoardStatus({ questionCount: 1, boardKind: 'blank' })).toBe('Instructions ready')
+    expect(canvasBoardStatus({ questionCount: 0, boardKind: 'blank' })).toBe('Add instructions')
   })
 })

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  defaultRenderToCanvas,
   MAX_FILE_SIZE_BYTES,
   processImageFile,
   stripDataUrlPrefix,
@@ -142,5 +143,43 @@ describe('processImageFile', () => {
         }),
       }),
     ).rejects.toThrow('Image could not be compressed to fit within limits. Try a different image.')
+  })
+
+  it('defaultRenderToCanvas fills canvas with white before drawing image', async () => {
+    const orderOfOps: string[] = []
+    const fakeCtx = {
+      fillStyle: '',
+      fillRect: vi.fn((x: number, y: number, w: number, h: number) => {
+        orderOfOps.push(`fillRect:${x},${y},${w},${h}:${fakeCtx.fillStyle}`)
+      }),
+      drawImage: vi.fn(() => {
+        orderOfOps.push('drawImage')
+      }),
+    }
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => fakeCtx),
+      toDataURL: vi.fn(() => 'data:image/jpeg;base64,QUJD'),
+    }
+
+    const origCreateElement = document.createElement.bind(document)
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'canvas') return fakeCanvas as unknown as HTMLCanvasElement
+      return origCreateElement(tagName)
+    })
+
+    try {
+      const mockSource = {}
+      const res = await defaultRenderToCanvas(mockSource, 400, 300, 'image/jpeg', 0.85)
+
+      expect(fakeCanvas.width).toBe(400)
+      expect(fakeCanvas.height).toBe(300)
+      expect(fakeCtx.fillStyle).toBe('white')
+      expect(orderOfOps).toEqual(['fillRect:0,0,400,300:white', 'drawImage'])
+      expect(res.dataUrl).toBe('data:image/jpeg;base64,QUJD')
+    } finally {
+      createElementSpy.mockRestore()
+    }
   })
 })
