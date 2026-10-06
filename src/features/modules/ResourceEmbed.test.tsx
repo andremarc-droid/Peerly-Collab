@@ -12,6 +12,8 @@ describe('ResourceEmbed', () => {
     expect(frame).toHaveAttribute('loading', 'lazy')
     expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation')
     expect(frame).toHaveAttribute('referrerpolicy', 'strict-origin-when-cross-origin')
+    expect(frame).toHaveAttribute('allow', 'fullscreen')
+    expect(frame).toHaveAttribute('allowfullscreen')
     expect(screen.getByRole('link', { name: 'Open in Drive' })).toHaveAttribute('href', 'https://docs.google.com/document/d/abcdefghijk/view')
     expect(screen.getByRole('link', { name: 'Open in Drive' })).toHaveAttribute('rel', 'noopener noreferrer')
     expect(screen.getByRole('status', { name: 'Loading preview: Unit notes preview' })).toBeInTheDocument()

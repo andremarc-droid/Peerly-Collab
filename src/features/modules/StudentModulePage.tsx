@@ -1,4 +1,4 @@
-import { ArrowLeft, CirclePlay, ExternalLink, FileText, FileVideo, Link2 } from 'lucide-react'
+import { ArrowLeft, CirclePlay, ExternalLink, File, FileSpreadsheet, FileText, Link2, Presentation } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
@@ -19,7 +19,7 @@ import { quizModeLabel } from '../quizzes/types'
 import { ResourceEmbed } from './ResourceEmbed'
 import { buildDriveEmbedUrl, buildDriveOpenUrl, buildYouTubeEmbedUrl } from './links'
 import { subscribeToModule, subscribeToResources } from './services'
-import type { ModuleResourceWithId, ModuleWithId } from './types'
+import type { DriveKind, ModuleResourceWithId, ModuleWithId } from './types'
 import './modules.css'
 
 export function StudentModulePage() {
@@ -27,17 +27,44 @@ export function StudentModulePage() {
   return <StudentModuleDetail key={`${classId}:${moduleId}`} classId={classId} moduleId={moduleId} />
 }
 
+function DriveIcon({ kind }: { kind?: DriveKind }) {
+  switch (kind) {
+    case 'doc':
+      return <FileText size={20} />
+    case 'sheet':
+      return <FileSpreadsheet size={20} />
+    case 'slides':
+      return <Presentation size={20} />
+    case 'file':
+    default:
+      return <File size={20} />
+  }
+}
+
 function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId: string }) {
   const { user } = useAuth()
   const [enrollment, setEnrollment] = useState<EnrollmentWithId | null>(null)
   const [enrollmentLoaded, setEnrollmentLoaded] = useState(false)
   const [classroom, setClassroom] = useState<ClassWithId | null>(null)
+
+  // Module state
   const [module, setModule] = useState<ModuleWithId | null>(null)
+  const [moduleLoading, setModuleLoading] = useState(true)
+  const [moduleNotFound, setModuleNotFound] = useState(false)
+  const [moduleError, setModuleError] = useState<string | null>(null)
+  const [moduleRetry, setModuleRetry] = useState(0)
+
+  // Resources state
   const [resources, setResources] = useState<ModuleResourceWithId[]>([])
+  const [resourcesLoading, setResourcesLoading] = useState(true)
+  const [resourcesError, setResourcesError] = useState<string | null>(null)
+  const [resourcesRetry, setResourcesRetry] = useState(0)
+
+  // Quizzes state
   const [quizzes, setQuizzes] = useState<QuizRecord[]>([])
-  const [loading, setLoading] = useState(true)
-  const [unavailable, setUnavailable] = useState(false)
-  const [retry, setRetry] = useState(0)
+  const [quizzesLoading, setQuizzesLoading] = useState(true)
+  const [quizzesError, setQuizzesError] = useState<string | null>(null)
+  const [quizzesRetry, setQuizzesRetry] = useState(0)
 
   useEffect(() => {
     if (!user || !classId) return undefined
@@ -46,22 +73,27 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
       setEnrollment(match)
       setEnrollmentLoaded(true)
       if (!match) {
-        setUnavailable(true)
+        setModuleNotFound(true)
+        setModuleLoading(false)
       }
     }, () => {
-      setUnavailable(true)
+      setModuleError("We couldn't load this module")
+      setModuleLoading(false)
       setEnrollmentLoaded(true)
     })
-  }, [user, classId, retry])
+  }, [user, classId, moduleRetry])
 
   useEffect(() => {
     if (!classId || !enrollment) return undefined
     return watchClass(
       classId,
       (value) => setClassroom(value),
-      () => setUnavailable(true),
+      () => {
+        setModuleError("We couldn't load this module")
+        setModuleLoading(false)
+      },
     )
-  }, [classId, enrollment, retry])
+  }, [classId, enrollment, moduleRetry])
 
   useEffect(() => {
     if (!classId || !moduleId || !enrollment) return undefined
@@ -72,55 +104,81 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
       (found) => {
         if (cancelled) return
         if (!found || found.status !== 'published') {
-          setUnavailable(true)
-          setLoading(false)
+          setModule(null)
+          setModuleNotFound(true)
+          setModuleLoading(false)
+          setModuleError(null)
           return
         }
         setModule(found)
-        setUnavailable(false)
-        setLoading(false)
+        setModuleNotFound(false)
+        setModuleLoading(false)
+        setModuleError(null)
       },
-      () => {
+      (err) => {
         if (cancelled) return
-        setUnavailable(true)
-        setLoading(false)
-      },
-    )
-
-    const stopResources = subscribeToResources(
-      classId,
-      moduleId,
-      (items) => {
-        if (cancelled) return
-        setResources(items)
-      },
-      () => {
-        // Resources permission denied means module was unpublished or removed
-        if (cancelled) return
-        setUnavailable(true)
-      },
-    )
-
-    const stopQuizzes = watchPublishedQuizzesForClass(
-      classId,
-      (items) => {
-        if (cancelled) return
-        setQuizzes(items)
-      },
-      () => {
-        if (cancelled) return
+        setModuleError(err.message || "We couldn't load this module")
+        setModuleNotFound(false)
+        setModuleLoading(false)
       },
     )
 
     return () => {
       cancelled = true
       stopModule()
+    }
+  }, [classId, moduleId, enrollment, moduleRetry])
+
+  useEffect(() => {
+    if (!classId || !moduleId || !module) return undefined
+    let cancelled = false
+    const stopResources = subscribeToResources(
+      classId,
+      moduleId,
+      (items) => {
+        if (cancelled) return
+        setResources(items)
+        setResourcesLoading(false)
+        setResourcesError(null)
+      },
+      (err) => {
+        if (cancelled) return
+        setResourcesError(err.message)
+        setResourcesLoading(false)
+      },
+    )
+
+    return () => {
+      cancelled = true
       stopResources()
+    }
+  }, [classId, moduleId, module, resourcesRetry])
+
+  useEffect(() => {
+    if (!classId || !module) return undefined
+    let cancelled = false
+    const stopQuizzes = watchPublishedQuizzesForClass(
+      classId,
+      (items) => {
+        if (cancelled) return
+        setQuizzes(items)
+        setQuizzesLoading(false)
+        setQuizzesError(null)
+      },
+      (err) => {
+        if (cancelled) return
+        setQuizzesError(err.message)
+        setQuizzesLoading(false)
+      },
+    )
+
+    return () => {
+      cancelled = true
       stopQuizzes()
     }
-  }, [classId, moduleId, enrollment, retry])
+  }, [classId, module, quizzesRetry])
 
-  if (!enrollmentLoaded || (loading && !unavailable)) {
+  if (!enrollmentLoaded || (moduleLoading && !moduleError && !moduleNotFound)) {
     return (
       <AppShell>
         <PageHeader eyebrow="STUDY MODULE" title="Loading module…" subtitle="" />
@@ -132,7 +190,7 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
     )
   }
 
-  if (unavailable || !module || module.status !== 'published') {
+  if (moduleNotFound) {
     return (
       <AppShell>
         <PageHeader
@@ -146,24 +204,51 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
           }
         />
         <main className="app-shell__content grid gap-4" id="main-content">
+          <Alert tone="warning" label="Module no longer available">
+            This module has been unpublished or removed. Return to your class page to view other available materials.
+          </Alert>
+          <div>
+            <Button to={`/student/classes/${classId}`} variant="secondary">
+              <ArrowLeft size={16} aria-hidden="true" /> Back to class
+            </Button>
+          </div>
+        </main>
+      </AppShell>
+    )
+  }
+
+  if (moduleError || !module) {
+    return (
+      <AppShell>
+        <PageHeader
+          eyebrow="STUDY MODULE"
+          title="Module unavailable"
+          subtitle="We couldn't load this module."
+          action={
+            <Button to={`/student/classes/${classId}`} variant="secondary">
+              <ArrowLeft size={16} aria-hidden="true" /> Back to class
+            </Button>
+          }
+        />
+        <main className="app-shell__content grid gap-4" id="main-content">
           <Alert
-            tone="warning"
-            label="Module no longer available"
+            tone="error"
+            label="We couldn't load this module"
             action={
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => {
-                  setLoading(true)
-                  setUnavailable(false)
-                  setRetry((v) => v + 1)
+                  setModuleLoading(true)
+                  setModuleError(null)
+                  setModuleRetry((v) => v + 1)
                 }}
               >
                 Retry
               </Button>
             }
           >
-            This module has been unpublished or removed. Return to your class page to view other available materials.
+            We couldn't load this module. Please try again.
           </Alert>
           <div>
             <Button to={`/student/classes/${classId}`} variant="secondary">
@@ -213,7 +298,33 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
             <span className="section-kicker">STUDY RESOURCES</span>
             <h2 id="resources-heading" className="m-0 font-heading text-2xl">Resources</h2>
           </header>
-          {resources.length > 0 ? (
+          {resourcesLoading ? (
+            <div className="grid gap-3">
+              {[0, 1].map((index) => (
+                <Skeleton key={index} className="h-32 rounded-3xl" label="Loading module resources" />
+              ))}
+            </div>
+          ) : resourcesError ? (
+            <Alert
+              tone="error"
+              label="Resources unavailable"
+              action={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setResourcesLoading(true)
+                    setResourcesError(null)
+                    setResourcesRetry((v) => v + 1)
+                  }}
+                >
+                  Retry
+                </Button>
+              }
+            >
+              {resourcesError}
+            </Alert>
+          ) : resources.length > 0 ? (
             <ol className="resource-list" aria-label="Module resources in order">
               {resources.map((resource) => (
                 <li key={resource.id} className="resource-list__item">
@@ -229,7 +340,40 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
           )}
         </section>
 
-        {publishedAttachedQuizzes.length > 0 && (
+        {quizzesError ? (
+          <section className="grid gap-4" aria-labelledby="attached-quizzes-heading">
+            <header>
+              <span className="section-kicker">PRACTICE</span>
+              <h2 id="attached-quizzes-heading" className="m-0 font-heading text-2xl">Attached quizzes</h2>
+            </header>
+            <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-navy-900-12 bg-white" role="alert">
+              <p className="m-0 text-sm text-navy-800-72">We couldn't load attached quizzes.</p>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setQuizzesLoading(true)
+                  setQuizzesError(null)
+                  setQuizzesRetry((v) => v + 1)
+                }}
+              >
+                Retry
+              </Button>
+            </div>
+          </section>
+        ) : quizzesLoading && module.quizIds.length > 0 ? (
+          <section className="grid gap-4" aria-labelledby="attached-quizzes-heading">
+            <header>
+              <span className="section-kicker">PRACTICE</span>
+              <h2 id="attached-quizzes-heading" className="m-0 font-heading text-2xl">Attached quizzes</h2>
+            </header>
+            <div className="grid gap-3">
+              {[0, 1].map((index) => (
+                <Skeleton key={index} className="h-24 rounded-2xl" label="Loading attached quizzes" />
+              ))}
+            </div>
+          </section>
+        ) : publishedAttachedQuizzes.length > 0 ? (
           <section className="grid gap-4" aria-labelledby="attached-quizzes-heading">
             <header>
               <span className="section-kicker">PRACTICE</span>
@@ -255,20 +399,18 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
               ))}
             </div>
           </section>
-        )}
+        ) : null}
       </main>
     </AppShell>
   )
 }
 
 function StudentResourceItem({ resource }: { resource: ModuleResourceWithId }) {
-  const Icon = resource.type === 'youtube' ? CirclePlay : resource.type === 'drive' ? FileVideo : resource.type === 'link' ? Link2 : FileText
-
   if (resource.type === 'text') {
     return (
       <article className="student-resource-item">
         <div className="student-resource-header">
-          <span className="resource-card__icon" aria-hidden="true"><Icon size={20} /></span>
+          <span className="resource-card__icon" aria-hidden="true"><FileText size={20} /></span>
           <h3 className="student-resource-title">{resource.title}</h3>
         </div>
         {resource.body && (
@@ -292,7 +434,7 @@ function StudentResourceItem({ resource }: { resource: ModuleResourceWithId }) {
     return (
       <article className="student-resource-item">
         <div className="student-resource-header">
-          <span className="resource-card__icon" aria-hidden="true"><Icon size={20} /></span>
+          <span className="resource-card__icon" aria-hidden="true"><Link2 size={20} /></span>
           <div>
             <h3 className="student-resource-title">{resource.title}</h3>
             <p className="m-0 text-sm text-navy-800-72">{host}</p>
@@ -319,7 +461,7 @@ function StudentResourceItem({ resource }: { resource: ModuleResourceWithId }) {
     return (
       <article className="student-resource-item">
         <div className="student-resource-header">
-          <span className="resource-card__icon" aria-hidden="true"><Icon size={20} /></span>
+          <span className="resource-card__icon" aria-hidden="true"><CirclePlay size={20} /></span>
           <h3 className="student-resource-title">{resource.title}</h3>
         </div>
         {embedUrl ? (
@@ -341,7 +483,7 @@ function StudentResourceItem({ resource }: { resource: ModuleResourceWithId }) {
     return (
       <article className="student-resource-item">
         <div className="student-resource-header">
-          <span className="resource-card__icon" aria-hidden="true"><Icon size={20} /></span>
+          <span className="resource-card__icon" aria-hidden="true"><DriveIcon kind={kind} /></span>
           <h3 className="student-resource-title">{resource.title}</h3>
         </div>
         {embedUrl ? (
@@ -350,7 +492,7 @@ function StudentResourceItem({ resource }: { resource: ModuleResourceWithId }) {
             fallbackUrl={openUrl}
             title={`${resource.title} preview`}
             fallbackLabel="Open in Drive"
-            fallbackMessage="Ask your instructor to share this file"
+            fallbackMessage="Preview not loading? Sign in with the Google account your instructor shared this with, or ask them to share the file."
           />
         ) : null}
       </article>

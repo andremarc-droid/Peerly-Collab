@@ -31,6 +31,8 @@ export function ResourceEmbed({
             loading="lazy"
             sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
             referrerPolicy="strict-origin-when-cross-origin"
+            allow="fullscreen"
+            allowFullScreen
             onLoad={() => setLoaded(true)}
           />
         </div>

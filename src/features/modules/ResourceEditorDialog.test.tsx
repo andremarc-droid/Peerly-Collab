@@ -20,6 +20,7 @@ describe('resource authoring dialogs', () => {
     expect(screen.getByTitle(/Google Doc .* preview/)).toHaveAttribute('src', 'https://docs.google.com/document/d/abcdefghijk/preview')
     expect(screen.getByRole('link', { name: 'Open in Drive' })).toHaveAttribute('href', 'https://docs.google.com/document/d/abcdefghijk/view')
     expect(screen.getByText(/press Share/)).toBeInTheDocument()
+    expect(screen.getByText(/Set sharing to Anyone with the link: Viewer so students can open it/)).toBeInTheDocument()
     expect(screen.getByText(/School Google accounts can limit this/)).toBeInTheDocument()
     expect(screen.getByText(/blocks third-party cookies/)).toBeInTheDocument()
     expect(screen.getByLabelText('Title')).toHaveValue('Google Doc abcdefgh')

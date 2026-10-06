@@ -76,7 +76,7 @@ function ResourceEditorDialogForm({ initial, onClose, onSave }: Omit<ResourceEdi
     <Input label="Title" name="resource-title" value={title} maxLength={120} onChange={(event) => onTitleChange(event.target.value)} error={!title.trim() && submittedError ? 'A title is required.' : undefined} />
     {type === 'drive' && <>
       {parsedDrive?.value && <p className="resource-detected-kind">Detected: <strong>{kindName[parsedDrive.value.kind]}</strong></p>}
-      <p className="resource-help">In Google Drive, press Share, and set General access to 'Anyone with the link' (Viewer).</p>
+      <p className="resource-help">In Google Drive, press Share, and set General access to 'Anyone with the link' (Viewer). Set sharing to Anyone with the link: Viewer so students can open it.</p>
       {drivePreview ? <section className="resource-preview" aria-label="Live Drive preview"><h3>Test preview</h3><ResourceEmbed src={drivePreview} fallbackUrl={driveOpen} title={`${title || 'Google Drive file'} preview`} fallbackLabel="Open in Drive" /><p>School Google accounts can limit this. If the preview below stays blank or says you need access, either your school restricts public sharing or the file is still private. Try uploading the file from a personal Google account.</p><p>A blank preview can also come from a browser that blocks third-party cookies.</p></section> : <p className="resource-preview__empty">Paste a supported Drive file link to test the preview.</p>}
     </>}
     {type === 'youtube' && youtubePreview && <section className="resource-preview" aria-label="Live YouTube preview"><h3>Test preview</h3><ResourceEmbed src={youtubePreview} fallbackUrl={youtubeOpen} title={`${title || 'YouTube video'} preview`} fallbackLabel="Open on YouTube" /></section>}

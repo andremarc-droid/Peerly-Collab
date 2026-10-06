@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, CirclePlay, FileText, FileVideo, Link2, MoveDown, MoveUp, Plus, Send } from 'lucide-react'
+import { ArrowLeft, BookOpenText, CirclePlay, File, FileSpreadsheet, FileText, Link2, MoveDown, MoveUp, Plus, Presentation, Send } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
@@ -198,7 +198,13 @@ export function ModuleWorkspacePage() {
 }
 
 function ResourceRow({ resource, index, total, busy, onEdit, onRemove, onMove, onDragStart, onDrop, onDragEnd }: { resource: ModuleResourceWithId; index: number; total: number; busy: boolean; onEdit: () => void; onRemove: () => void; onMove: (id: string, offset: -1 | 1) => void; onDragStart: () => void; onDrop: () => void; onDragEnd: () => void }) {
-  const Icon = resource.type === 'youtube' ? CirclePlay : resource.type === 'drive' ? FileVideo : resource.type === 'link' ? Link2 : FileText
+  const Icon = resource.type === 'youtube'
+    ? CirclePlay
+    : resource.type === 'drive'
+      ? (resource.driveKind === 'doc' ? FileText : resource.driveKind === 'sheet' ? FileSpreadsheet : resource.driveKind === 'slides' ? Presentation : File)
+      : resource.type === 'link'
+        ? Link2
+        : FileText
   let host = resource.type === 'text' ? 'Plain-text note' : ''
   if (resource.url) { try { host = new URL(resource.url).hostname } catch { host = 'Link' } }
   return <li draggable onDragStart={onDragStart} onDragOver={(event) => event.preventDefault()} onDrop={onDrop} onDragEnd={onDragEnd} className="resource-list__item">
