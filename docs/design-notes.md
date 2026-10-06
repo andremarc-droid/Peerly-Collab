@@ -2,71 +2,48 @@
 
 ## Visual system
 
-- Brand palette: `navy-900` for page backgrounds, `navy-800` for primary actions, `navy-700` for raised navy panels, and white for cards and inverse actions. Supporting text uses explicit white/navy opacity tokens. The only non-brand hues are muted feedback tokens reserved for labeled answer/status states.
+- Light-first balance: canvas and content areas are white or a light navy tint (3–5% `navy-700-05`). Deep navy is reserved for the top nav bar, a compact `PageHeader` band (max about 160px on desktop, 120px mobile), primary buttons, selected states, icon tiles, and text. Rough visual proportions: ~70% light, ~25% navy, ~5% stripes.
+- Decorative stripes: present only inside the `PageHeader` band and hero areas (at most the right 40% of the surface, masked with a gradient, thinner and widely spaced, and never behind text, buttons, tabs, forms, tables, cards, stat tiles, or the class-code panel).
+- Brand palette: `navy-900` for chrome and primary text, `navy-800` for primary button fills, `navy-700` for raised elements and focus rings, and white for content surfaces. Supporting text uses `navy-800-72` (>= 4.5:1 AA/AAA contrast). Functional feedback tokens (`success`, `warning`, `error`) are strictly reserved for labeled status indicators and always pair color with an icon and text.
 - Spacing follows an 8px base scale: 8, 16, 24, 32, 48, 64, 80, and 96px. Components keep 8–24px internal gaps; section padding grows from 64px mobile to 96px desktop.
-- Typography uses self-hosted Outfit for display and Inter for body. Body copy is 16px mobile and 18px desktop at 1.6 line height. Headlines use fluid `clamp()` sizing, tight 1.05 leading, and slightly negative tracking. Paragraphs stay at or below 65ch.
-- Controls are at least 44px high. Cards use 16–24px radii, quiet borders, and navy-tinted shadows. Focus rings invert for the surface beneath them. Motion is brief and reduced when the user prefers less motion.
+- Typography uses self-hosted Outfit for display and Inter for body. Body copy is 16px minimum, metadata 14px, with 1.5–1.6 line height. Headlines use fluid `clamp()` sizing, tight 1.05 leading, and slightly negative tracking. Paragraphs stay at or below 65ch.
+- Controls are at least 44px high. Cards use 16–24px radii, quiet borders, and soft navy-tinted shadows. Focus rings invert for the surface beneath them (navy-700 on light, white on navy). Motion is brief and disabled when the user prefers reduced motion.
 
 ## Page layouts
 
-- Landing page: a sticky, blurred navy header with a compact mobile menu; a spacious two-column navy hero with restrained pinstripes, prominent copy and a CSS-built interactive-looking quiz preview; a white quiz-mode chip strip; four white feature cards; a deep navy two-track instructor/student explainer; a white-on-navy closing call to action; and a simple navy footer.
-- Role choice: full-height navy canvas with a large stripe fade kept behind the content, centered white panel, two equal selectable role cards, mode-aware heading, back link, and a full-width Continue action on narrow screens.
-- Signup/signin placeholders: same navy/white shell, short heading and explanation, with a return-to-role path when no session role intent exists.
-- Design gallery: a developer-only route on the same visual system showing every shared component, states, focus/disabled treatments, and responsive examples. Unknown paths use a composed 404 page with a clear home action.
+- Landing page: a sticky navy header with a compact mobile menu; a spacious two-column hero with restrained pinstripes, prominent copy and interactive-looking quiz preview; white quiz-mode chip strip; four white feature cards; navy two-track explainer; closing call to action; and simple navy footer.
+- Role choice: full-height navy canvas with a stripe fade kept behind the content, centered white panel, two selectable role cards, mode-aware heading, back link, and Continue action.
+- Signup/signin placeholders: clean shell, short heading and explanation, with return-to-role path when no session role intent exists.
+- Design gallery: developer-only route demonstrating shared components, states, focus/disabled treatments, and responsive examples. Unknown paths use a composed 404 page.
 
 ## In-app shell and page structure
 
-- Signed-in screens use a deep navy header with a subtle, fading white pinstripe, a white Peerly Collab logo, and a keyboard-operable account menu. The menu trigger includes an avatar ring, truncated name, readable role badge, and chevron; the menu starts with the account identity, then Profile and Sign out.
-- `PageHeader` provides a reusable full-width navy band with masked stripes, an eyebrow badge, one page title, subtitle, and optional primary action. On narrow screens the action becomes full-width beneath the heading.
-- The main content uses a white rounded panel that overlaps the page-header band by approximately 32px. Center it around 1120px with 16px mobile and 32px desktop gutters. Keep 1920px layouts purposeful by allowing content to grow to a comfortable max width.
-- Dashboard hierarchy: page header, `StatRow` of honest zero/placeholder values, then a titled content section and a helpful `EmptyState`. Do not render fake counts or dead links. Instructor creation remains visibly disabled and labelled “Coming soon” until functional.
+- Signed-in screens use the solid navy `AppShell` header with Peerly Collab logo and keyboard-operable account menu. Top chrome is free of distracting stripes behind controls.
+- `PageHeader` provides a compact navy band (max ~160px desktop, ~120px mobile) with restrained right-masked stripes, eyebrow badge, single page title, subtitle, and optional action. On mobile, the action wraps cleanly beneath the heading.
+- The main content sits on a white rounded panel overlapping the header band by approximately 32px, centered near 1120px with 16px mobile and 32px desktop gutters.
+- Dashboard hierarchy: compact page header, `StatRow` of honest metrics, then titled content section and helpful `EmptyState`.
 - Profile uses a `PageHeader` and `SectionCard` groups for personal details and account access; email and role stay read-only where appropriate.
-- Auth and role-choice pages retain their established behavior and navy stripe canvas, while using consistent card radii, icon-led controls, clear validation, focus, disabled, and loading states.
-- The 404 and loading states use the same navy identity, white panels, readable labels, and visible progress feedback.
 
 ## Shared component guide
 
-Use `PageHeader` for page identity and a single optional page-level action. Use `EmptyState` when a list has no content; its stacked-card stripe illustration is decorative and hidden from assistive technology. Use `StatTile` and `StatRow` only for real or explicitly zero/placeholder metrics. Use `SectionCard` to group related form fields or content and `DataCard` for concise list items with title, metadata, optional badge, and real trailing actions.
-
-`DropdownMenu` is the shared pattern for account and item menus; it supports Arrow keys, Home/End, Escape, and focus return. `Dialog` is for focused decisions and forms, with a labelled title, optional description, focus containment, Escape dismissal, and scroll lock. `ConfirmDialog` is for consequential in-app actions and can require exact text entry. `ToastProvider` exposes short success/error/info messages with a visible status label, icon, live announcement, manual dismiss, and timed dismissal. `Tooltip` is supplementary only; do not hide required instructions in it.
-
-Use `Textarea`, `Select`, `Switch`, `Checkbox`, `RadioGroup`, `SegmentedControl`, and `Tabs` for their corresponding native form/selection patterns. Each control keeps label, hint, and error content associated. `Toolbar` combines a labelled search field and supplied filters; `DataCard` is the preferred reusable list-row surface. All controls keep 44px minimum touch targets, navy/white focus rings, and reduced-motion support.
-
-The developer-only `/design` gallery demonstrates these components, disabled/error/loading/focus states, and responsive behavior. Sample list values there are illustrative only and must not be mistaken for live product data.
+- **Buttons**:
+  - On light: primary = navy fill with white text; secondary = white fill with navy text and visible 1px navy-at-30% border (`--color-navy-900-30`); tertiary = navy text link.
+  - On navy: primary = white fill with navy text; secondary = transparent fill with 1px white outline and white text. No dark-on-dark variant exists.
+- **Tabs**: On light surfaces, inactive tab labels use navy-800-72 (>= 4.5:1) with a visible hover background (`navy-900-12`). Selected tabs use a filled navy-800 background with white text. Count badges use navy-tinted fill with navy text.
+- **Stat tiles**: White cards with 1px border and soft shadow. The first tile may be navy-filled, without stripes (the navy stripe pseudo-element is removed).
+- **Class-code panel**: A light card where the code is the hero (32–40px monospace, wide letter-spacing) with a primary "Copy code" button. Copy link, Share invite, and Regenerate are secondary. The Joining switch has a visible label and state text ("Open" or "Paused").
+- **Empty states**: Flat white card, centered, with NO gradients. Crisp multi-layer card illustration with BookOpenCheck icon, headline, one-sentence description, and one primary button.
+- **Alerts**: Neutral white card, left accent bar, icon, bold title, dark-ink body copy (>= 4.5:1), and optional action button. Errors, warnings, and info share one layout.
+- **State Exclusivity**: Error and empty states never appear together (enforced via `resolveListStatus`).
 
 ## Responsive and accessibility rules
 
-- Use a 12-column desktop content grid capped near 1200px, collapse hero and paired content to one column at tablet/mobile widths, and preserve 24px side gutters down to 360px.
-- Keep stripes decorative and away from paragraph text; content sits on solid panels. Use semantic landmarks, one page-level heading, a skip link, labeled controls, keyboard-operable radio selection, and non-color status cues.
-- Verify 360px, 768px, and 1280px layouts in a browser when available, checking for horizontal overflow and alignment.
+- Use a 12-column desktop content grid capped near 1200px, collapse hero and paired content to one column at tablet/mobile widths, and preserve side gutters down to 360px.
+- Stripes are purely decorative, restricted to the right 40% of the header band, and never placed behind text, forms, or controls.
 - See [the contrast report](./contrast-report.md) for measured WCAG ratios across text, surface, and feedback token pairs.
 
-## Quiz authoring UX
-- Use quick create for the required title, quiz type, and class, then open the Questions workspace.
-- Organize authoring into Questions, Settings, and Preview with title and description in the workspace header.
-- Save edits automatically with an explicit status and retry path. Keep incomplete questions visible but out of counts and publishing.
-- Present plain-language presets before detailed settings, and keep the student experience summary live.
-- Provide a live publish checklist, class context, breadcrumbs, and a back action that returns to the originating class or quiz list.
-- Favor undo for low-risk question deletion and keyboard-first question entry.
+## Concept Canvas & Quiz Authoring
 
-## Shared app consistency patterns
-
-- App screens use the same sequence: navy stripe header, softly tinted content panel, then white raised cards for related controls. Avoid white cards directly on white surfaces.
-- `PageSection` groups content on the tinted panel with an icon tile, title, description, and optional action. `SectionCard` is the white raised surface for forms and settings, with an icon heading and divider.
-- `StatTile` has white and navy variants. Use the navy variant to anchor the first/highest-priority metric.
-- `DataTable` provides sortable headers, selected rows, low-contrast zebra striping, and label/value cards on narrow screens.
-- `Tabs` use filled-navy selection, optional counts, arrow-key navigation, and a scrollable mobile rail.
-- Dialog headers, destructive confirmations, feedback banners, loading states, and empty states share their icon, spacing, contrast, and action patterns.
-- Keep the visual system to navy and white; feedback colors appear only with an icon and visible text label. Keep paragraph text at 16px or larger, metadata at 12px or larger, and controls at least 44px high.
-
-## Class identity design rules
-
-- App chrome (top navigation bar, global buttons, tabs, dialogs) strictly follows the navy-and-white brand palette. Class colors are permitted ONLY on designated class identity surfaces: `ClassTile` headers, class page `PageHeader` background bands, `ClassInitialBadge` indicators, and the `ClassColorPicker`.
-- The 11 class color keys (`navy`, `ocean`, `teal`, `green`, `amber`, `rust`, `crimson`, `rose`, `purple`, `indigo`, `slate`) are defined via `[data-class-color]` CSS tokens without inline styles.
-- Every palette color guarantees WCAG AA accessibility: white text on `--class-color` >= 4.5:1 and navy text on `--class-tint` >= 4.5:1.
-- Class colors are never used for semantic success, warning, or error states.
-- Focus rings on colored surfaces use an inverting white inner ring with a dark navy outer border (`box-shadow: 0 0 0 2px var(--color-white), 0 0 0 4px var(--color-navy-900)`).
-- Decorative patterns (`pinstripe`, `stripeFade`, `solid`) on class headers use low-opacity white stripes masked away from text and controls (occupying at most the right 40–48% of the surface).
-- Class identity never relies on color alone: the class title is always rendered prominently as readable text alongside the initial badge.
-
-
+- Supported modes: `quiz`, `flashcards`, and `canvas` (locked upon creation).
+- Canvas boards: exactly one 'board' question and answer key, up to 50 cards and 80 connections. Directed connections format as `fromId->toId`, undirected as `fromId<->toId` with alphabetically sorted endpoints.
+- Student attempt answers are stored as `answers.board: string[]` capped at 80 items. Grading runs client-side in v1.

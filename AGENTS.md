@@ -13,20 +13,27 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Use the existing oxlint setup; do not add ESLint.
 
 ## THEME
+- Balance rules (light-first balance):
+  - Canvas and content areas are white or a very light navy tint (3–5%). Navy is reserved for the top nav bar, a compact `PageHeader` band (max about 160px on desktop, 120px mobile), primary buttons, selected states, icon tiles, and text. Target proportions: ~70% light, ~25% navy, ~5% stripes.
+  - Stripes only inside the `PageHeader` band and hero areas: at most the right 40% of the band, fading out with a mask, thinner and more widely spaced, never behind text, buttons, tabs, forms, tables, cards, stat tiles, or the class-code panel.
+  - Never place a navy element on a navy background. Text pairs require >= 4.5:1 contrast; borders, icons, and focus rings require >= 3:1.
+  - Buttons: On navy, primary = white fill with navy text; secondary = transparent with 1px white outline and white text. On light, primary = navy fill with white text; secondary = white fill with navy text and visible 1px navy-at-30% border; tertiary = navy text link. No dark-on-dark variant exists.
+  - Tabs on light: inactive = navy at 72% (>= 4.5:1) with a visible hover state; selected = navy fill with white text (or navy text with 3px underline). Count badges use a navy-tinted fill with navy text.
+  - Stat tiles: white cards with 1px border and soft shadow. The first tile may be navy-filled, without stripes (no navy stripe variant).
+  - Class-code panel: a light card where the code is the hero (32–40px monospace, wide letter-spacing) with a primary "Copy code" button; Copy link, Share invite, and Regenerate are secondary; the Joining switch has a visible label and state text ("Open" or "Paused").
+  - Empty states: flat white card, centered, NO gradient, crisp illustration, headline, one sentence, one primary button.
+  - Alerts: neutral white card, left accent bar, icon, bold title, dark-ink body (>= 4.5:1), action button; errors, warnings, and info share one layout.
+  - Error and empty states never appear together (enforced via shared `resolveListStatus` helper).
+  - Comfort: body copy 16px minimum, metadata 14px, line-height 1.5–1.6, 8px grid, no large saturated area bigger than the header band, soft shadows.
 - Use only white and navy as brand colors, with named Tailwind v4 theme tokens. Functional success, error, and warning colors may appear only in answer/status feedback and must include both an icon and text label.
-- Use white pinstripes, stripe bands, and fade masks as restrained decorative details on navy. Keep paragraph text on solid panels or clear stripe-free areas; decorative stripes are hidden from assistive technology.
-- Build with generous 8px-grid spacing, 16–24px corners, subtle navy-tinted shadows, and fluid Outfit headings with Inter body copy. Use responsive typography and layouts.
 - Buttons must have 44px minimum touch targets, clear hover/pressed states, and visible focus rings. Respect reduced-motion preferences and prefer small CSS/IntersectionObserver motion effects.
 - Use lucide-react for icons. Do not hard-code colors in components; use theme tokens.
-- In signed-in areas, use the navy `AppShell` header with the white logo, a quiet pinstripe fade, and the account dropdown. Keep its identity, role badge, profile link, and sign-out action visible and keyboard operable.
-- Compose in-app pages with `PageHeader`: a navy stripe band, eyebrow, title, subtitle, and optional action. Follow it with the centered white content panel that overlaps the band by about 32px. Keep content near 1120px wide, with 16px mobile and 32px desktop gutters.
+- In signed-in areas, use the navy `AppShell` header with the white logo and the account dropdown. Keep its identity, role badge, profile link, and sign-out action visible and keyboard operable.
+- Compose in-app pages with `PageHeader`: a compact navy band (max ~160px desktop, ~120px mobile) with restrained right-masked stripes, eyebrow, title, subtitle, and optional action. Follow it with the centered white content panel overlapping the band by about 32px.
 - Use `StatTile`/`StatRow` for concise, honest counts and hints; `EmptyState` to explain what belongs in a new area; `SectionCard` to group related content; and `DataCard` for list rows. Empty-state actions must work or be visibly disabled and labelled as coming soon.
 - Use `DropdownMenu`, `Dialog`, `ConfirmDialog`, `ToastProvider`, and `Tooltip` for shared interactions. Menus and dialogs support keyboard use; dialogs label their purpose, contain focus, close on Escape, and lock background scroll. Toasts have an icon, visible status label, live announcement, dismiss button, and timeout.
 - Shared form controls (`Input`, `Textarea`, `Select`, `Switch`, `Checkbox`, `RadioGroup`, `SegmentedControl`, `Tabs`) must keep labels, hints, and errors programmatically associated with their controls. Prefer native controls where they provide equivalent accessible behavior.
-- Keep page rhythm on the 8px scale, favor a clear page heading and semantic sections, and check widths at 360px, 768px, 1280px, and 1920px. Use white/navy contrast pairs listed in `docs/contrast-report.md`; opacity tints are for surfaces and dividers, not small text.
-- Use `PageSection` for titled groups on tinted content panels; use icon-led `SectionCard` for raised forms and settings, and keep one clear primary action in each group.
 - Use `DataTable` for sortable rosters/results; keep row headers visible on desktop and provide labelled mobile cards without horizontal page overflow.
-- `Tabs` use a strong selected state, optional count badges, keyboard arrows, and a horizontally scrollable mobile tab rail. `StatTile` supports white and navy stripe variants.
 - Dialogs use the shared icon header, focus trap, Escape handling, and a consistent footer; destructive actions include a warning icon and clear text label.
 
 ## USER FLOW
@@ -36,12 +43,21 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Signup, signin, and unknown routes remain clear, accessible placeholders until their forms and route behavior are implemented. Keep auth and Firebase wiring out of the role-choice flow until explicitly requested.
 
 ## QUIZ DOMAIN
-- Quizzes live at `quizzes/{quizId}` with owner identity, title/description/tags, mode (`quiz` or `flashcards`), status (`draft`, `published`, `archived`), question count, timestamps, and settings for answer reveal, participation, score visibility/release, time limit, attempts, and shuffling.
+- Quizzes live at `quizzes/{quizId}` with owner identity, title/description/tags, mode (`quiz`, `flashcards`, or `canvas`), status (`draft`, `published`, `archived`), question count, timestamps, and settings for answer reveal, participation, score visibility/release, time limit, attempts, and shuffling.
 - Questions live at `quizzes/{quizId}/questions/{questionId}` and contain prompt, type, order, points, and options where applicable. Never store correct answers in question documents.
 - Answer keys live separately at `quizzes/{quizId}/answerKeys/{questionId}`. Participants may read them only under the access rules in `firestore.rules`; v1 browser grading means participants can inspect those keys.
 - Participants, attempts, and results are separate subcollections. Attempts store responses and ordering but no score; results store grades separately so rules enforce score visibility.
-- Support multiple choice, true/false, identification, fill-in-the-blank, and flashcards. Flashcard quizzes use neutral reveal/score defaults and flashcards are not graded.
+- Support multiple choice, true/false, identification, fill-in-the-blank, flashcards, and concept canvas boards. Flashcard quizzes use neutral reveal/score defaults and flashcards are not graded.
 - Validate untrusted domain payloads at runtime. Grade with pure functions and expose the service boundary as `gradeAttempt` so grading can move to a Cloud Function later.
+
+## CANVAS
+- Modes: `quiz`, `flashcards`, and `canvas`. Mode is permanently locked upon quiz creation.
+- A canvas quiz consists of exactly one 'board' question at `quizzes/{quizId}/questions/board` and its corresponding answer key at `quizzes/{quizId}/answerKeys/board`.
+- Hard limits: boards support up to 50 cards and 80 connections.
+- Connection ID formats: directed connections use `fromId->toId`; undirected connections use `fromId<->toId` (with endpoint IDs normalized alphabetically).
+- Grading: graded by connection weights/points; missing, wrong, or extra connections scored accordingly.
+- Student attempt answers are stored as `answers.board` of type `string[]`, strictly capped at 80 connection strings.
+- Client-side grading caveat: in v1, grading runs in the browser; answer keys are accessible to participants under Firestore rules.
 
 ## WORKING RULES
 - UI work uses shared components and theme tokens in `src/shared/ui`; no hard-coded colors. Unfinished features render visibly disabled with a “Coming soon” label.

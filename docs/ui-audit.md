@@ -46,7 +46,7 @@ Inventory first recorded before code changes. The status column reflects the fin
 
 ## Final pass notes
 
-All inventoried rows now use the shared page, card, typography, feedback, and responsive foundations. High reuse screens were additionally updated with sortable responsive tables, count tabs, navy stat tiles, labelled attempt feedback, and striped class invitation panels. The `DataTable`, `Tabs`, `StatTile`, and dialog focus behavior are covered by component tests. Browser screenshot inspection was attempted but the in-app browser blocked the local preview URL; CSS breakpoints and responsive table behavior were reviewed in source and component tests instead.
+All inventoried rows now use the light-first balance rules, shared page headers, card hierarchy, typography, feedback states, and responsive foundations. High reuse screens use sortable responsive tables, count tabs, unstriped navy stat tiles, labelled attempt feedback, and clean light class invitation panels with hero monospace codes (stripes strictly confined to the header band). The `DataTable`, `Tabs`, `StatTile`, `Button`, `Alert`, `EmptyState`, and dialog focus behavior are covered by component tests. Browser screenshot inspection was attempted but the in-app browser blocked the local preview URL; CSS breakpoints and responsive table behavior were reviewed in source and component tests instead.
 
 ## Remediation order
 
@@ -54,5 +54,3 @@ All inventoried rows now use the shared page, card, typography, feedback, and re
 2. Update the design gallery and shared-component tests.
 3. Apply the shared patterns to class, quiz, results, student, profile, auth, and miscellaneous surfaces.
 4. Revisit this table after visual and responsive checks; mark each screen “Yes” only after verifying its route and states.
-
-
