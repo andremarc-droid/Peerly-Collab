@@ -2,7 +2,7 @@ import { collection, deleteDoc, getDoc, getDocs, limit, query, updateDoc, where,
 import { firestore } from '../../../lib/firebase/firestore'
 import { quizRef } from './paths'
 
-const childCollections = ['questions', 'answerKeys', 'participants', 'attempts', 'results'] as const
+const childCollections = ['questions', 'answerKeys', 'participants', 'attempts', 'results', 'images'] as const
 
 export async function countQuizAttempts(quizId: string, db: Firestore = firestore): Promise<number> {
   const snapshot = await getDocs(query(collection(db, 'quizzes', quizId, 'attempts'), where('status', '==', 'submitted')))

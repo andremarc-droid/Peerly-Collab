@@ -15,6 +15,7 @@ import { deleteClassCascade } from '../../features/classes/services/deleteClassC
 import { duplicateModule } from '../../features/modules/services'
 import { deleteQuizCascade } from '../../features/quizzes/services/deleteQuizCascade'
 import { duplicateQuiz } from '../../features/quizzes/services/duplicateQuiz'
+import { copyQuizToClass } from '../../features/classes/services/quizService'
 
 const projectId = 'demo-peerly-collab'
 let environment: RulesTestEnvironment
@@ -587,6 +588,143 @@ describe('stress tests: duplicateQuiz, duplicateModule, delete cascades', () => 
 
         const keysSnap = await getDocs(collection(admin, 'quizzes', 'qz-casc-100', 'answerKeys'))
         expect(keysSnap.empty).toBe(true)
+      })
+    })
+
+    it('duplicates, copies to another class, and cascades delete for a canvas with 12 max-size images (~350 KB each)', async () => {
+      const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+
+      // 1. Seed two active classes
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore()
+        await setDoc(doc(db, 'users/teacher'), { uid: 'teacher', role: 'instructor' })
+        await setDoc(doc(db, 'classes/class-c1'), {
+          ownerId: 'teacher', ownerName: 'Teacher', name: 'Class 1', section: '', subject: '',
+          description: '', joinCode: 'CNVS23', joinEnabled: true, requireApproval: false,
+          status: 'active', accent: 'pinstripe', createdAt: now, updatedAt: now, codeRotatedAt: now,
+        })
+        await setDoc(doc(db, 'classes/class-c2'), {
+          ownerId: 'teacher', ownerName: 'Teacher', name: 'Class 2', section: '', subject: '',
+          description: '', joinCode: 'CNVS24', joinEnabled: true, requireApproval: false,
+          status: 'active', accent: 'pinstripe', createdAt: now, updatedAt: now, codeRotatedAt: now,
+        })
+
+        // 2. Seed canvas quiz with 12 image cards and board question
+        const canvasSettings = {
+          ...baseSettings,
+          shuffleQuestions: false,
+          shuffleOptions: false,
+        }
+        await setDoc(doc(db, 'quizzes/qz-canvas-12'), {
+          ownerId: 'teacher', ownerName: 'Teacher', classId: 'class-c1', title: 'Cell Biology Canvas',
+          description: '', tags: [], mode: 'canvas', status: 'draft', questionCount: 1,
+          createdAt: now, updatedAt: now, publishedAt: null, settings: canvasSettings,
+        })
+
+        const cards = []
+        const connections = []
+        // ~350,000 characters payload for each image
+        const base64Chunk = 'A'.repeat(350000)
+
+        for (let i = 0; i < 12; i += 1) {
+          const imgId = `img-orig-${i}`
+          cards.push({
+            id: `card-${i}`,
+            type: 'image',
+            title: `Organelle ${i}`,
+            content: `Description ${i}`,
+            imageId: imgId,
+            alt: `Alt description for organelle ${i}`,
+            position: { x: (i % 4) * 200, y: Math.floor(i / 4) * 120 },
+          })
+          if (i > 0) {
+            connections.push({
+              id: `card-${i - 1}->card-${i}`,
+              from: `card-${i - 1}`,
+              to: `card-${i}`,
+              points: 1,
+            })
+          }
+
+          // Write 12 images of ~350 KB
+          await setDoc(doc(db, 'quizzes/qz-canvas-12/images', imgId), {
+            data: base64Chunk,
+            mimeType: 'image/jpeg',
+            width: 1024,
+            height: 768,
+            bytes: Math.floor((350000 * 3) / 4),
+            createdAt: now,
+          })
+        }
+
+        await setDoc(doc(db, 'quizzes/qz-canvas-12/questions/board'), {
+          order: 0,
+          type: 'canvas',
+          prompt: 'Connect the cell organelles',
+          points: 100,
+          layoutMode: 'scattered',
+          directed: true,
+          wrongPenalty: 'half',
+          cards,
+        })
+
+        await setDoc(doc(db, 'quizzes/qz-canvas-12/answerKeys/board'), {
+          type: 'canvas',
+          explanation: 'Standard cell biology connections',
+          connections,
+        })
+      })
+
+      // 3. Test duplicateQuiz with 12 x 350KB images
+      const duplicatedId = await duplicateQuiz('qz-canvas-12', owner)
+      expect(duplicatedId).toBeTruthy()
+
+      // Verify copied images and remapped cards in the duplicate
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const admin = context.firestore()
+        const dupImages = await getDocs(collection(admin, 'quizzes', duplicatedId, 'images'))
+        expect(dupImages.size).toBe(12)
+
+        const dupBoardSnap = await getDoc(doc(admin, 'quizzes', duplicatedId, 'questions', 'board'))
+        expect(dupBoardSnap.exists()).toBe(true)
+        const dupBoardData = dupBoardSnap.data()
+        expect(dupBoardData?.cards?.length).toBe(12)
+
+        // Ensure all card imageIds were remapped to the newly created image IDs
+        const dupImageIds = new Set(dupImages.docs.map((d) => d.id))
+        for (const card of dupBoardData?.cards ?? []) {
+          expect(card.type).toBe('image')
+          expect(dupImageIds.has(card.imageId)).toBe(true)
+          expect(card.imageId).not.toMatch(/^img-orig-/)
+        }
+      })
+
+      // 4. Test copyQuizToClass to another class
+      const copiedToClassId = await copyQuizToClass('qz-canvas-12', 'class-c2', owner)
+      expect(copiedToClassId).toBeTruthy()
+
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const admin = context.firestore()
+        const copiedQuizSnap = await getDoc(doc(admin, 'quizzes', copiedToClassId))
+        expect(copiedQuizSnap.data()?.classId).toBe('class-c2')
+
+        const copiedImages = await getDocs(collection(admin, 'quizzes', copiedToClassId, 'images'))
+        expect(copiedImages.size).toBe(12)
+      })
+
+      // 5. Test deleteQuizCascade deletes all 12 images and quiz artifacts
+      await deleteQuizCascade(duplicatedId, owner)
+
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const admin = context.firestore()
+        const remainingImages = await getDocs(collection(admin, 'quizzes', duplicatedId, 'images'))
+        expect(remainingImages.empty).toBe(true)
+
+        const remainingBoard = await getDoc(doc(admin, 'quizzes', duplicatedId, 'questions', 'board'))
+        expect(remainingBoard.exists()).toBe(false)
+
+        const remainingQuiz = await getDoc(doc(admin, 'quizzes', duplicatedId))
+        expect(remainingQuiz.exists()).toBe(false)
       })
     })
   })

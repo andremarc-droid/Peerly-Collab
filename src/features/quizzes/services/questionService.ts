@@ -71,7 +71,7 @@ export async function getQuestionWithKey(quizId: string, questionId: string, db:
     getDoc(questionRef(db, quizId, questionId)), getDoc(answerKeyRef(db, quizId, questionId)),
   ])
   if (!questionSnapshot.exists() || !keySnapshot.exists()) return null
-  const pair = validateQuestionAnswerPair(questionSnapshot.data(), keySnapshot.data())
+  const pair = validateQuestionAnswerPair(questionSnapshot.data(), keySnapshot.data(), { allowLegacyImages: true })
   return { id: questionSnapshot.id, ...pair }
 }
 

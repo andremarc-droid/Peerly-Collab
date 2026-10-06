@@ -11,3 +11,5 @@ export const attemptsRef = (db: Firestore, quizId: string) => collection(db, 'qu
 export const attemptRef = (db: Firestore, quizId: string, attemptId: string) => doc(db, 'quizzes', quizId, 'attempts', attemptId)
 export const resultsRef = (db: Firestore, quizId: string) => collection(db, 'quizzes', quizId, 'results')
 export const resultRef = (db: Firestore, quizId: string, attemptId: string) => doc(db, 'quizzes', quizId, 'results', attemptId)
+export const imagesRef = (db: Firestore, quizId: string) => collection(db, 'quizzes', quizId, 'images')
+export const imageRef = (db: Firestore, quizId: string, imageId: string) => doc(db, 'quizzes', quizId, 'images', imageId)

@@ -1,5 +1,5 @@
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { serverTimestamp, Timestamp, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore'
+import { serverTimestamp, Timestamp, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore'
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import rules from '../../../firestore.rules?raw'
@@ -1107,5 +1107,113 @@ describe('canvas mode Firestore rules', () => {
     const fcSubmission = await submitAttempt('fc-pub', fcAttemptId, 10, student)
     expect(fcSubmission.result.perQuestion.q1.correct).toBe(null)
     expect(fcSubmission.result.score).toBe(0)
+  })
+
+  describe('quiz image rules', () => {
+    const validImageData = {
+      data: 'QUJDREVGR0g=', // base64 without prefix
+      mimeType: 'image/jpeg',
+      width: 800,
+      height: 600,
+      bytes: 8,
+      createdAt: now,
+    }
+
+    it('enforces quiz owner permissions, student read restrictions, and payload validation for images', async () => {
+      await seed({ status: 'published' })
+      const teacher = environment.authenticatedContext('teacher').firestore()
+      const student = environment.authenticatedContext('student').firestore()
+      const other = environment.authenticatedContext('other').firestore() // non-member
+
+      // 1. Owner can write image
+      await assertSucceeds(setDoc(doc(teacher, 'quizzes/qz/images/img1'), validImageData))
+
+      // 2. Owner can read image
+      await assertSucceeds(getDoc(doc(teacher, 'quizzes/qz/images/img1')))
+
+      // 3. Student of active class can read image when quiz is published
+      await assertSucceeds(getDoc(doc(student, 'quizzes/qz/images/img1')))
+
+      // 4. Non-member cannot read image
+      await assertFails(getDoc(doc(other, 'quizzes/qz/images/img1')))
+
+      // 5. Students cannot write, update, or delete images
+      await assertFails(setDoc(doc(student, 'quizzes/qz/images/img2'), validImageData))
+      await assertFails(updateDoc(doc(student, 'quizzes/qz/images/img1'), { width: 900 }))
+      await assertFails(deleteDoc(doc(student, 'quizzes/qz/images/img1')))
+
+      // 6. When quiz is draft, student cannot read image
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore()
+        await updateDoc(doc(db, 'quizzes/qz'), { status: 'draft', publishedAt: null })
+      })
+      await assertFails(getDoc(doc(student, 'quizzes/qz/images/img1')))
+
+      // Reset to published for validation tests
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore()
+        await updateDoc(doc(db, 'quizzes/qz'), { status: 'published', publishedAt: now })
+      })
+
+      // 7. Removed/blocked student cannot read image
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore()
+        await updateDoc(doc(db, 'enrollments/class1_student'), { status: 'blocked' })
+      })
+      await assertFails(getDoc(doc(student, 'quizzes/qz/images/img1')))
+
+      // Restore enrollment
+      await environment.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore()
+        await updateDoc(doc(db, 'enrollments/class1_student'), { status: 'active' })
+      })
+
+      // 8. Wrong mimeType rejected (PNG is not allowed in Firestore rule; only JPEG and WebP)
+      await assertFails(setDoc(doc(teacher, 'quizzes/qz/images/bad-mime'), {
+        ...validImageData,
+        mimeType: 'image/png',
+      }))
+      await assertFails(setDoc(doc(teacher, 'quizzes/qz/images/svg-mime'), {
+        ...validImageData,
+        mimeType: 'image/svg+xml',
+      }))
+
+      // WebP is allowed
+      await assertSucceeds(setDoc(doc(teacher, 'quizzes/qz/images/webp-img'), {
+        ...validImageData,
+        mimeType: 'image/webp',
+      }))
+
+      // 9. Oversize data (> 700,000 characters) rejected
+      const oversizeData = 'A'.repeat(700001)
+      await assertFails(setDoc(doc(teacher, 'quizzes/qz/images/oversize'), {
+        ...validImageData,
+        data: oversizeData,
+      }))
+
+      // 10. Invalid width/height rejected (<= 0 or > 2048)
+      await assertFails(setDoc(doc(teacher, 'quizzes/qz/images/zero-w'), {
+        ...validImageData,
+        width: 0,
+      }))
+      await assertFails(setDoc(doc(teacher, 'quizzes/qz/images/too-high'), {
+        ...validImageData,
+        height: 2049,
+      }))
+
+      // 11. Missing keys rejected
+      const missingKey = { ...validImageData }
+      delete (missingKey as Record<string, unknown>).data
+      await assertFails(setDoc(doc(teacher, 'quizzes/qz/images/missing-key'), missingKey))
+
+      // 12. Extra keys rejected
+      await assertFails(setDoc(doc(teacher, 'quizzes/qz/images/extra-key'), {
+        ...validImageData,
+        extra: 'not allowed',
+      }))
+
+      // 13. Owner can delete image
+      await assertSucceeds(environment.authenticatedContext('teacher').firestore().doc('quizzes/qz/images/img1').delete ? environment.authenticatedContext('teacher').firestore().doc('quizzes/qz/images/img1').delete() : deleteDoc(doc(teacher, 'quizzes/qz/images/img1')))
+    })
   })
 })

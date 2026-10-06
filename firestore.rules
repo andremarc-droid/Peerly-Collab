@@ -588,6 +588,17 @@ service cloud.firestore {
             || (data.type == 'flashcard' && data.keys().hasOnly(['type', 'back', 'explanation', 'caseSensitive']) && data.back is string)));
     }
 
+    function validImage(data) {
+      return data.keys().hasOnly(['data', 'mimeType', 'width', 'height', 'bytes', 'createdAt'])
+        && data.keys().hasAll(['data', 'mimeType', 'width', 'height', 'bytes', 'createdAt'])
+        && data.mimeType in ['image/jpeg', 'image/webp']
+        && data.data is string && data.data.size() <= 700000
+        && data.width is int && data.width >= 1 && data.width <= 2048
+        && data.height is int && data.height >= 1 && data.height <= 2048
+        && data.bytes is int && data.bytes >= 0
+        && data.createdAt is timestamp;
+    }
+
     function validAttempt(data) {
       return data.keys().hasOnly(['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds'])
         && data.keys().hasAll(['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds'])
@@ -648,6 +659,12 @@ service cloud.firestore {
         allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId));
         allow create, update: if quizOwner(quizId)
           && validQuestionForQuiz(quizId, questionId, request.resource.data);
+        allow delete: if quizOwner(quizId);
+      }
+
+      match /images/{imageId} {
+        allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId));
+        allow create, update: if quizOwner(quizId) && validImage(request.resource.data);
         allow delete: if quizOwner(quizId);
       }
 

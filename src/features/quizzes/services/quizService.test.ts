@@ -16,8 +16,8 @@ const projectId = 'demo-peerly-collab'
 let environment: RulesTestEnvironment
 
 beforeAll(async () => { environment = await initializeTestEnvironment({ projectId, firestore: { host: '127.0.0.1', port: 8180, rules } }) })
-afterEach(async () => environment.clearFirestore())
-afterAll(async () => environment.cleanup())
+afterEach(async () => environment?.clearFirestore())
+afterAll(async () => environment?.cleanup())
 
 function quizInput(title: string) {
   return { title, description: '', tags: ['practice'], mode: 'quiz' as const, classId: 'class1', settings: defaultQuizSettings('quiz') }

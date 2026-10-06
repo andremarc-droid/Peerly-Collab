@@ -78,6 +78,16 @@ async function setStatus(quizId: string, status: QuizStatus, db: Firestore): Pro
       if (!quiz.classId) throw new Error('Assign this quiz to an active class before publishing.')
       const classSnapshot = await transaction.get(doc(db, 'classes', quiz.classId))
       if (!classSnapshot.exists() || classSnapshot.data().ownerId !== quiz.ownerId || classSnapshot.data().status !== 'active') throw new Error('Publishing requires an active class that you own.')
+      if (quiz.mode === 'canvas') {
+        const boardDoc = await transaction.get(doc(db, 'quizzes', quizId, 'questions', 'board'))
+        if (boardDoc.exists()) {
+          const boardData = boardDoc.data()
+          if (Array.isArray(boardData?.cards)) {
+            const hasLegacy = boardData.cards.some((c: Record<string, unknown>) => c.type === 'image' && (!c.imageId || Boolean(c.url || c.driveFileId)))
+            if (hasLegacy) throw new Error('Legacy image cards must be re-uploaded before publishing.')
+          }
+        }
+      }
     }
     transaction.update(ref, { status, updatedAt: Timestamp.now(), ...(status === 'published' ? { publishedAt: Timestamp.now() } : status === 'draft' ? { publishedAt: null } : {}) })
   })
