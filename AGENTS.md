@@ -52,12 +52,15 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Answer keys live separately at `quizzes/{quizId}/answerKeys/{questionId}`. Participants may read them only under the access rules in `firestore.rules`; v1 browser grading means participants can inspect those keys.
 - Participants, attempts, and results are separate subcollections. Attempts store responses and ordering but no score; results store grades separately so rules enforce score visibility.
 - Support multiple choice, true/false, identification, fill-in-the-blank, flashcards, and concept canvas boards. Flashcard quizzes use neutral reveal/score defaults and flashcards are not graded.
+- Images for canvas image cards live in `quizzes/{quizId}/images/{imageId}`: `{ data, mimeType, width, height, bytes, createdAt }` (data stored without `data:` prefix, mimeType in `image/jpeg` or `image/webp`). Enforced hard cap of <= 700,000 characters of data per image document in Firestore rules.
 - Validate untrusted domain payloads at runtime. Grade with pure functions and expose the service boundary as `gradeAttempt` so grading can move to a Cloud Function later.
 
 ## CANVAS
 - Modes: `quiz`, `flashcards`, and `canvas`. Mode is permanently locked upon quiz creation.
 - A canvas quiz consists of exactly one 'board' question at `quizzes/{quizId}/questions/board` and its corresponding answer key at `quizzes/{quizId}/answerKeys/board`.
-- Hard limits: boards support up to 50 cards and 80 connections.
+- Hard limits: boards support up to 50 cards, 80 connections, and at most 12 uploaded images.
+- Image storage and processing: uploaded images are processed client-side (JPEG, PNG, WebP only up to 10 MB; SVG/GIF rejected), resized to at most 1024px on the longest side, and re-encoded to JPEG/WebP with quality stepping down until base64 data length is <= 350,000 characters (stripping EXIF metadata). Images live at `quizzes/{quizId}/images/{imageId}` with a 700,000-character hard limit. Image cards store `imageId` and required `alt` (max 200 characters); Drive link fields are removed for new cards.
+- Legacy image cards: boards with existing Google Drive image cards load safely without crashing, show a "Re-upload required" warning badge in the builder, and block saving or publishing until replaced with an uploaded image.
 - Connection ID formats: directed connections use `fromId->toId`; undirected connections use `fromId<->toId` (with endpoint IDs normalized alphabetically).
 - Grading: graded by connection weights/points; missing, wrong, or extra connections scored accordingly.
 - Student attempt answers are stored as `answers.board` of type `string[]`, strictly capped at 80 connection strings.
