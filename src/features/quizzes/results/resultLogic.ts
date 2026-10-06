@@ -67,23 +67,35 @@ export function isLate(
   return { late: true, lateBySeconds: elapsedSeconds - limitSeconds }
 }
 
-export function summarizeAttempts(attempts: AttemptResult[], ungraded = false, timeLimitMinutes: number | null = null) {
+export function summarizeAttempts(
+  attempts: AttemptResult[],
+  ungraded = false,
+  timeLimitMinutes: number | null = null,
+  options?: { isBlankCanvas?: boolean },
+) {
   const submitted = attempts.filter((item) => item.status === 'submitted')
   const lateSubmissions = timeLimitMinutes
     ? submitted.filter((item) => isLate(item.startedAt, item.submittedAt, timeLimitMinutes).late).length
     : 0
-  const best = bestAttempts(attempts)
+  const isBlank = options?.isBlankCanvas ?? false
+  const attemptsForScores = isBlank
+    ? attempts.filter((a) => a.result?.reviewStatus === 'graded')
+    : attempts
+  const best = bestAttempts(attemptsForScores)
   const scores = ungraded ? [] : best.flatMap(({ result }) => result && result.maxScore > 0 ? [result.score / result.maxScore * 100] : [])
   const average = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null
+  const needsGradingCount = attempts.filter((a) => a.status === 'submitted' && a.result?.reviewStatus !== 'graded').length
   return {
     submissions: submitted.length,
     inProgress: attempts.filter(({ status }) => status === 'in_progress').length,
     submitted: submitted.length,
     lateSubmissions,
+    needsGradingCount,
     average: average === null ? null : Math.round(average),
     highest: scores.length ? Math.round(Math.max(...scores)) : null,
     lowest: scores.length ? Math.round(Math.min(...scores)) : null,
     bestStudentCount: best.length,
+    gradedCount: attemptsForScores.filter((a) => a.status === 'submitted').length,
   }
 }
 
@@ -100,7 +112,7 @@ export function recalculateAutomaticGrade(input: {
 }): QuizResult {
   const recalculated = gradeAttempt({
     userId: input.result.userId, questions: [input.question], answerKeys: { [input.question.id]: input.key },
-    answers: input.attempt.answers,
+    answers: input.attempt.answers as Record<string, string | string[]>,
   }).perQuestion[input.question.id]
   const previous = input.result.perQuestion[input.question.id]
   if (!previous) throw new Error(`Question ${input.question.id} is not in this result`)
@@ -136,7 +148,7 @@ export const csvCell = (value: string | number): string => {
 }
 
 export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = '', timeLimitMinutes: number | null = null): string {
-  const rows: Array<Array<string | number>> = [['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Score', 'Late', 'Time spent (seconds)', 'Submitted at']]
+  const rows: Array<Array<string | number>> = [['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Review status', 'Score', 'Feedback', 'Late', 'Time spent (seconds)', 'Submitted at']]
   for (const attempt of attempts) {
     const lateInfo = isLate(attempt.startedAt, attempt.submittedAt, timeLimitMinutes)
     const lateCell = attempt.status === 'submitted'
@@ -145,9 +157,13 @@ export function resultsCsv(attempts: AttemptResult[], ungraded = false, classNam
     const timeSpent = attempt.status === 'submitted'
       ? computeTimeSpent(attempt.startedAt, attempt.submittedAt)
       : null
+    const reviewStatus = attempt.result?.reviewStatus ?? (attempt.status === 'submitted' ? 'graded' : '—')
+    const feedback = attempt.result?.feedback ?? ''
     rows.push([
       attempt.userName, attempt.userId, className, attempt.attemptNumber, attempt.status,
+      reviewStatus,
       ungraded || !attempt.result ? 'Ungraded' : `${attempt.result.score}/${attempt.result.maxScore}`,
+      feedback,
       lateCell,
       timeSpent !== null ? timeSpent : '—',
       attempt.submittedAt?.toDate().toISOString() ?? '',

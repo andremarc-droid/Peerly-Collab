@@ -82,11 +82,39 @@ export function QuizResultsPage() {
     return () => { active = false }
   }, [load])
 
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'needs_grading' | 'graded'>('all')
+
+  const isBlankCanvas = quiz?.mode === 'canvas' && quiz.boardKind === 'blank'
+
   const visible = useMemo(() => {
-    const filtered = buildRosterRows(enrollments, attempts).filter((row) => row.userName.toLowerCase().includes(search.toLowerCase()) || row.userId.toLowerCase().includes(search.toLowerCase()))
+    let filtered = buildRosterRows(enrollments, attempts).filter(
+      (row) =>
+        row.userName.toLowerCase().includes(search.toLowerCase()) ||
+        row.userId.toLowerCase().includes(search.toLowerCase()),
+    )
+    if (isBlankCanvas && reviewFilter !== 'all') {
+      filtered = filtered.filter((row) => {
+        if (!row.attempt || row.attempt.status !== 'submitted') return false
+        if (reviewFilter === 'needs_grading') return row.attempt.result?.reviewStatus !== 'graded'
+        if (reviewFilter === 'graded') return row.attempt.result?.reviewStatus === 'graded'
+        return true
+      })
+    }
     return filtered.sort((a, b) => compareResultRows(a, b, sort))
-  }, [attempts, enrollments, search, sort])
-  const summary = summarizeAttempts(attempts, quiz?.mode === 'flashcards', quiz?.settings.timeLimitMinutes)
+  }, [attempts, enrollments, search, sort, isBlankCanvas, reviewFilter])
+
+  const summary = summarizeAttempts(
+    attempts,
+    quiz?.mode === 'flashcards',
+    quiz?.settings.timeLimitMinutes,
+    { isBlankCanvas },
+  )
+
+  const needsGradingCount = useMemo(() => {
+    return attempts.filter(
+      (item) => item.status === 'submitted' && item.result?.reviewStatus !== 'graded',
+    ).length
+  }, [attempts])
 
   async function releaseScores(value: boolean) {
     if (!quiz) return
@@ -115,9 +143,40 @@ export function QuizResultsPage() {
     <main className="app-shell__content grid gap-6" id="main-content">
       <p className="m-0"><Badge>Class · {classroom?.name ?? 'Unassigned quiz'}</Badge></p>
       {quiz.settings.scoreVisibility === 'after_release' && <SectionCard title="Score release" description="Students can see their results after you release them. You can turn release off again at any time."><Switch checked={quiz.settings.scoresReleased} onChange={(event) => setReleasePrompt(event.currentTarget.checked)} label="Release scores to students" hint={quiz.settings.scoresReleased ? 'Scores are visible to students now.' : 'Scores are currently held back.'} /></SectionCard>}
-      <StatRow><StatTile variant="navy" label="Submissions" value={String(summary.submissions)} hint={`${summary.inProgress} in progress · ${summary.submitted} submitted`} /><StatTile label="Late submissions" value={String(summary.lateSubmissions)} hint={quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} min limit` : 'No time limit'} /><StatTile label="Average score" value={summary.average === null ? '—' : `${summary.average}%`} hint={quiz.mode === 'flashcards' ? 'Flashcards are not graded' : `Across ${summary.bestStudentCount} students’ best attempts`} /><StatTile label="Highest" value={summary.highest === null ? '—' : `${summary.highest}%`} hint="Best student result" /><StatTile label="Lowest" value={summary.lowest === null ? '—' : `${summary.lowest}%`} hint="Best student result" /><StatTile label="Completion" value={`${summary.inProgress} / ${summary.submitted}`} hint="In progress / submitted" /></StatRow>
+      <StatRow>
+        <StatTile variant="navy" label="Submissions" value={String(summary.submissions)} hint={`${summary.inProgress} in progress · ${summary.submitted} submitted`} />
+        {isBlankCanvas ? (
+          <StatTile label="Needs grading" value={String(needsGradingCount)} hint="Ungraded blank canvas submissions" />
+        ) : (
+          <StatTile label="Late submissions" value={String(summary.lateSubmissions)} hint={quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} min limit` : 'No time limit'} />
+        )}
+        <StatTile label="Average score" value={summary.average === null ? '—' : `${summary.average}%`} hint={quiz.mode === 'flashcards' ? 'Flashcards are not graded' : isBlankCanvas ? 'Graded attempts only' : `Across ${summary.bestStudentCount} students’ best attempts`} />
+        <StatTile label="Highest" value={summary.highest === null ? '—' : `${summary.highest}%`} hint={isBlankCanvas ? 'Graded attempts only' : 'Best student result'} />
+        <StatTile label="Lowest" value={summary.lowest === null ? '—' : `${summary.lowest}%`} hint={isBlankCanvas ? 'Graded attempts only' : 'Best student result'} />
+        {isBlankCanvas ? (
+          <StatTile label="Late submissions" value={String(summary.lateSubmissions)} hint={quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} min limit` : 'No time limit'} />
+        ) : (
+          <StatTile label="Completion" value={`${summary.inProgress} / ${summary.submitted}`} hint="In progress / submitted" />
+        )}
+      </StatRow>
       <section className="grid gap-4" aria-labelledby="submission-heading"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="submission-heading" className="m-0 font-heading text-2xl">Submissions</h2><p className="m-0">Each attempt is listed; summary scores use each student’s best attempt.</p></div></header>
-        <div className="grid gap-3 md:grid-cols-2"><Input label="Search students" name="results-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or student ID" /><Select label="Sort submissions" name="results-sort" value={sort} onChange={(event) => setSort(event.target.value as SortMode)} options={[{ value: 'recent', label: 'Recently submitted' }, { value: 'student', label: 'Student name' }, { value: 'score', label: 'Score' }]} /></div>
+        <div className={`grid gap-3 ${isBlankCanvas ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+          <Input label="Search students" name="results-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or student ID" />
+          <Select label="Sort submissions" name="results-sort" value={sort} onChange={(event) => setSort(event.target.value as SortMode)} options={[{ value: 'recent', label: 'Recently submitted' }, { value: 'student', label: 'Student name' }, { value: 'score', label: 'Score' }]} />
+          {isBlankCanvas && (
+            <Select
+              label="Review status"
+              name="results-review-filter"
+              value={reviewFilter}
+              onChange={(event) => setReviewFilter(event.target.value as 'all' | 'needs_grading' | 'graded')}
+              options={[
+                { value: 'all', label: 'All review statuses' },
+                { value: 'needs_grading', label: 'Needs grading' },
+                { value: 'graded', label: 'Graded' },
+              ]}
+            />
+          )}
+        </div>
         {visible.length === 0 && attempts.length === 0 && !enrollments.some((item) => item.status === 'active') ? <EmptyState title="No submissions yet" description="Student attempts will appear here after they submit this quiz." /> : visible.length === 0 ? <p role="status">No submissions match this search.</p> : <>
           <DataTable label="Quiz submissions" rows={visible} getRowId={(row) => row.attempt?.id ?? row.userId} columns={[
             { key: 'student', header: 'Student', cell: (row) => <>{row.userName}<MembershipBadge row={row} /></>, sortValue: (row) => row.userName },
@@ -125,9 +184,23 @@ export function QuizResultsPage() {
             { key: 'status', header: 'Status', cell: (row) => {
               if (!row.attempt) return <Badge>Not started</Badge>
               const lateInfo = row.attempt.status === 'submitted' && isLate(row.attempt.startedAt, row.attempt.submittedAt, quiz.settings.timeLimitMinutes)
+              if (isBlankCanvas && row.attempt.status === 'submitted') {
+                const isGraded = row.attempt.result?.reviewStatus === 'graded'
+                return (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge>{isGraded ? 'Graded' : 'Needs grading'}</Badge>
+                    {lateInfo && lateInfo.late && <Badge className="inline-flex items-center gap-1"><Clock3 size={12} aria-hidden="true" /> Late</Badge>}
+                  </div>
+                )
+              }
               return <div className="flex flex-wrap items-center gap-1.5"><Badge>{row.attempt.status === 'submitted' ? 'Submitted' : 'In progress'}</Badge>{lateInfo && lateInfo.late && <Badge className="inline-flex items-center gap-1"><Clock3 size={12} aria-hidden="true" /> Late</Badge>}</div>
-            }, sortValue: (row) => row.attempt?.status ?? 'not started' },
-            { key: 'score', header: 'Score', cell: (row) => row.attempt ? scoreLabel(row.attempt, quiz.mode === 'flashcards') : '—', sortValue: (row) => row.attempt?.result?.score ?? -1 },
+            }, sortValue: (row) => {
+              if (isBlankCanvas && row.attempt?.status === 'submitted') {
+                return row.attempt.result?.reviewStatus ?? 'pending'
+              }
+              return row.attempt?.status ?? 'not started'
+            } },
+            { key: 'score', header: 'Score', cell: (row) => row.attempt ? scoreLabel(row.attempt, quiz.mode === 'flashcards', isBlankCanvas) : '—', sortValue: (row) => row.attempt?.result?.score ?? -1 },
             { key: 'duration', header: 'Time spent', cell: (row) => {
               if (!row.attempt || row.attempt.status !== 'submitted') return '—'
               const seconds = computeTimeSpent(row.attempt.startedAt, row.attempt.submittedAt)
@@ -145,16 +218,38 @@ export function QuizResultsPage() {
           ]} />
         </>}
       </section>
-      {(quiz.mode === 'quiz' || quiz.mode === 'canvas') && <QuestionAnalytics questions={questions} attempts={attempts} />}
+      {(quiz.mode === 'quiz' || (quiz.mode === 'canvas' && !isBlankCanvas)) && <QuestionAnalytics questions={questions} attempts={attempts} />}
     </main>
     <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} title="Attempt detail" description={selected ? `${selected.userName || selected.userId} · Attempt ${selected.attemptNumber}` : undefined} className="dialog--wide">
-      {selected && <AttemptDetail quizId={quizId} attempt={selected} questions={questions} ungraded={quiz.mode === 'flashcards'} timeLimitMinutes={quiz.settings.timeLimitMinutes} onGradeChanged={(result: QuizResult) => { setAttempts((items) => items.map((item) => item.id === selected.id ? { ...item, result } : item)); setSelected({ ...selected, result }) }} />}
+      {selected && (
+        <AttemptDetail
+          quizId={quizId}
+          attempt={selected}
+          questions={questions}
+          ungraded={quiz.mode === 'flashcards'}
+          timeLimitMinutes={quiz.settings.timeLimitMinutes}
+          isBlankCanvas={isBlankCanvas}
+          allAttempts={attempts}
+          onSelectAttempt={(att) => setSelected(att)}
+          onGradeChanged={(result: QuizResult) => {
+            setAttempts((items) => items.map((item) => (item.id === selected.id ? { ...item, result } : item)))
+            setSelected({ ...selected, result })
+          }}
+        />
+      )}
     </Dialog>
     <ConfirmDialog open={releasePrompt !== null} onClose={() => setReleasePrompt(null)} onConfirm={() => { if (releasePrompt !== null) void releaseScores(releasePrompt) }} title={releasePrompt ? 'Release scores to students?' : 'Turn off score release?'} description={releasePrompt ? 'Students will be able to see their scores according to this quiz’s answer settings.' : 'Students will no longer be able to see scores until you release them again.'} confirmLabel={releasePrompt ? 'Release scores' : 'Turn off release'} />
   </AppShell>
 }
 
-function scoreLabel(item: AttemptResult, ungraded: boolean) { return ungraded ? 'Self-rated' : item.result ? `${item.result.score} / ${item.result.maxScore}` : 'Awaiting grade' }
+function scoreLabel(item: AttemptResult, ungraded: boolean, isBlankCanvas = false) {
+  if (ungraded) return 'Self-rated'
+  if (isBlankCanvas) {
+    if (item.result?.reviewStatus === 'graded') return `${item.result.score} / ${item.result.maxScore}`
+    return 'Needs grading'
+  }
+  return item.result ? `${item.result.score} / ${item.result.maxScore}` : 'Awaiting grade'
+}
 function formatDuration(seconds: number) { return `${Math.floor(seconds / 60)}m ${seconds % 60}s` }
 function compareResultRows(a: ResultListRow, b: ResultListRow, sort: SortMode) {
   if (sort === 'student') return a.userName.localeCompare(b.userName)
@@ -172,7 +267,7 @@ function QuestionAnalytics({ questions, attempts }: { questions: SavedQuestion[]
     const grades = submitted.flatMap((item) => item.result?.perQuestion[id] ? [item.result.perQuestion[id]] : [])
     const correct = grades.filter(({ correct: value }) => value === true).length
     return { id, question, answerKey, percent: grades.length ? Math.round(correct / grades.length * 100) : null, missed: grades.length - correct,
-      wrong: typedWrongAnswerCounts({ question: { ...question, id }, key: answerKey, attempts: submitted }) }
+      wrong: answerKey ? typedWrongAnswerCounts({ question: { ...question, id }, key: answerKey, attempts: submitted }) : [] }
   }).sort((a, b) => (a.percent ?? 101) - (b.percent ?? 101))
   return <SectionCard title="Question analytics" description="Questions are ordered from most missed to least missed.">
     {rows.length === 0 ? <p className="m-0">Add questions to see analytics.</p> : <ol className="question-analytics">{rows.map((row) => <li key={row.id} className="question-analytics__card"><strong>{row.question.prompt}</strong><p className="m-0">{row.percent === null ? 'No graded submissions' : `${row.percent}% correct · ${row.missed} missed`}</p><progress className="question-analytics__track" max={100} value={row.percent ?? 0} aria-label={`${row.question.prompt} correct rate`} />{row.wrong.length > 0 && <p className="m-0">Common typed answers: {row.wrong.map(({ answer, count }) => `“${answer}” (${count})`).join(', ')}</p>}</li>)}</ol>}
