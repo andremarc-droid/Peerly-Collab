@@ -82,3 +82,9 @@ export function subscribeToModules(classId: string, role: 'instructor' | 'studen
 }
 export function subscribeToResources(classId: string, moduleId: string, onChange: (items: (ModuleResource & { id: string })[]) => void, onError: (error: Error) => void, db: Firestore = firestore) { return onSnapshot(query(resources(db, classId, moduleId), orderBy('order')), (snap) => onChange(snap.docs.map((item) => ({ ...parseResource(item.data()), id: item.id }))), onError) }
 export async function getModule(classId: string, id: string, db: Firestore = firestore) { const snap = await getDoc(moduleRef(db, classId, id)); return snap.exists() ? asModule(classId, snap.id, snap.data()) : null }
+export function subscribeToModule(classId: string, id: string, onChange: (item: ReturnType<typeof asModule> | null) => void, onError: (error: Error) => void, db: Firestore = firestore) {
+  return onSnapshot(moduleRef(db, classId, id), (snap) => {
+    if (!snap.exists()) { onChange(null); return }
+    onChange(asModule(classId, snap.id, snap.data()))
+  }, onError)
+}
