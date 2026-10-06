@@ -77,10 +77,9 @@ export function ClassCodePanel({ classroom, onJoiningChange, onRegenerate, busy,
     </Dialog>
     <Dialog open={projector} onClose={() => setProjector(false)} title={`Join ${classroom.name}`} description="Share this code with your students." className="!fixed !inset-0 !m-0 !flex !h-screen !w-screen !max-w-none !flex-col !justify-center !rounded-none !p-0">
       <div className="relative grid min-h-[65vh] place-content-center justify-items-center gap-8 overflow-hidden bg-navy-900 px-5 py-16 text-center text-white">
-        <div aria-hidden="true" className="absolute inset-0 bg-[repeating-linear-gradient(90deg,transparent_0,transparent_27px,var(--color-white-12)_28px,var(--color-white-12)_29px)] [mask-image:linear-gradient(180deg,transparent,white_25%,white_75%,transparent)]" />
-        <p className="relative m-0 text-lg text-white-72">Join {classroom.name}{classroom.section ? ` · ${classroom.section}` : ''}</p>
-        <strong className="relative font-mono text-[clamp(4rem,18vw,13rem)] font-bold leading-none tracking-[0.2em]">{classroom.joinCode}</strong>
-        <Button type="button" variant="inverse" className="relative" onClick={() => setProjector(false)}>Close projector</Button>
+        <p className="m-0 text-lg text-white-72">Join {classroom.name}{classroom.section ? ` · ${classroom.section}` : ''}</p>
+        <strong className="font-mono text-[clamp(4rem,18vw,13rem)] font-bold leading-none tracking-[0.2em]">{classroom.joinCode}</strong>
+        <Button type="button" variant="inverse" onClick={() => setProjector(false)}>Close projector</Button>
       </div>
     </Dialog>
     <ConfirmDialog open={confirmRegenerate} onClose={() => setConfirmRegenerate(false)} onConfirm={() => void onRegenerate()} title="Regenerate class code?" description="The current code will stop working immediately. Students with the old code will need the new one to join." confirmLabel="Regenerate code" />

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react'
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from 'lucide-react'
 
-type AlertTone = 'success' | 'error' | 'warning'
+export type AlertTone = 'success' | 'error' | 'warning' | 'info'
 
 interface AlertProps {
   tone: AlertTone
@@ -10,7 +10,7 @@ interface AlertProps {
   action?: ReactNode
 }
 
-const alertIcons = { success: CircleCheck, error: CircleAlert, warning: TriangleAlert }
+const alertIcons = { success: CircleCheck, error: CircleAlert, warning: TriangleAlert, info: Info }
 
 export function Alert({ tone, label, children, action }: AlertProps) {
   const Icon = alertIcons[tone]

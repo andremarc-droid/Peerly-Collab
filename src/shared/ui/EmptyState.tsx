@@ -13,10 +13,9 @@ export function EmptyState({ title, description, action }: EmptyStateProps) {
   return (
     <section className="empty-state" aria-labelledby={titleId}>
       <div className="empty-state__art" aria-hidden="true">
-        <span className="empty-state__stripe" />
         <span className="empty-state__card empty-state__card--back" />
         <span className="empty-state__card empty-state__card--middle" />
-        <span className="empty-state__card empty-state__card--front"><BookOpenCheck size={30} /></span>
+        <span className="empty-state__card empty-state__card--front"><BookOpenCheck size={28} /></span>
       </div>
       <span className="empty-state__eyebrow">YOUR NEXT STEP STARTS HERE</span>
       <h2 id={titleId}>{title}</h2>
