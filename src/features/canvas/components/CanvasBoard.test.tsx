@@ -219,3 +219,4 @@ describe('CanvasBoard component', () => {
   })
 })
 
+

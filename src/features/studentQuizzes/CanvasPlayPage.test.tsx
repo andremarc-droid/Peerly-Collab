@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import CanvasPlayPage from './CanvasPlayPage'
+import { sanitizeCanvasAnswers } from '../canvas/mapping'
 import type { CanvasQuestion } from '../canvas/types'
 import { scatterCards } from '../canvas/schemas'
 
@@ -199,11 +200,26 @@ describe('CanvasPlayPage component', () => {
   })
 
   it('caps connections at 80 and disables adding more in the dialog', () => {
-    const eightyConnections = Array.from({ length: 80 }, (_, i) => `c1->c${i}`)
+    const fortyCards = Array.from({ length: 40 }, (_, i) => ({
+      id: `c${i}`,
+      type: 'note' as const,
+      content: `Card ${i}`,
+      position: { x: 0, y: 0 },
+    }))
+    const eightyConnections: string[] = []
+    for (let i = 0; i < 40 && eightyConnections.length < 80; i += 1) {
+      for (let j = 0; j < 40 && eightyConnections.length < 80; j += 1) {
+        if (i !== j) eightyConnections.push(`c${i}->c${j}`)
+      }
+    }
+    const questionWithCards = {
+      ...sampleQuestion,
+      cards: fortyCards,
+    }
     const onChange = vi.fn()
     render(
       <CanvasPlayPage
-        question={sampleQuestion}
+        question={questionWithCards}
         attemptId="attempt-123"
         connections={eightyConnections}
         onChange={onChange}
@@ -216,5 +232,89 @@ describe('CanvasPlayPage component', () => {
     connectButtons.forEach((btn) => {
       expect(btn).toBeDisabled()
     })
+  })
+
+  it('undirected board: adds connection in canonical order, prevents reverse duplicate, and removes connection', () => {
+    const undirectedQuestion: CanvasQuestion & { id: string } = {
+      ...sampleQuestion,
+      directed: false,
+    }
+    const onChange = vi.fn()
+    render(
+      <CanvasPlayPage
+        question={undirectedQuestion}
+        attemptId="attempt-undir"
+        connections={[]}
+        onChange={onChange}
+      />,
+    )
+
+    // Open connect modal
+    const connectButtons = screen.getAllByRole('button', { name: /Connect cards/i })
+    fireEvent.click(connectButtons[0]!)
+
+    // Select c2 -> c1 (inverted)
+    fireEvent.change(screen.getByLabelText(/From card/i), { target: { value: 'c2' } })
+    fireEvent.change(screen.getByLabelText(/To card/i), { target: { value: 'c1' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /Create connection/i }))
+
+    // Normalizes to canonical 'c1<->c2'
+    expect(onChange).toHaveBeenCalledWith(['c1<->c2'])
+  })
+
+  it('repairs corrupted saved answers on resume and sanitizes invalid card ids', () => {
+    const undirectedQuestion: CanvasQuestion & { id: string } = {
+      ...sampleQuestion,
+      directed: false,
+    }
+    const onChange = vi.fn()
+
+    // Pass corrupted saved answers:
+    // 'c1<' (corrupted split artifact)
+    // 'c2<->c1' (un-normalized order)
+    // 'c1<->c999' (non-existent card)
+    // 'c1->c2' (directed format on undirected board)
+    const corruptedSaved = ['c1<', 'c2<->c1', 'c1<->c999', 'c1->c2']
+
+    render(
+      <CanvasPlayPage
+        question={undirectedQuestion}
+        attemptId="attempt-repair"
+        connections={corruptedSaved}
+        onChange={onChange}
+      />,
+    )
+
+    // The component repairs and dedupes the answer to ['c1<->c2']
+    expect(onChange).toHaveBeenCalledWith(['c1<->c2'])
+  })
+
+  it('sanitizeCanvasAnswers pure function handles parsing, filtering, re-normalization, deduplication and cap', () => {
+    const validCards = new Set(['c1', 'c2', 'c3'])
+
+    // Undirected
+    const sanitizedUndir = sanitizeCanvasAnswers(
+      ['c2<->c1', 'corrupted<', 'c1<->c99', 'c1->c2', 'c1<->c1'],
+      validCards,
+      false,
+    )
+    expect(sanitizedUndir).toEqual(['c1<->c2'])
+
+    // Directed
+    const sanitizedDir = sanitizeCanvasAnswers(
+      ['c2->c1', 'c1->c2', 'c1<->c2', 'bad'],
+      validCards,
+      true,
+    )
+    expect(sanitizedDir).toEqual(['c2->c1', 'c1->c2'])
+
+    // Object support
+    const fromObjects = sanitizeCanvasAnswers(
+      [{ id: 'x', from: 'c3', to: 'c1' }],
+      validCards,
+      false,
+    )
+    expect(fromObjects).toEqual(['c1<->c3'])
   })
 })

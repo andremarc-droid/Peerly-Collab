@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CANVAS_CARD_HEIGHT, CANVAS_CARD_WIDTH } from './schemas'
-import { cardsToNodes, connectionsToEdges, edgeToConnection, nodesToPositions } from './mapping'
+import { cardsToNodes, connectionsToEdges, edgeToConnection, nodesToPositions, stringToCanvasConnection } from './mapping'
 import type { CanvasCard, CanvasConnection } from './types'
 
 describe('canvas pure mapping functions', () => {
@@ -104,5 +104,27 @@ describe('canvas pure mapping functions', () => {
 
     const nonDeletableNodes = cardsToNodes(cards, undefined, { deletable: false })
     expect(nonDeletableNodes[0].deletable).toBe(false)
+  })
+
+  it('converts directed and undirected string connections in stringToCanvasConnection and drops unparseable strings', () => {
+    // Directed
+    const dir = stringToCanvasConnection('c1->c2', true)
+    expect(dir).toEqual({ id: 'c1->c2', from: 'c1', to: 'c2' })
+
+    // Undirected: normalizes canonical order
+    const undir1 = stringToCanvasConnection('c2<->c1', false)
+    expect(undir1).toEqual({ id: 'c1<->c2', from: 'c2', to: 'c1' })
+
+    const undir2 = stringToCanvasConnection('c1<->c2', false)
+    expect(undir2).toEqual({ id: 'c1<->c2', from: 'c1', to: 'c2' })
+
+    // Object pass-through
+    const obj = stringToCanvasConnection({ id: 'custom', from: 'c1', to: 'c2', points: 3 }, true)
+    expect(obj).toEqual({ id: 'custom', from: 'c1', to: 'c2', points: 3 })
+
+    // Unparseable / corrupted strings return null
+    expect(stringToCanvasConnection('corrupted<', false)).toBeNull()
+    expect(stringToCanvasConnection('just-text', true)).toBeNull()
+    expect(stringToCanvasConnection('', true)).toBeNull()
   })
 })

@@ -14,7 +14,7 @@ import {
   type OnConnect,
 } from '@xyflow/react'
 import '../canvas.css'
-import { cardsToNodes, connectionsToEdges, edgeToConnection, nodesToPositions, type ConnectionStatus } from '../mapping'
+import { cardsToNodes, connectionsToEdges, edgeToConnection, nodesToPositions, stringToCanvasConnection, type ConnectionStatus } from '../mapping'
 import { normalizeConnection } from '../schemas'
 import type { CanvasCard, CanvasConnection } from '../types'
 import { canvasEdgeTypes } from './edges/edgeTypes'
@@ -90,13 +90,13 @@ function CanvasBoardInner({
     () =>
       connections
         .map((c) => {
-          const id = typeof c === 'string' ? c : c.id
-          const from = typeof c === 'string' ? '' : c.from
-          const to = typeof c === 'string' ? '' : c.to
-          const pts = typeof c === 'string' ? '' : (c.points ?? '')
-          const st = statusByConnection?.[id] ?? ''
-          return `${id}:${from}->${to}:${pts}:${st}`
+          const conn = stringToCanvasConnection(c, directed)
+          if (!conn) return ''
+          const normKey = normalizeConnection(conn.from, conn.to, directed)
+          const st = statusByConnection?.[conn.id] ?? statusByConnection?.[normKey] ?? ''
+          return `${conn.id}:${conn.from}:${conn.to}:${conn.points ?? ''}:${st}`
         })
+        .filter(Boolean)
         .join('|') + `::${directed}`,
     [connections, directed, statusByConnection],
   )
@@ -135,12 +135,10 @@ function CanvasBoardInner({
       // Enforce: no self-connections
       if (connection.source === connection.target) return
 
-      // Convert current connections into domain list
-      const currentList: CanvasConnection[] = connections.map((c) =>
-        typeof c === 'string'
-          ? { id: c, from: c.split('->')[0]?.trim() || '', to: c.split('->')[1]?.trim() || '' }
-          : c,
-      )
+      // Convert current connections into domain list, dropping unparseable strings
+      const currentList: CanvasConnection[] = connections
+        .map((c) => stringToCanvasConnection(c, directed))
+        .filter((c): c is CanvasConnection => c !== null)
 
       // Enforce: max connections cap
       if (currentList.length >= maxConnections) {
@@ -167,7 +165,7 @@ function CanvasBoardInner({
       setLiveAnnouncement('Connection added')
       onConnectionsChange?.(updated)
     },
-    [mode, connections, maxConnections, getNormalizedEdgeId, onConnectionsChange],
+    [mode, connections, directed, maxConnections, getNormalizedEdgeId, onConnectionsChange],
   )
 
   // Handle edge deletion via Delete key or interaction
@@ -176,11 +174,9 @@ function CanvasBoardInner({
       if (mode === 'review') return
       const deletedIds = new Set(deletedEdges.map((e) => e.id))
 
-      const currentList: CanvasConnection[] = connections.map((c) =>
-        typeof c === 'string'
-          ? { id: c, from: c.split('->')[0]?.trim() || '', to: c.split('->')[1]?.trim() || '' }
-          : c,
-      )
+      const currentList: CanvasConnection[] = connections
+        .map((c) => stringToCanvasConnection(c, directed))
+        .filter((c): c is CanvasConnection => c !== null)
 
       const remaining = currentList.filter((c) => {
         const norm = getNormalizedEdgeId(c.from, c.to)
@@ -190,7 +186,7 @@ function CanvasBoardInner({
       setLiveAnnouncement('Connection removed')
       onConnectionsChange?.(remaining)
     },
-    [mode, connections, getNormalizedEdgeId, onConnectionsChange],
+    [mode, connections, directed, getNormalizedEdgeId, onConnectionsChange],
   )
 
   // Handle node drag stop: persist coordinates
@@ -213,11 +209,12 @@ function CanvasBoardInner({
       onCardsChange?.(remainingCards)
 
       const remainingConnections = connections
-        .map((c) => (typeof c === 'string' ? edgeToConnection({ id: c, source: c.split('->')[0] || '', target: c.split('->')[1] || '' }) : c))
+        .map((c) => stringToCanvasConnection(c, directed))
+        .filter((c): c is CanvasConnection => c !== null)
         .filter((c) => !deletedIds.has(c.from) && !deletedIds.has(c.to))
       onConnectionsChange?.(remainingConnections)
     },
-    [mode, cards, connections, onCardsChange, onConnectionsChange],
+    [mode, cards, connections, directed, onCardsChange, onConnectionsChange],
   )
 
   const handleNodesChange = useCallback(
@@ -297,6 +294,7 @@ function CanvasBoardInner({
           panOnScroll
           zoomOnScroll
           zoomOnPinch
+          preventScrolling={false}
           onlyRenderVisibleElements={onlyRenderVisible}
           onNodeClick={onCardClick ? handleNodeClick : undefined}
           onEdgeClick={onConnectionClick ? handleEdgeClick : undefined}

@@ -1,10 +1,11 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Dialog } from '../../shared/ui/Dialog'
 import { Select } from '../../shared/ui/Select'
 import { Skeleton } from '../../shared/ui/Skeleton'
+import { sanitizeCanvasAnswers } from '../canvas/mapping'
 import { normalizeConnection, parseConnectionEdge, scatterCards } from '../canvas/schemas'
 import type { CanvasCard, CanvasConnection, CanvasQuestion } from '../canvas/types'
 
@@ -34,6 +35,30 @@ export function CanvasPlayPage({
   const [connectError, setConnectError] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
 
+  const validCardIds = useMemo(
+    () => new Set(question.cards.map((c) => c.id)),
+    [question.cards],
+  )
+
+  // Sanitize incoming connections from attempt state
+  const sanitizedConnections = useMemo(
+    () => sanitizeCanvasAnswers(connections, validCardIds, question.directed),
+    [connections, validCardIds, question.directed],
+  )
+
+  // Repair corrupted or un-normalized saved answers on resume or when loaded
+  useEffect(() => {
+    if (connections.length > 0) {
+      const isCorruptedOrDifferent =
+        sanitizedConnections.length !== connections.length ||
+        sanitizedConnections.some((c, i) => c !== connections[i])
+
+      if (isCorruptedOrDifferent) {
+        onChange(sanitizedConnections)
+      }
+    }
+  }, [connections, sanitizedConnections, onChange])
+
   // Stable layout: fixed uses author coordinates, scattered uses scatterCards seeded with attemptId
   const displayCards: CanvasCard[] = useMemo(() => {
     if (question.layoutMode === 'fixed') {
@@ -55,12 +80,10 @@ export function CanvasPlayPage({
   const handleBoardConnectionsChange = useCallback(
     (newConnections: CanvasConnection[]) => {
       if (disabled) return
-      const mapped = newConnections.map((c) => normalizeConnection(c.from, c.to, question.directed))
-      // Deduplicate and cap at 80
-      const unique = Array.from(new Set(mapped)).slice(0, 80)
-      onChange(unique)
+      const sanitized = sanitizeCanvasAnswers(newConnections, validCardIds, question.directed)
+      onChange(sanitized)
     },
-    [disabled, question.directed, onChange],
+    [disabled, validCardIds, question.directed, onChange],
   )
 
   // Keyboard/touch alternative: add connection via dialog
@@ -70,24 +93,27 @@ export function CanvasPlayPage({
       return
     }
 
-    if (connections.length >= 80) {
+    if (!validCardIds.has(connectFrom) || !validCardIds.has(connectTo)) {
+      setConnectError('Selected cards are invalid.')
+      return
+    }
+
+    if (sanitizedConnections.length >= 80) {
       setConnectError('Maximum limit of 80 connections reached.')
       return
     }
 
     const norm = normalizeConnection(connectFrom, connectTo, question.directed)
-    const alreadyConnected = connections.some((existing) => {
-      const parsed = parseConnectionEdge(existing)
-      if (!parsed) return existing === norm
-      return normalizeConnection(parsed.from, parsed.to, question.directed) === norm
-    })
-
-    if (alreadyConnected) {
+    if (sanitizedConnections.includes(norm)) {
       setConnectError('These cards are already connected.')
       return
     }
 
-    const next = [...connections, norm]
+    const next = sanitizeCanvasAnswers(
+      [...sanitizedConnections, norm],
+      validCardIds,
+      question.directed,
+    )
     onChange(next)
     const fromName = cardLabel(connectFrom)
     const toName = cardLabel(connectTo)
@@ -96,7 +122,15 @@ export function CanvasPlayPage({
     setConnectFrom('')
     setConnectTo('')
     setConnectError(null)
-  }, [connectFrom, connectTo, connections, question.directed, onChange, cardLabel])
+  }, [
+    connectFrom,
+    connectTo,
+    validCardIds,
+    sanitizedConnections,
+    question.directed,
+    onChange,
+    cardLabel,
+  ])
 
   // Keyboard/touch alternative: remove connection via button
   const handleRemoveConnection = useCallback(
@@ -105,15 +139,16 @@ export function CanvasPlayPage({
       const parsed = parseConnectionEdge(connStr)
       const fromName = parsed ? cardLabel(parsed.from) : ''
       const toName = parsed ? cardLabel(parsed.to) : ''
-      const next = connections.filter((c) => c !== connStr)
-      onChange(next)
+      const norm = parsed ? normalizeConnection(parsed.from, parsed.to, question.directed) : connStr
+      const next = sanitizedConnections.filter((c) => c !== connStr && c !== norm)
+      onChange(sanitizeCanvasAnswers(next, validCardIds, question.directed))
       setAnnouncement(
         fromName && toName
           ? `Removed connection between ${fromName} and ${toName}.`
           : 'Connection removed.',
       )
     },
-    [disabled, connections, onChange, cardLabel],
+    [disabled, sanitizedConnections, validCardIds, question.directed, onChange, cardLabel],
   )
 
   const connectCardsSlot = (
@@ -124,7 +159,7 @@ export function CanvasPlayPage({
         setConnectError(null)
         setShowConnectModal(true)
       }}
-      disabled={disabled || displayCards.length < 2 || connections.length >= 80}
+      disabled={disabled || displayCards.length < 2 || sanitizedConnections.length >= 80}
       aria-label="Connect cards dialog"
     >
       Connect cards
@@ -138,12 +173,12 @@ export function CanvasPlayPage({
         {announcement}
       </div>
 
-      {/* Main Canvas Board with controls and live counter */}
-      <div className="relative h-[550px] w-full overflow-hidden rounded-2xl border border-navy-900-12 bg-surface-primary">
+      {/* Main Canvas Board with controls and live counter - responsive height */}
+      <div className="relative h-[clamp(420px,70vh,680px)] min-h-[420px] max-h-[680px] w-full overflow-hidden rounded-2xl border border-navy-900-12 bg-surface-primary">
         <Suspense fallback={<Skeleton className="h-full w-full rounded-2xl" label="Loading canvas board" />}>
           <CanvasBoard
             cards={displayCards}
-            connections={connections}
+            connections={sanitizedConnections}
             mode="play"
             directed={question.directed}
             maxConnections={80}
@@ -163,9 +198,9 @@ export function CanvasPlayPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 id="connections-heading" className="m-0 text-base font-semibold text-navy-900">
-              Connections ({connections.length} of 80)
+              Connections ({sanitizedConnections.length} of 80)
             </h3>
-            <p className="m-0 text-xs text-navy-800-72">
+            <p className="m-0 text-sm text-navy-800-72">
               Connect cards that belong together. Drag handles on the board or use the connect button.
             </p>
           </div>
@@ -176,19 +211,19 @@ export function CanvasPlayPage({
               setConnectError(null)
               setShowConnectModal(true)
             }}
-            disabled={disabled || displayCards.length < 2 || connections.length >= 80}
+            disabled={disabled || displayCards.length < 2 || sanitizedConnections.length >= 80}
           >
             Connect cards
           </Button>
         </div>
 
-        {connections.length === 0 ? (
+        {sanitizedConnections.length === 0 ? (
           <p className="m-0 text-sm text-navy-800-72 italic">
             No connections made yet. Link cards that belong together.
           </p>
         ) : (
           <ul className="grid gap-2 p-0 list-none m-0 max-h-60 overflow-y-auto" aria-label="Current connections list">
-            {connections.map((connStr) => {
+            {sanitizedConnections.map((connStr) => {
               const parsed = parseConnectionEdge(connStr)
               const fromName = parsed ? cardLabel(parsed.from) : 'Card'
               const toName = parsed ? cardLabel(parsed.to) : 'Card'
@@ -212,9 +247,9 @@ export function CanvasPlayPage({
                     disabled={disabled}
                     onClick={() => handleRemoveConnection(connStr)}
                     aria-label={`Remove connection between ${fromName} and ${toName}`}
-                    className="text-xs"
+                    className="text-sm"
                   >
-                    <Trash2 size={14} aria-hidden="true" />
+                    <Trash2 size={16} aria-hidden="true" />
                     <span>Remove</span>
                   </Button>
                 </li>

@@ -60,6 +60,32 @@ export function cardsToNodes(
 }
 
 /**
+ * Converts a string edge or CanvasConnection object into a canonical CanvasConnection domain object.
+ * Returns null if the item cannot be parsed or has missing endpoints.
+ */
+export function stringToCanvasConnection(
+  item: CanvasConnection | string,
+  directed = true,
+): CanvasConnection | null {
+  if (typeof item === 'string') {
+    const parsed = parseConnectionEdge(item)
+    if (!parsed) return null
+    return {
+      id: normalizeConnection(parsed.from, parsed.to, directed),
+      from: parsed.from,
+      to: parsed.to,
+    }
+  }
+  if (!item || typeof item !== 'object' || !item.from || !item.to) {
+    return null
+  }
+  return {
+    ...item,
+    id: item.id || normalizeConnection(item.from, item.to, directed),
+  }
+}
+
+/**
  * Pure mapping function converting connection records or edge strings into React Flow Edges.
  */
 export function connectionsToEdges(
@@ -67,59 +93,49 @@ export function connectionsToEdges(
   directed = true,
   statusByConnection?: Record<string, ConnectionStatus>,
 ): Edge<CanvasEdgeData>[] {
-  return connections.map((conn) => {
-    let from = ''
-    let to = ''
-    let id = ''
-    let points: number | undefined
+  return connections
+    .map((conn) => {
+      const c = stringToCanvasConnection(conn, directed)
+      if (!c) return null
 
-    if (typeof conn === 'string') {
-      const parsed = parseConnectionEdge(conn)
-      if (parsed) {
-        from = parsed.from
-        to = parsed.to
-      } else {
-        const parts = conn.split('->')
-        from = parts[0]?.trim() ?? ''
-        to = parts[1]?.trim() ?? ''
+      const normKey = normalizeConnection(c.from, c.to, directed)
+      const status =
+        statusByConnection?.[normKey] ??
+        statusByConnection?.[c.id] ??
+        (typeof conn === 'string' ? statusByConnection?.[conn] : undefined)
+
+      const edge: Edge<CanvasEdgeData> = {
+        id: c.id || normKey,
+        source: c.from,
+        target: c.to,
+        type: 'canvas',
+        data: {
+          connectionId: c.id,
+          from: c.from,
+          to: c.to,
+          points: c.points,
+          status,
+          directed,
+        },
       }
-      id = conn
-    } else {
-      from = conn.from
-      to = conn.to
-      id = conn.id || normalizeConnection(from, to, directed)
-      points = conn.points
-    }
 
-    const normKey = normalizeConnection(from, to, directed)
-    const status = statusByConnection?.[normKey] ?? (typeof conn === 'object' && conn.id ? statusByConnection?.[conn.id] : undefined)
-
-    const edge: Edge<CanvasEdgeData> = {
-      id: id || normKey,
-      source: from,
-      target: to,
-      type: 'canvas',
-      data: {
-        connectionId: id,
-        from,
-        to,
-        points,
-        status,
-        directed,
-      },
-    }
-
-    if (directed) {
-      edge.markerEnd = {
-        type: MarkerType.ArrowClosed,
-        width: 16,
-        height: 16,
-        color: status === 'correct' ? 'var(--color-feedback-success)' : status === 'wrong' ? 'var(--color-danger)' : 'var(--color-navy-900)',
+      if (directed) {
+        edge.markerEnd = {
+          type: MarkerType.ArrowClosed,
+          width: 16,
+          height: 16,
+          color:
+            status === 'correct'
+              ? 'var(--color-feedback-success)'
+              : status === 'wrong'
+                ? 'var(--color-danger)'
+                : 'var(--color-navy-900)',
+        }
       }
-    }
 
-    return edge
-  })
+      return edge
+    })
+    .filter((edge): edge is Edge<CanvasEdgeData> => edge !== null)
 }
 
 /**
@@ -156,4 +172,47 @@ export function edgeToConnection(edge: {
     connection.points = edge.data.points
   }
   return connection
+}
+
+/**
+ * Sanitizes connection entries:
+ * 1. Keeps only edges that parse (using parseConnectionEdge or object endpoints)
+ * 2. Checks that both endpoints exist in validCardIds and from !== to
+ * 3. Re-normalizes with the question's directed flag
+ * 4. Deduplicates
+ * 5. Caps at 80
+ */
+export function sanitizeCanvasAnswers(
+  rawConnections: (string | CanvasConnection)[] = [],
+  validCardIds: Set<string> | string[],
+  directed = true,
+): string[] {
+  const cardSet = validCardIds instanceof Set ? validCardIds : new Set(validCardIds)
+  const result: string[] = []
+  const seen = new Set<string>()
+
+  for (const item of rawConnections) {
+    let from = ''
+    let to = ''
+    if (typeof item === 'string') {
+      const parsed = parseConnectionEdge(item)
+      if (!parsed) continue
+      from = parsed.from
+      to = parsed.to
+    } else if (item && typeof item === 'object') {
+      from = item.from
+      to = item.to
+    }
+    if (!from || !to || from === to) continue
+    if (!cardSet.has(from) || !cardSet.has(to)) continue
+
+    const norm = normalizeConnection(from, to, directed)
+    if (!seen.has(norm)) {
+      seen.add(norm)
+      result.push(norm)
+      if (result.length >= 80) break
+    }
+  }
+
+  return result
 }

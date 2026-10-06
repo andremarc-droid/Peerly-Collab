@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { Timestamp } from 'firebase/firestore'
@@ -256,6 +256,78 @@ describe('student quiz pages', () => {
     await user.click(screen.getByRole('button', { name: 'Review and submit' }))
     expect(await screen.findByRole('dialog', { name: 'Review your answers' })).toBeInTheDocument()
     expect(screen.getByText('0 of 1 answered. 1 unanswered.')).toBeInTheDocument()
+  })
+
+  it('quiz taking page ignores Enter, arrow keys, and number keys when focus is inside canvas board', async () => {
+    const canvasQuiz: Quiz & { id: string } = {
+      ...quiz,
+      id: 'quiz-canvas-nav',
+      mode: 'canvas',
+    }
+    const canvasQuestion1 = {
+      id: 'board-1',
+      type: 'canvas' as const,
+      order: 0,
+      prompt: 'Board question 1',
+      points: 100,
+      layoutMode: 'scattered' as const,
+      directed: true,
+      wrongPenalty: 'half' as const,
+      cards: [
+        { id: 'c1', type: 'note' as const, title: 'Card 1', content: 'Card content', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note' as const, title: 'Card 2', content: 'Card content 2', position: { x: 100, y: 0 } },
+      ],
+    }
+    const canvasQuestion2 = {
+      id: 'board-2',
+      type: 'canvas' as const,
+      order: 1,
+      prompt: 'Board question 2',
+      points: 100,
+      layoutMode: 'scattered' as const,
+      directed: true,
+      wrongPenalty: 'half' as const,
+      cards: [
+        { id: 'c3', type: 'note' as const, title: 'Card 3', content: 'Card 3', position: { x: 0, y: 0 } },
+      ],
+    }
+    const canvasAttempt: QuizAttempt & { id: string } = {
+      ...attempt,
+      id: 'att-canvas-nav',
+      answers: {},
+      questionOrder: ['board-1', 'board-2'],
+      optionOrder: {},
+    }
+
+    vi.mocked(getQuiz).mockResolvedValue(canvasQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([canvasQuestion1, canvasQuestion2])
+    vi.mocked(getAttempt).mockResolvedValue(canvasAttempt)
+
+    renderRoute('/student/quizzes/quiz-canvas-nav/attempts/att-canvas-nav', <QuizTakingPage />)
+
+    // Wait for the board cards to render
+    const cardArticle = await screen.findByRole('article', { name: /Card 1/i })
+    expect(cardArticle).toBeInTheDocument()
+
+    // Focus the card
+    cardArticle.focus()
+
+    // 1. Pressing Enter on the card does NOT open the review dialog
+    fireEvent.keyDown(cardArticle, { key: 'Enter', code: 'Enter' })
+    expect(screen.queryByRole('dialog', { name: 'Review your answers' })).not.toBeInTheDocument()
+
+    // 2. Pressing ArrowRight does NOT change question (stays on Question 1)
+    fireEvent.keyDown(cardArticle, { key: 'ArrowRight', code: 'ArrowRight' })
+    expect(screen.getByText('Question 1 · 100 points')).toBeInTheDocument()
+    expect(screen.getByText('Board question 1')).toBeInTheDocument()
+
+    // 3. Pressing number key '1' does NOT throw or change question
+    fireEvent.keyDown(cardArticle, { key: '1', code: 'Digit1' })
+    expect(screen.getByText('Question 1 · 100 points')).toBeInTheDocument()
+
+    // 4. Pressing ArrowLeft does NOT navigate backwards either
+    fireEvent.keyDown(cardArticle, { key: 'ArrowLeft', code: 'ArrowLeft' })
+    expect(screen.getByText('Question 1 · 100 points')).toBeInTheDocument()
   })
 
   it('canvas result page renders review board and diff list with icons and text labels', async () => {

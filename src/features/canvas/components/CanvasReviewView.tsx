@@ -75,8 +75,8 @@ export function CanvasReviewView({
 
   return (
     <div className={`canvas-review-view grid gap-4 ${className}`} data-testid="canvas-review-view">
-      {/* Review mode CanvasBoard */}
-      <div className="relative h-[500px] w-full overflow-hidden rounded-2xl border border-navy-900-12 bg-surface-primary">
+      {/* Review mode CanvasBoard - responsive height */}
+      <div className="relative h-[clamp(420px,70vh,680px)] min-h-[420px] max-h-[680px] w-full overflow-hidden rounded-2xl border border-navy-900-12 bg-surface-primary">
         <Suspense fallback={<Skeleton className="h-full w-full rounded-2xl" label="Loading review board" />}>
           <CanvasBoard
             cards={displayCards}
@@ -97,17 +97,17 @@ export function CanvasReviewView({
           <h3 id="canvas-review-connections-heading" className="m-0 text-base font-semibold text-navy-900">
             Connection breakdown
           </h3>
-          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+          <div className="flex flex-wrap gap-2 text-sm font-semibold">
             <span className="inline-flex items-center gap-1 rounded-full bg-feedback-success/15 px-2.5 py-1 text-feedback-success">
-              <Check size={13} aria-hidden="true" />
+              <Check size={14} aria-hidden="true" />
               <span>{diff.correct.length} correct</span>
             </span>
             <span className="inline-flex items-center gap-1 rounded-full bg-feedback-error/15 px-2.5 py-1 text-feedback-error">
-              <X size={13} aria-hidden="true" />
+              <X size={14} aria-hidden="true" />
               <span>{diff.wrong.length} incorrect</span>
             </span>
             <span className="inline-flex items-center gap-1 rounded-full bg-navy-900-12 px-2.5 py-1 text-navy-900">
-              <HelpCircle size={13} aria-hidden="true" />
+              <HelpCircle size={14} aria-hidden="true" />
               <span>{diff.missed.length} missed</span>
             </span>
           </div>
@@ -136,7 +136,7 @@ export function CanvasReviewView({
                     </span>
                     <span>{toName}</span>
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold text-feedback-success">
+                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-sm font-bold text-feedback-success">
                     <Check size={14} aria-hidden="true" />
                     <span>Correct</span>
                   </span>
@@ -161,7 +161,7 @@ export function CanvasReviewView({
                     </span>
                     <span>{toName}</span>
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold text-feedback-error">
+                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-sm font-bold text-feedback-error">
                     <X size={14} aria-hidden="true" />
                     <span>Incorrect</span>
                   </span>
@@ -186,7 +186,7 @@ export function CanvasReviewView({
                     </span>
                     <span>{toName}</span>
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold text-navy-800-72">
+                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-sm font-bold text-navy-800-72">
                     <HelpCircle size={14} aria-hidden="true" />
                     <span>Missed</span>
                   </span>

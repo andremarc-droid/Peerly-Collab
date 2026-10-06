@@ -184,7 +184,46 @@ export function QuizTakingPage() {
           {error}
         </Alert>
       )}
-      <section className="quiz-taking__card grid gap-5 rounded-3xl bg-white p-5 sm:p-8" aria-labelledby="question-title" onKeyDown={(event) => { if (quiz.mode === 'canvas') return; if (event.key === 'ArrowLeft') go(index - 1); if (event.key === 'ArrowRight' && !checkedCurrent) go(index + 1); if (/^[1-6]$/.test(event.key) && options[Number(event.key) - 1] && !checkedCurrent) setAnswer(question.id, options[Number(event.key) - 1].id); if (event.key === 'Enter' && !(event.target instanceof HTMLButtonElement) && quiz.mode !== 'flashcards') { event.preventDefault(); if (revealEach && !checkedCurrent) void checkCurrent(); else if (index < questions.length - 1) go(index + 1); else setReviewOpen(true) } }}>
+      <section
+        className="quiz-taking__card grid gap-5 rounded-3xl bg-white p-5 sm:p-8"
+        aria-labelledby="question-title"
+        onKeyDown={(event) => {
+          const isCanvas = quiz.mode === 'canvas' || question.type === 'canvas'
+          const target = event.target as HTMLElement | null
+          const isInsideCanvasOrDialog = Boolean(
+            target?.closest(
+              '[data-testid="canvas-board"], .canvas-board-wrapper, .canvas-play-page, [role="dialog"], .dialog, .react-flow',
+            ),
+          )
+          if (isCanvas && isInsideCanvasOrDialog) {
+            if (
+              event.key === 'Enter' ||
+              event.key === 'ArrowLeft' ||
+              event.key === 'ArrowRight' ||
+              event.key === 'ArrowUp' ||
+              event.key === 'ArrowDown' ||
+              /^[0-9]$/.test(event.key)
+            ) {
+              return
+            }
+          }
+          if (event.key === 'ArrowLeft') go(index - 1)
+          if (event.key === 'ArrowRight' && !checkedCurrent) go(index + 1)
+          if (/^[1-6]$/.test(event.key) && options[Number(event.key) - 1] && !checkedCurrent) {
+            setAnswer(question.id, options[Number(event.key) - 1].id)
+          }
+          if (
+            event.key === 'Enter' &&
+            !(event.target instanceof HTMLButtonElement) &&
+            quiz.mode !== 'flashcards'
+          ) {
+            event.preventDefault()
+            if (revealEach && !checkedCurrent) void checkCurrent()
+            else if (index < questions.length - 1) go(index + 1)
+            else setReviewOpen(true)
+          }
+        }}
+      >
         <p className="m-0 text-sm font-semibold">Question {index + 1} · {question.points} {question.points === 1 ? 'point' : 'points'}</p>
         <h2 id="question-title" className="m-0 font-heading text-2xl">{question.prompt}</h2>
         {quiz.mode === 'flashcards' ? (

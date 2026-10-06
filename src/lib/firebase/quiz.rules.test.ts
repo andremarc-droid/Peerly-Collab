@@ -993,6 +993,74 @@ describe('canvas mode Firestore rules', () => {
     expect(submission.result.perQuestion.board.pointsAwarded).toBe(expectedGrade.pointsAwarded)
   })
 
+  it('full flow: undirected canvas quiz where student connects, submits, and score matches gradeCanvasQuestion', async () => {
+    await seed()
+    const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+    const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
+
+    // 1. Instructor creates undirected canvas quiz in class1
+    const quizId = 'flow-undir-canvas-qz'
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, `quizzes/${quizId}`), {
+        ...canvasQuiz('teacher', 'draft'),
+        title: 'Molecules Undirected Canvas',
+      })
+    })
+
+    const customQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Connect bonded atoms',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: false,
+      wrongPenalty: 'half',
+      cards: [
+        { id: 'c1', type: 'note', title: 'Carbon 1', content: 'C', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note', title: 'Carbon 2', content: 'C', position: { x: 100, y: 0 } },
+        { id: 'c3', type: 'paragraph', title: 'Hydrogen', content: 'H', position: { x: 200, y: 0 } },
+        { id: 'c4', type: 'paragraph', title: 'Helium', content: 'Noble gas', position: { x: 300, y: 0 } },
+      ],
+    }
+
+    const customKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: 'Carbon bonds to Carbon and Hydrogen.',
+      connections: [
+        { id: 'c1<->c2', from: 'c1', to: 'c2', points: 1 },
+        { id: 'c2<->c3', from: 'c2', to: 'c3', points: 1 },
+      ],
+    }
+
+    // Save question and key
+    await saveQuestionAndKey(quizId, 'board', customQuestion, customKey, owner)
+
+    // Publish quiz
+    await updateDoc(doc(owner, `quizzes/${quizId}`), {
+      status: 'published',
+      publishedAt: Timestamp.now(),
+    })
+
+    // 2. Student starts attempt
+    const attemptId = await startAttempt(quizId, 'student', 'Student', student)
+    expect(attemptId).toBeTruthy()
+
+    // 3. Student connects in undirected format: 1 correct (c1<->c2) and 1 wrong (c2<->c4)
+    const studentConnections = ['c1<->c2', 'c2<->c4']
+    await autosaveAnswers(quizId, attemptId, { board: studentConnections }, student)
+
+    // 4. Student submits
+    const submission = await submitAttempt(quizId, attemptId, 30, student)
+    expect(submission.attempt.status).toBe('submitted')
+
+    // 5. Verify score exactly matches pure gradeCanvasQuestion
+    const expectedGrade = gradeCanvasQuestion(customQuestion, customKey, studentConnections)
+    expect(submission.result.score).toBe(expectedGrade.pointsAwarded)
+    expect(submission.result.perQuestion.board.correct).toBe(expectedGrade.correct)
+    expect(submission.result.perQuestion.board.pointsAwarded).toBe(expectedGrade.pointsAwarded)
+  })
+
   it('regression: standard quiz and flashcard flows remain unchanged', async () => {
     await seed()
     const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
