@@ -22,6 +22,7 @@ import { PageHeader } from '../../../shared/ui/PageHeader'
 import { Select } from '../../../shared/ui/Select'
 import { Textarea } from '../../../shared/ui/Textarea'
 import { useToast } from '../../../shared/ui/useToast'
+import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 import CanvasBoard from '../../canvas/components/CanvasBoard'
 import { normalizeGenericUrl, parseDriveUrl } from '../../modules/links'
 import { normalizeConnection, validateCanvasDefinition, validateCanvasKey } from '../../canvas/schemas'
@@ -193,17 +194,8 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
     }
   }, [quizId, user])
 
-  // Leave-with-unsaved-changes browser guard
-  useEffect(() => {
-    function handleBeforeUnload(e: BeforeUnloadEvent) {
-      if (isDirty) {
-        e.preventDefault()
-        e.returnValue = ''
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isDirty])
+  // Leave-with-unsaved-changes guard for in-app links, browser back, and beforeunload
+  useUnsavedChangesGuard(isDirty)
 
   // Validation in plain language
   const validationErrors = useMemo(() => {

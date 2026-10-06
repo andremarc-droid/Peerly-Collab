@@ -258,6 +258,69 @@ describe('CanvasBuilderPage Component Tests', () => {
     expect(screen.getByText('Discard and leave')).toBeInTheDocument()
   })
 
+  it('guards in-app links with window.confirm and does not prompt twice for workspace buttons', async () => {
+    const existingQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Connect concepts',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: true,
+      wrongPenalty: 'half',
+      cards: [
+        { id: 'c1', type: 'note', title: 'Card 1', content: 'Text 1', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note', title: 'Card 2', content: 'Text 2', position: { x: 100, y: 0 } },
+      ],
+    }
+    const existingKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: '',
+      connections: [{ id: 'c1->c2', from: 'c1', to: 'c2', points: 1 }],
+    }
+
+    mocks.getQuestionWithKey.mockResolvedValueOnce({
+      id: 'board',
+      question: existingQuestion,
+      answerKey: existingKey,
+    })
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-1?tab=questions']}>
+        <div>
+          <a href="/instructor/classes">Back to classes</a>
+          <CanvasBuilderPage quizId="quiz-1" />
+        </div>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+
+    // Make dirty by editing prompt
+    fireEvent.click(screen.getByRole('button', { name: 'Board settings' }))
+    const promptInput = await screen.findByLabelText('Activity prompt')
+    fireEvent.change(promptInput, { target: { value: 'Changed prompt' } })
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+    // 1. In-app anchor click should trigger window.confirm
+    const inAppLink = screen.getByText('Back to classes')
+    const linkClickEvent = new MouseEvent('click', { bubbles: true, cancelable: true })
+    inAppLink.dispatchEvent(linkClickEvent)
+    expect(confirmSpy).toHaveBeenCalledWith('You have unsaved changes. Leave without saving?')
+    expect(linkClickEvent.defaultPrevented).toBe(true)
+
+    confirmSpy.mockClear()
+
+    // 2. Workspace button click should open in-page ConfirmDialog, NOT window.confirm
+    const workspaceNav = screen.getByRole('navigation', { name: 'Quiz workspace' })
+    const settingsTab = Array.from(workspaceNav.querySelectorAll('button')).find((b) => b.textContent?.includes('Settings'))
+    fireEvent.click(settingsTab!)
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(await screen.findByRole('dialog', { name: 'Leave with unsaved changes?' })).toBeInTheDocument()
+  })
+
   it('verifies mode labels everywhere', () => {
     expect(quizModeLabel('quiz')).toBe('Quiz')
     expect(quizModeLabel('flashcards')).toBe('Flashcards')

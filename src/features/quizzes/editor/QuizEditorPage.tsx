@@ -1,6 +1,6 @@
 import { ArrowLeft, Plus, Save } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useBeforeUnload, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
 import { useUserProfile } from '../../profile/useUserProfile'
@@ -12,6 +12,7 @@ import { RadioGroup } from '../../../shared/ui/RadioGroup'
 import { SectionCard } from '../../../shared/ui/SectionCard'
 import { Select } from '../../../shared/ui/Select'
 import { useToast } from '../../../shared/ui/useToast'
+import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 import { defaultQuizSettings } from '../schemas/settings'
 import { createQuiz, getQuiz, updateQuiz, watchQuestionPairs, type SavedQuestion } from '../services'
 import { watchMyClasses } from '../../classes/services/classService'
@@ -54,28 +55,12 @@ export function QuizEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved])
-  useBeforeUnload((event) => { if (dirty) event.preventDefault() })
+  useUnsavedChangesGuard(dirty)
 
   useEffect(() => {
     if (!ownerId) return undefined
     return watchMyClasses(ownerId, (items) => { setClasses(items); setClassesLoaded(true) }, (reason) => { setLoadError(reason.message); setClassesLoaded(true) })
   }, [ownerId])
-
-  useEffect(() => {
-    if (!dirty) return
-    function guardLinkNavigation(event: MouseEvent) {
-      const target = event.target
-      if (!(target instanceof Element)) return
-      const link = target.closest('a[href]')
-      if (!(link instanceof HTMLAnchorElement) || link.target === '_blank' || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-      if (!window.confirm('You have unsaved changes. Leave without saving?')) {
-        event.preventDefault()
-        event.stopPropagation()
-      }
-    }
-    document.addEventListener('click', guardLinkNavigation, true)
-    return () => document.removeEventListener('click', guardLinkNavigation, true)
-  }, [dirty])
 
   useEffect(() => {
     if (!quizId) return
