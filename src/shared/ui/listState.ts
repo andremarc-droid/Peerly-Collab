@@ -23,7 +23,7 @@ export function resolveListStatus({
   count,
 }: ListStateOptions): ListStateStatus {
   if (loading) return 'loading'
-  if (error !== undefined && error !== null && error !== false) return 'error'
+  if (Boolean(error)) return 'error'
   if (count === 0) return 'empty'
   return 'ready'
 }

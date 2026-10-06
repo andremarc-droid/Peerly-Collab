@@ -110,6 +110,15 @@ export function resolveTokenColor(
   return parseColor(raw)
 }
 
+export function resolveCssValueToColor(value: string | undefined, tokenMap: Map<string, string>): RGBA | null {
+  if (!value || value === 'transparent') return null
+  const varMatch = value.match(/var\((--[a-zA-Z0-9_-]+)\)/)
+  if (varMatch) {
+    return resolveTokenColor(varMatch[1], tokenMap)
+  }
+  return parseColor(value)
+}
+
 export function compositeAlphaOverSolid(
   fg: RGBA,
   bg: [number, number, number],
@@ -133,68 +142,222 @@ export function contrastRatio(
 }
 
 // ============================================================================
-// 2. Token Registry & Measurement
+// 2. CSS Rules Parser
 // ============================================================================
 
-export interface ContrastRegistryEntry {
+export function stripComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, '')
+}
+
+export function parseCssDeclarations(declStr: string): Map<string, string> {
+  const map = new Map<string, string>()
+  const items = declStr.split(';')
+  for (const item of items) {
+    const colonIdx = item.indexOf(':')
+    if (colonIdx === -1) continue
+    const prop = item.slice(0, colonIdx).trim().toLowerCase()
+    const val = item.slice(colonIdx + 1).trim()
+    if (prop && val) {
+      map.set(prop, val)
+    }
+  }
+  return map
+}
+
+export function parseAllCssRules(css: string): Map<string, Map<string, string>> {
+  const clean = stripComments(css)
+  const rules = new Map<string, Map<string, string>>()
+
+  let i = 0
+  while (i < clean.length) {
+    const openBrace = clean.indexOf('{', i)
+    if (openBrace === -1) break
+
+    const selectorPart = clean.slice(i, openBrace).trim()
+    let depth = 1
+    let j = openBrace + 1
+    while (j < clean.length && depth > 0) {
+      if (clean[j] === '{') depth++
+      else if (clean[j] === '}') depth--
+      j++
+    }
+    const body = clean.slice(openBrace + 1, j - 1).trim()
+    i = j
+
+    if (
+      selectorPart.startsWith('@keyframes') ||
+      selectorPart.startsWith('@font-face') ||
+      selectorPart.startsWith('@import')
+    ) {
+      continue
+    }
+
+    if (selectorPart.startsWith('@media')) {
+      const nested = parseAllCssRules(body)
+      for (const [sel, decls] of nested) {
+        if (!rules.has(sel)) {
+          rules.set(sel, new Map())
+        }
+        for (const [p, v] of decls) {
+          rules.get(sel)!.set(p, v)
+        }
+      }
+      continue
+    }
+
+    const selectors = selectorPart.split(',').map((s) => s.trim().replace(/\s+/g, ' '))
+    const decls = parseCssDeclarations(body)
+
+    for (const sel of selectors) {
+      if (!sel) continue
+      if (!rules.has(sel)) {
+        rules.set(sel, new Map())
+      }
+      for (const [p, v] of decls) {
+        rules.get(sel)!.set(p, v)
+      }
+    }
+  }
+
+  return rules
+}
+
+export function loadAllCssRules(): { rules: Map<string, Map<string, string>>; tokens: Map<string, string> } {
+  const stylesDir = path.resolve(process.cwd(), 'src/styles')
+  const tokensCss = fs.readFileSync(path.join(stylesDir, 'tokens.css'), 'utf8')
+  const tokens = parseCssTokens(tokensCss)
+
+  const combinedRules = new Map<string, Map<string, string>>()
+  const cssFiles = fs.readdirSync(stylesDir).filter((f) => f.endsWith('.css'))
+
+  for (const f of cssFiles) {
+    const content = fs.readFileSync(path.join(stylesDir, f), 'utf8')
+    const fileRules = parseAllCssRules(content)
+    for (const [sel, decls] of fileRules) {
+      if (!combinedRules.has(sel)) {
+        combinedRules.set(sel, new Map())
+      }
+      for (const [p, v] of decls) {
+        combinedRules.get(sel)!.set(p, v)
+      }
+    }
+  }
+
+  const extraFiles = ['src/features/canvas/canvas.css', 'src/features/modules/modules.css']
+  for (const ef of extraFiles) {
+    const fullPath = path.resolve(process.cwd(), ef)
+    if (fs.existsSync(fullPath)) {
+      const content = fs.readFileSync(fullPath, 'utf8')
+      const fileRules = parseAllCssRules(content)
+      for (const [sel, decls] of fileRules) {
+        if (!combinedRules.has(sel)) {
+          combinedRules.set(sel, new Map())
+        }
+        for (const [p, v] of decls) {
+          combinedRules.get(sel)!.set(p, v)
+        }
+      }
+    }
+  }
+
+  return { rules: combinedRules, tokens }
+}
+
+// ============================================================================
+// 3. Bound & Token Registries
+// ============================================================================
+
+export interface BoundContrastEntry {
   name: string
-  fgToken: string
-  bgToken: string
-  minRatio: number // 4.5 for normal text, 3.0 for large text / UI borders / focus rings
+  selector: string
+  containerSelector?: string
+  minRatio: number
   baseSolid?: [number, number, number]
 }
 
-export const CONTRAST_REGISTRY: ContrastRegistryEntry[] = [
-  // --- Text on Surface ---
-  { name: 'Navy-900 body on white canvas', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
-  { name: 'Navy-800 heading on white canvas', fgToken: '--color-navy-800', bgToken: '--color-white', minRatio: 4.5 },
-  { name: 'Navy-800-72 supporting copy on white canvas', fgToken: '--color-navy-800-72', bgToken: '--color-white', minRatio: 4.5 },
-  { name: 'Navy-900 on 5% tinted panel', fgToken: '--color-navy-900', bgToken: '--color-navy-700-05', minRatio: 4.5 },
-  { name: 'Navy-800-72 on 5% tinted panel', fgToken: '--color-navy-800-72', bgToken: '--color-navy-700-05', minRatio: 4.5 },
-  { name: 'White text on navy-900 surface', fgToken: '--color-white', bgToken: '--color-navy-900', minRatio: 4.5 },
-  { name: 'White text on navy-800 surface', fgToken: '--color-white', bgToken: '--color-navy-800', minRatio: 4.5 },
-  { name: 'White text on navy-700 surface', fgToken: '--color-white', bgToken: '--color-navy-700', minRatio: 4.5 },
-  { name: 'White-72 supporting copy on navy-900', fgToken: '--color-white-72', bgToken: '--color-navy-900', minRatio: 4.5 },
-  { name: 'White-55 meta on navy-900', fgToken: '--color-white-55', bgToken: '--color-navy-900', minRatio: 4.5 },
+export const BOUND_CONTRAST_REGISTRY: BoundContrastEntry[] = [
+  // Button variants
+  { name: 'Button primary on light', selector: '.button--primary', minRatio: 4.5 },
+  { name: 'Button secondary on light', selector: '.button--secondary', minRatio: 4.5 },
+  { name: 'Button tertiary on light', selector: '.button--tertiary', containerSelector: 'body', minRatio: 4.5 },
+  { name: 'Button on-navy primary', selector: '.button--on-navy.button--primary', minRatio: 4.5 },
+  { name: 'Button on-navy secondary', selector: '.button--on-navy.button--secondary', containerSelector: '.page-header', minRatio: 4.5 },
+  { name: 'Button destructive primary', selector: '.button--destructive', minRatio: 4.5 },
+  { name: 'Button destructive secondary', selector: '.button--secondary.button--destructive', minRatio: 4.5 },
 
-  // --- Button Variant Labels on Fill ---
-  { name: 'Button primary on light (white text on navy-800)', fgToken: '--color-white', bgToken: '--color-navy-800', minRatio: 4.5 },
-  { name: 'Button secondary on light (navy-900 text on white fill)', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
-  { name: 'Button tertiary on light (navy-900 text on white fill)', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
-  { name: 'Button primary on navy (navy-900 text on white fill)', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
-  { name: 'Button secondary on navy (white text on navy-900 fill)', fgToken: '--color-white', bgToken: '--color-navy-900', minRatio: 4.5 },
-  { name: 'Button destructive primary (white text on danger fill)', fgToken: '--color-white', bgToken: '--color-danger', minRatio: 4.5 },
-  { name: 'Button destructive secondary (danger-text on white fill)', fgToken: '--color-danger-text', bgToken: '--color-white', minRatio: 4.5 },
+  // Tabs inactive, hover, selected
+  { name: 'Tabs inactive label', selector: '.tabs__list button:not([aria-selected="true"])', containerSelector: '.tabs__list', minRatio: 4.5 },
+  { name: 'Tabs hover label', selector: '.tabs__list button:not([aria-selected="true"]):hover', minRatio: 4.5 },
+  { name: 'Tabs selected label', selector: '.tabs__list button[aria-selected="true"]', minRatio: 4.5 },
 
-  // --- Tab Label on Canvas (Inactive / Hover / Selected) ---
-  { name: 'Tab inactive label on white canvas', fgToken: '--color-navy-800-72', bgToken: '--color-white', minRatio: 4.5 },
-  { name: 'Tab inactive label on tablist background', fgToken: '--color-navy-800-72', bgToken: '--color-navy-900-08', minRatio: 4.5 },
-  { name: 'Tab hover label on tablist hover fill', fgToken: '--color-navy-900', bgToken: '--color-navy-900-12', minRatio: 4.5 },
-  { name: 'Tab selected label on navy-800 fill', fgToken: '--color-white', bgToken: '--color-navy-800', minRatio: 4.5 },
-  { name: 'Tab inactive count badge (navy-900 text on navy-900-12 fill)', fgToken: '--color-navy-900', bgToken: '--color-navy-900-12', minRatio: 4.5 },
-  { name: 'Tab selected count badge (navy-900 text on white fill)', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
+  // Tab count badges
+  { name: 'Tab selected count badge', selector: '.tabs__list button[aria-selected="true"] .tabs__count', minRatio: 4.5 },
+  { name: 'Tab inactive count badge', selector: '.tabs__list button:not([aria-selected="true"]) .tabs__count', minRatio: 4.5 },
 
-  // --- Badge Text on Badge Fill ---
-  { name: 'Badge on light surface (navy-800 on white fill)', fgToken: '--color-navy-800', bgToken: '--color-white', minRatio: 4.5 },
-  { name: 'Badge on navy surface (white on navy-700 fill)', fgToken: '--color-white', bgToken: '--color-navy-700', minRatio: 4.5 },
+  // Badge variants
+  { name: 'Badge on light surface', selector: '.badge', minRatio: 4.5 },
+  { name: 'Badge on navy surface (page-header)', selector: '.page-header__badge', minRatio: 4.5 },
 
-  // --- Alert Text on Neutral White Background ---
-  { name: 'Alert title on neutral white card', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
-  { name: 'Alert body copy on neutral white card', fgToken: '--color-navy-800-72', bgToken: '--color-white', minRatio: 4.5 },
+  // Alert title and body
+  { name: 'Alert title', selector: '.alert strong', containerSelector: '.alert', minRatio: 4.5 },
+  { name: 'Alert body', selector: '.alert span', containerSelector: '.alert', minRatio: 4.5 },
 
-  // --- Status Text on Status Tint ---
+  // Stat tile navy and white
+  { name: 'Stat tile white', selector: '.stat-tile', minRatio: 4.5 },
+  { name: 'Stat tile navy', selector: '.stat-tile--navy', minRatio: 4.5 },
+
+  // Empty state title and body
+  { name: 'Empty state title', selector: '.empty-state h2', containerSelector: '.empty-state', minRatio: 4.5 },
+  { name: 'Empty state body', selector: '.empty-state p', containerSelector: '.empty-state', minRatio: 4.5 },
+
+  // Class-code panel
+  { name: 'Class-code panel', selector: '.class-code-panel', minRatio: 4.5 },
+
+  // Header title, subtitle, badge
+  { name: 'Header title', selector: '.page-header h1', containerSelector: '.page-header', minRatio: 4.5 },
+  { name: 'Header subtitle', selector: '.page-header p', containerSelector: '.page-header', minRatio: 4.5 },
+
+  // Page-header buttons
+  { name: 'Page-header button primary', selector: '.page-header__action .button--primary', minRatio: 4.5 },
+  { name: 'Page-header button secondary', selector: '.page-header__action .button--secondary', containerSelector: '.page-header', minRatio: 4.5 },
+
+  // Dialog and Toast
+  { name: 'Dialog', selector: '.dialog', minRatio: 4.5 },
+  { name: 'Toast title', selector: '.toast > strong', containerSelector: '.toast', minRatio: 4.5 },
+  { name: 'Toast body', selector: '.toast > span', containerSelector: '.toast', minRatio: 4.5 },
+
+  // Field label, hint, error
+  { name: 'Field label', selector: '.field__label', minRatio: 4.5 },
+  { name: 'Field hint', selector: '.field__hint', minRatio: 4.5 },
+  { name: 'Field error', selector: '.field__error', minRatio: 4.5 },
+
+  // Data table header
+  { name: 'Data table header', selector: '.data-table th', minRatio: 4.5 },
+
+  // Segmented control
+  { name: 'Segmented control inactive', selector: '.segmented-control button', containerSelector: '.segmented-control', minRatio: 4.5 },
+  { name: 'Segmented control selected', selector: '.segmented-control button.is-selected', minRatio: 4.5 },
+]
+
+export interface TokenContrastEntry {
+  name: string
+  fgToken: string
+  bgToken: string
+  minRatio: number
+  baseSolid?: [number, number, number]
+}
+
+export const TOKEN_ONLY_CONTRAST_REGISTRY: TokenContrastEntry[] = [
+  // Semantic status pairs
   { name: 'Feedback success text on success surface', fgToken: '--color-feedback-success', bgToken: '--color-feedback-success-bg', minRatio: 4.5 },
   { name: 'Feedback warning text on warning surface', fgToken: '--color-feedback-warning', bgToken: '--color-feedback-warning-bg', minRatio: 4.5 },
   { name: 'Feedback error text on error surface', fgToken: '--color-feedback-error', bgToken: '--color-feedback-error-bg', minRatio: 4.5 },
   { name: 'Danger text on danger background', fgToken: '--color-danger-text', bgToken: '--color-danger-bg', minRatio: 4.5 },
 
-  // --- Focus Rings on Canvas and on Navy ---
+  // Focus rings and borders (UI components: 3.0:1)
   { name: 'Focus ring on white canvas', fgToken: '--color-navy-700', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Focus ring on tinted canvas', fgToken: '--color-navy-700', bgToken: '--color-navy-700-05', minRatio: 3.0 },
   { name: 'Focus ring on navy surface', fgToken: '--color-white', bgToken: '--color-navy-900', minRatio: 3.0 },
-
-  // --- Borders ---
-  { name: 'Button secondary outline on navy', fgToken: '--color-white', bgToken: '--color-navy-900', minRatio: 3.0 },
   { name: 'Active control border on white', fgToken: '--color-navy-800', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Alert left accent bar: success', fgToken: '--color-feedback-success', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Alert left accent bar: error', fgToken: '--color-feedback-error', bgToken: '--color-white', minRatio: 3.0 },
@@ -202,7 +365,7 @@ export const CONTRAST_REGISTRY: ContrastRegistryEntry[] = [
   { name: 'Alert left accent bar: info', fgToken: '--color-navy-800', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Danger border on danger bg', fgToken: '--color-danger', bgToken: '--color-danger-bg', minRatio: 3.0 },
 
-  // --- Canvas and Module Pairs ---
+  // Canvas graph pairs
   { name: 'Canvas card title on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
   { name: 'Canvas note card body on white', fgToken: '--color-navy-900-88', bgToken: '--color-white', minRatio: 4.5 },
   { name: 'Canvas link host on white', fgToken: '--color-navy-800', bgToken: '--color-white', minRatio: 4.5 },
@@ -213,6 +376,8 @@ export const CONTRAST_REGISTRY: ContrastRegistryEntry[] = [
   { name: 'Canvas minimap node on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Canvas handle dot on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Canvas double focus ring (white on navy-800)', fgToken: '--color-white', bgToken: '--color-navy-800', minRatio: 3.0 },
+
+  // Module items
   { name: 'Module card title on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
   { name: 'Module card meta on white', fgToken: '--color-navy-800-72', bgToken: '--color-white', minRatio: 4.5 },
   { name: 'Module publish bar title on navy-900', fgToken: '--color-white', bgToken: '--color-navy-900', minRatio: 4.5 },
@@ -221,8 +386,52 @@ export const CONTRAST_REGISTRY: ContrastRegistryEntry[] = [
   { name: 'Resource embed fallback link on white', fgToken: '--color-navy-800', bgToken: '--color-white', minRatio: 4.5 },
 ]
 
-export function measurePair(
-  pair: ContrastRegistryEntry,
+export function measureBoundPair(
+  entry: BoundContrastEntry,
+  rules: Map<string, Map<string, string>>,
+  tokens: Map<string, string>,
+): { ratio: number; fgRgb: [number, number, number]; bgRgb: [number, number, number]; fgToken: string; bgToken: string } {
+  const rule = rules.get(entry.selector)
+  if (!rule) {
+    throw new Error(`CSS rule for selector "${entry.selector}" is missing in styles definitions.`)
+  }
+
+  const colorVal = rule.get('color')
+  if (!colorVal) {
+    throw new Error(`Selector "${entry.selector}" does not declare a "color" property.`)
+  }
+
+  let bgVal = rule.get('background') || rule.get('background-color')
+  if ((!bgVal || bgVal === 'transparent') && entry.containerSelector) {
+    const containerRule = rules.get(entry.containerSelector)
+    if (containerRule) {
+      bgVal = containerRule.get('background') || containerRule.get('background-color')
+    }
+  }
+  if (!bgVal || bgVal === 'transparent') {
+    bgVal = 'var(--color-white)'
+  }
+
+  const fgRgba = resolveCssValueToColor(colorVal, tokens)
+  if (!fgRgba) {
+    throw new Error(`Unable to resolve foreground color "${colorVal}" on selector "${entry.selector}".`)
+  }
+
+  const bgRgba = resolveCssValueToColor(bgVal, tokens)
+  if (!bgRgba) {
+    throw new Error(`Unable to resolve background color "${bgVal}" for selector "${entry.selector}".`)
+  }
+
+  const baseSolid = entry.baseSolid ?? [255, 255, 255]
+  const bgRgb = bgRgba.a < 1 ? compositeAlphaOverSolid(bgRgba, baseSolid) : ([bgRgba.r, bgRgba.g, bgRgba.b] as [number, number, number])
+  const fgRgb = fgRgba.a < 1 ? compositeAlphaOverSolid(fgRgba, bgRgb) : ([fgRgba.r, fgRgba.g, fgRgba.b] as [number, number, number])
+
+  const ratio = contrastRatio(fgRgb, bgRgb)
+  return { ratio, fgRgb, bgRgb, fgToken: colorVal, bgToken: bgVal }
+}
+
+export function measureTokenPair(
+  pair: TokenContrastEntry,
   tokens: Map<string, string>,
 ): { ratio: number; fgRgb: [number, number, number]; bgRgb: [number, number, number] } {
   const baseSolid = pair.baseSolid ?? [255, 255, 255]
@@ -237,16 +446,33 @@ export function measurePair(
 }
 
 // ============================================================================
-// 3. Test Suites
+// 4. Test Suites
 // ============================================================================
 
-describe('Contrast Test 1: Registry of Token Pairs (Parsed from tokens.css)', () => {
+describe('Contrast Test 1: Bound CSS Selectors (Parsed directly from src/styles/*.css)', () => {
+  const { rules, tokens } = loadAllCssRules()
+
+  it.each(BOUND_CONTRAST_REGISTRY)('$name ($selector)', (entry) => {
+    const { ratio, fgToken, bgToken } = measureBoundPair(entry, rules, tokens)
+    const passed = ratio >= entry.minRatio
+
+    if (!passed) {
+      throw new Error(
+        `CONTRAST FAILURE on selector "${entry.selector}": "${entry.name}" (${fgToken} on ${bgToken}) measured ratio ${ratio.toFixed(2)}:1 is below required minimum ${entry.minRatio}:1.`,
+      )
+    }
+
+    expect(ratio).toBeGreaterThanOrEqual(entry.minRatio)
+  })
+})
+
+describe('Contrast Test 2: Token-Only Pairs (Tokens from tokens.css)', () => {
   const tokensFilePath = path.resolve(process.cwd(), 'src/styles/tokens.css')
   const cssContent = fs.readFileSync(tokensFilePath, 'utf8')
   const tokens = parseCssTokens(cssContent)
 
-  it.each(CONTRAST_REGISTRY)('$name ($fgToken on $bgToken)', (pair) => {
-    const { ratio } = measurePair(pair, tokens)
+  it.each(TOKEN_ONLY_CONTRAST_REGISTRY)('$name ($fgToken on $bgToken)', (pair) => {
+    const { ratio } = measureTokenPair(pair, tokens)
     const passed = ratio >= pair.minRatio
 
     if (!passed) {
@@ -259,7 +485,7 @@ describe('Contrast Test 1: Registry of Token Pairs (Parsed from tokens.css)', ()
   })
 })
 
-describe('Contrast Test 2: Source Scanner for Unallowed Hard-Coded Palette, Hex & Inline Styles', () => {
+describe('Contrast Test 3: Source Scanner for Unallowed Palette, Hex, Inline Styles & Colors', () => {
   const srcRoot = path.resolve(process.cwd(), 'src')
 
   const ALLOWED_HEX_FILES = new Set([
@@ -273,6 +499,11 @@ describe('Contrast Test 2: Source Scanner for Unallowed Hard-Coded Palette, Hex 
   const ALLOWED_INLINE_STYLE_FILES = new Set([
     // Dynamic ReactFlow node/edge positioning calculation for canvas label renderer
     path.normalize('src/features/canvas/components/edges/CanvasEdge.tsx'),
+  ])
+
+  const ALLOWED_COLOR_FUNC_FILES = new Set([
+    path.normalize('src/styles/tokens.css'),
+    path.normalize('src/styles/contrast.test.ts'),
   ])
 
   function getAllFiles(dir: string): string[] {
@@ -289,18 +520,17 @@ describe('Contrast Test 2: Source Scanner for Unallowed Hard-Coded Palette, Hex 
     return files
   }
 
-  it('scans src/** and asserts no unallowed palette classes, hex colors, or inline styles exist', () => {
+  it('scans src/** and asserts no unallowed palette classes, hex colors, inline styles, or color functions exist', () => {
     const allFiles = getAllFiles(srcRoot)
     const violations: string[] = []
 
     const paletteRegex = /\b(?:text|bg|border)-(?:amber|emerald|red|blue|green|yellow|indigo|purple|pink|rose|slate|orange|teal|cyan|violet|fuchsia|lime)-[0-9]+/g
     const hexRegex = /#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g
-    const inlineStyleRegex = /\bstyle\s*=\s*[{"]/g
+    const inlineStyleRegex = /\bstyle\s*=\s*[{"]/ // No /g flag to avoid lastIndex bug
+    const colorFuncRegex = /\b(?:rgb|hsl)a?\s*\(/i // Flag rgb(), rgba(), hsl(), hsla()
 
     for (const file of allFiles) {
       const relPath = path.normalize(path.relative(process.cwd(), file))
-
-      // Skip landing page or test files if needed, but let's check everything in src
       const content = fs.readFileSync(file, 'utf8')
       const lines = content.split('\n')
 
@@ -325,11 +555,20 @@ describe('Contrast Test 2: Source Scanner for Unallowed Hard-Coded Palette, Hex 
           }
         }
 
-        // 3. Inline style violation
+        // 3. Inline style violation (without lastIndex bug)
         if (!ALLOWED_INLINE_STYLE_FILES.has(relPath)) {
           if (inlineStyleRegex.test(line)) {
             violations.push(
               `Inline style found at ${relPath}:${lineNum}`,
+            )
+          }
+        }
+
+        // 4. Color function violation outside tokens.css
+        if (!ALLOWED_COLOR_FUNC_FILES.has(relPath)) {
+          if (colorFuncRegex.test(line)) {
+            violations.push(
+              `Hard-coded color function found at ${relPath}:${lineNum}: "${line.trim()}"`,
             )
           }
         }
@@ -346,8 +585,12 @@ describe('Contrast Test 2: Source Scanner for Unallowed Hard-Coded Palette, Hex 
   })
 })
 
-describe('Contrast Test 3: Prohibition of Navy-on-Navy Pairs in Registry', () => {
-  function isDarkNavyToken(token: string): boolean {
+describe('Contrast Test 4: Prohibition of Navy-on-Navy Pairs in Bound and Token Registries', () => {
+  const { rules, tokens } = loadAllCssRules()
+
+  function isDarkNavy(colorStr: string, tokensMap: Map<string, string>): boolean {
+    const rawVal = colorStr.trim()
+    const raw = rawVal.startsWith('--') ? `var(${rawVal})` : rawVal
     const darkNavyTokens = [
       '--color-navy-900',
       '--color-navy-800',
@@ -355,27 +598,61 @@ describe('Contrast Test 3: Prohibition of Navy-on-Navy Pairs in Registry', () =>
       '--color-navy-900-88',
       '--color-navy-800-72',
     ]
-    return darkNavyTokens.includes(token)
+    const varMatch = raw.match(/var\((--[a-zA-Z0-9_-]+)\)/)
+    if (varMatch && darkNavyTokens.includes(varMatch[1])) {
+      return true
+    }
+    const resolved = resolveCssValueToColor(raw, tokensMap)
+    if (!resolved) return false
+    // Tints (like 8%, 12%, 5%) are light backgrounds, not dark navy
+    if (resolved.a < 0.6) return false
+    const luminance = relativeLuminance([resolved.r, resolved.g, resolved.b])
+    return luminance < 0.1 && resolved.b > resolved.r
   }
 
-  it('fails if any registered pair places a navy element/text on a dark navy background', () => {
+  it('fails if any bound selector rule places a dark navy element on a dark navy background', () => {
     const forbidden: string[] = []
 
-    for (const pair of CONTRAST_REGISTRY) {
-      const isFgNavy = isDarkNavyToken(pair.fgToken)
-      const isBgNavy = isDarkNavyToken(pair.bgToken)
+    for (const entry of BOUND_CONTRAST_REGISTRY) {
+      const rule = rules.get(entry.selector)
+      if (!rule) continue
 
-      if (isFgNavy && isBgNavy) {
+      const colorVal = rule.get('color') || ''
+      let bgVal = rule.get('background') || rule.get('background-color') || ''
+      if ((!bgVal || bgVal === 'transparent') && entry.containerSelector) {
+        const containerRule = rules.get(entry.containerSelector)
+        if (containerRule) {
+          bgVal = containerRule.get('background') || containerRule.get('background-color') || ''
+        }
+      }
+
+      if (isDarkNavy(colorVal, tokens) && isDarkNavy(bgVal, tokens)) {
         forbidden.push(
-          `Forbidden navy-on-navy pair: "${pair.name}" (${pair.fgToken} on ${pair.bgToken})`,
+          `Forbidden navy-on-navy on selector "${entry.selector}": "${entry.name}" (${colorVal} on ${bgVal})`,
         )
       }
     }
 
     if (forbidden.length > 0) {
-      throw new Error(
-        `NAVY-ON-NAVY VIOLATIONS DETECTED:\n${forbidden.join('\n')}`,
-      )
+      throw new Error(`NAVY-ON-NAVY VIOLATIONS DETECTED IN BOUND PAIRS:\n${forbidden.join('\n')}`)
+    }
+
+    expect(forbidden).toHaveLength(0)
+  })
+
+  it('fails if any token-only pair places a dark navy element on a dark navy background', () => {
+    const forbidden: string[] = []
+
+    for (const pair of TOKEN_ONLY_CONTRAST_REGISTRY) {
+      if (isDarkNavy(pair.fgToken, tokens) && isDarkNavy(pair.bgToken, tokens)) {
+        forbidden.push(
+          `Forbidden navy-on-navy token pair: "${pair.name}" (${pair.fgToken} on ${pair.bgToken})`,
+        )
+      }
+    }
+
+    if (forbidden.length > 0) {
+      throw new Error(`NAVY-ON-NAVY VIOLATIONS DETECTED IN TOKEN PAIRS:\n${forbidden.join('\n')}`)
     }
 
     expect(forbidden).toHaveLength(0)
