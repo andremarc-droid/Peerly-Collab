@@ -23,6 +23,7 @@ export async function createQuiz(ownerId: string, ownerName: string, input: NewQ
     ownerId, ownerName, classId: input.classId, title: input.title, description: input.description, tags: input.tags,
     mode: input.mode, status: 'draft', questionCount: 0, createdAt: now, updatedAt: now,
     publishedAt: null, settings: cleanFlashcardSettings(input.mode, input.settings),
+    ...(input.boardKind ? { boardKind: input.boardKind } : input.mode === 'canvas' ? { boardKind: 'prebuilt' } : {}),
   }
   const parsed = parseQuiz(quiz)
   await runTransaction(db, async (transaction) => {

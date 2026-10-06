@@ -1,6 +1,7 @@
 import {
   deleteDoc,
   doc,
+  getCountFromServer,
   getDoc,
   getDocs,
   serverTimestamp,
@@ -47,15 +48,15 @@ export async function saveImage(
 
   // Enforce 12-image cap if this would create a new image document
   if (!imageId) {
-    const existing = await getDocs(coll)
-    if (existing.size >= MAX_CANVAS_IMAGES) {
+    const countSnapshot = await getCountFromServer(coll)
+    if (countSnapshot.data().count >= MAX_CANVAS_IMAGES) {
       throw new Error('Canvas can have at most 12 images.')
     }
   } else {
     const existingDoc = await getDoc(targetRef)
     if (!existingDoc.exists()) {
-      const existing = await getDocs(coll)
-      if (existing.size >= MAX_CANVAS_IMAGES) {
+      const countSnapshot = await getCountFromServer(coll)
+      if (countSnapshot.data().count >= MAX_CANVAS_IMAGES) {
         throw new Error('Canvas can have at most 12 images.')
       }
     }
@@ -129,21 +130,25 @@ export async function deleteImage(
 }
 
 /**
- * Deletes any image documents under quizzes/{quizId}/images that are NOT referenced in referencedIds.
- * Returns array of deleted image IDs.
+ * Deletes image documents from knownExistingIds that are NOT referenced in referencedIds.
+ * Does not download image payloads when knownExistingIds is provided.
  */
 export async function reconcileImages(
   quizId: string,
   referencedIds: string[] | Set<string>,
+  knownExistingIds?: string[] | Set<string>,
   db: Firestore = firestore,
 ): Promise<string[]> {
+  if (!knownExistingIds) {
+    return reconcileImagesFullScan(quizId, referencedIds, db)
+  }
+
   const refSet = referencedIds instanceof Set ? referencedIds : new Set(referencedIds)
-  const snapshot = await getDocs(imagesRef(db, quizId))
   const toDelete: string[] = []
 
-  for (const d of snapshot.docs) {
-    if (!refSet.has(d.id)) {
-      toDelete.push(d.id)
+  for (const id of knownExistingIds) {
+    if (!refSet.has(id)) {
+      toDelete.push(id)
     }
   }
 
@@ -157,4 +162,19 @@ export async function reconcileImages(
   }
 
   return toDelete
+}
+
+/**
+ * Full-scan variant for post-failure or deep cleanup that queries all image documents
+ * in the quiz and deletes unreferenced ones.
+ */
+export async function reconcileImagesFullScan(
+  quizId: string,
+  referencedIds: string[] | Set<string>,
+  db: Firestore = firestore,
+): Promise<string[]> {
+  const refSet = referencedIds instanceof Set ? referencedIds : new Set(referencedIds)
+  const snapshot = await getDocs(imagesRef(db, quizId))
+  const knownIds = snapshot.docs.map((d) => d.id)
+  return reconcileImages(quizId, refSet, knownIds, db)
 }

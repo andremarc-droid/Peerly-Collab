@@ -18,7 +18,18 @@ export async function duplicateQuiz(quizId: string, db: Firestore = firestore, c
   const copyId = doc(collection(db, 'quizzes')).id
   const copyRef = quizRef(db, copyId)
   const now = Timestamp.now()
-  const copiedQuiz = { ...source, classId, title: `Copy of ${source.title}`, status: 'draft' as const, questionCount: 0, createdAt: now, updatedAt: now, publishedAt: null, settings: { ...source.settings, scoresReleased: false } }
+  const copiedQuiz = {
+    ...source,
+    classId,
+    title: `Copy of ${source.title}`,
+    ...(source.mode === 'canvas' ? { boardKind: source.boardKind ?? 'prebuilt' } : {}),
+    status: 'draft' as const,
+    questionCount: 0,
+    createdAt: now,
+    updatedAt: now,
+    publishedAt: null,
+    settings: { ...source.settings, scoresReleased: false },
+  }
 
   // 1. Commit the copied quiz document first
   const firstBatch = writeBatch(db)
@@ -66,8 +77,9 @@ export async function duplicateQuiz(quizId: string, db: Firestore = firestore, c
     const targetQuestionRef = source.mode === 'canvas' && id === 'board'
       ? doc(db, 'quizzes', copyId, 'questions', 'board')
       : doc(collection(db, 'quizzes', copyId, 'questions'))
+    const isBlankBoard = source.mode === 'canvas' && source.boardKind === 'blank' && id === 'board'
     const answerKey = keysByQuestion.get(id)
-    if (!answerKey) throw new Error(`Missing answer key for question ${id}`)
+    if (!answerKey && !isBlankBoard) throw new Error(`Missing answer key for question ${id}`)
 
     let rawQuestionData = snapshot.data()
     if (source.mode === 'canvas' && id === 'board' && Array.isArray(rawQuestionData.cards)) {
@@ -83,6 +95,11 @@ export async function duplicateQuiz(quizId: string, db: Firestore = firestore, c
           return card
         }),
       }
+    }
+
+    if (isBlankBoard) {
+      const pair = validateQuestionAnswerPair(rawQuestionData, null, { boardKind: 'blank' })
+      return { questionRef: targetQuestionRef, question: pair.question, key: null }
     }
 
     const pair = validateQuestionAnswerPair(rawQuestionData, answerKey, { allowLegacyImages: true })

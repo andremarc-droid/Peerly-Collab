@@ -4,7 +4,7 @@ import {
 } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
 import { parseAnswerKey, parseQuestion, parseQuiz, parseQuizAttempt, parseQuizParticipant } from '../schemas'
-import type { QuizAttempt, QuizQuestion } from '../types'
+import type { QuizAttempt, QuizQuestion, QuizResult, SubmittedAnswer } from '../types'
 import { gradeAttempt } from '../grading/grade'
 import { answerKeysRef, attemptRef, participantRef, questionsRef, quizRef, resultRef } from './paths'
 
@@ -54,7 +54,7 @@ export async function startAttempt(quizId: string, userId: string, userName: str
 export async function autosaveAnswers(
   quizId: string,
   attemptId: string,
-  answerPatch: Record<string, string | string[]>,
+  answerPatch: Record<string, SubmittedAnswer>,
   db: Firestore = firestore,
 ): Promise<void> {
   await runTransaction(db, async (transaction) => {
@@ -90,7 +90,22 @@ export async function submitAttempt(quizId: string, attemptId: string, timeSpent
     if (participantData.activeAttemptId !== attemptId) throw new Error('Attempt is no longer active')
     const computedTimeSpent = attempt.startedAt ? Math.max(0, Math.floor((Date.now() - attempt.startedAt.toMillis()) / 1000)) : (timeSpentSeconds ?? 0)
     const spentSeconds = timeSpentSeconds ?? computedTimeSpent
-    const graded = gradeAttempt({ userId: attempt.userId, questions, answerKeys, answers: attempt.answers, gradedAt: Timestamp.now() })
+    const isBlankCanvas = quiz.mode === 'canvas' && quiz.boardKind === 'blank'
+    let graded: QuizResult
+    if (isBlankCanvas) {
+      const boardQuestion = questions.find((q) => q.type === 'canvas') ?? questions[0]
+      const maxScore = boardQuestion?.points ?? 0
+      graded = {
+        userId: attempt.userId,
+        score: 0,
+        maxScore,
+        perQuestion: {},
+        gradedAt: Timestamp.now(),
+        reviewStatus: 'pending',
+      }
+    } else {
+      graded = gradeAttempt({ userId: attempt.userId, questions, answerKeys, answers: attempt.answers as Record<string, string | string[]>, gradedAt: Timestamp.now() })
+    }
     const next = { ...attempt, status: 'submitted' as const, submittedAt: Timestamp.now(), timeSpentSeconds: spentSeconds }
     transaction.update(ref, { status: next.status, submittedAt: serverTimestamp(), timeSpentSeconds: spentSeconds })
     transaction.update(participant, { activeAttemptId: null, updatedAt: serverTimestamp() })

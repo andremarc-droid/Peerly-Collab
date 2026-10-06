@@ -70,3 +70,35 @@ export async function setQuestionGradeOverride(
     transaction.update(resultRef(db, quizId, attemptId), { perQuestion: next.perQuestion, score: next.score, gradedAt: Timestamp.now() })
   })
 }
+
+export async function gradeBlankCanvasAttempt(
+  quizId: string,
+  attemptId: string,
+  payload: { score: number; feedback?: string; gradedBy: string },
+  db: Firestore = firestore,
+): Promise<void> {
+  await runTransaction(db, async (transaction) => {
+    const resRef = resultRef(db, quizId, attemptId)
+    const boardRef = questionRef(db, quizId, 'board')
+    const [resultSnapshot, boardSnapshot] = await Promise.all([transaction.get(resRef), transaction.get(boardRef)])
+    if (!resultSnapshot.exists()) throw new Error('Result not found')
+    if (!boardSnapshot.exists()) throw new Error('Board question not found')
+    parseQuizResult(resultSnapshot.data())
+    const board = parseQuestion(boardSnapshot.data())
+    if (typeof payload.score !== 'number' || !Number.isFinite(payload.score) || payload.score < 0 || payload.score > board.points) {
+      throw new Error(`Score must be between 0 and ${board.points}`)
+    }
+    const feedback = payload.feedback ? payload.feedback.trim() : ''
+    if (feedback.length > 1000) {
+      throw new Error('Feedback must not exceed 1000 characters')
+    }
+    const updateData: Record<string, unknown> = {
+      score: payload.score,
+      reviewStatus: 'graded',
+      feedback,
+      gradedAt: Timestamp.now(),
+      gradedBy: payload.gradedBy,
+    }
+    transaction.update(resRef, updateData)
+  })
+}
