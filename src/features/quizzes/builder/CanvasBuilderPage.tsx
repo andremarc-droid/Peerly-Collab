@@ -25,7 +25,12 @@ import { useToast } from '../../../shared/ui/useToast'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 import CanvasBoard from '../../canvas/components/CanvasBoard'
 import { normalizeGenericUrl, parseDriveUrl } from '../../modules/links'
-import { normalizeConnection, validateCanvasDefinition, validateCanvasKey } from '../../canvas/schemas'
+import {
+  normalizeConnection,
+  renormalizeConnections,
+  validateCanvasDefinition,
+  validateCanvasKey,
+} from '../../canvas/schemas'
 import type {
   CanvasAnswerKey,
   CanvasCard,
@@ -77,6 +82,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
   const [saveError, setSaveError] = useState<string | null>(null)
   const [leaveModalOpen, setLeaveModalOpen] = useState(false)
   const [pendingLeaveTarget, setPendingLeaveTarget] = useState<string | null>(null)
+  const [pendingDirectedMode, setPendingDirectedMode] = useState<boolean | null>(null)
 
   const currentSignature = useMemo(() => {
     return JSON.stringify({
@@ -349,6 +355,36 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
     setConnectTo('')
     setConnectPoints(1)
   }, [connectFrom, connectTo, directed, connections, connectPoints])
+
+  // Toggle directed mode with confirmation if connections exist
+  const handleToggleDirected = useCallback(
+    (nextDirected: boolean) => {
+      if (connections.length === 0) {
+        setDirected(nextDirected)
+        return
+      }
+      setPendingDirectedMode(nextDirected)
+    },
+    [connections.length],
+  )
+
+  const handleConfirmDirectedChange = useCallback(() => {
+    if (pendingDirectedMode === null) return
+    const nextDirected = pendingDirectedMode
+    setDirected(nextDirected)
+    const { connections: updatedConns, mergedCount } = renormalizeConnections(connections, nextDirected)
+    setConnections(updatedConns)
+    setPendingDirectedMode(null)
+
+    if (!nextDirected && mergedCount > 0) {
+      showToast(
+        'info',
+        `${mergedCount} reciprocal ${mergedCount === 1 ? 'connection was' : 'connections were'} merged into undirected ${mergedCount === 1 ? 'connection' : 'connections'}.`,
+      )
+    } else {
+      showToast('success', nextDirected ? 'Switched to directed connections.' : 'Switched to undirected connections.')
+    }
+  }, [pendingDirectedMode, connections, showToast])
 
   // Save changes atomically via saveQuestionAndKey
   const handleSave = useCallback(async () => {
@@ -806,7 +842,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                       <input
                         type="checkbox"
                         checked={directed}
-                        onChange={(e) => setDirected(e.target.checked)}
+                        onChange={(e) => handleToggleDirected(e.target.checked)}
                       />
                       <span className="choice-control__mark" aria-hidden="true" />
                       <span className="choice-control__copy">
@@ -915,6 +951,20 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
           title="Leave with unsaved changes?"
           description="Your edits have not been saved. Leaving this page will discard changes made to the canvas board."
           confirmLabel="Discard and leave"
+        />
+
+        {/* Directed mode change confirmation dialog */}
+        <ConfirmDialog
+          open={pendingDirectedMode !== null}
+          onClose={() => setPendingDirectedMode(null)}
+          onConfirm={handleConfirmDirectedChange}
+          title={pendingDirectedMode ? 'Switch to directed connections?' : 'Switch to undirected connections?'}
+          description={
+            pendingDirectedMode
+              ? 'Connections will point from source to target with arrowheads. Existing connection IDs will be updated.'
+              : 'Directional arrows will be removed. Any reciprocal connections (e.g. A→B and B→A) will be merged into a single connection keeping the higher point value.'
+          }
+          confirmLabel={pendingDirectedMode ? 'Switch to directed' : 'Switch to undirected'}
         />
       </main>
     </AppShell>

@@ -55,6 +55,41 @@ export function normalizeConnection(from: string, to: string, directed: boolean)
   return f < t ? `${f}<->${t}` : `${t}<->${f}`
 }
 
+export function renormalizeConnections(
+  connections: CanvasConnection[],
+  newDirected: boolean,
+): { connections: CanvasConnection[]; mergedCount: number } {
+  if (newDirected) {
+    const next = connections.map((c) => ({
+      ...c,
+      id: normalizeConnection(c.from, c.to, true),
+    }))
+    return { connections: next, mergedCount: 0 }
+  }
+
+  const map = new Map<string, CanvasConnection>()
+  let mergedCount = 0
+
+  for (const c of connections) {
+    const norm = normalizeConnection(c.from, c.to, false)
+    const existing = map.get(norm)
+    if (existing) {
+      mergedCount += 1
+      existing.points = Math.max(existing.points ?? 1, c.points ?? 1)
+    } else {
+      const [canonFrom, canonTo] = c.from < c.to ? [c.from, c.to] : [c.to, c.from]
+      map.set(norm, {
+        id: norm,
+        from: canonFrom,
+        to: canonTo,
+        points: c.points ?? 1,
+      })
+    }
+  }
+
+  return { connections: Array.from(map.values()), mergedCount }
+}
+
 export function parseConnectionEdge(edge: string): { from: string; to: string } | null {
   if (typeof edge !== 'string') return null
   const separator = edge.includes('<->') ? '<->' : edge.includes('->') ? '->' : null

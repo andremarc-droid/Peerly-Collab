@@ -378,4 +378,120 @@ describe('CanvasBuilderPage Component Tests', () => {
       )
     })
   })
+
+  it('prompts for confirmation when switching directed to undirected with connections, collapses reciprocal pairs, and reports count', async () => {
+    const existingQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Connect concepts',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: true,
+      wrongPenalty: 'half',
+      cards: [
+        { id: 'c1', type: 'note', title: 'Card 1', content: 'Text 1', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note', title: 'Card 2', content: 'Text 2', position: { x: 100, y: 0 } },
+      ],
+    }
+    const existingKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: '',
+      connections: [
+        { id: 'c1->c2', from: 'c1', to: 'c2', points: 2 },
+        { id: 'c2->c1', from: 'c2', to: 'c1', points: 6 },
+      ],
+    }
+
+    mocks.getQuestionWithKey.mockResolvedValueOnce({
+      id: 'board',
+      question: existingQuestion,
+      answerKey: existingKey,
+    })
+
+    renderBuilder()
+
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+
+    // Open Board settings
+    fireEvent.click(screen.getByRole('button', { name: 'Board settings' }))
+
+    // Directed connections checkbox should be checked
+    const directedCheckbox = await screen.findByRole('checkbox', { name: /Directed connections/i })
+    expect(directedCheckbox).toBeChecked()
+
+    // Uncheck directed checkbox
+    fireEvent.click(directedCheckbox)
+
+    // Confirmation dialog should appear
+    expect(await screen.findByRole('dialog', { name: 'Switch to undirected connections?' })).toBeInTheDocument()
+
+    // Confirm switch
+    const confirmBtn = screen.getByRole('button', { name: 'Switch to undirected' })
+    fireEvent.click(confirmBtn)
+
+    // Directed checkbox should now be unchecked
+    expect(directedCheckbox).not.toBeChecked()
+
+    // Toast should inform about merged reciprocal connection
+    expect(mocks.showToast).toHaveBeenCalledWith(
+      'info',
+      '1 reciprocal connection was merged into undirected connection.',
+    )
+
+    // Connection counter should show 1 of 80 (collapsed from 2)
+    expect(screen.getByText('Connections used 1 of 80')).toBeInTheDocument()
+  })
+
+  it('prompts for confirmation when switching undirected to directed with connections, and re-normalizes connection IDs', async () => {
+    const existingQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Connect concepts',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: false,
+      wrongPenalty: 'half',
+      cards: [
+        { id: 'c1', type: 'note', title: 'Card 1', content: 'Text 1', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note', title: 'Card 2', content: 'Text 2', position: { x: 100, y: 0 } },
+      ],
+    }
+    const existingKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: '',
+      connections: [{ id: 'c1<->c2', from: 'c1', to: 'c2', points: 3 }],
+    }
+
+    mocks.getQuestionWithKey.mockResolvedValueOnce({
+      id: 'board',
+      question: existingQuestion,
+      answerKey: existingKey,
+    })
+
+    renderBuilder()
+
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+
+    // Open Board settings
+    fireEvent.click(screen.getByRole('button', { name: 'Board settings' }))
+
+    // Directed checkbox is initially unchecked
+    const directedCheckbox = await screen.findByRole('checkbox', { name: /Directed connections/i })
+    expect(directedCheckbox).not.toBeChecked()
+
+    // Check directed checkbox
+    fireEvent.click(directedCheckbox)
+
+    // Confirmation dialog should appear
+    expect(await screen.findByRole('dialog', { name: 'Switch to directed connections?' })).toBeInTheDocument()
+
+    // Confirm switch
+    const confirmBtn = screen.getByRole('button', { name: 'Switch to directed' })
+    fireEvent.click(confirmBtn)
+
+    // Directed checkbox should now be checked
+    expect(directedCheckbox).toBeChecked()
+
+    expect(mocks.showToast).toHaveBeenCalledWith('success', 'Switched to directed connections.')
+  })
 })

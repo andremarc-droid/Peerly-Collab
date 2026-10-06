@@ -5,6 +5,7 @@ import {
   CANVAS_CARD_WIDTH,
   normalizeConnection,
   parseConnectionEdge,
+  renormalizeConnections,
   scatterCards,
   validateCanvasDefinition,
   validateCanvasKey,
@@ -37,6 +38,40 @@ describe('normalizeConnection', () => {
   it('trims whitespace', () => {
     expect(normalizeConnection(' card-a ', ' card-b ', true)).toBe('card-a->card-b')
     expect(normalizeConnection(' b ', ' a ', false)).toBe('a<->b')
+  })
+})
+
+describe('renormalizeConnections', () => {
+  it('re-normalizes connections when switching to directed mode', () => {
+    const input: CanvasConnection[] = [
+      { id: 'alpha<->beta', from: 'beta', to: 'alpha', points: 3 },
+      { id: 'gamma<->delta', from: 'gamma', to: 'delta', points: 1 },
+    ]
+    const result = renormalizeConnections(input, true)
+    expect(result.mergedCount).toBe(0)
+    expect(result.connections).toEqual([
+      { id: 'beta->alpha', from: 'beta', to: 'alpha', points: 3 },
+      { id: 'gamma->delta', from: 'gamma', to: 'delta', points: 1 },
+    ])
+  })
+
+  it('re-normalizes and collapses reciprocal pairs keeping higher points when switching to undirected', () => {
+    const input: CanvasConnection[] = [
+      { id: 'c1->c2', from: 'c1', to: 'c2', points: 2 },
+      { id: 'c2->c1', from: 'c2', to: 'c1', points: 5 },
+      { id: 'c1->c3', from: 'c1', to: 'c3', points: 1 },
+    ]
+    const result = renormalizeConnections(input, false)
+    expect(result.mergedCount).toBe(1)
+    expect(result.connections).toEqual([
+      { id: 'c1<->c2', from: 'c1', to: 'c2', points: 5 },
+      { id: 'c1<->c3', from: 'c1', to: 'c3', points: 1 },
+    ])
+  })
+
+  it('handles empty connections array', () => {
+    expect(renormalizeConnections([], true)).toEqual({ connections: [], mergedCount: 0 })
+    expect(renormalizeConnections([], false)).toEqual({ connections: [], mergedCount: 0 })
   })
 })
 
