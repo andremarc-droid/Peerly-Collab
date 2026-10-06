@@ -61,6 +61,45 @@ describe('module access rules and query proofs', () => {
       createdAt: new Date(), updatedAt: new Date(), publishedAt: null,
     }))
   })
+
+  it('enforces student read-only access: sees only published modules, cannot read draft module or its resources, cannot read modules of unjoined/removed class, and cannot write anything', async () => {
+    const student = environment.authenticatedContext('student').firestore()
+    const outside = environment.authenticatedContext('outside').firestore()
+    const removed = environment.authenticatedContext('removed').firestore()
+
+    // 1. Student sees only published modules
+    const publishedQuery = query(collection(student, 'classes/class-a/modules'), where('status', '==', 'published'))
+    const querySnap = await assertSucceeds(getDocs(publishedQuery))
+    if (querySnap.docs.map((d) => d.id).join() !== 'pub') throw new Error('Student query must return only published modules.')
+    await assertSucceeds(getDoc(doc(student, 'classes/class-a/modules/pub')))
+    await assertSucceeds(getDoc(doc(student, 'classes/class-a/modules/pub/resources/pub-resource')))
+
+    // 2. Student cannot read a draft module or its resources
+    await assertFails(getDoc(doc(student, 'classes/class-a/modules/draft')))
+    await assertFails(getDoc(doc(student, 'classes/class-a/modules/draft/resources/draft-resource')))
+
+    // 3. Student cannot read modules of a class they have not joined or were removed from
+    await assertFails(getDocs(query(collection(outside, 'classes/class-a/modules'), where('status', '==', 'published'))))
+    await assertFails(getDoc(doc(outside, 'classes/class-a/modules/pub')))
+    await assertFails(getDoc(doc(outside, 'classes/class-a/modules/pub/resources/pub-resource')))
+    await assertFails(getDocs(query(collection(removed, 'classes/class-a/modules'), where('status', '==', 'published'))))
+    await assertFails(getDoc(doc(removed, 'classes/class-a/modules/pub')))
+    await assertFails(getDoc(doc(removed, 'classes/class-a/modules/pub/resources/pub-resource')))
+
+    // 4. Student cannot write anything (modules or resources)
+    await assertFails(setDoc(doc(student, 'classes/class-a/modules/student-mod'), {
+      ownerId: 'student', title: 'Hacked', description: '', order: 0, status: 'published',
+      quizIds: [], resourceCount: 0, createdAt: new Date(), updatedAt: new Date(), publishedAt: new Date(),
+    }))
+    await assertFails(updateDoc(doc(student, 'classes/class-a/modules/pub'), { title: 'Hacked Title' }))
+    await assertFails(deleteDoc(doc(student, 'classes/class-a/modules/pub')))
+
+    await assertFails(setDoc(doc(student, 'classes/class-a/modules/pub/resources/student-res'), {
+      type: 'text', title: 'Hacked resource', body: 'text', order: 0, createdAt: new Date(), updatedAt: new Date(),
+    }))
+    await assertFails(updateDoc(doc(student, 'classes/class-a/modules/pub/resources/pub-resource'), { title: 'Hacked Resource' }))
+    await assertFails(deleteDoc(doc(student, 'classes/class-a/modules/pub/resources/pub-resource')))
+  })
   it('allows the owner to create, read, update and delete modules and resources', async () => {
     const owner = environment.authenticatedContext('owner').firestore()
     const batch = writeBatch(owner)
