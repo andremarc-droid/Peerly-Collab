@@ -59,7 +59,7 @@ async function defaultDecodeBitmap(blob: Blob): Promise<{ width: number; height:
   throw new Error('Image decoding is not supported in this environment.')
 }
 
-async function defaultRenderToCanvas(
+export async function defaultRenderToCanvas(
   source: unknown,
   width: number,
   height: number,
@@ -74,6 +74,8 @@ async function defaultRenderToCanvas(
   canvas.height = height
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Could not get 2D canvas context.')
+  ctx.fillStyle = 'white'
+  ctx.fillRect(0, 0, width, height)
   ctx.drawImage(source as CanvasImageSource, 0, 0, width, height)
   const dataUrl = canvas.toDataURL(mimeType, quality)
   return { dataUrl }

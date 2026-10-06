@@ -40,7 +40,7 @@ const oneOf = <T extends string>(value: unknown, values: readonly T[], name: str
   return value as T
 }
 
-const quizKeys = ['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings']
+const quizKeys = ['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'boardKind', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings']
 const settingsKeys = ['answerReveal', 'participation', 'scoreVisibility', 'scoresReleased', 'timeLimitMinutes', 'attemptsAllowed', 'shuffleQuestions', 'shuffleOptions']
 
 export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSettings {
@@ -79,6 +79,9 @@ export function parseQuiz(value: unknown): Quiz {
   const quiz = record(value, 'quiz')
   exactKeys(quiz, quizKeys, 'quiz')
   const mode = oneOf(quiz.mode, ['quiz', 'flashcards', 'canvas'] as const, 'mode')
+  const boardKind = mode === 'canvas'
+    ? (quiz.boardKind !== undefined ? oneOf(quiz.boardKind, ['prebuilt', 'blank'] as const, 'boardKind') : 'prebuilt')
+    : undefined
   if (!Array.isArray(quiz.tags) || !quiz.tags.every((tag) => typeof tag === 'string')) throw new DomainValidationError('tags must be a list of strings')
   if (quiz.tags.length > 20) throw new DomainValidationError('tags must not exceed 20 items')
   const title = string(quiz.title, 'title', true)
@@ -89,7 +92,7 @@ export function parseQuiz(value: unknown): Quiz {
     ownerId: string(quiz.ownerId, 'ownerId'), ownerName: string(quiz.ownerName, 'ownerName'),
     classId: quiz.classId === undefined || quiz.classId === null ? null : string(quiz.classId, 'classId'),
     title, description,
-    tags: quiz.tags as string[], mode, status: oneOf(quiz.status, ['draft', 'published', 'archived'] as const, 'status'),
+    tags: quiz.tags as string[], mode, ...(boardKind !== undefined ? { boardKind } : {}), status: oneOf(quiz.status, ['draft', 'published', 'archived'] as const, 'status'),
     questionCount: integer(quiz.questionCount, 'questionCount'), createdAt: timestamp(quiz.createdAt, 'createdAt'),
     updatedAt: timestamp(quiz.updatedAt, 'updatedAt'),
     publishedAt: quiz.publishedAt === null ? null : timestamp(quiz.publishedAt, 'publishedAt'),
@@ -97,7 +100,7 @@ export function parseQuiz(value: unknown): Quiz {
   }
 }
 
-export function parseQuestion(value: unknown, parseOptions?: { allowLegacyImages?: boolean }): QuizQuestion {
+export function parseQuestion(value: unknown, parseOptions?: { allowLegacyImages?: boolean; boardKind?: 'prebuilt' | 'blank' }): QuizQuestion {
   const question = record(value, 'question')
   const type = oneOf(question.type, ['multiple_choice', 'true_false', 'identification', 'fill_blank', 'flashcard', 'canvas'] as const, 'question.type')
   if (type === 'canvas') return validateCanvasDefinition(question, parseOptions)
@@ -146,9 +149,18 @@ export function parseAnswerKey(value: unknown): AnswerKey {
 export function validateQuestionAnswerPair(
   questionValue: unknown,
   keyValue: unknown,
-  options?: { allowLegacyImages?: boolean },
-): { question: QuizQuestion; answerKey: AnswerKey } {
+  options?: { allowLegacyImages?: boolean; boardKind?: 'prebuilt' | 'blank' },
+): { question: QuizQuestion; answerKey: AnswerKey | null } {
   const question = parseQuestion(questionValue, options)
+  const isBlankCanvas =
+    question.type === 'canvas' &&
+    (options?.boardKind === 'blank' ||
+      (question.cards.length === 0 && ('maxCards' in question || 'allowedCardTypes' in question || 'rubric' in question)))
+
+  if (isBlankCanvas) {
+    return { question, answerKey: null }
+  }
+
   const answerKey = parseAnswerKey(keyValue)
   if (question.type === 'canvas') {
     if (answerKey.type !== 'canvas') throw new DomainValidationError('canvas requires a canvas answer key')
@@ -173,7 +185,41 @@ export function parseQuizAttempt(value: unknown): QuizAttempt {
   if (Object.keys(answers).length > 200) throw new DomainValidationError('answers must not exceed 200 items')
   for (const [id, answer] of Object.entries(answers)) {
     string(id, 'answer question id')
-    if (typeof answer !== 'string' && !(Array.isArray(answer) && answer.every((item) => typeof item === 'string'))) throw new DomainValidationError('answers must be strings or lists of strings')
+    if (typeof answer !== 'string' && !(Array.isArray(answer) && answer.every((item) => typeof item === 'string'))) {
+      if (typeof answer === 'object' && answer !== null && !Array.isArray(answer)) {
+        const b = record(answer, `answers.${id}`)
+        if (!Array.isArray(b.cards) || !Array.isArray(b.connections)) {
+          throw new DomainValidationError(`answers.${id} must contain cards and connections lists`)
+        }
+        if (b.cards.length > 30) throw new DomainValidationError(`answers.${id}.cards must not exceed 30 items`)
+        if (b.connections.length > 80) throw new DomainValidationError(`answers.${id}.connections must not exceed 80 items`)
+        for (let i = 0; i < b.cards.length; i++) {
+          const c = record(b.cards[i], `answers.${id}.cards[${i}]`)
+          string(c.id, `card id`)
+          oneOf(c.type, ['note', 'paragraph', 'link'] as const, `card type`)
+          if (c.title !== undefined && c.title !== null) {
+            string(c.title, `card title`, true)
+            if (typeof c.title === 'string' && c.title.length > 120) throw new DomainValidationError(`card title must not exceed 120 characters`)
+          }
+          string(c.content, `card content`, true)
+          if (typeof c.content === 'string' && c.content.length > 1000) throw new DomainValidationError(`card content must not exceed 1000 characters`)
+          if (c.type === 'link') {
+            const url = string(c.url, `card url`)
+            if (!url.startsWith('https://')) throw new DomainValidationError(`link card url must start with https://`)
+          } else if (c.url !== undefined && c.url !== null && c.url !== '') {
+            throw new DomainValidationError(`only link cards can have a url`)
+          }
+          const pos = record(c.position, `card position`)
+          if (typeof pos.x !== 'number' || typeof pos.y !== 'number') throw new DomainValidationError(`card position must have x and y`)
+        }
+        for (let i = 0; i < b.connections.length; i++) {
+          const conn = b.connections[i]
+          if (typeof conn !== 'string') throw new DomainValidationError(`connections must be strings`)
+        }
+      } else {
+        throw new DomainValidationError('answers must be strings or lists of strings')
+      }
+    }
   }
   const optionOrder = record(attempt.optionOrder, 'optionOrder')
   if (!Object.values(optionOrder).every((order) => Array.isArray(order) && order.every((id) => typeof id === 'string'))) throw new DomainValidationError('optionOrder must map to lists of strings')
@@ -202,7 +248,7 @@ export function parseQuizParticipant(value: unknown): QuizParticipant {
 
 export function parseQuizResult(value: unknown): QuizResult {
   const result = record(value, 'result')
-  exactKeys(result, ['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt'], 'result')
+  exactKeys(result, ['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt', 'reviewStatus', 'feedback', 'gradedBy'], 'result')
   const perQuestion = record(result.perQuestion, 'perQuestion')
   const parsed: QuizResult['perQuestion'] = {}
   for (const [id, value] of Object.entries(perQuestion)) {
@@ -215,5 +261,19 @@ export function parseQuizResult(value: unknown): QuizResult {
   for (const field of ['score', 'maxScore'] as const) {
     if (typeof result[field] !== 'number' || !Number.isFinite(result[field]) || result[field] < 0) throw new DomainValidationError(`${field} must be non-negative`)
   }
-  return { userId: string(result.userId, 'userId'), score: result.score as number, maxScore: result.maxScore as number, perQuestion: parsed, gradedAt: timestamp(result.gradedAt, 'gradedAt') }
+  const reviewStatus = result.reviewStatus !== undefined ? oneOf(result.reviewStatus, ['pending', 'graded'] as const, 'reviewStatus') : undefined
+  const feedback = result.feedback !== undefined && result.feedback !== null ? string(result.feedback, 'feedback', true) : undefined
+  if (feedback && feedback.length > 1000) throw new DomainValidationError('feedback must not exceed 1000 characters')
+  const gradedBy = result.gradedBy !== undefined && result.gradedBy !== null ? string(result.gradedBy, 'gradedBy') : undefined
+
+  return {
+    userId: string(result.userId, 'userId'),
+    score: result.score as number,
+    maxScore: result.maxScore as number,
+    perQuestion: parsed,
+    gradedAt: timestamp(result.gradedAt, 'gradedAt'),
+    ...(reviewStatus ? { reviewStatus } : {}),
+    ...(feedback !== undefined ? { feedback } : {}),
+    ...(gradedBy ? { gradedBy } : {}),
+  }
 }

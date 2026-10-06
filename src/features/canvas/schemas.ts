@@ -119,8 +119,11 @@ function hasControlOrNewline(input: string): boolean {
   return false
 }
 
+import type { CanvasAllowedCardType } from './types'
+
 export interface ValidateCanvasOptions {
   allowLegacyImages?: boolean
+  boardKind?: 'prebuilt' | 'blank'
 }
 
 export function isLegacyImageCard(card: CanvasCard): boolean {
@@ -146,6 +149,67 @@ export function validateCanvasDefinition(value: unknown, options?: ValidateCanva
   const points = q.points === undefined ? 100 : numberField(q.points, 'points', 1)
   if (!Number.isInteger(points)) {
     throw new DomainValidationError('points must be a positive integer')
+  }
+
+  const isBlank =
+    options?.boardKind === 'blank' ||
+    q.boardKind === 'blank' ||
+    q.allowedCardTypes !== undefined ||
+    q.rubric !== undefined ||
+    q.maxCards !== undefined ||
+    (Array.isArray(q.cards) && q.cards.length === 0 && options?.boardKind !== 'prebuilt' && q.boardKind !== 'prebuilt' && q.layoutMode === undefined)
+
+  if (isBlank) {
+    let rubric: string | undefined
+    if (q.rubric !== undefined && q.rubric !== null && q.rubric !== '') {
+      rubric = string(q.rubric, 'rubric', true)
+      if (rubric.length > 1000) {
+        throw new DomainValidationError('rubric must not exceed 1000 characters')
+      }
+    }
+
+    const showRubricToStudents =
+      q.showRubricToStudents === undefined ? true : bool(q.showRubricToStudents, 'showRubricToStudents')
+
+    const maxCards = q.maxCards === undefined ? 20 : numberField(q.maxCards, 'maxCards', 1)
+    if (!Number.isInteger(maxCards) || maxCards < 1 || maxCards > 30) {
+      throw new DomainValidationError('maxCards must be an integer between 1 and 30')
+    }
+
+    const maxConnections = q.maxConnections === undefined ? 40 : numberField(q.maxConnections, 'maxConnections', 0)
+    if (!Number.isInteger(maxConnections) || maxConnections < 0 || maxConnections > 80) {
+      throw new DomainValidationError('maxConnections must be an integer between 0 and 80')
+    }
+
+    let allowedCardTypes: CanvasAllowedCardType[] = ['note', 'paragraph', 'link']
+    if (q.allowedCardTypes !== undefined) {
+      if (!Array.isArray(q.allowedCardTypes) || q.allowedCardTypes.length === 0) {
+        throw new DomainValidationError('allowedCardTypes must be a non-empty list')
+      }
+      for (const t of q.allowedCardTypes) {
+        if (t !== 'note' && t !== 'paragraph' && t !== 'link') {
+          throw new DomainValidationError(`Invalid allowedCardType: ${String(t)}`)
+        }
+      }
+      allowedCardTypes = Array.from(new Set(q.allowedCardTypes)) as CanvasAllowedCardType[]
+    }
+
+    if (q.cards !== undefined && (!Array.isArray(q.cards) || q.cards.length > 0)) {
+      throw new DomainValidationError('Blank canvas cards must be empty []')
+    }
+
+    return {
+      order,
+      type: 'canvas',
+      prompt,
+      points,
+      cards: [],
+      rubric,
+      showRubricToStudents,
+      maxCards,
+      maxConnections,
+      allowedCardTypes,
+    }
   }
 
   const layoutMode = (q.layoutMode ?? 'scattered') as CanvasLayoutMode

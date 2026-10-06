@@ -22,6 +22,8 @@ export interface QuizSettings {
   shuffleOptions: boolean
 }
 
+export type BoardKind = 'prebuilt' | 'blank'
+
 export interface Quiz {
   ownerId: string
   ownerName: string
@@ -30,6 +32,7 @@ export interface Quiz {
   description: string
   tags: string[]
   mode: QuizMode
+  boardKind?: BoardKind
   status: QuizStatus
   questionCount: number
   createdAt: Timestamp
@@ -111,7 +114,21 @@ export type AnswerKey =
   | FlashcardAnswerKey
   | CanvasAnswerKey
 
-export type SubmittedAnswer = string | string[]
+export interface BlankCanvasAnswerCard {
+  id: string
+  type: 'note' | 'paragraph' | 'link'
+  title?: string
+  content: string
+  url?: string
+  position: { x: number; y: number }
+}
+
+export interface BlankCanvasAnswer {
+  cards: BlankCanvasAnswerCard[]
+  connections: string[]
+}
+
+export type SubmittedAnswer = string | string[] | BlankCanvasAnswer
 export type AttemptStatus = 'in_progress' | 'submitted'
 
 export interface QuizAttempt {
@@ -133,12 +150,17 @@ export interface QuestionResult {
   overridden: boolean
 }
 
+export type ReviewStatus = 'pending' | 'graded'
+
 export interface QuizResult {
   userId: string
   score: number
   maxScore: number
   perQuestion: Record<string, QuestionResult>
   gradedAt: Timestamp
+  reviewStatus?: ReviewStatus
+  feedback?: string
+  gradedBy?: string
 }
 
 export interface QuizParticipant {
@@ -150,8 +172,8 @@ export interface QuizParticipant {
   activeAttemptId: string | null
 }
 
-export type NewQuiz = Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings'> & { classId?: string }
-export type QuizPatch = Partial<Pick<Quiz, 'title' | 'description' | 'tags' | 'settings' | 'classId'>>
+export type NewQuiz = Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings'> & { classId?: string; boardKind?: BoardKind }
+export type QuizPatch = Partial<Pick<Quiz, 'title' | 'description' | 'tags' | 'settings' | 'classId' | 'questionCount'>>
 
 export function quizModeLabel(mode: string): string {
   if (mode === 'canvas') return 'Canvas'

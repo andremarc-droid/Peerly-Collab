@@ -18,15 +18,22 @@ export interface CanvasCard {
 export type CanvasLayoutMode = 'scattered' | 'fixed'
 export type CanvasWrongPenalty = 'none' | 'half' | 'full'
 
+export type CanvasAllowedCardType = 'note' | 'paragraph' | 'link'
+
 export interface CanvasQuestion {
   order: number
   type: 'canvas'
   prompt: string
   points: number
-  layoutMode: CanvasLayoutMode
-  directed: boolean
-  wrongPenalty: CanvasWrongPenalty
+  layoutMode?: CanvasLayoutMode
+  directed?: boolean
+  wrongPenalty?: CanvasWrongPenalty
   cards: CanvasCard[]
+  rubric?: string
+  showRubricToStudents?: boolean
+  maxCards?: number
+  maxConnections?: number
+  allowedCardTypes?: CanvasAllowedCardType[]
 }
 
 export interface CanvasConnection {

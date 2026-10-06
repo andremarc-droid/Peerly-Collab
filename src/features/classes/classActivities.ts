@@ -21,6 +21,9 @@ export function countActivitiesByMode(items: QuizRecord[]) {
 }
 
 /** The quiz document has no card/connection counts, so readiness is based on whether the board question exists. */
-export function canvasBoardStatus(quiz: Pick<QuizRecord, 'questionCount'>): string {
+export function canvasBoardStatus(quiz: Pick<QuizRecord, 'questionCount'> & { boardKind?: 'prebuilt' | 'blank' }): string {
+  if (quiz.boardKind === 'blank') {
+    return quiz.questionCount > 0 ? 'Instructions ready' : 'Add instructions'
+  }
   return quiz.questionCount > 0 ? 'Board ready' : 'Add cards and connections'
 }
