@@ -130,4 +130,56 @@ describe('quiz Firestore services', () => {
     expect((await getQuizResult(quizId, attemptId, owner))?.perQuestion[questionId]).toMatchObject({ pointsAwarded: 0, correct: false, overridden: false })
     await expect(setQuestionGradeOverride(quizId, attemptId, questionId, 2, student)).rejects.toThrow()
   })
+
+  it('saves a canvas question and answer key atomically through service path and duplicateQuiz works on it', async () => {
+    await users()
+    const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+    const quizId = await createQuiz(
+      'teacher',
+      'Teacher',
+      {
+        title: 'Cell Biology Canvas',
+        description: 'Organelle relationships',
+        tags: ['biology'],
+        mode: 'canvas',
+        classId: 'class1',
+        settings: defaultQuizSettings('canvas'),
+      },
+      owner,
+    )
+
+    const questionPayload = {
+      order: 0,
+      type: 'canvas' as const,
+      prompt: 'Connect organelles to their functions',
+      points: 100,
+      layoutMode: 'scattered' as const,
+      directed: true,
+      wrongPenalty: 'half' as const,
+      cards: [
+        { id: 'c1', type: 'note' as const, title: 'Ribosome', content: 'Protein synthesis', position: { x: 50, y: 50 } },
+        { id: 'c2', type: 'paragraph' as const, title: 'ER', content: 'Transport and folding', position: { x: 250, y: 50 } },
+      ],
+    }
+
+    const answerKeyPayload = {
+      type: 'canvas' as const,
+      explanation: 'Ribosomes translate proteins onto rough ER.',
+      connections: [{ id: 'c1->c2', from: 'c1', to: 'c2', points: 5 }],
+    }
+
+    const savedId = await saveQuestionAndKey(quizId, 'board', questionPayload, answerKeyPayload, owner)
+    expect(savedId).toBe('board')
+
+    const updatedQuiz = await getQuiz(quizId, owner)
+    expect(updatedQuiz?.questionCount).toBe(1)
+    expect(updatedQuiz?.mode).toBe('canvas')
+
+    const copyId = await duplicateQuiz(quizId, owner)
+    const copyQuiz = await getQuiz(copyId, owner)
+    expect(copyQuiz?.title).toBe('Copy of Cell Biology Canvas')
+    expect(copyQuiz?.mode).toBe('canvas')
+    expect(copyQuiz?.questionCount).toBe(1)
+    expect(copyQuiz?.status).toBe('draft')
+  })
 })
