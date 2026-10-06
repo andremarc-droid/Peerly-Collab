@@ -7,10 +7,10 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { QuizEditorPage } from './QuizEditorPage'
 import { defaultQuizSettings } from '../schemas/settings'
 
-const mocks = vi.hoisted(() => ({ classes: [] as Array<{ id: string; name: string; status: string }>, questionCount: 0, createQuiz: vi.fn(), getQuiz: vi.fn(), updateQuiz: vi.fn(), saveQuestionAndKey: vi.fn(), watchQuestionPairs: vi.fn() }))
+const mocks = vi.hoisted(() => ({ classes: [] as Array<{ id: string; name: string; status: string }>, questionCount: 0, createQuiz: vi.fn(), getQuiz: vi.fn(), updateQuiz: vi.fn(), saveQuestionAndKey: vi.fn(), watchQuestionPairs: vi.fn(), getQuestionWithKey: vi.fn() }))
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'teacher', displayName: 'Teacher' } }) }))
 vi.mock('../../profile/useUserProfile', () => ({ useUserProfile: () => ({ profile: { name: 'Teacher' } }) }))
-vi.mock('../services', () => ({ createQuiz: mocks.createQuiz, getQuiz: mocks.getQuiz, updateQuiz: mocks.updateQuiz, saveQuestionAndKey: mocks.saveQuestionAndKey, watchQuestionPairs: mocks.watchQuestionPairs }))
+vi.mock('../services', () => ({ createQuiz: mocks.createQuiz, getQuiz: mocks.getQuiz, updateQuiz: mocks.updateQuiz, saveQuestionAndKey: mocks.saveQuestionAndKey, watchQuestionPairs: mocks.watchQuestionPairs, getQuestionWithKey: mocks.getQuestionWithKey }))
 vi.mock('../../classes/services/classService', () => ({ watchMyClasses: (_uid: string, onChange: (items: never[]) => void) => { onChange(mocks.classes as never[]); return () => undefined } }))
 vi.mock('../../../shared/ui/useToast', () => ({ useToast: () => ({ showToast: vi.fn() }) }))
 afterEach(cleanup)
@@ -23,6 +23,7 @@ beforeEach(() => {
   mocks.updateQuiz.mockReset().mockResolvedValue(undefined)
   mocks.saveQuestionAndKey.mockReset().mockResolvedValue('question-1')
   mocks.watchQuestionPairs.mockReset().mockImplementation((_id: string, onChange: (items: never[]) => void) => { onChange([]); return vi.fn() })
+  mocks.getQuestionWithKey.mockReset().mockResolvedValue(null)
 })
 
 describe('quick create and quiz deletion confirmation', () => {
@@ -68,5 +69,61 @@ describe('quick create and quiz deletion confirmation', () => {
     expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.not.objectContaining({ mode: expect.anything() }))
     expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.objectContaining({ title: 'Updated Title' }))
   })
+
+  it('allows selecting Canvas type in QuickCreateQuiz with one-line description and creates canvas draft', async () => {
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/new?classId=class-1']}>
+        <Routes>
+          <Route path="/instructor/quizzes/new" element={<QuizEditorPage />} />
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('dialog', { name: 'Create quiz' })).toBeInTheDocument()
+    expect(screen.getByText('Visual board where students connect related concept cards.')).toBeInTheDocument()
+
+    const canvasOption = screen.getByRole('button', { name: /Canvas/i })
+    fireEvent.click(canvasOption)
+
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cell Structure Canvas' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create and continue' }))
+
+    expect(mocks.createQuiz).toHaveBeenCalledWith(
+      'teacher',
+      'Teacher',
+      expect.objectContaining({
+        classId: 'class-1',
+        title: 'Cell Structure Canvas',
+        mode: 'canvas',
+      }),
+    )
+  })
+
+  it('renders CanvasBuilderPage when quiz mode is canvas and tab is questions', async () => {
+    mocks.getQuiz.mockResolvedValueOnce({
+      ...savedQuiz,
+      id: 'quiz-canvas',
+      mode: 'canvas',
+      title: 'Neural Networks',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-canvas?tab=questions']}>
+        <Routes>
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('CANVAS BUILDER')).toBeInTheDocument()
+    const workspaceNav = await screen.findByRole('navigation', { name: 'Quiz workspace' })
+    expect(workspaceNav).toBeInTheDocument()
+    expect(workspaceNav).toHaveTextContent('Questions')
+    expect(workspaceNav).toHaveTextContent('Settings')
+    expect(workspaceNav).toHaveTextContent('Preview')
+    expect(workspaceNav).toHaveTextContent('Results')
+  })
 })
+
 

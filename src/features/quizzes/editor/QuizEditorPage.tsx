@@ -1,5 +1,5 @@
 import { ArrowLeft, Plus, Save } from 'lucide-react'
-import { lazy, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useBeforeUnload, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
@@ -16,10 +16,12 @@ import { defaultQuizSettings } from '../schemas/settings'
 import { createQuiz, getQuiz, updateQuiz, watchQuestionPairs, type SavedQuestion } from '../services'
 import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
-import type { QuizSettings } from '../types'
+import type { QuizMode, QuizSettings } from '../types'
 import { validateQuizForm, type QuizFormErrors, type QuizFormValues } from './validation'
 import { QuickCreateQuiz } from '../authoring/QuickCreateQuiz'
 const QuestionBuilderPage = lazy(() => import('../builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
+const CanvasBuilderPage = lazy(() => import('../builder/CanvasBuilderPage'))
+const CanvasBoard = lazy(() => import('../../canvas/components/CanvasBoard'))
 
 const revealOptions = [
   { value: 'after_each', label: 'After each question', hint: 'See the answer and explanation right after responding.' },
@@ -129,7 +131,16 @@ export function QuizEditorPage() {
   if (loadError) return <AppShell><PageHeader eyebrow="QUIZ SETTINGS" title="Quiz unavailable" subtitle="We couldn’t load these settings." /><main className="app-shell__content quiz-editor"><Alert tone="error" label="Quiz not available">{loadError}</Alert><Button to="/instructor/quizzes">Back to all quizzes</Button></main></AppShell>
 
   const activeTab = searchParams.get('tab') ?? 'questions'
-  if (activeTab === 'questions') return <QuestionBuilderPage />
+  if (activeTab === 'questions') {
+    if (form.mode === 'canvas') {
+      return (
+        <Suspense fallback={<div className="quiz-editor-skeleton" aria-label="Loading canvas builder" />}>
+          <CanvasBuilderPage quizId={quizId} />
+        </Suspense>
+      )
+    }
+    return <QuestionBuilderPage />
+  }
   if (activeTab === 'preview') return <QuizPreviewTab quizId={quizId} />
 
   const experience = form.mode === 'flashcards'
@@ -150,7 +161,7 @@ export function QuizEditorPage() {
           <div className="quiz-editor__fields">
             <Select label="Class" name="quiz-class" value={classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active') ? '' : form.classId} onChange={(event) => { setForm({ ...form, classId: event.target.value }); setErrors({ ...errors, classId: undefined }) }} options={[{ label: classesLoaded ? 'Choose an active class' : 'Loading classes…', value: '' }, ...classes.filter((item) => item.status === 'active').map((item) => ({ label: item.name, value: item.id }))]} error={errors.classId} required hint="Quizzes are published to one class at a time." />
             <Input label="Quiz title" name="quiz-title" value={form.title} onChange={(event) => { setForm({ ...form, title: event.target.value }); setErrors({ ...errors, title: undefined }) }} error={errors.title} required maxLength={120} />
-            <label className="field" htmlFor="quiz-description"><span className="field__label">Description</span><textarea id="quiz-description" className="field__control quiz-editor__textarea" value={form.description} onChange={(event) => { setForm({ ...form, description: event.target.value }); setErrors({ ...errors, description: undefined }) }} rows={3} maxLength={2000} />{errors.description && <span className="field__error" role="alert">{errors.description}</span>}</label>
+            <label className="field" htmlFor="quiz-description"><span className="field__label">Description</span><textarea id="quiz-description" className="field__control quiz-editor__textarea" value={form.description} onChange={(event) => { setForm({ ...form, description: event.target.value }); setErrors({ ...errors, description: undefined }) }} rows={3} maxLength={2000} /></label>
             <Input label="Tags" name="quiz-tags" value={form.tags} onChange={(event) => { setForm({ ...form, tags: event.target.value }); setErrors({ ...errors, tags: undefined }) }} error={errors.tags} hint="Separate tags with commas (up to 20 tags)." />
             <div className="field">
               <span className="field__label">
@@ -201,7 +212,72 @@ export function QuizEditorPage() {
 
 function QuizPreviewTab({ quizId }: { quizId: string }) {
   const [title, setTitle] = useState('Quiz preview')
+  const [mode, setMode] = useState<QuizMode>('quiz')
   const [items, setItems] = useState<SavedQuestion[]>([])
-  useEffect(() => { let active = true; void getQuiz(quizId).then((quiz) => { if (active && quiz) setTitle(quiz.title || 'Quiz preview') }); const stop = watchQuestionPairs(quizId, (questions) => { if (active) setItems(questions) }, () => undefined); return () => { active = false; stop() } }, [quizId])
-  return <AppShell><PageHeader eyebrow="QUIZ PREVIEW" title={title} subtitle="A student-facing preview of your current questions." action={<Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button>} /><main className="app-shell__content quiz-editor"><nav aria-label="Quiz workspace" className="flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button><span className="section-kicker">Preview</span><Button to={`/instructor/quizzes/${quizId}/results`} variant="secondary">Results</Button></nav><p>Students answer {items.length} {items.length === 1 ? 'question' : 'questions'} with answers {items.length ? 'according to the quiz settings' : 'once you add them'}.</p><ol className="grid gap-4">{items.map(({ id, question }) => <li key={id} className="rounded-2xl border border-navy-200 p-4"><strong>{question.prompt}</strong>{'options' in question && <ul>{question.options.map((option) => <li key={option.id}>{option.text}</li>)}</ul>}</li>)}</ol></main></AppShell>
+
+  useEffect(() => {
+    let active = true
+    void getQuiz(quizId).then((quiz) => {
+      if (active && quiz) {
+        setTitle(quiz.title || 'Quiz preview')
+        setMode(quiz.mode)
+      }
+    })
+    const stop = watchQuestionPairs(
+      quizId,
+      (questions) => { if (active) setItems(questions) },
+      () => undefined,
+    )
+    return () => { active = false; stop() }
+  }, [quizId])
+
+  const canvasQuestion = items.find((item) => item.question.type === 'canvas')?.question as import('../../canvas/types').CanvasQuestion | undefined
+
+  return (
+    <AppShell>
+      <PageHeader
+        eyebrow="QUIZ PREVIEW"
+        title={title}
+        subtitle={mode === 'canvas' ? 'A student-facing preview of the canvas board.' : 'A student-facing preview of your current questions.'}
+        action={<Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button>}
+      />
+      <main className="app-shell__content quiz-editor">
+        <nav aria-label="Quiz workspace" className="flex flex-wrap gap-2">
+          <Button to={`/instructor/quizzes/${quizId}?tab=questions`} variant="secondary">Questions</Button>
+          <Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button>
+          <span className="section-kicker">Preview</span>
+          <Button to={`/instructor/quizzes/${quizId}/results`} variant="secondary">Results</Button>
+        </nav>
+        {mode === 'canvas' ? (
+          <div className="mt-4 grid gap-4">
+            <p className="text-sm text-navy-800-72">{canvasQuestion?.prompt || 'Connect the cards according to the activity instructions.'}</p>
+            <div className="h-[600px] w-full rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50">
+              <Suspense fallback={<div className="quiz-editor-skeleton" aria-label="Loading canvas preview" />}>
+                <CanvasBoard
+                  cards={canvasQuestion?.cards ?? []}
+                  connections={[]}
+                  mode="play"
+                  directed={canvasQuestion?.directed ?? true}
+                />
+              </Suspense>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p>Students answer {items.length} {items.length === 1 ? 'question' : 'questions'} with answers {items.length ? 'according to the quiz settings' : 'once you add them'}.</p>
+            <ol className="grid gap-4">
+              {items.map(({ id, question }) => (
+                <li key={id} className="rounded-2xl border border-navy-200 p-4">
+                  <strong>{question.prompt}</strong>
+                  {'options' in question && (
+                    <ul>{question.options.map((option) => <li key={option.id}>{option.text}</li>)}</ul>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+      </main>
+    </AppShell>
+  )
 }

@@ -18,6 +18,7 @@ import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
 import { archiveQuiz, duplicateQuiz, publishQuiz, restoreQuiz, unpublishQuiz, watchOwnerQuizzes, type QuizRecord } from '../services'
 import { countQuizAttempts, deleteQuizCascade } from '../services/deleteQuizCascade'
+import { quizModeLabel } from '../types'
 import { filterAndSortQuizzes, type QuizFilter, type QuizSort } from './quizList'
 
 interface DeleteSelection { quiz: QuizRecord; submissions: number }
@@ -111,7 +112,7 @@ export function InstructorQuizzesPage() {
 function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRecord; classLabel: string; busy: boolean; onAction: (id: string, label: string, action: () => Promise<unknown>) => void; onDelete: () => void }) {
   const statusLabel = quiz.status[0].toUpperCase() + quiz.status.slice(1)
   const updated = quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })
-  return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><Badge>{quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards'}</Badge><Badge>{classLabel}</Badge></div>}>
+  return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><Badge>{quizModeLabel(quiz.mode)}</Badge><Badge>{classLabel}</Badge></div>}>
     <div className="quiz-settings-badges">{settingBadges(quiz).map((label) => <span key={label}>{label}</span>)}</div>
     <div className="quiz-card__actions">
       <Button to={`/instructor/quizzes/${quiz.id}`}><Pencil size={15} aria-hidden="true" /> Edit</Button>

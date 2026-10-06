@@ -152,3 +152,9 @@ export interface QuizParticipant {
 
 export type NewQuiz = Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings'> & { classId?: string }
 export type QuizPatch = Partial<Pick<Quiz, 'title' | 'description' | 'tags' | 'settings' | 'classId'>>
+
+export function quizModeLabel(mode: string): string {
+  if (mode === 'canvas') return 'Canvas'
+  if (mode === 'flashcards') return 'Flashcards'
+  return 'Quiz'
+}

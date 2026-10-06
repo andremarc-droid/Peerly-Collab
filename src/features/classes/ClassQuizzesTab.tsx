@@ -12,6 +12,7 @@ import { Select } from '../../shared/ui/Select'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { archiveQuiz, countQuizAttempts, deleteQuizCascade, duplicateQuiz, publishQuiz, restoreQuiz, unpublishQuiz, type QuizRecord } from '../quizzes/services'
+import { quizModeLabel } from '../quizzes/types'
 import type { ClassWithId } from './types'
 import { copyQuizToClass, watchQuizzesForClass } from './services/quizService'
 
@@ -62,7 +63,7 @@ export function ClassQuizzesTab({ classroom, classes }: { classroom: ClassWithId
     <header className="flex flex-wrap items-end justify-between gap-3"><div><span className="section-kicker">CLASS PRACTICE</span><h2 id="class-quizzes-heading" className="m-0 text-2xl">Quizzes</h2></div>{classroom.status === 'active' ? <Button to={`/instructor/quizzes/new?classId=${encodeURIComponent(classroom.id)}`}><Plus size={16} aria-hidden="true" /> Create quiz</Button> : <Button type="button" disabled aria-label="Restore this class before creating quizzes">Restore this class before creating quizzes</Button>}</header>
     {error && <Alert tone="error" label="Quizzes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(null); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>}
     {loading ? <div className="grid gap-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 rounded-3xl" label="Loading class quiz" />)}</div>
-      : quizzes.length ? <div className="grid gap-3">{quizzes.map((quiz) => <DataCard key={quiz.id} title={quiz.title || 'Untitled quiz'} meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'} · Updated ${quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })}`} badge={<div className="flex gap-2"><Badge>{quiz.status}</Badge><Badge>{quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards'}</Badge></div>}>
+      : quizzes.length ? <div className="grid gap-3">{quizzes.map((quiz) => <DataCard key={quiz.id} title={quiz.title || 'Untitled quiz'} meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'} · Updated ${quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })}`} badge={<div className="flex gap-2"><Badge>{quiz.status}</Badge><Badge>{quizModeLabel(quiz.mode)}</Badge></div>}>
         <p className="m-0 flex flex-wrap gap-2 text-sm text-navy-800-72"><span>{quiz.settings.participation.type === 'group' ? `Group of ${quiz.settings.participation.groupSize}` : 'Individual'}</span><span>{quiz.settings.answerReveal === 'never' ? 'Answers hidden' : quiz.settings.answerReveal === 'after_each' ? 'Answers after each question' : 'Answers after submission'}</span><span>{quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} minutes` : 'Untimed'}</span></p>
         <div className="flex flex-wrap gap-2">
           <Button to={`/instructor/quizzes/${quiz.id}`}>Edit</Button>

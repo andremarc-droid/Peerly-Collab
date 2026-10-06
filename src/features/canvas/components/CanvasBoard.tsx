@@ -34,6 +34,8 @@ export interface CanvasBoardProps {
   onConnectionsChange?: (connections: CanvasConnection[]) => void
   onPositionsChange?: (positions: Record<string, { x: number; y: number }>) => void
   onCardsChange?: (cards: CanvasCard[]) => void
+  onCardClick?: (card: CanvasCard) => void
+  onConnectionClick?: (connection: CanvasConnection) => void
   connectCardsDialogSlot?: React.ReactNode
   className?: string
 }
@@ -49,6 +51,8 @@ function CanvasBoardInner({
   onConnectionsChange,
   onPositionsChange,
   onCardsChange,
+  onCardClick,
+  onConnectionClick,
   connectCardsDialogSlot,
   className = '',
 }: CanvasBoardProps) {
@@ -230,6 +234,22 @@ function CanvasBoardInner({
     [],
   )
 
+  const handleNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      const card = cards.find((c) => c.id === node.id)
+      if (card) onCardClick?.(card)
+    },
+    [cards, onCardClick],
+  )
+
+  const handleEdgeClick = useCallback(
+    (_event: React.MouseEvent, edge: Edge) => {
+      const conn = edgeToConnection(edge)
+      onConnectionClick?.(conn)
+    },
+    [onConnectionClick],
+  )
+
   const isDraggable = mode !== 'review'
   const isConnectable = mode !== 'review'
   const isDeletable = mode === 'edit'
@@ -278,6 +298,8 @@ function CanvasBoardInner({
           zoomOnScroll
           zoomOnPinch
           onlyRenderVisibleElements={onlyRenderVisible}
+          onNodeClick={onCardClick ? handleNodeClick : undefined}
+          onEdgeClick={onConnectionClick ? handleEdgeClick : undefined}
           onConnect={handleConnect}
           onEdgesDelete={handleEdgesDelete}
           onNodeDragStop={handleNodeDragStop}

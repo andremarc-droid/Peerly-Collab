@@ -5,7 +5,7 @@ import { listMyEnrollments } from '../classes/services/joinService'
 import { watchPublishedQuizzesForClass } from '../classes/services/quizService'
 import type { EnrollmentWithId } from '../classes/types'
 import { listUserAttempts } from '../quizzes/services/attemptService'
-import type { QuizAttempt } from '../quizzes/types'
+import { quizModeLabel, type QuizAttempt } from '../quizzes/types'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { DataCard } from '../../shared/ui/DataCard'
@@ -66,7 +66,7 @@ export function StudentQuizCatalogPage() {
 
   return <AppShell><PageHeader eyebrow="STUDENT SPACE" title="Practice." subtitle="Find published quizzes from your classes and pick up where you left off." action={<Button to="/join">Join class</Button>} />
     <main className="app-shell__content grid gap-6" id="main-content">
-      <Toolbar query={query} onQueryChange={setQuery} placeholder="Search quizzes" filters={<Select label="Quiz mode" options={[{ value: 'all', label: 'All modes' }, { value: 'quiz', label: 'Quiz' }, { value: 'flashcards', label: 'Flashcards' }]} value={mode} onChange={(event) => setMode(event.target.value)} />} />
+      <Toolbar query={query} onQueryChange={setQuery} placeholder="Search quizzes" filters={<Select label="Quiz mode" options={[{ value: 'all', label: 'All modes' }, { value: 'quiz', label: 'Quiz' }, { value: 'flashcards', label: 'Flashcards' }, { value: 'canvas', label: 'Canvas' }]} value={mode} onChange={(event) => setMode(event.target.value)} />} />
       {error && <div role="alert" className="alert alert--error"><strong>Quizzes unavailable.</strong> {error} <Button type="button" variant="secondary" onClick={() => { setError(''); setLoading(true); setRetry((n) => n + 1) }}>Retry</Button></div>}
       {loading ? <div className="grid gap-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-40 rounded-3xl" label="Loading quizzes" />)}</div> : <>
         <section className="grid gap-3" aria-labelledby="my-classes-heading"><h2 id="my-classes-heading" className="m-0 font-heading text-2xl">My classes</h2>{enrollments.length === 0 ? <EmptyState title="Join a class to get started" description="Use your instructor’s code to see published practice and class details." action={<Button to="/join">Join a class</Button>} /> : <div className="grid gap-3 sm:grid-cols-2">{enrollments.map((entry) => <DataCard key={entry.id} title={entry.className} meta={entry.status === 'active' ? 'Class and published quizzes' : entry.status === 'pending' ? 'Your request is waiting for approval' : 'Contact your instructor about access'} badge={<Badge>{entry.status === 'pending' ? 'Waiting for approval' : entry.status === 'active' ? 'Active' : 'Blocked'}</Badge>}>{entry.status === 'blocked' ? <span className="text-sm">Contact your instructor</span> : <Button to={`/student/classes/${entry.classId}`} variant="secondary">Open class</Button>}</DataCard>)}</div>}</section>
@@ -82,7 +82,7 @@ function CatalogCard({ quiz }: { quiz: CatalogQuiz }) {
   const remaining = quiz.settings.attemptsAllowed === null ? null : Math.max(0, quiz.settings.attemptsAllowed - quiz.attempts.length)
   const latest = quiz.attempts.find((item) => item.status === 'in_progress')
   const disabledGroup = quiz.settings.participation.type === 'group'
-  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${quiz.questionCount} questions${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} min` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><Badge>{quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards'}</Badge><Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={disabledGroup ? undefined : latest ? `/student/quizzes/${quiz.id}/attempts/${latest.id}` : `/student/quizzes/${quiz.id}`} disabled={disabledGroup || remaining === 0 && !latest} variant="secondary">{disabledGroup ? 'Group quizzes coming soon' : latest ? 'Resume' : 'View quiz'}</Button></DataCard>
+  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${quiz.questionCount} questions${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} min` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><Badge>{quizModeLabel(quiz.mode)}</Badge><Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={disabledGroup ? undefined : latest ? `/student/quizzes/${quiz.id}/attempts/${latest.id}` : `/student/quizzes/${quiz.id}`} disabled={disabledGroup || remaining === 0 && !latest} variant="secondary">{disabledGroup ? 'Group quizzes coming soon' : latest ? 'Resume' : 'View quiz'}</Button></DataCard>
 }
 
 function QuizCard({ quiz, attempt, action }: { quiz: CatalogQuiz; attempt: QuizAttempt & { id: string }; action: string }) {

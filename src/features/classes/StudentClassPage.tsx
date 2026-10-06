@@ -13,6 +13,7 @@ import { PageHeader } from '../../shared/ui/PageHeader'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { getClassCodePreview, leaveClass, listMyEnrollments } from './services/joinService'
+import { quizModeLabel } from '../quizzes/types'
 import { watchClass } from './services/classService'
 import { watchPublishedQuizzesForClass } from './services/quizService'
 import { ClassInitialBadge } from './ClassInitialBadge'
@@ -212,7 +213,7 @@ function StudentClassDetail({ classId }: { classId: string }) {
                 meta={meta}
                 badge={
                   <div className="flex flex-wrap gap-2">
-                    <Badge>{quiz.mode === 'quiz' ? 'Quiz' : 'Flashcards'}</Badge>
+                    <Badge>{quizModeLabel(quiz.mode)}</Badge>
                     <Badge>{answerRevealLabel(quiz.settings.answerReveal)}</Badge>
                     <Badge>{scoreVisibilityLabel(quiz)}</Badge>
                   </div>
