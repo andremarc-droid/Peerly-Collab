@@ -16,6 +16,8 @@ import { SectionCard } from '../../shared/ui/SectionCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { resultVisibility, persistedQuestionOrder } from './quizLogic'
 import { isLate } from '../quizzes/results/resultLogic'
+import { CanvasReviewView } from '../canvas/components/CanvasReviewView'
+import type { CanvasAnswerKey, CanvasQuestion } from '../canvas/types'
 
 type QuestionRecord = QuizQuestion & { id: string }
 type ReviewItem = { question: QuestionRecord; key: AnswerKey | null }
@@ -60,9 +62,22 @@ export function QuizResultPage() {
       const grade = result.perQuestion[question.id]
       return <SectionCard key={question.id} title={`Question ${index + 1}`} description={question.prompt}>
         {quiz.mode !== 'flashcards' && visibility.showScore && <span className={`attempt-status ${grade?.correct ? 'attempt-status--correct' : 'attempt-status--incorrect'}`}>{grade?.correct ? <CircleCheck size={16} aria-hidden="true" /> : <CircleX size={16} aria-hidden="true" />}{grade?.correct ? 'Correct' : 'Needs practice'} · {grade?.pointsAwarded ?? 0} / {question.points}</span>}
-        <p className="mt-3 mb-0"><strong>Your answer:</strong> {answerText(attempt.answers[question.id])}</p>
-        {key && <p className="mt-2 mb-0"><strong>Answer:</strong> {key.type === 'choice' && 'options' in question ? question.options.find(({ id }) => id === key.correctOptionId)?.text : key.type === 'identification' ? key.acceptedAnswers.join(', ') : key.type === 'fill_blank' ? key.blanks.map((blank) => blank.join(' / ')).join(' · ') : key.type === 'flashcard' ? key.back : ''}</p>}
-        {key?.explanation && <p className="mt-2 mb-0">{key.explanation}</p>}
+        {question.type === 'canvas' && key?.type === 'canvas' ? (
+          <div className="mt-3">
+            <CanvasReviewView
+              question={question as unknown as CanvasQuestion}
+              attemptId={attemptId}
+              studentAnswer={attempt.answers[question.id]}
+              answerKey={key as unknown as CanvasAnswerKey}
+            />
+          </div>
+        ) : (
+          <>
+            <p className="mt-3 mb-0"><strong>Your answer:</strong> {answerText(attempt.answers[question.id])}</p>
+            {key && <p className="mt-2 mb-0"><strong>Answer:</strong> {key.type === 'choice' && 'options' in question ? question.options.find(({ id }) => id === key.correctOptionId)?.text : key.type === 'identification' ? key.acceptedAnswers.join(', ') : key.type === 'fill_blank' ? key.blanks.map((blank) => blank.join(' / ')).join(' · ') : key.type === 'flashcard' ? key.back : ''}</p>}
+            {key?.explanation && <p className="mt-2 mb-0">{key.explanation}</p>}
+          </>
+        )}
       </SectionCard>
     })}</section>}
     <Button to="/student">Back to practice</Button></main>
