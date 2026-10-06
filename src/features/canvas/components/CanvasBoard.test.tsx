@@ -136,18 +136,86 @@ describe('CanvasBoard component', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
-  it('in review mode, renders the board with review configuration', () => {
+  it('in review mode, renders the board with review configuration and hides connections counter', () => {
     const { container } = render(
       <CanvasBoard
         cards={sampleCards}
         connections={sampleConnections}
         mode="review"
+        maxConnections={5}
         statusByConnection={{ 'c1->c2': 'correct' }}
       />,
     )
 
     expect(container.querySelector('.canvas-board-wrapper')).toBeInTheDocument()
     expect(screen.getByTestId('card-c1')).toBeInTheDocument()
+    expect(screen.queryByText(/Connections used/i)).not.toBeInTheDocument()
+  })
+
+  it('shows connections counter in edit and play modes', () => {
+    const { rerender } = render(
+      <CanvasBoard
+        cards={sampleCards}
+        connections={sampleConnections}
+        mode="edit"
+        maxConnections={5}
+      />,
+    )
+    expect(screen.getByText('Connections used 1 of 5')).toBeInTheDocument()
+
+    rerender(
+      <CanvasBoard
+        cards={sampleCards}
+        connections={sampleConnections}
+        mode="play"
+        maxConnections={5}
+      />,
+    )
+    expect(screen.getByText('Connections used 1 of 5')).toBeInTheDocument()
+  })
+
+  it('updates card content when card props change without count changes', () => {
+    const { rerender } = render(
+      <CanvasBoard
+        cards={sampleCards}
+        connections={sampleConnections}
+        mode="edit"
+      />,
+    )
+    expect(screen.getByText('Born on June 19, 1861.')).toBeInTheDocument()
+
+    const modifiedCards = sampleCards.map((c) =>
+      c.id === 'c1' ? { ...c, content: 'Updated biographical details.' } : c,
+    )
+
+    rerender(
+      <CanvasBoard
+        cards={modifiedCards}
+        connections={sampleConnections}
+        mode="edit"
+      />,
+    )
+    expect(screen.getByText('Updated biographical details.')).toBeInTheDocument()
+  })
+
+  it('in play mode, cards cannot be deleted', () => {
+    const onCardsChange = vi.fn()
+    render(
+      <CanvasBoard
+        cards={sampleCards}
+        connections={sampleConnections}
+        mode="play"
+        onCardsChange={onCardsChange}
+      />,
+    )
+
+    const card = screen.getAllByTestId('card-c1')[0]
+    expect(card).toBeInTheDocument()
+    fireEvent.click(card)
+    fireEvent.keyDown(card, { key: 'Delete', code: 'Delete' })
+    fireEvent.keyDown(card, { key: 'Backspace', code: 'Backspace' })
+
+    expect(onCardsChange).not.toHaveBeenCalled()
   })
 })
 

@@ -54,10 +54,12 @@ function CanvasBoardInner({
 }: CanvasBoardProps) {
   const [liveAnnouncement, setLiveAnnouncement] = useState('')
 
+  const isEditMode = mode === 'edit'
+
   // Map initial nodes and edges
   const initialNodes = useMemo(
-    () => cardsToNodes(cards, positions, { readOnly: mode !== 'edit' }),
-    [cards, positions, mode],
+    () => cardsToNodes(cards, positions, { readOnly: !isEditMode, deletable: isEditMode }),
+    [cards, positions, isEditMode],
   )
   const initialEdges = useMemo(
     () => connectionsToEdges(connections, directed, statusByConnection),
@@ -67,18 +69,50 @@ function CanvasBoardInner({
   const [nodes, setNodes] = useState<Node[]>(initialNodes)
   const [edges, setEdges] = useState<Edge[]>(initialEdges)
 
-  // Synchronize incoming prop changes without cascading renders
-  const [prevNodesKey, setPrevNodesKey] = useState('')
-  const nodesKey = `${cards.length}-${Object.keys(positions ?? {}).length}-${mode}`
-  if (nodesKey !== prevNodesKey) {
-    setPrevNodesKey(nodesKey)
-    setNodes(initialNodes)
+  // Stable signature of card ids, contents, titles, URLs, and positions
+  const cardsSignature = useMemo(
+    () =>
+      cards
+        .map((c) => {
+          const p = positions?.[c.id] ?? c.position
+          return `${c.id}:${c.type}:${c.title ?? ''}:${c.content}:${c.url ?? ''}:${c.driveFileId ?? ''}:${p?.x ?? 0},${p?.y ?? 0}`
+        })
+        .join('|') + `::${mode}`,
+    [cards, positions, mode],
+  )
+
+  // Stable signature of connection ids, endpoints, points, and review statuses
+  const edgesSignature = useMemo(
+    () =>
+      connections
+        .map((c) => {
+          const id = typeof c === 'string' ? c : c.id
+          const from = typeof c === 'string' ? '' : c.from
+          const to = typeof c === 'string' ? '' : c.to
+          const pts = typeof c === 'string' ? '' : (c.points ?? '')
+          const st = statusByConnection?.[id] ?? ''
+          return `${id}:${from}->${to}:${pts}:${st}`
+        })
+        .join('|') + `::${directed}`,
+    [connections, directed, statusByConnection],
+  )
+
+  // Synchronize incoming prop changes while preserving dragged positions
+  const [prevCardsSig, setPrevCardsSig] = useState(cardsSignature)
+  if (cardsSignature !== prevCardsSig) {
+    setPrevCardsSig(cardsSignature)
+    setNodes((currentNodes) => {
+      const currentPositions: Record<string, { x: number; y: number }> = {}
+      for (const n of currentNodes) {
+        currentPositions[n.id] = { x: n.position.x, y: n.position.y }
+      }
+      return cardsToNodes(cards, { ...currentPositions, ...positions }, { readOnly: !isEditMode, deletable: isEditMode })
+    })
   }
 
-  const [prevEdgesKey, setPrevEdgesKey] = useState('')
-  const edgesKey = `${connections.length}-${directed}-${Object.keys(statusByConnection ?? {}).length}`
-  if (edgesKey !== prevEdgesKey) {
-    setPrevEdgesKey(edgesKey)
+  const [prevEdgesSig, setPrevEdgesSig] = useState(edgesSignature)
+  if (edgesSignature !== prevEdgesSig) {
+    setPrevEdgesSig(edgesSignature)
     setEdges(initialEdges)
   }
 
@@ -209,18 +243,20 @@ function CanvasBoardInner({
       </div>
 
       {/* Visible Connections counter for play and edit mode */}
-      <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
-        <div
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-white text-navy-900 border border-navy-900-12 shadow-sm"
-          role="status"
-          aria-label={`Connections used ${connections.length} of ${maxConnections}`}
-        >
-          <span className="w-2 h-2 rounded-full bg-navy-800" aria-hidden="true" />
-          <span>
-            Connections used {connections.length} of {maxConnections}
-          </span>
+      {mode !== 'review' && (
+        <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+          <div
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-white text-navy-900 border border-navy-900-12 shadow-sm"
+            role="status"
+            aria-label={`Connections used ${connections.length} of ${maxConnections}`}
+          >
+            <span className="w-2 h-2 rounded-full bg-navy-800" aria-hidden="true" />
+            <span>
+              Connections used {connections.length} of {maxConnections}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="canvas-flow-container">
         <ReactFlow

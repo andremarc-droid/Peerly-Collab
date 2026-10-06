@@ -28,7 +28,7 @@ export interface CanvasEdgeData extends Record<string, unknown> {
 export function cardsToNodes(
   cards: CanvasCard[] = [],
   positions?: Record<string, { x: number; y: number }>,
-  options?: { readOnly?: boolean },
+  options?: { readOnly?: boolean; deletable?: boolean },
 ): Node<CanvasNodeData>[] {
   return cards.map((card) => {
     const overridePos = positions?.[card.id]
@@ -39,6 +39,7 @@ export function cardsToNodes(
       id: card.id,
       type: card.type,
       position: { x, y },
+      deletable: options?.deletable ?? (options?.readOnly ? false : true),
       data: {
         card,
         readOnly: options?.readOnly ?? false,

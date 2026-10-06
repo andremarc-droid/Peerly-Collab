@@ -97,4 +97,12 @@ describe('canvas pure mapping functions', () => {
       points: 10,
     })
   })
+
+  it('respects deletable options in cardsToNodes', () => {
+    const editableNodes = cardsToNodes(cards, undefined, { deletable: true })
+    expect(editableNodes[0].deletable).toBe(true)
+
+    const nonDeletableNodes = cardsToNodes(cards, undefined, { deletable: false })
+    expect(nonDeletableNodes[0].deletable).toBe(false)
+  })
 })
