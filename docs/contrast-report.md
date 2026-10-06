@@ -69,4 +69,47 @@ Stripes are strictly restricted to the right 40% of the `PageHeader` band, maske
 | Resource embed fallback link | `--color-navy-800` / `--color-white` | 16.52:1 | AAA |
 
 Feedback states pair each color with an icon and a visible text label. No navy element is placed on a navy background.
-All automated checks are enforced in CI via `src/styles/contrast.test.ts`.
+
+## Bound CSS Selector Contrast Pairs
+
+The automated test parses `src/styles/*.css`, finds the declarations for each selector, resolves `var()` tokens, and measures the foreground against background. All rules are bound to actual stylesheet declarations.
+
+| Element / Variant | CSS Selector | Measured Declarations (Color / Background) | Contrast | Result |
+| --- | --- | --- | ---: | --- |
+| Button primary on light | `.button--primary` | `var(--color-white)` / `var(--color-navy-800)` | 16.52:1 | AAA |
+| Button secondary on light | `.button--secondary` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+| Button tertiary on light | `.button--tertiary` | `var(--color-navy-900)` / body (`--color-white`) | 17.23:1 | AAA |
+| Button on-navy primary | `.button--on-navy.button--primary` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+| Button on-navy secondary | `.button--on-navy.button--secondary` | `var(--color-white)` / `.page-header` (`--color-navy-900`) | 17.23:1 | AAA |
+| Button destructive primary | `.button--destructive` | `var(--color-white)` / `var(--color-danger)` | 4.83:1 | AA |
+| Button destructive secondary | `.button--secondary.button--destructive` | `var(--color-danger-text)` / `var(--color-white)` | 7.48:1 | AAA |
+| Tabs inactive label | `.tabs__list button:not([aria-selected="true"])` | `var(--color-navy-800-72)` / `.tabs__list` (`--color-navy-900-08`) | 6.81:1 | AA |
+| Tabs hover label | `.tabs__list button:not([aria-selected="true"]):hover` | `var(--color-navy-900)` / `var(--color-navy-900-12)` | 13.91:1 | AAA |
+| Tabs selected label | `.tabs__list button[aria-selected="true"]` | `var(--color-white)` / `var(--color-navy-800)` | 16.52:1 | AAA |
+| Tab selected count badge | `.tabs__list button[aria-selected="true"] .tabs__count` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+| Tab inactive count badge | `.tabs__list button:not([aria-selected="true"]) .tabs__count` | `var(--color-navy-900)` / `var(--color-navy-900-12)` | 13.91:1 | AAA |
+| Badge on light surface | `.badge` | `var(--color-navy-800)` / `var(--color-white)` | 16.52:1 | AAA |
+| Badge on navy surface | `.page-header__badge` | `var(--color-white)` / `var(--color-navy-700)` | 13.71:1 | AAA |
+| Alert title | `.alert strong` | `var(--color-navy-900)` / `.alert` (`--color-white`) | 17.23:1 | AAA |
+| Alert body | `.alert span` | `var(--color-navy-800-72)` / `.alert` (`--color-white`) | 7.36:1 | AAA |
+| Stat tile white | `.stat-tile` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+| Stat tile navy | `.stat-tile--navy` | `var(--color-white)` / `var(--color-navy-900)` | 17.23:1 | AAA |
+| Empty state title | `.empty-state h2` | `var(--color-navy-900)` / `.empty-state` (`--color-white`) | 17.23:1 | AAA |
+| Empty state body | `.empty-state p` | `var(--color-navy-800-72)` / `.empty-state` (`--color-white`) | 7.36:1 | AAA |
+| Class-code panel | `.class-code-panel` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+| Header title | `.page-header h1` | `var(--color-white)` / `.page-header` (`--color-navy-900`) | 17.23:1 | AAA |
+| Header subtitle | `.page-header p` | `var(--color-white-72)` / `.page-header` (`--color-navy-900`) | 9.14:1 | AAA |
+| Page-header button primary | `.page-header__action .button--primary` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+| Page-header button secondary | `.page-header__action .button--secondary` | `var(--color-white)` / `.page-header` (`--color-navy-900`) | 17.23:1 | AAA |
+| Dialog | `.dialog` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+| Toast title | `.toast > strong` | `var(--color-navy-900)` / `.toast` (`--color-white`) | 17.23:1 | AAA |
+| Toast body | `.toast > span` | `var(--color-navy-800-72)` / `.toast` (`--color-white`) | 7.36:1 | AAA |
+| Field label | `.field__label` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+| Field hint | `.field__hint` | `var(--color-navy-800-72)` / `var(--color-white)` | 7.36:1 | AAA |
+| Field error | `.field__error` | `var(--color-danger-text)` / `var(--color-white)` | 7.48:1 | AAA |
+| Data table header | `.data-table th` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+| Segmented control inactive | `.segmented-control button` | `var(--color-navy-800-72)` / `.segmented-control` (`--color-navy-900-08`) | 6.81:1 | AA |
+| Segmented control selected | `.segmented-control button.is-selected` | `var(--color-navy-900)` / `var(--color-white)` | 17.23:1 | AAA |
+
+All automated checks are enforced in CI via `src/styles/contrast.test.ts`. Verified with a throwaway test edit changing `.button--primary` color to `var(--color-navy-900)`, which caused Contrast Test 1 and Contrast Test 4 to fail with ratio 1.04:1 and flag a Navy-on-Navy prohibition violation before being reverted.
+

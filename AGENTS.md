@@ -24,12 +24,16 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
   - Empty states: flat white card, centered, NO gradient, crisp illustration, headline, one sentence, one primary button.
   - Alerts: neutral white card, left accent bar, icon, bold title, dark-ink body (>= 4.5:1), action button; errors, warnings, and info share one layout.
   - Error and empty states never appear together (enforced via shared `resolveListStatus` helper).
-  - Comfort: body copy 16px minimum, metadata 14px, line-height 1.5–1.6, 8px grid, no large saturated area bigger than the header band, soft shadows.
+  - Comfort: body copy 16px minimum, metadata 14px (labels, hints, errors, captions, badges, toasts, card meta, stat labels and hints, switch captions, account menu text), line-height 1.5–1.6, 8px grid, no large saturated area bigger than the header band, soft shadows. Keep 12px only for decorative uppercase letter-spaced eyebrows.
+- Typography: Outfit headings with Inter body. Opacity tints are never used for small text. Check layouts at 360px, 768px, 1280px, and 1920px; ensure nothing horizontally overflows at 360px.
+- Geometry: 8px spatial grid with 16–24px rounded corners and soft multi-layer shadows.
+- Contrast pairs live in `docs/contrast-report.md`. Text pairs require >= 4.5:1 contrast; UI borders, icons, and focus rings require >= 3:1.
 - Use only white and navy as brand colors, with named Tailwind v4 theme tokens. Functional success, error, and warning colors may appear only in answer/status feedback and must include both an icon and text label.
 - Buttons must have 44px minimum touch targets, clear hover/pressed states, and visible focus rings. Respect reduced-motion preferences and prefer small CSS/IntersectionObserver motion effects.
 - Use lucide-react for icons. Do not hard-code colors in components; use theme tokens.
 - In signed-in areas, use the navy `AppShell` header with the white logo and the account dropdown. Keep its identity, role badge, profile link, and sign-out action visible and keyboard operable.
-- Compose in-app pages with `PageHeader`: a compact navy band (max ~160px desktop, ~120px mobile) with restrained right-masked stripes, eyebrow, title, subtitle, and optional action. Follow it with the centered white content panel overlapping the band by about 32px.
+- Compose in-app pages with `PageHeader`: a compact navy band (content-driven height, target min-height ~110px desktop, ~96px mobile) with restrained right-masked stripes, eyebrow, title, subtitle, and optional action. Follow it with the centered white content panel overlapping the band by about 32px.
+- Use `PageSection` with an icon badge, title, subtitle, and optional action to structure major dashboard and workspace regions.
 - Use `StatTile`/`StatRow` for concise, honest counts and hints; `EmptyState` to explain what belongs in a new area; `SectionCard` to group related content; and `DataCard` for list rows. Empty-state actions must work or be visibly disabled and labelled as coming soon.
 - Use `DropdownMenu`, `Dialog`, `ConfirmDialog`, `ToastProvider`, and `Tooltip` for shared interactions. Menus and dialogs support keyboard use; dialogs label their purpose, contain focus, close on Escape, and lock background scroll. Toasts have an icon, visible status label, live announcement, dismiss button, and timeout.
 - Shared form controls (`Input`, `Textarea`, `Select`, `Switch`, `Checkbox`, `RadioGroup`, `SegmentedControl`, `Tabs`) must keep labels, hints, and errors programmatically associated with their controls. Prefer native controls where they provide equivalent accessible behavior.
