@@ -623,7 +623,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
           <div className="flex flex-wrap items-center gap-3">
             <span
               className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
-                saving ? 'text-navy-700' : isDirty ? 'text-amber-800' : 'text-emerald-800'
+                saving ? 'text-navy-700' : isDirty ? 'text-feedback-warning' : 'text-feedback-success'
               }`}
               role="status"
             >
@@ -646,7 +646,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
             </span>
             {cards.length > 0 && validationErrors.length > 0 && (
               <span
-                className="text-sm font-medium text-amber-800 max-w-xs truncate"
+                className="text-sm font-medium text-feedback-warning max-w-xs truncate"
                 role="alert"
                 title={validationErrors[0]}
               >

@@ -299,4 +299,16 @@ describe('StudentModulePage', () => {
     fireEvent.click(retryBtn)
     expect(mocks.watchPublishedQuizzes).toHaveBeenCalledTimes(2)
   })
+
+  it('skips the quizzes subscription when the module has no attached quizzes', async () => {
+    mocks.subscribeToModule.mockImplementation((_cId: string, _mId: string, onChange: (val: ModuleWithId | null) => void) => {
+      onChange({ ...moduleRecord, quizIds: [] })
+      return () => undefined
+    })
+
+    renderModulePage()
+    expect(await screen.findByRole('heading', { name: 'Cellular Biology Basics' })).toBeInTheDocument()
+    expect(mocks.watchPublishedQuizzes).not.toHaveBeenCalled()
+    expect(screen.queryByRole('heading', { name: 'Attached quizzes' })).not.toBeInTheDocument()
+  })
 })

@@ -130,7 +130,7 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
   }, [classId, moduleId, enrollment, moduleRetry])
 
   useEffect(() => {
-    if (!classId || !moduleId || !module) return undefined
+    if (!classId || !moduleId || !module?.id) return undefined
     let cancelled = false
     const stopResources = subscribeToResources(
       classId,
@@ -152,10 +152,12 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
       cancelled = true
       stopResources()
     }
-  }, [classId, moduleId, module, resourcesRetry])
+  }, [classId, moduleId, module?.id, resourcesRetry])
+
+  const hasAttachedQuizzes = Boolean(module?.quizIds && module.quizIds.length > 0)
 
   useEffect(() => {
-    if (!classId || !module) return undefined
+    if (!classId || !module?.id || !hasAttachedQuizzes) return undefined
     let cancelled = false
     const stopQuizzes = watchPublishedQuizzesForClass(
       classId,
@@ -176,7 +178,7 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
       cancelled = true
       stopQuizzes()
     }
-  }, [classId, module, quizzesRetry])
+  }, [classId, module?.id, hasAttachedQuizzes, quizzesRetry])
 
   if (!enrollmentLoaded || (moduleLoading && !moduleError && !moduleNotFound)) {
     return (
