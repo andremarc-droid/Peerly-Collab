@@ -57,15 +57,17 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 
 ## CANVAS
 - Modes: `quiz`, `flashcards`, and `canvas`. Mode is permanently locked upon quiz creation.
-- A canvas quiz consists of exactly one 'board' question at `quizzes/{quizId}/questions/board` and its corresponding answer key at `quizzes/{quizId}/answerKeys/board`.
-- Hard limits: boards support up to 50 cards, 80 connections, and at most 12 uploaded images.
-- Image storage and processing: uploaded images are processed client-side (JPEG, PNG, WebP only up to 10 MB; SVG/GIF rejected), resized to at most 1024px on the longest side, and re-encoded to JPEG/WebP with quality stepping down until base64 data length is <= 350,000 characters (stripping EXIF metadata). Images live at `quizzes/{quizId}/images/{imageId}` with a 700,000-character hard limit. Image cards store `imageId` and required `alt` (max 200 characters); Drive link fields are removed for new cards.
+- Canvas kinds (`boardKind`): `'prebuilt'` (default) and `'blank'`. `boardKind` is locked permanently upon quiz creation.
+  - Prebuilt canvas: instructor builds a target board with cards (concept, fact, note, paragraph, link, image) and answer key connections; graded automatically browser-side against the answer key.
+  - Blank canvas: open-ended student concept mapping. The board question has `cards: []`, an optional rubric (max 1000 chars), `showRubricToStudents`, configurable limits (`maxCards` 1–30, default 20; `maxConnections` 0–80, default 40), and `allowedCardTypes` (`note`, `paragraph`, `link`). No answer key document exists for blank canvas (`validateQuestionAnswerPair` returns `{ question, answerKey: null }`).
+- Hard limits: prebuilt boards support up to 50 cards, 80 connections, and at most 12 uploaded images. Blank boards support up to 30 student cards, 80 connections, and notes/paragraphs/links.
+- Blank canvas student attempts: student answers are saved in `answers.board` as `{ cards: BlankCanvasAnswerCard[], connections: string[] }`. Debounced autosave preserves the student's card layout and connections.
+- Blank canvas grading lifecycle: student submit creates a result with `reviewStatus: 'pending'`, `score: 0`, and `maxScore: question.points`. Instructors review student boards with an interactive read-only board canvas, previous/next ungraded navigation, and a manual grading form (`score`, optional `feedback` max 1000 chars) which updates `reviewStatus: 'graded'`.
+- Results & CSV export: quiz results table features a "Needs grading" filter, count badge, status column, and CSV export with Review status and Feedback.
+- Image storage and processing: uploaded images are processed client-side (JPEG, PNG, WebP only up to 10 MB; SVG/GIF rejected), canvas filled with white prior to drawing so transparent PNGs do not turn black in JPEG, resized to at most 1024px on the longest side, and re-encoded to JPEG/WebP with quality stepping down until base64 data length is <= 350,000 characters (stripping EXIF metadata). Images live at `quizzes/{quizId}/images/{imageId}` with a 700,000-character hard limit and disabled single-field indexing in `firestore.indexes.json`.
 - Legacy image cards: boards with existing Google Drive image cards load safely without crashing, show a "Re-upload required" warning badge in the builder, and block saving or publishing until replaced with an uploaded image.
 - Connection ID formats: directed connections use `fromId->toId`; undirected connections use `fromId<->toId` (with endpoint IDs normalized alphabetically).
-- Grading: graded by connection weights/points; missing, wrong, or extra connections scored accordingly.
-- Student attempt answers are stored as `answers.board` of type `string[]`, strictly capped at 80 connection strings.
-- Client-side grading caveat: in v1, grading runs in the browser; answer keys are accessible to participants under Firestore rules.
-- QuickCreateQuiz supports a `mode` query parameter (`quiz`, `flashcards`, `canvas`). When opened from the Canvas tab (`?classId=<id>&mode=canvas`), the picker is preselected and locked to Canvas with an explicit notification, and submits directly into the canvas builder (`?tab=questions`).
+- QuickCreateQuiz supports `mode` and `boardKind` parameters. When opened from the Canvas tab (`?classId=<id>&mode=canvas`), the picker allows choosing between Prebuilt Canvas and Blank Canvas, and routes directly to the respective builder (`CanvasBuilderPage` or `BlankCanvasBuilder`).
 
 ## WORKING RULES
 - UI work uses shared components and theme tokens in `src/shared/ui`; no hard-coded colors. Unfinished features render visibly disabled with a “Coming soon” label.
