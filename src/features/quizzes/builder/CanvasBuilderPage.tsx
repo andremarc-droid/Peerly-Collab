@@ -998,7 +998,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
           title={pendingDirectedMode ? 'Switch to directed connections?' : 'Switch to undirected connections?'}
           description={
             pendingDirectedMode
-              ? 'Connections will point from source to target with arrowheads. Existing connection IDs will be updated.'
+              ? 'Connections will point from source to target with arrowheads. Existing connection IDs will be updated. Arrow directions will follow card id order. Review them after switching back.'
               : 'Directional arrows will be removed. Any reciprocal connections (e.g. A→B and B→A) will be merged into a single connection keeping the higher point value.'
           }
           confirmLabel={pendingDirectedMode ? 'Switch to directed' : 'Switch to undirected'}

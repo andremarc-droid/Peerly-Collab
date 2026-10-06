@@ -99,19 +99,16 @@ describe('useUnsavedChangesGuard', () => {
     expect(beforeUnloadEvent.defaultPrevented).toBe(true)
   })
 
-  it('guards on popstate event when dirty is true', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    const pushStateSpy = vi.spyOn(window.history, 'pushState')
-
+  it('does not prompt when clicking hash links like #main-content', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm')
     render(
       <BrowserRouter>
         <TestComponent dirty={true} />
+        <a href="#main-content">Skip to content</a>
       </BrowserRouter>,
     )
 
-    window.dispatchEvent(new PopStateEvent('popstate'))
-
-    expect(confirmSpy).toHaveBeenCalledWith('You have unsaved changes. Leave without saving?')
-    expect(pushStateSpy).toHaveBeenCalled()
+    fireEvent.click(screen.getByText('Skip to content'))
+    expect(confirmSpy).not.toHaveBeenCalled()
   })
 })

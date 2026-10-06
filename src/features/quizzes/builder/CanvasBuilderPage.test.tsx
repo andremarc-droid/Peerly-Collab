@@ -482,8 +482,11 @@ describe('CanvasBuilderPage Component Tests', () => {
     // Check directed checkbox
     fireEvent.click(directedCheckbox)
 
-    // Confirmation dialog should appear
+    // Confirmation dialog should appear with extended description
     expect(await screen.findByRole('dialog', { name: 'Switch to directed connections?' })).toBeInTheDocument()
+    expect(
+      screen.getByText(/Arrow directions will follow card id order\. Review them after switching back\./i),
+    ).toBeInTheDocument()
 
     // Confirm switch
     const confirmBtn = screen.getByRole('button', { name: 'Switch to directed' })
