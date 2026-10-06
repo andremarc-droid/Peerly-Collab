@@ -38,7 +38,7 @@ describe('quick create and quiz deletion confirmation', () => {
   it('creates the draft and routes into the Questions workspace', async () => {
     render(<MemoryRouter initialEntries={['/instructor/quizzes/new?classId=class-1']}><Routes><Route path="/instructor/quizzes/new" element={<QuizEditorPage />} /><Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} /></Routes></MemoryRouter>)
     fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Science review' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create and continue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create quiz' }))
     expect(await screen.findByRole('navigation', { name: 'Quiz workspace' })).toBeInTheDocument()
     expect(mocks.createQuiz).toHaveBeenCalledWith('teacher', 'Teacher', expect.objectContaining({ classId: 'class-1', title: 'Science review' }))
   })
@@ -87,7 +87,7 @@ describe('quick create and quiz deletion confirmation', () => {
     fireEvent.click(canvasOption)
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cell Structure Canvas' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create and continue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create canvas' }))
 
     expect(mocks.createQuiz).toHaveBeenCalledWith(
       'teacher',

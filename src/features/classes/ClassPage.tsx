@@ -12,17 +12,20 @@ import { Tabs } from '../../shared/ui/Tabs'
 import { useToast } from '../../shared/ui/useToast'
 import { listMyClasses, rotateJoinCode, setJoinEnabled, watchClass } from './services'
 import { countClassEnrollments, countPendingEnrollments, countStudentsInClass, watchEnrollments } from './services/enrollmentService'
-import { countClassQuizzes, watchQuizzesForClass } from './services/quizService'
+import { watchQuizzesForClass } from './services/quizService'
+import type { QuizRecord } from '../quizzes/services'
 import type { ClassWithId, EnrollmentWithId } from './types'
 import { ClassCodePanel } from './ClassCodePanel'
 import { ClassInitialBadge } from './ClassInitialBadge'
 import { ClassPeopleTab } from './ClassPeopleTab'
 import { ClassQuizzesTab } from './ClassQuizzesTab'
+import { ClassCanvasTab } from './ClassCanvasTab'
+import { countActivitiesByMode } from './classActivities'
 import { ClassSettingsTab } from './ClassSettingsTab'
 import { ModulesTab } from '../modules/ModulesTab'
 
-interface ClassCounts { students: number; pending: number; enrollments: number; quizzes: number }
-const emptyCounts: ClassCounts = { students: 0, pending: 0, enrollments: 0, quizzes: 0 }
+interface ClassCounts { students: number; pending: number; enrollments: number }
+const emptyCounts: ClassCounts = { students: 0, pending: 0, enrollments: 0 }
 
 export function ClassPage() {
   const { classId = '' } = useParams()
@@ -35,6 +38,10 @@ export function ClassPage() {
   const [classroom, setClassroom] = useState<ClassWithId | null>(null)
   const [classes, setClasses] = useState<ClassWithId[]>([])
   const [enrollments, setEnrollments] = useState<EnrollmentWithId[]>([])
+  const [quizzes, setQuizzes] = useState<QuizRecord[]>([])
+  const [quizzesLoading, setQuizzesLoading] = useState(true)
+  const [quizzesError, setQuizzesError] = useState<string | null>(null)
+  const [quizzesRetry, setQuizzesRetry] = useState(0)
   const [counts, setCounts] = useState(emptyCounts)
   const [loading, setLoading] = useState(true)
   const [resolvedClassId, setResolvedClassId] = useState<string | null>(null)
@@ -60,10 +67,12 @@ export function ClassPage() {
 
   const refreshCounts = useCallback(async (value: ClassWithId) => {
     try {
-      const [students, pending, enrollmentsCount, quizzes] = await Promise.all([
-        countStudentsInClass(value.id, value.ownerId), countPendingEnrollments(value.id, value.ownerId), countClassEnrollments(value.id, value.ownerId), countClassQuizzes(value.id, value.ownerId),
+      const [students, pending, enrollmentsCount] = await Promise.all([
+        countStudentsInClass(value.id, value.ownerId),
+        countPendingEnrollments(value.id, value.ownerId),
+        countClassEnrollments(value.id, value.ownerId),
       ])
-      setCounts({ students, pending, enrollments: enrollmentsCount, quizzes })
+      setCounts({ students, pending, enrollments: enrollmentsCount })
     } catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Class counts could not be loaded.') }
   }, [showToast])
 
@@ -74,10 +83,23 @@ export function ClassPage() {
 
   useEffect(() => {
     if (!classroom || !ownerId) return undefined
-    const stopEnrollments = watchEnrollments(classroom.id, ownerId, (items) => { setEnrollments(items); void refreshCounts(classroom) }, (reason) => setError(reason.message))
-    const stopQuizzes = watchQuizzesForClass(classroom.id, ownerId, () => void refreshCounts(classroom), (reason) => setError(reason.message))
-    return () => { stopEnrollments(); stopQuizzes() }
+    return watchEnrollments(classroom.id, ownerId, (items) => { setEnrollments(items); void refreshCounts(classroom) }, (reason) => setError(reason.message))
   }, [classroom, ownerId, refreshCounts])
+
+  const watchedClassId = classroom?.id
+  useEffect(() => {
+    if (!watchedClassId || !ownerId) return undefined
+    return watchQuizzesForClass(watchedClassId, ownerId,
+      (items) => { setQuizzes(items); setQuizzesError(null); setQuizzesLoading(false) },
+      (reason) => { setQuizzesError(reason.message); setQuizzesLoading(false) })
+  }, [watchedClassId, ownerId, quizzesRetry])
+
+  const activityFeed = {
+    items: quizzes,
+    loading: quizzesLoading,
+    error: quizzesError,
+    onRetry: () => { setQuizzesLoading(true); setQuizzesError(null); setQuizzesRetry((value) => value + 1) },
+  }
 
   async function toggleJoining(open: boolean) {
     if (!classroom) return
@@ -101,13 +123,16 @@ export function ClassPage() {
   if (error || !classroom) return <AppShell><PageHeader eyebrow="CLASSROOM" title="Class unavailable" subtitle="We couldn’t open this class." /><main className="app-shell__content grid gap-4">{error ? <Alert tone="error" label="Class unavailable" action={<Button type="button" variant="secondary" onClick={() => { setError(''); setResolvedClassId(null); setLoading(true); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert> : <Alert tone="error" label="Class not found">It may have been removed or you may not have access.</Alert>}<Button to="/instructor" variant="secondary">Back to My classes</Button></main></AppShell>
 
   const subtitle = [classroom.section, classroom.subject].filter(Boolean).join(' · ') || 'Manage learners, class quizzes, and invitations.'
+  const { quizzes: quizCount, canvas: canvasCount, total: totalActivities } = countActivitiesByMode(quizzes)
+
   const tabs = [
     { label: 'Modules', content: <ModulesTab key={classroom.id} classroom={classroom} /> },
-    { label: 'Quizzes and Activities', count: counts.quizzes, content: <ClassQuizzesTab key={classroom.id} classroom={classroom} classes={classes} /> },
+    { label: 'Quizzes', count: quizCount, content: <ClassQuizzesTab key={classroom.id} classroom={classroom} classes={classes} feed={activityFeed} /> },
+    { label: 'Canvas', count: canvasCount, content: <ClassCanvasTab key={classroom.id} classroom={classroom} classes={classes} feed={activityFeed} /> },
     { label: 'People', count: counts.students + counts.pending, content: <ClassPeopleTab key={classroom.id} classroom={classroom} enrollments={enrollments} counts={counts} /> },
-    { label: 'Settings', content: <ClassSettingsTab key={classroom.id} classroom={classroom} counts={{ students: counts.enrollments, quizzes: counts.quizzes }} /> },
+    { label: 'Settings', content: <ClassSettingsTab key={classroom.id} classroom={classroom} counts={{ students: counts.enrollments, quizzes: totalActivities }} /> },
   ]
-  const tabNames = ['modules', 'quizzes', 'people', 'settings']
+  const tabNames = ['modules', 'quizzes', 'canvas', 'people', 'settings']
   const selectedTab = tabNames.indexOf(searchParams.get('tab') ?? 'modules')
   const defaultTab = selectedTab < 0 ? 0 : selectedTab
 
@@ -126,7 +151,15 @@ export function ClassPage() {
       accent={classroom.accent}
     />
     <main className="app-shell__content grid gap-6" id="main-content">
-      <StatRow><StatTile label="Students" value={String(counts.students)} hint="Active enrollments" /><StatTile label="Pending requests" value={String(counts.pending)} hint="Waiting for approval" /><StatTile label="Quizzes" value={String(counts.quizzes)} hint="Assigned to this class" /></StatRow>
+      <StatRow>
+        <StatTile label="Students" value={String(counts.students)} hint="Active enrollments" />
+        <StatTile label="Pending requests" value={String(counts.pending)} hint="Waiting for approval" />
+        <StatTile
+          label="Activities"
+          value={String(totalActivities)}
+          hint={`${quizCount} ${quizCount === 1 ? 'quiz' : 'quizzes'} · ${canvasCount} canvas`}
+        />
+      </StatRow>
       <ClassCodePanel classroom={classroom} onJoiningChange={(open) => void toggleJoining(open)} onRegenerate={regenerate} busy={mutating} shareOnOpen={shareOnOpen} />
       <Tabs key={`${classroom.id}:${defaultTab}`} label={`${classroom.name} sections`} tabs={tabs} defaultIndex={defaultTab} onChange={(index) => setSearchParams({ tab: tabNames[index] ?? 'modules' })} />
     </main>

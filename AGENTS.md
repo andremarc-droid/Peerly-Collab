@@ -62,6 +62,7 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Grading: graded by connection weights/points; missing, wrong, or extra connections scored accordingly.
 - Student attempt answers are stored as `answers.board` of type `string[]`, strictly capped at 80 connection strings.
 - Client-side grading caveat: in v1, grading runs in the browser; answer keys are accessible to participants under Firestore rules.
+- QuickCreateQuiz supports a `mode` query parameter (`quiz`, `flashcards`, `canvas`). When opened from the Canvas tab (`?classId=<id>&mode=canvas`), the picker is preselected and locked to Canvas with an explicit notification, and submits directly into the canvas builder (`?tab=questions`).
 
 ## WORKING RULES
 - UI work uses shared components and theme tokens in `src/shared/ui`; no hard-coded colors. Unfinished features render visibly disabled with a “Coming soon” label.
@@ -71,6 +72,7 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 
 ## CLASSROOMS
 - Classes live at `classes/{classId}` and are owned by instructors. Students only see published quizzes for classes where their enrollment is active.
+- Class page tabs order: Modules, Quizzes, Canvas, People, Settings (`?tab=canvas` supported; unknown values fall back to Modules). Quizzes tab lists quiz and flashcards modes; Canvas tab lists canvas mode with board readiness summary. Tab count badges and the Activities stat tile derive honest per-mode counts from watched quizzes.
 - `classCodes/{CODE}` is a lookup preview index, never an authority; use the class document and Firestore rules for authoritative join checks. Codes are six characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, generated with Web Crypto and normalized by uppercasing and removing spaces and hyphens.
 - `enrollments/{classId}_{uid}` is the canonical membership record. Status is `active`, `pending`, or `blocked`; pending membership needs instructor approval and blocked students cannot recreate their enrollment.
 - New quizzes require a `classId`. Legacy quizzes without one remain visible to their owner as unassigned and cannot be published. Quiz assignment changes are allowed only while draft and to an active class owned by the same instructor.
