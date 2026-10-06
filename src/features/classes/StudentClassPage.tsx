@@ -22,6 +22,10 @@ import type { QuizRecord } from '../quizzes/services/quizService'
 import { listUserAttempts } from '../quizzes/services/attemptService'
 import type { QuizAttempt } from '../quizzes/types'
 
+import { subscribeToModules } from '../modules/services'
+import type { ModuleWithId } from '../modules/types'
+import '../modules/modules.css'
+
 function answerRevealLabel(value: QuizRecord['settings']['answerReveal']): string {
   if (value === 'after_each') return 'Answers after each question'
   if (value === 'after_submit') return 'Answers after submission'
@@ -34,8 +38,6 @@ function scoreVisibilityLabel(quiz: QuizRecord): string {
   if (quiz.settings.scoreVisibility === 'after_release') return 'Score released later'
   return 'Score hidden'
 }
-
-const EMPTY_QUIZZES: QuizRecord[] = []
 
 export function StudentClassPage() {
   const { classId = '' } = useParams()
@@ -50,7 +52,14 @@ function StudentClassDetail({ classId }: { classId: string }) {
   const [enrollmentLoaded, setEnrollmentLoaded] = useState(false)
   const [classroomState, setClassroomState] = useState<{ classId: string; value: ClassWithId | null } | null>(null)
   const [previewState, setPreviewState] = useState<{ classId: string; value: ClassCodeRecord | null } | null>(null)
-  const [quizState, setQuizState] = useState<{ classId: string; value: QuizRecord[] } | null>(null)
+  const [quizzes, setQuizzes] = useState<QuizRecord[]>([])
+  const [quizzesLoading, setQuizzesLoading] = useState(true)
+  const [quizzesError, setQuizzesError] = useState<string | null>(null)
+  const [quizzesRetry, setQuizzesRetry] = useState(0)
+  const [modules, setModules] = useState<ModuleWithId[]>([])
+  const [modulesLoading, setModulesLoading] = useState(true)
+  const [modulesError, setModulesError] = useState<string | null>(null)
+  const [modulesRetry, setModulesRetry] = useState(0)
   const [attemptsByQuiz, setAttemptsByQuiz] = useState<Record<string, Array<QuizAttempt & { id: string }>>>({})
   const [dataLoadedFor, setDataLoadedFor] = useState<string | null>(null)
   const [requestError, setRequestError] = useState<string | null>(null)
@@ -90,19 +99,56 @@ function StudentClassDetail({ classId }: { classId: string }) {
     }
     if (enrollment.status !== 'active') return undefined
 
-    let classReady = false
-    let quizzesReady = false
-    const updateReadyState = () => { if (classReady && quizzesReady) setDataLoadedFor(dataKey) }
-    const fail = (reason: Error) => { setRequestError(reason.message); setDataLoadedFor(dataKey) }
-    const stopClass = watchClass(classId, (value) => { setClassroomState({ classId, value }); classReady = true; updateReadyState() }, fail)
-    const stopQuizzes = watchPublishedQuizzesForClass(classId, (value) => { setQuizState({ classId, value }); quizzesReady = true; updateReadyState() }, fail)
-    return () => { stopClass(); stopQuizzes() }
+    const stopClass = watchClass(
+      classId,
+      (value) => {
+        setClassroomState({ classId, value })
+        setDataLoadedFor(dataKey)
+      },
+      (reason) => {
+        setRequestError(reason.message)
+        setDataLoadedFor(dataKey)
+      },
+    )
+    return () => { stopClass() }
   }, [classId, enrollment, retry])
+
+  useEffect(() => {
+    if (!enrollment || enrollment.status !== 'active') return undefined
+    return watchPublishedQuizzesForClass(
+      classId,
+      (value) => {
+        setQuizzes(value)
+        setQuizzesLoading(false)
+        setQuizzesError(null)
+      },
+      (reason) => {
+        setQuizzesError(reason.message)
+        setQuizzesLoading(false)
+      },
+    )
+  }, [classId, enrollment, quizzesRetry])
+
+  useEffect(() => {
+    if (!enrollment || enrollment.status !== 'active') return undefined
+    return subscribeToModules(
+      classId,
+      'student',
+      (value) => {
+        setModules(value)
+        setModulesLoading(false)
+        setModulesError(null)
+      },
+      (reason) => {
+        setModulesError(reason.message)
+        setModulesLoading(false)
+      },
+    )
+  }, [classId, enrollment, modulesRetry])
 
   const error = requestError
   const classroom = classroomState?.classId === classId ? classroomState.value : null
   const preview = previewState?.classId === classId ? previewState.value : null
-  const quizzes = (quizState?.classId === classId ? quizState.value : null) ?? EMPTY_QUIZZES
   const dataKey = enrollment ? `${classId}:${enrollment.status}` : null
   const loadingClass = Boolean(dataKey && (enrollment?.status === 'active' || enrollment?.status === 'pending') && dataLoadedFor !== dataKey)
 
@@ -195,44 +241,82 @@ function StudentClassDetail({ classId }: { classId: string }) {
           ))}
         </section>
       )}
-      {quizzes.length ? (
-        <section className="grid gap-4" aria-labelledby="published-quizzes-heading">
-          <header><span className="section-kicker">CLASS PRACTICE</span><h2 id="published-quizzes-heading" className="m-0 font-heading text-2xl">Published quizzes</h2></header>
-          {quizzes.map((quiz) => {
-            const groupQuiz = quiz.settings.participation.type === 'group'
-            const attempts = attemptsByQuiz[quiz.id] ?? []
-            const latestActive = attempts.find((a) => a.status === 'in_progress')
-            const remaining = quiz.settings.attemptsAllowed === null ? null : Math.max(0, quiz.settings.attemptsAllowed - attempts.length)
-            const meta = `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} minute time limit` : ' · No time limit'}${remaining !== null ? ` · ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left` : ' · Unlimited attempts'}`
-            const to = groupQuiz ? undefined : latestActive ? `/student/quizzes/${quiz.id}/attempts/${latestActive.id}` : `/student/quizzes/${quiz.id}`
-            const label = groupQuiz ? 'Start · Group quizzes coming soon' : latestActive ? 'Resume' : 'Start'
-            return (
-              <DataCard
-                key={quiz.id}
-                title={quiz.title}
-                meta={meta}
-                badge={
-                  <div className="flex flex-wrap gap-2">
-                    <Badge>{quizModeLabel(quiz.mode)}</Badge>
-                    <Badge>{answerRevealLabel(quiz.settings.answerReveal)}</Badge>
-                    <Badge>{scoreVisibilityLabel(quiz)}</Badge>
-                  </div>
-                }
-              >
-                <Button
-                  to={to}
-                  variant="secondary"
-                  disabled={groupQuiz || (remaining === 0 && !latestActive)}
+      <section className="grid gap-4" aria-labelledby="modules-heading">
+        <header><span className="section-kicker">STUDY MATERIAL</span><h2 id="modules-heading" className="m-0 font-heading text-2xl">Modules</h2></header>
+        {modulesLoading ? (
+          <div className="grid gap-3">{[0, 1].map((index) => <Skeleton key={index} className="h-32 rounded-3xl" label="Loading modules" />)}</div>
+        ) : modulesError ? (
+          <Alert tone="error" label="Modules unavailable" action={<Button type="button" variant="secondary" onClick={() => { setModulesLoading(true); setModulesError(null); setModulesRetry((v) => v + 1) }}>Retry</Button>}>{modulesError}</Alert>
+        ) : modules.length ? (
+          <ol className="module-list" aria-label="Published modules in order">
+            {modules.map((item) => (
+              <li key={item.id} className="module-list__item">
+                <DataCard
+                  title={item.title}
+                  meta={`${item.resourceCount} ${item.resourceCount === 1 ? 'resource' : 'resources'} · ${item.quizIds.length} attached ${item.quizIds.length === 1 ? 'quiz' : 'quizzes'}`}
+                  actions={
+                    <Button to={`/student/classes/${classId}/modules/${item.id}`} variant="secondary">
+                      Open module
+                    </Button>
+                  }
                 >
-                  {remaining === 0 && !latestActive ? 'No attempts left' : label}
-                </Button>
-              </DataCard>
-            )
-          })}
-        </section>
-      ) : (
-        <EmptyState title="No published quizzes yet" description="When your instructor publishes a quiz for this class, it will show up here." />
-      )}
+                  {item.description ? (
+                    <p className="m-0 text-sm text-navy-800-72 line-clamp-2">
+                      {item.description}
+                    </p>
+                  ) : null}
+                </DataCard>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <EmptyState title="No modules yet" description="When your instructor publishes study modules for this class, they will appear here." />
+        )}
+      </section>
+      <section className="grid gap-4" aria-labelledby="published-quizzes-heading">
+        <header><span className="section-kicker">CLASS PRACTICE</span><h2 id="published-quizzes-heading" className="m-0 font-heading text-2xl">Published quizzes</h2></header>
+        {quizzesLoading ? (
+          <div className="grid gap-3">{[0, 1].map((index) => <Skeleton key={index} className="h-28 rounded-3xl" label="Loading published quizzes" />)}</div>
+        ) : quizzesError ? (
+          <Alert tone="error" label="Quizzes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setQuizzesLoading(true); setQuizzesError(null); setQuizzesRetry((v) => v + 1) }}>Retry</Button>}>{quizzesError}</Alert>
+        ) : quizzes.length ? (
+          <div className="grid gap-3">
+            {quizzes.map((quiz) => {
+              const groupQuiz = quiz.settings.participation.type === 'group'
+              const attempts = attemptsByQuiz[quiz.id] ?? []
+              const latestActive = attempts.find((a) => a.status === 'in_progress')
+              const remaining = quiz.settings.attemptsAllowed === null ? null : Math.max(0, quiz.settings.attemptsAllowed - attempts.length)
+              const meta = `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} minute time limit` : ' · No time limit'}${remaining !== null ? ` · ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left` : ' · Unlimited attempts'}`
+              const to = groupQuiz ? undefined : latestActive ? `/student/quizzes/${quiz.id}/attempts/${latestActive.id}` : `/student/quizzes/${quiz.id}`
+              const label = groupQuiz ? 'Start · Group quizzes coming soon' : latestActive ? 'Resume' : 'Start'
+              return (
+                <DataCard
+                  key={quiz.id}
+                  title={quiz.title}
+                  meta={meta}
+                  badge={
+                    <div className="flex flex-wrap gap-2">
+                      <Badge>{quizModeLabel(quiz.mode)}</Badge>
+                      <Badge>{answerRevealLabel(quiz.settings.answerReveal)}</Badge>
+                      <Badge>{scoreVisibilityLabel(quiz)}</Badge>
+                    </div>
+                  }
+                >
+                  <Button
+                    to={to}
+                    variant="secondary"
+                    disabled={groupQuiz || (remaining === 0 && !latestActive)}
+                  >
+                    {remaining === 0 && !latestActive ? 'No attempts left' : label}
+                  </Button>
+                </DataCard>
+              )
+            })}
+          </div>
+        ) : (
+          <EmptyState title="No published quizzes yet" description="When your instructor publishes a quiz for this class, it will show up here." />
+        )}
+      </section>
       {submittedAttempts.length > 0 && (
         <section className="grid gap-3" aria-labelledby="attempt-history-heading">
           <header><span className="section-kicker">SUBMISSIONS</span><h2 id="attempt-history-heading" className="m-0 font-heading text-2xl">My attempts</h2></header>
