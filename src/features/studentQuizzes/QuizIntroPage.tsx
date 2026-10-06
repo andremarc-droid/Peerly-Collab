@@ -1,4 +1,4 @@
-import { BarChart3, Clock3, Eye, Repeat2 } from 'lucide-react'
+import { AlertCircle, BarChart3, Clock3, Eye, Layers, Repeat2, Share2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
@@ -7,6 +7,7 @@ import { getQuiz, type QuizRecord } from '../quizzes/services/quizService'
 import { listQuestions } from '../quizzes/services/questionService'
 import { listUserAttempts, startAttempt } from '../quizzes/services/attemptService'
 import type { QuizAttempt } from '../quizzes/types'
+import type { CanvasQuestion } from '../canvas/types'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { PageHeader } from '../../shared/ui/PageHeader'
@@ -19,6 +20,7 @@ export function QuizIntroPage() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [quiz, setQuiz] = useState<QuizRecord | null>(null)
+  const [canvasQuestion, setCanvasQuestion] = useState<CanvasQuestion | null>(null)
   const [active, setActive] = useState<(QuizAttempt & { id: string }) | null>(null)
   const [attemptCount, setAttemptCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -33,6 +35,10 @@ export function QuizIntroPage() {
       if (!found || found.status !== 'published') { setError('This quiz is no longer available.'); setLoading(false); return }
       if (questions.length === 0) { setError('This quiz does not have any questions yet.'); setLoading(false); return }
       setQuiz(found)
+      if (found.mode === 'canvas') {
+        const boardQ = questions.find((q) => (q as { type?: unknown }).type === 'canvas') as unknown as CanvasQuestion | undefined
+        if (boardQ) setCanvasQuestion(boardQ)
+      }
       setActive(attempts.find((attempt) => attempt.status === 'in_progress') ?? null)
       setAttemptCount(attempts.length)
       setLoading(false)
@@ -55,12 +61,80 @@ export function QuizIntroPage() {
   if (!quiz) return <AppShell><PageHeader eyebrow="QUIZ" title="Quiz unavailable." subtitle="This quiz may have been unpublished." /><main className="app-shell__content grid gap-4">{error && <Alert tone="error" label="Quiz unavailable">{error}</Alert>}<Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
   const remaining = remainingAttempts(quiz, attemptCount)
   const isGroup = quiz.settings.participation.type === 'group'
-  return <AppShell><PageHeader eyebrow={quiz.mode === 'quiz' ? 'QUIZ INTRODUCTION' : 'FLASHCARDS'} title={`${quiz.title}.`} subtitle={quiz.description || 'Review the details before you begin.'} />
-    <main className="app-shell__content grid gap-5"><SectionCard title="Before you start" description="Here is how this practice will work.">
-      <ul className="quiz-expect-list"><li><Clock3 size={20} aria-hidden="true" /><span>{quiz.settings.timeLimitMinutes ? `You have ${quiz.settings.timeLimitMinutes} minutes once you start.` : 'There is no time limit.'}</span></li><li><Repeat2 size={20} aria-hidden="true" /><span>{remaining === null ? 'You can make unlimited attempts.' : `${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`}</span></li><li><Eye size={20} aria-hidden="true" /><span>{quiz.mode === 'flashcards' ? 'Flip each card and rate how well you knew it. There is no score.' : quiz.settings.answerReveal === 'after_each' ? 'You can check each answer and see its explanation before moving on.' : quiz.settings.answerReveal === 'after_submit' ? 'Answers and explanations appear after you submit.' : 'Correct answers are not revealed.'}</span></li><li><BarChart3 size={20} aria-hidden="true" /><span>{quiz.settings.scoreVisibility === 'immediate' ? 'Your score appears immediately after submission.' : quiz.settings.scoreVisibility === 'after_release' ? 'Your instructor will release scores later.' : 'Scores are not shown to students.'}</span></li></ul>
-      {isGroup && <Alert tone="warning" label="Group quizzes coming soon">This quiz is for a group and cannot be started yet.</Alert>}
-      {remaining === 0 && !active && !isGroup && <Alert tone="warning" label="No attempts left">You have used all attempts allowed for this quiz.</Alert>}
-      {error && <Alert tone="error" label="Could not start quiz">{error}</Alert>}
-      <div className="mt-5 flex flex-wrap gap-3"><Button type="button" disabled={busy || isGroup || remaining === 0 && !active} onClick={() => void begin()}>{busy ? 'Opening…' : active ? 'Resume quiz' : 'Start quiz'}</Button><Button to="/student" variant="secondary">Back to practice</Button></div>
-    </SectionCard></main></AppShell>
+  const isCanvas = quiz.mode === 'canvas'
+  const cardCount = canvasQuestion?.cards?.length ?? 0
+  const penaltyText = canvasQuestion?.wrongPenalty === 'none'
+    ? 'No penalty for incorrect connections.'
+    : canvasQuestion?.wrongPenalty === 'full'
+      ? 'Full penalty: incorrect connections deduct the full value of an average connection’s points.'
+      : 'Half penalty: incorrect connections deduct half of an average connection’s points.'
+
+  return <AppShell>
+    <PageHeader
+      eyebrow={isCanvas ? 'CANVAS PRACTICE' : quiz.mode === 'quiz' ? 'QUIZ INTRODUCTION' : 'FLASHCARDS'}
+      title={`${quiz.title}.`}
+      subtitle={quiz.description || 'Review the details before you begin.'}
+    />
+    <main className="app-shell__content grid gap-5">
+      <SectionCard title="Before you start" description="Here is how this practice will work.">
+        <ul className="quiz-expect-list">
+          {isCanvas && (
+            <>
+              <li>
+                <Share2 size={20} aria-hidden="true" />
+                <span>Connect the cards that belong together.</span>
+              </li>
+              <li>
+                <Layers size={20} aria-hidden="true" />
+                <span>{cardCount} {cardCount === 1 ? 'card' : 'cards'} on the board.</span>
+              </li>
+              <li>
+                <AlertCircle size={20} aria-hidden="true" />
+                <span>{penaltyText}</span>
+              </li>
+            </>
+          )}
+          <li>
+            <Clock3 size={20} aria-hidden="true" />
+            <span>{quiz.settings.timeLimitMinutes ? `You have ${quiz.settings.timeLimitMinutes} minutes once you start.` : 'There is no time limit.'}</span>
+          </li>
+          <li>
+            <Repeat2 size={20} aria-hidden="true" />
+            <span>{remaining === null ? 'You can make unlimited attempts.' : `${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`}</span>
+          </li>
+          <li>
+            <Eye size={20} aria-hidden="true" />
+            <span>
+              {quiz.mode === 'flashcards'
+                ? 'Flip each card and rate how well you knew it. There is no score.'
+                : quiz.settings.answerReveal === 'after_each'
+                  ? 'You can check each answer and see its explanation before moving on.'
+                  : quiz.settings.answerReveal === 'after_submit'
+                    ? 'Answers and explanations appear after you submit.'
+                    : 'Correct answers are not revealed.'}
+            </span>
+          </li>
+          <li>
+            <BarChart3 size={20} aria-hidden="true" />
+            <span>
+              {quiz.settings.scoreVisibility === 'immediate'
+                ? 'Your score appears immediately after submission.'
+                : quiz.settings.scoreVisibility === 'after_release'
+                  ? 'Your instructor will release scores later.'
+                  : 'Scores are not shown to students.'}
+            </span>
+          </li>
+        </ul>
+        {isGroup && <Alert tone="warning" label="Group quizzes coming soon">This quiz is for a group and cannot be started yet.</Alert>}
+        {remaining === 0 && !active && !isGroup && <Alert tone="warning" label="No attempts left">You have used all attempts allowed for this quiz.</Alert>}
+        {error && <Alert tone="error" label="Could not start quiz">{error}</Alert>}
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Button type="button" disabled={busy || isGroup || (remaining === 0 && !active)} onClick={() => void begin()}>
+            {busy ? 'Opening…' : active ? 'Resume quiz' : 'Start quiz'}
+          </Button>
+          <Button to="/student" variant="secondary">Back to practice</Button>
+        </div>
+      </SectionCard>
+    </main>
+  </AppShell>
 }

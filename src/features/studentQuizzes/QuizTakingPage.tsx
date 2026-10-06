@@ -18,6 +18,8 @@ import { PageHeader } from '../../shared/ui/PageHeader'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { optionOrderForQuestion, persistedQuestionOrder, remainingSeconds, shouldAutoSubmit } from './quizLogic'
+import { CanvasPlayPage } from './CanvasPlayPage'
+import type { CanvasQuestion } from '../canvas/types'
 
 type QuestionRecord = QuizQuestion & { id: string }
 const answerValue = (value: SubmittedAnswer | undefined, index?: number) => Array.isArray(value) ? (index === undefined ? '' : value[index] ?? '') : value ?? ''
@@ -164,7 +166,7 @@ export function QuizTakingPage() {
   const options = 'options' in question ? optionOrderForQuestion(question.id, attempt, question).map((id) => question.options.find((option) => option.id === id)!).filter(Boolean) : []
   const timeText = seconds === null ? null : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 
-  return <AppShell><PageHeader eyebrow={quiz.mode === 'flashcards' ? 'FLASHCARDS' : 'QUIZ IN PROGRESS'} title={quiz.title} subtitle={`${index + 1} of ${questions.length}${timeText ? ` · ${timeText} remaining` : ''}`} />
+  return <AppShell><PageHeader eyebrow={quiz.mode === 'flashcards' ? 'FLASHCARDS' : quiz.mode === 'canvas' ? 'CANVAS PRACTICE' : 'QUIZ IN PROGRESS'} title={quiz.title} subtitle={`${index + 1} of ${questions.length}${timeText ? ` · ${timeText} remaining` : ''}`} />
     <main className="app-shell__content grid gap-5" id="main-content">
       <label className="grid gap-2 text-sm font-semibold">Progress <progress aria-label="Quiz progress" max={questions.length} value={answeredCount} className="h-3 w-full accent-navy-900" /></label>
       {seconds !== null && seconds <= 60 && seconds > 0 && <Alert tone="warning" label="One minute remaining">Your quiz will submit automatically when time runs out.</Alert>}
@@ -182,10 +184,45 @@ export function QuizTakingPage() {
           {error}
         </Alert>
       )}
-      <section className="quiz-taking__card grid gap-5 rounded-3xl bg-white p-5 sm:p-8" aria-labelledby="question-title" onKeyDown={(event) => { if (event.key === 'ArrowLeft') go(index - 1); if (event.key === 'ArrowRight' && !checkedCurrent) go(index + 1); if (/^[1-6]$/.test(event.key) && options[Number(event.key) - 1] && !checkedCurrent) setAnswer(question.id, options[Number(event.key) - 1].id); if (event.key === 'Enter' && !(event.target instanceof HTMLButtonElement) && quiz.mode !== 'flashcards') { event.preventDefault(); if (revealEach && !checkedCurrent) void checkCurrent(); else if (index < questions.length - 1) go(index + 1); else setReviewOpen(true) } }}>
+      <section className="quiz-taking__card grid gap-5 rounded-3xl bg-white p-5 sm:p-8" aria-labelledby="question-title" onKeyDown={(event) => { if (quiz.mode === 'canvas') return; if (event.key === 'ArrowLeft') go(index - 1); if (event.key === 'ArrowRight' && !checkedCurrent) go(index + 1); if (/^[1-6]$/.test(event.key) && options[Number(event.key) - 1] && !checkedCurrent) setAnswer(question.id, options[Number(event.key) - 1].id); if (event.key === 'Enter' && !(event.target instanceof HTMLButtonElement) && quiz.mode !== 'flashcards') { event.preventDefault(); if (revealEach && !checkedCurrent) void checkCurrent(); else if (index < questions.length - 1) go(index + 1); else setReviewOpen(true) } }}>
         <p className="m-0 text-sm font-semibold">Question {index + 1} · {question.points} {question.points === 1 ? 'point' : 'points'}</p>
         <h2 id="question-title" className="m-0 font-heading text-2xl">{question.prompt}</h2>
-        {quiz.mode === 'flashcards' ? flashcardsFinished ? <div className="grid gap-3"><p className="m-0">You rated {Object.values(answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {questions.length} cards: {Object.values(answers).filter((answer) => answer === 'knew').length} marked “Knew it” and {Object.values(answers).filter((answer) => answer === 'learning').length} still learning.</p><Button type="button" onClick={() => void submit()}>Finish review</Button></div> : <Flashcard question={question} quizId={quizId} onRate={(rating) => { setAnswer(question.id, rating); if (index < questions.length - 1) go(index + 1); else setFlashcardsFinished(true) }} /> : <AnswerInput question={question} options={options} value={answers[question.id]} disabled={Boolean(checkedCurrent)} onChange={(value) => setAnswer(question.id, value)} />}
+        {quiz.mode === 'flashcards' ? (
+          flashcardsFinished ? (
+            <div className="grid gap-3">
+              <p className="m-0">
+                You rated {Object.values(answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {questions.length} cards: {Object.values(answers).filter((answer) => answer === 'knew').length} marked “Knew it” and {Object.values(answers).filter((answer) => answer === 'learning').length} still learning.
+              </p>
+              <Button type="button" onClick={() => void submit()}>Finish review</Button>
+            </div>
+          ) : (
+            <Flashcard
+              question={question}
+              quizId={quizId}
+              onRate={(rating) => {
+                setAnswer(question.id, rating)
+                if (index < questions.length - 1) go(index + 1)
+                else setFlashcardsFinished(true)
+              }}
+            />
+          )
+        ) : quiz.mode === 'canvas' ? (
+          <CanvasPlayPage
+            question={question as unknown as CanvasQuestion & { id: string }}
+            attemptId={attemptId}
+            connections={Array.isArray(answers[question.id]) ? (answers[question.id] as string[]) : []}
+            onChange={(nextConnections) => setAnswer(question.id, nextConnections)}
+            disabled={Boolean(checkedCurrent)}
+          />
+        ) : (
+          <AnswerInput
+            question={question}
+            options={options}
+            value={answers[question.id]}
+            disabled={Boolean(checkedCurrent)}
+            onChange={(value) => setAnswer(question.id, value)}
+          />
+        )}
         {checkedCurrent && <Alert tone={checkedCurrent.correct ? 'success' : 'warning'} label={checkedCurrent.correct ? 'Correct' : 'Review this answer'}>{checkedCurrent.explanation || 'No explanation was provided.'}</Alert>}
         <div className="flex flex-wrap gap-3">{revealEach && !checkedCurrent && quiz.mode !== 'flashcards' && <Button type="button" variant="secondary" onClick={() => void checkCurrent()}>Check answer</Button>}{checkedCurrent && <Button type="button" onClick={() => go(index + 1)}>Next</Button>}</div>
       </section>
