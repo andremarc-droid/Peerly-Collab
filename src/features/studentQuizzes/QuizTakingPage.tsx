@@ -19,11 +19,21 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { optionOrderForQuestion, persistedQuestionOrder, remainingSeconds, shouldAutoSubmit } from './quizLogic'
 import { CanvasPlayPage } from './CanvasPlayPage'
+import { BlankCanvasPlayPage } from './BlankCanvasPlayPage'
 import type { CanvasQuestion } from '../canvas/types'
+import type { BlankCanvasAnswer } from '../quizzes/types'
 
 type QuestionRecord = QuizQuestion & { id: string }
-const answerValue = (value: SubmittedAnswer | undefined, index?: number) => Array.isArray(value) ? (index === undefined ? '' : value[index] ?? '') : value ?? ''
-const hasAnswer = (value: SubmittedAnswer | undefined) => Array.isArray(value) ? value.some((item) => Boolean(item.trim())) : Boolean(value?.trim())
+const answerValue = (value: SubmittedAnswer | undefined, index?: number) => Array.isArray(value) ? (index === undefined ? '' : value[index] ?? '') : typeof value === 'object' && value !== null ? '' : value ?? ''
+const hasAnswer = (value: SubmittedAnswer | undefined) => {
+  if (value === undefined || value === null) return false
+  if (Array.isArray(value)) return value.some((item) => Boolean(item.trim()))
+  if (typeof value === 'object') {
+    const blank = value as { cards?: unknown[] }
+    return Array.isArray(blank.cards) && blank.cards.length > 0
+  }
+  return Boolean(value.trim())
+}
 
 function readCheckedAnswers(storageKey: string) {
   try {
@@ -148,8 +158,13 @@ export function QuizTakingPage() {
     if (!question) return
     try {
       const pair = await getQuestionWithKey(quizId, question.id)
-      if (!pair) throw new Error('Answer key unavailable.')
-      const result = gradeAttempt({ userId: user!.uid, questions: [{ ...pair.question, id: question.id }], answerKeys: { [question.id]: pair.answerKey }, answers: { [question.id]: answers[question.id] ?? '' } })
+      if (!pair || !pair.answerKey) throw new Error('Answer key unavailable.')
+      const result = gradeAttempt({
+        userId: user!.uid,
+        questions: [{ ...pair.question, id: question.id }],
+        answerKeys: { [question.id]: pair.answerKey },
+        answers: { [question.id]: (answers[question.id] as string | string[]) ?? '' },
+      })
       const updated = { ...checked, [question.id]: { correct: result.perQuestion[question.id].correct, explanation: pair.answerKey.explanation } }
       sessionStorage.setItem(checkedStorageKey, JSON.stringify(updated))
       setChecked(updated)
@@ -254,6 +269,15 @@ export function QuizTakingPage() {
               }}
             />
           )
+        ) : quiz.mode === 'canvas' && quiz.boardKind === 'blank' ? (
+          <BlankCanvasPlayPage
+            question={question as unknown as CanvasQuestion & { id: string }}
+            attemptId={attemptId}
+            quizId={quizId}
+            value={answers[question.id] as BlankCanvasAnswer | undefined}
+            onChange={(nextVal) => setAnswer(question.id, nextVal)}
+            disabled={Boolean(checkedCurrent)}
+          />
         ) : quiz.mode === 'canvas' ? (
           <CanvasPlayPage
             question={question as unknown as CanvasQuestion & { id: string }}
@@ -299,7 +323,16 @@ function AnswerInput({ question, options, value, disabled, onChange }: { questio
 function Flashcard({ question, quizId, onRate }: { question: QuestionRecord; quizId: string; onRate: (rating: string) => void }) {
   const [back, setBack] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  async function flip() { setLoading(true); try { const pair = await getQuestionWithKey(quizId, question.id); if (!pair || pair.answerKey.type !== 'flashcard') throw new Error('Card unavailable'); setBack(pair.answerKey.back) } finally { setLoading(false) } }
+  async function flip() {
+    setLoading(true)
+    try {
+      const pair = await getQuestionWithKey(quizId, question.id)
+      if (!pair || !pair.answerKey || pair.answerKey.type !== 'flashcard') throw new Error('Card unavailable')
+      setBack(pair.answerKey.back)
+    } finally {
+      setLoading(false)
+    }
+  }
   return <div className="grid gap-4"><Button type="button" variant="secondary" onClick={() => void flip()} disabled={loading}>{back ? 'Card back' : 'Flip card'}</Button>{back && <div className="rounded-2xl border border-navy-900-20 p-5"><p className="m-0">{back}</p><div className="mt-4 flex flex-wrap gap-3"><Button type="button" onClick={() => onRate('knew')}>Knew it</Button><Button type="button" variant="secondary" onClick={() => onRate('learning')}>Still learning</Button></div></div>}</div>
 }
 

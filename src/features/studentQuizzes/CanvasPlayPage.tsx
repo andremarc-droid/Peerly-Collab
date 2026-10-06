@@ -146,7 +146,7 @@ export function CanvasPlayPage({
       return
     }
 
-    const norm = normalizeConnection(connectFrom, connectTo, question.directed)
+    const norm = normalizeConnection(connectFrom, connectTo, question.directed ?? true)
     if (sanitizedConnections.includes(norm)) {
       setConnectError('These cards are already connected.')
       return
@@ -155,7 +155,7 @@ export function CanvasPlayPage({
     const next = sanitizeCanvasAnswers(
       [...sanitizedConnections, norm],
       validCardIds,
-      question.directed,
+      question.directed ?? true,
     )
     onChange(next)
     const fromName = cardLabel(connectFrom)
@@ -182,9 +182,9 @@ export function CanvasPlayPage({
       const parsed = parseConnectionEdge(connStr)
       const fromName = parsed ? cardLabel(parsed.from) : ''
       const toName = parsed ? cardLabel(parsed.to) : ''
-      const norm = parsed ? normalizeConnection(parsed.from, parsed.to, question.directed) : connStr
+      const norm = parsed ? normalizeConnection(parsed.from, parsed.to, question.directed ?? true) : connStr
       const next = sanitizedConnections.filter((c) => c !== connStr && c !== norm)
-      onChange(sanitizeCanvasAnswers(next, validCardIds, question.directed))
+      onChange(sanitizeCanvasAnswers(next, validCardIds, question.directed ?? true))
       setAnnouncement(
         fromName && toName
           ? `Removed connection between ${fromName} and ${toName}.`

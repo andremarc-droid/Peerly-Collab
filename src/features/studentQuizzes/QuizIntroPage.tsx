@@ -62,6 +62,7 @@ export function QuizIntroPage() {
   const remaining = remainingAttempts(quiz, attemptCount)
   const isGroup = quiz.settings.participation.type === 'group'
   const isCanvas = quiz.mode === 'canvas'
+  const isBlankCanvas = isCanvas && quiz.boardKind === 'blank'
   const cardCount = canvasQuestion?.cards?.length ?? 0
   const penaltyText = canvasQuestion?.wrongPenalty === 'none'
     ? 'No penalty for incorrect connections.'
@@ -71,14 +72,45 @@ export function QuizIntroPage() {
 
   return <AppShell>
     <PageHeader
-      eyebrow={isCanvas ? 'CANVAS PRACTICE' : quiz.mode === 'quiz' ? 'QUIZ INTRODUCTION' : 'FLASHCARDS'}
+      eyebrow={isBlankCanvas ? 'BLANK CANVAS' : isCanvas ? 'CANVAS PRACTICE' : quiz.mode === 'quiz' ? 'QUIZ INTRODUCTION' : 'FLASHCARDS'}
       title={`${quiz.title}.`}
       subtitle={quiz.description || 'Review the details before you begin.'}
     />
     <main className="app-shell__content grid gap-5">
+      {isBlankCanvas && canvasQuestion?.prompt && (
+        <SectionCard title="Instructions" description="Follow your instructor's guidelines to construct your board.">
+          <div className="whitespace-pre-wrap text-base text-navy-900 leading-relaxed font-body">
+            {canvasQuestion.prompt}
+          </div>
+          {canvasQuestion.showRubricToStudents && canvasQuestion.rubric && (
+            <div className="mt-4 pt-4 border-t border-navy-900-12">
+              <h3 className="m-0 text-sm font-semibold uppercase tracking-wider text-navy-700">Grading Rubric</h3>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-navy-900 leading-relaxed">
+                {canvasQuestion.rubric}
+              </p>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
       <SectionCard title="Before you start" description="Here is how this practice will work.">
         <ul className="quiz-expect-list">
-          {isCanvas && (
+          {isBlankCanvas ? (
+            <>
+              <li>
+                <Layers size={20} aria-hidden="true" />
+                <span>Add up to {canvasQuestion?.maxCards ?? 20} cards ({canvasQuestion?.allowedCardTypes?.join(', ') ?? 'note, paragraph, link'}).</span>
+              </li>
+              <li>
+                <Share2 size={20} aria-hidden="true" />
+                <span>Draw up to {canvasQuestion?.maxConnections ?? 40} connections between cards.</span>
+              </li>
+              <li>
+                <Eye size={20} aria-hidden="true" />
+                <span>Your instructor will check your board.</span>
+              </li>
+            </>
+          ) : isCanvas ? (
             <>
               <li>
                 <Share2 size={20} aria-hidden="true" />
@@ -93,7 +125,7 @@ export function QuizIntroPage() {
                 <span>{penaltyText}</span>
               </li>
             </>
-          )}
+          ) : null}
           <li>
             <Clock3 size={20} aria-hidden="true" />
             <span>{quiz.settings.timeLimitMinutes ? `You have ${quiz.settings.timeLimitMinutes} minutes once you start.` : 'There is no time limit.'}</span>
@@ -102,26 +134,30 @@ export function QuizIntroPage() {
             <Repeat2 size={20} aria-hidden="true" />
             <span>{remaining === null ? 'You can make unlimited attempts.' : `${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`}</span>
           </li>
-          <li>
-            <Eye size={20} aria-hidden="true" />
-            <span>
-              {quiz.mode === 'flashcards'
-                ? 'Flip each card and rate how well you knew it. There is no score.'
-                : quiz.settings.answerReveal === 'after_each'
-                  ? 'You can check each answer and see its explanation before moving on.'
-                  : quiz.settings.answerReveal === 'after_submit'
-                    ? 'Answers and explanations appear after you submit.'
-                    : 'Correct answers are not revealed.'}
-            </span>
-          </li>
+          {!isBlankCanvas && (
+            <li>
+              <Eye size={20} aria-hidden="true" />
+              <span>
+                {quiz.mode === 'flashcards'
+                  ? 'Flip each card and rate how well you knew it. There is no score.'
+                  : quiz.settings.answerReveal === 'after_each'
+                    ? 'You can check each answer and see its explanation before moving on.'
+                    : quiz.settings.answerReveal === 'after_submit'
+                      ? 'Answers and explanations appear after you submit.'
+                      : 'Correct answers are not revealed.'}
+              </span>
+            </li>
+          )}
           <li>
             <BarChart3 size={20} aria-hidden="true" />
             <span>
-              {quiz.settings.scoreVisibility === 'immediate'
-                ? 'Your score appears immediately after submission.'
-                : quiz.settings.scoreVisibility === 'after_release'
-                  ? 'Your instructor will release scores later.'
-                  : 'Scores are not shown to students.'}
+              {isBlankCanvas
+                ? 'Your instructor will grade your board and provide feedback.'
+                : quiz.settings.scoreVisibility === 'immediate'
+                  ? 'Your score appears immediately after submission.'
+                  : quiz.settings.scoreVisibility === 'after_release'
+                    ? 'Your instructor will release scores later.'
+                    : 'Scores are not shown to students.'}
             </span>
           </li>
         </ul>
