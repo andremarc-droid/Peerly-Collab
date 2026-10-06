@@ -84,7 +84,7 @@ export function QuestionBuilderPage() {
   const checklist = useMemo(() => ({
     title: Boolean(quiz?.title.trim()),
     question: questions.length > 0,
-    valid: questions.length > 0 && questions.every(({ question, answerKey }) => Object.keys(validateQuestionDraft(draftFromPair(question, answerKey), quiz?.mode ?? 'quiz')).length === 0),
+    valid: questions.length > 0 && questions.every(({ question, answerKey }) => Boolean(answerKey && Object.keys(validateQuestionDraft(draftFromPair(question, answerKey), quiz?.mode ?? 'quiz')).length === 0)),
   }), [quiz, questions])
   const hasPendingQuestion = Boolean(draft && (savedSignature !== JSON.stringify(draft) || saveStatus !== 'saved'))
   const canPublish = checklist.title && checklist.question && checklist.valid && !hasPendingQuestion && !loadError
@@ -95,6 +95,7 @@ export function QuestionBuilderPage() {
   ]
 
   function selectQuestion(question: SavedQuestion) {
+    if (!question.answerKey) return
     const next = draftFromPair(question.question, question.answerKey)
     setQuestionId(question.id); setDraft(next); setSavedSignature(JSON.stringify(next)); setSaveStatus('saved'); setSaveError(null)
   }
@@ -104,6 +105,7 @@ export function QuestionBuilderPage() {
   }
 
   function duplicateQuestion(question: SavedQuestion) {
+    if (!question.answerKey) return
     const next = draftFromPair(question.question, question.answerKey)
     if (next.type === 'multiple_choice' || next.type === 'true_false') next.options = next.options.map((option, index) => ({ ...option, id: `copy-${Date.now()}-${index}` }))
     next.prompt = `${next.prompt} (copy)`

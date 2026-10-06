@@ -152,6 +152,9 @@ export function ClassActivityList({
                 <div className="flex gap-2">
                   <Badge>{quiz.status}</Badge>
                   <Badge>{quizModeLabel(quiz.mode)}</Badge>
+                  {isCanvas && (
+                    <Badge>{quiz.boardKind === 'blank' ? 'You grade' : 'Auto-graded'}</Badge>
+                  )}
                 </div>
               }
             >

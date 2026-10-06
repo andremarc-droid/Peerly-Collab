@@ -135,12 +135,16 @@ function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRe
   const isCanvas = quiz.mode === 'canvas'
   const updated = quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })
   const metaStatus = isCanvas
-    ? quiz.questionCount > 0
+    ? quiz.boardKind === 'blank'
+      ? quiz.questionCount > 0
+        ? 'Instructions ready'
+        : 'Add instructions'
+      : quiz.questionCount > 0
       ? 'Board ready'
       : 'Add cards and connections'
     : `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}`
 
-  return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${metaStatus} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><Badge>{quizModeLabel(quiz.mode)}</Badge><Badge>{classLabel}</Badge></div>}>
+  return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${metaStatus} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><Badge>{quizModeLabel(quiz.mode)}</Badge>{isCanvas && <Badge>{quiz.boardKind === 'blank' ? 'You grade' : 'Auto-graded'}</Badge>}<Badge>{classLabel}</Badge></div>}>
     <div className="quiz-settings-badges">{settingBadges(quiz).map((label) => <span key={label}>{label}</span>)}</div>
     <div className="quiz-card__actions">
       <Button to={`/instructor/quizzes/${quiz.id}`}><Pencil size={15} aria-hidden="true" /> Edit</Button>

@@ -58,7 +58,9 @@ import type {
   CanvasQuestion,
   CanvasWrongPenalty,
 } from '../../canvas/types'
-import { getQuestionWithKey, getQuiz, saveQuestionAndKey } from '../services'
+import { Badge } from '../../../shared/ui/Badge'
+import { BlankCanvasBuilder } from './BlankCanvasBuilder'
+import { getQuestionWithKey, getQuiz, saveQuestionAndKey, updateQuiz, type QuizRecord } from '../services'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -76,6 +78,9 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [quizTitle, setQuizTitle] = useState('')
+  const [boardKind, setBoardKind] = useState<'prebuilt' | 'blank'>('prebuilt')
+  const [quizRecord, setQuizRecord] = useState<QuizRecord | null>(null)
+  const [submissionReview, setSubmissionReview] = useState<'review' | 'submitted'>('review')
 
   // Board question state
   const [prompt, setPrompt] = useState('Connect related concepts on the board.')
@@ -180,7 +185,11 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
           setLoading(false)
           return
         }
+        setQuizRecord(quiz)
         setQuizTitle(quiz.title || 'Untitled canvas')
+        setBoardKind(quiz.boardKind ?? 'prebuilt')
+        const isReview = quiz.settings.scoreVisibility === 'immediate' && quiz.settings.answerReveal !== 'never'
+        setSubmissionReview(isReview ? 'review' : 'submitted')
 
         const [existingPair, loadedImgList] = await Promise.all([
           getQuestionWithKey(quizId, 'board'),
@@ -219,11 +228,12 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
           setConnections(k.connections ?? [])
           setExplanation(k.explanation ?? '')
 
-          // Silently reconcile orphan image documents on load if any exist
+          // Silently reconcile orphan image documents on load if any exist without downloading payloads
           const referencedIds = (q.cards ?? [])
             .filter((c) => c.type === 'image' && typeof c.imageId === 'string')
             .map((c) => c.imageId!)
-          void reconcileImages(quizId, referencedIds).catch(() => {})
+          const existingIds = loadedImgList.map((img) => img.id)
+          void reconcileImages(quizId, referencedIds, existingIds).catch(() => {})
 
           const sig = JSON.stringify({
             prompt: q.prompt || 'Connect related concepts on the board.',
@@ -626,9 +636,10 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
       setStoredImages(updatedStored)
       setPendingImages(new Map())
 
-      // Step 4: Reconcile orphan images
+      // Step 4: Reconcile orphan images without downloading payloads
       const referencedIds = Array.from(uniqueImageIds)
-      await reconcileImages(quizId, referencedIds).catch((err) => {
+      const existingIds = Object.keys(updatedStored)
+      await reconcileImages(quizId, referencedIds, existingIds).catch((err) => {
         console.warn('Silent image reconcile error:', err)
       })
 
@@ -657,6 +668,15 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         })),
         pendingImageKeys: [],
       })
+      if (quizRecord) {
+        await updateQuiz(quizId, {
+          settings: {
+            ...quizRecord.settings,
+            scoreVisibility: submissionReview === 'review' ? 'immediate' : 'after_release',
+            answerReveal: submissionReview === 'review' ? 'after_submit' : 'never',
+          },
+        })
+      }
       setSavedSignature(newSignature)
       showToast('success', 'Canvas saved.')
     } catch (err) {
@@ -680,6 +700,8 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
     explanation,
     connections,
     quizId,
+    quizRecord,
+    submissionReview,
     showToast,
   ])
 
@@ -728,6 +750,10 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
     )
   }
 
+  if (boardKind === 'blank') {
+    return <BlankCanvasBuilder quizId={quizId} />
+  }
+
   const connectCardsSlot = (
     <Button
       type="button"
@@ -750,13 +776,16 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         title={quizTitle || 'Canvas board'}
         subtitle="Place cards and draw connections to define the student challenge and answer key."
         action={
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => handleNavigateWithGuard(`/instructor/quizzes/${quizId}?tab=settings`)}
-          >
-            <ArrowLeft size={17} aria-hidden="true" /> Settings
-          </Button>
+          <div className="flex items-center gap-2">
+            <Badge>Auto-graded</Badge>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => handleNavigateWithGuard(`/instructor/quizzes/${quizId}?tab=settings`)}
+            >
+              <ArrowLeft size={17} aria-hidden="true" /> Settings
+            </Button>
+          </div>
         }
       />
       <main className="app-shell__content canvas-builder-main" id="main-content">
@@ -1315,6 +1344,29 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                       value={explanation}
                       onChange={(e) => setExplanation(e.target.value)}
                       rows={3}
+                    />
+                    <Select
+                      label="After submitting"
+                      name="board-after-submitting"
+                      value={submissionReview}
+                      onChange={(e) => {
+                        const next = e.target.value as 'review' | 'submitted'
+                        setSubmissionReview(next)
+                        if (quizRecord) {
+                          void updateQuiz(quizId, {
+                            settings: {
+                              ...quizRecord.settings,
+                              scoreVisibility: next === 'review' ? 'immediate' : 'after_release',
+                              answerReveal: next === 'review' ? 'after_submit' : 'never',
+                            },
+                          }).catch(() => {})
+                        }
+                      }}
+                      options={[
+                        { value: 'review', label: 'Students see their score and review' },
+                        { value: 'submitted', label: 'Students see only that it was submitted' },
+                      ]}
+                      hint="Choose whether students see their score and review immediately or only submission confirmation."
                     />
                   </div>
                 )}

@@ -70,7 +70,7 @@ export function QuizEditorPage() {
     getQuiz(quizId).then((quiz) => {
       if (!active) return
       if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
-      const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, settings: quiz.settings }
+      const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, boardKind: quiz.boardKind, settings: quiz.settings }
       setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setResolvedQuizId(quizId)
     }).catch((reason: unknown) => {
       if (active) { setLoadError(reason instanceof Error ? reason.message : 'This quiz could not be loaded.'); setResolvedQuizId(quizId) }
@@ -133,7 +133,9 @@ export function QuizEditorPage() {
   const experience = form.mode === 'flashcards'
     ? `Students will review ${form.title.trim() || 'this set'} as flashcards and self-rate their recall.`
     : form.mode === 'canvas'
-    ? `Students will connect cards on the canvas board individually.`
+    ? form.boardKind === 'blank'
+      ? `Students will create their own concept board from a blank canvas. You will review and grade their submissions.`
+      : `Students will connect cards on the canvas board individually.`
     : `Students will answer ${form.title.trim() || 'this quiz'} individually${form.settings.timeLimitMinutes ? ` with ${form.settings.timeLimitMinutes} minutes` : ''}${form.settings.attemptsAllowed ? ` and ${form.settings.attemptsAllowed} ${form.settings.attemptsAllowed === 1 ? 'attempt' : 'attempts'}` : ' with unlimited attempts'}${form.settings.answerReveal === 'after_each' ? ', seeing explanations after each answer.' : form.settings.answerReveal === 'after_submit' ? ', reviewing explanations after they submit.' : ', with answers hidden.'}`
 
   return <AppShell>
@@ -152,7 +154,7 @@ export function QuizEditorPage() {
             <Input label="Tags" name="quiz-tags" value={form.tags} onChange={(event) => { setForm({ ...form, tags: event.target.value }); setErrors({ ...errors, tags: undefined }) }} error={errors.tags} hint="Separate tags with commas (up to 20 tags)." />
             <div className="field">
               <span className="field__label">
-                Type: {form.mode === 'canvas' ? 'Canvas' : form.mode === 'flashcards' ? 'Flashcards' : 'Quiz'}, cannot be changed after creation
+                Type: {form.mode === 'canvas' ? `Canvas (${form.boardKind === 'blank' ? 'Blank board' : 'Pre-built board'})` : form.mode === 'flashcards' ? 'Flashcards' : 'Quiz'}, cannot be changed after creation
               </span>
             </div>
           </div>
@@ -167,6 +169,26 @@ export function QuizEditorPage() {
             {form.settings.scoreVisibility === 'after_release' && <p className="field__hint">You can release scores from the results page when it is available.</p>}
           </SectionCard>
         </>}
+
+        {form.mode === 'canvas' && form.boardKind !== 'blank' && (
+          <SectionCard title="Submission review" description="Choose what students see after submitting their canvas board.">
+            <RadioGroup
+              label="After submitting"
+              name="canvas-review-setting"
+              value={form.settings.scoreVisibility === 'immediate' && form.settings.answerReveal !== 'never' ? 'review' : 'submitted'}
+              options={[
+                { value: 'review', label: 'Students see their score and review', hint: 'Shows score and correct/incorrect connections upon submission.' },
+                { value: 'submitted', label: 'Students see only that it was submitted', hint: 'Holds back score and answers until you release them.' },
+              ]}
+              onChange={(value) => {
+                updateSettings({
+                  scoreVisibility: value === 'review' ? 'immediate' : 'after_release',
+                  answerReveal: value === 'review' ? 'after_submit' : 'never',
+                })
+              }}
+            />
+          </SectionCard>
+        )}
 
         <SectionCard title="Participation" description="Choose whether learners answer alone or together.">
           <fieldset className="quiz-mode-picker"><legend>How students participate</legend><div className="quiz-mode-picker__grid">

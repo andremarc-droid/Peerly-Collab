@@ -51,6 +51,7 @@ export function QuickCreateQuiz() {
   const lockedClass = params.get('classId')
   const isCanvasFromClass = Boolean(lockedClass && rawMode === 'canvas')
   const [mode, setMode] = useState<QuizMode>(rawMode ?? 'quiz')
+  const [boardKind, setBoardKind] = useState<'prebuilt' | 'blank'>('prebuilt')
   const [classId, setClassId] = useState(lockedClass ?? '')
   const [busy, setBusy] = useState(false)
 
@@ -68,6 +69,7 @@ export function QuickCreateQuiz() {
         description: '',
         tags: [],
         mode,
+        boardKind: mode === 'canvas' ? boardKind : undefined,
         settings: defaultQuizSettings(mode),
       })
       showToast('success', 'Draft created.')
@@ -150,6 +152,43 @@ export function QuickCreateQuiz() {
                 </p>
               )}
             </fieldset>
+            {mode === 'canvas' && (
+              <fieldset className="grid gap-2">
+                <legend className="field__label">Canvas type</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    aria-pressed={boardKind === 'prebuilt'}
+                    onClick={() => setBoardKind('prebuilt')}
+                    className={`flex flex-col text-left p-3 rounded-2xl border transition-colors ${
+                      boardKind === 'prebuilt'
+                        ? 'border-navy-900 bg-navy-900 text-white shadow-sm'
+                        : 'border-navy-900-12 bg-white text-navy-900 hover:border-navy-900-24'
+                    }`}
+                  >
+                    <span className="font-semibold text-sm">Pre-built board</span>
+                    <span className={`text-sm mt-1 leading-snug ${boardKind === 'prebuilt' ? 'text-white/80' : 'text-navy-800-72'}`}>
+                      You set the cards and the answer, graded automatically.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={boardKind === 'blank'}
+                    onClick={() => setBoardKind('blank')}
+                    className={`flex flex-col text-left p-3 rounded-2xl border transition-colors ${
+                      boardKind === 'blank'
+                        ? 'border-navy-900 bg-navy-900 text-white shadow-sm'
+                        : 'border-navy-900-12 bg-white text-navy-900 hover:border-navy-900-24'
+                    }`}
+                  >
+                    <span className="font-semibold text-sm">Blank board</span>
+                    <span className={`text-sm mt-1 leading-snug ${boardKind === 'blank' ? 'text-white/80' : 'text-navy-800-72'}`}>
+                      Students build their own, you check it.
+                    </span>
+                  </button>
+                </div>
+              </fieldset>
+            )}
             <Select
               label="Class"
               name="quiz-class"
