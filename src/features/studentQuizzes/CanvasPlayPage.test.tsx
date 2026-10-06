@@ -384,4 +384,22 @@ describe('CanvasPlayPage component', () => {
     expect(await screen.findByText('Some board images could not be loaded.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
+
+  it('renders the activity instructions banner when showInstructions is true', () => {
+    const onChange = vi.fn()
+    render(
+      <CanvasPlayPage
+        question={sampleQuestion}
+        attemptId="attempt-instructions-play"
+        connections={[]}
+        onChange={onChange}
+        showInstructions={true}
+      />,
+    )
+
+    expect(screen.getByRole('region', { name: 'Activity instructions' })).toBeInTheDocument()
+    expect(screen.getByText('Instructions')).toBeInTheDocument()
+    expect(screen.getByText(sampleQuestion.prompt)).toBeInTheDocument()
+  })
 })
+

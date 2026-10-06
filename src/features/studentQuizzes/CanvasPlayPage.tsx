@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { HelpCircle, Trash2 } from 'lucide-react'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Dialog } from '../../shared/ui/Dialog'
@@ -21,6 +21,7 @@ export interface CanvasPlayPageProps {
   onChange: (connections: string[]) => void
   disabled?: boolean
   className?: string
+  showInstructions?: boolean
 }
 
 export function CanvasPlayPage({
@@ -31,6 +32,7 @@ export function CanvasPlayPage({
   onChange,
   disabled = false,
   className = '',
+  showInstructions = false,
 }: CanvasPlayPageProps) {
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
   const [showConnectModal, setShowConnectModal] = useState(false)
@@ -213,6 +215,29 @@ export function CanvasPlayPage({
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {announcement}
       </div>
+
+      {/* Activity instructions banner */}
+      {showInstructions && question.prompt && (
+        <div
+          className="rounded-2xl border border-navy-900-12 bg-white p-4 shadow-sm"
+          role="region"
+          aria-label="Activity instructions"
+        >
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 rounded-lg bg-navy-50 p-1.5 text-navy-800 flex-shrink-0" aria-hidden="true">
+              <HelpCircle size={18} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-xs font-bold uppercase tracking-wider text-navy-800-72">
+                Instructions
+              </span>
+              <p className="m-0 text-base font-medium text-navy-900 break-words whitespace-pre-wrap">
+                {question.prompt}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Canvas Board with controls and live counter - responsive height */}
       <div className="relative h-[clamp(420px,70vh,680px)] min-h-[420px] max-h-[680px] w-full overflow-hidden rounded-2xl border border-navy-900-12 bg-surface-primary">

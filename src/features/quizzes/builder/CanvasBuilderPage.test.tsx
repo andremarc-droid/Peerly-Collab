@@ -833,4 +833,49 @@ describe('CanvasBuilderPage Component Tests', () => {
       expect(mocks.showToast).toHaveBeenCalledWith('error', 'A canvas board can have at most 12 images.')
     })
   })
+
+  it('displays activity instructions banner and allows inline editing of prompt', async () => {
+    const validQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Initial instructions for students.',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: true,
+      wrongPenalty: 'half',
+      cards: [{ id: 'c1', type: 'note', title: 'Card 1', content: 'Text 1', position: { x: 0, y: 0 } }],
+    }
+    const validKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: '',
+      connections: [],
+    }
+
+    mocks.getQuestionWithKey.mockResolvedValueOnce({
+      id: 'board',
+      question: validQuestion,
+      answerKey: validKey,
+    })
+
+    renderBuilder()
+
+    // 1. Initial instruction is displayed
+    expect(await screen.findByText('Student Instructions')).toBeInTheDocument()
+    expect(screen.getByText('Initial instructions for students.')).toBeInTheDocument()
+
+    // 2. Click "Edit instructions" to toggle inline editor
+    fireEvent.click(screen.getByRole('button', { name: 'Edit student instructions' }))
+    const input = screen.getByLabelText('Instructions for students')
+    expect(input).toBeInTheDocument()
+    expect(input).toHaveValue('Initial instructions for students.')
+
+    // 3. Edit instructions
+    fireEvent.change(input, { target: { value: 'Updated instructions for cell structure.' } })
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+    // 4. Click Done to close inline editor
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(screen.getByText('Updated instructions for cell structure.')).toBeInTheDocument()
+  })
 })
+

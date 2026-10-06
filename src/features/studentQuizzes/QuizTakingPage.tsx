@@ -225,7 +225,16 @@ export function QuizTakingPage() {
         }}
       >
         <p className="m-0 text-sm font-semibold">Question {index + 1} · {question.points} {question.points === 1 ? 'point' : 'points'}</p>
-        <h2 id="question-title" className="m-0 font-heading text-2xl">{question.prompt}</h2>
+        <h2 id="question-title" className="m-0 font-heading text-2xl">
+          {quiz.mode === 'canvas' ? (
+            <span className="flex flex-col gap-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-navy-800-72">Instructions</span>
+              <span>{question.prompt}</span>
+            </span>
+          ) : (
+            question.prompt
+          )}
+        </h2>
         {quiz.mode === 'flashcards' ? (
           flashcardsFinished ? (
             <div className="grid gap-3">

@@ -165,4 +165,28 @@ describe('CanvasReviewView component', () => {
     expect(await screen.findByText('Image unavailable')).toBeInTheDocument()
     expect(screen.getByText('Animal cell cross section')).toBeInTheDocument()
   })
+
+  it('renders the activity instructions banner when question has prompt', () => {
+    const questionWithPrompt: CanvasQuestion = {
+      ...question,
+      prompt: 'Review the steps of cellular respiration and verify your connections.',
+    }
+
+    render(
+      <CanvasReviewView
+        question={questionWithPrompt}
+        attemptId="attempt-instructions-review"
+        studentAnswer={[]}
+        answerKey={{
+          type: 'canvas',
+          explanation: '',
+          connections: [],
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('region', { name: 'Activity instructions' })).toBeInTheDocument()
+    expect(screen.getByText('Instructions')).toBeInTheDocument()
+    expect(screen.getByText('Review the steps of cellular respiration and verify your connections.')).toBeInTheDocument()
+  })
 })

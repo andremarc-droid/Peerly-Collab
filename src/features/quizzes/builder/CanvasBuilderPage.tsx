@@ -2,7 +2,9 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
+  Edit3,
   FileText,
+  HelpCircle,
   Image as ImageIcon,
   Link as LinkIcon,
   Loader2,
@@ -97,6 +99,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
   const [connectTo, setConnectTo] = useState('')
   const [connectPoints, setConnectPoints] = useState(1)
   const [connectError, setConnectError] = useState<string | null>(null)
+  const [editingPrompt, setEditingPrompt] = useState(false)
 
   // Images state
   const [storedImages, setStoredImages] = useState<Record<string, ProcessedImageData>>({})
@@ -907,6 +910,68 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
             </Alert>
           </div>
         )}
+
+        {/* Activity instructions banner with inline edit */}
+        <div
+          className="mb-3 rounded-2xl border border-navy-900-12 bg-white p-4 shadow-sm"
+          role="region"
+          aria-label="Activity instructions"
+        >
+          {editingPrompt ? (
+            <div className="grid gap-2">
+              <div className="flex items-center justify-end">
+                <span className="text-xs text-navy-800-72">{prompt.length}/2000</span>
+              </div>
+              <Textarea
+                label="Instructions for students"
+                name="builder-instructions-input"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                maxLength={2000}
+                rows={2}
+                placeholder="Describe what students need to connect or organize on this board…"
+                required
+              />
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setEditingPrompt(false)}
+                >
+                  Done
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <div className="mt-0.5 rounded-lg bg-navy-50 p-1.5 text-navy-800 flex-shrink-0" aria-hidden="true">
+                  <HelpCircle size={18} />
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-xs font-bold uppercase tracking-wider text-navy-800-72">
+                    Student Instructions
+                  </span>
+                  <p className="m-0 text-base font-medium text-navy-900 break-words whitespace-pre-wrap">
+                    {prompt.trim() || (
+                      <span className="text-navy-800-72 italic">
+                        No instructions provided. Click edit to add instructions for students.
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setEditingPrompt(true)}
+                aria-label="Edit student instructions"
+              >
+                <Edit3 size={15} aria-hidden="true" /> Edit instructions
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* Board or Empty State */}
         {cards.length === 0 ? (
