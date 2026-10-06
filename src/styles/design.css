@@ -7,15 +7,15 @@
 .design-hero p { max-width: 58ch; margin-bottom: 0; color: var(--color-white-72); line-height: 1.65; }
 .design-section h2 { margin-bottom: 26px; font-size: 30px; font-weight: 580; letter-spacing: -.045em; }
 .design-section h3 { margin: 12px 0 8px; font-size: 20px; }
-.design-section p { margin-bottom: 0; color: var(--color-navy-800-72); font-size: 14px; line-height: 1.6; }
+.design-section p { margin-bottom: 0; color: var(--color-navy-800-72); font-size: 16px; line-height: 1.6; }
 .design-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .design-form { display: grid; max-width: 560px; gap: 18px; }
 .design-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .design-alerts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
-.design-load { display: grid; min-width: 130px; min-height: 90px; place-items: center; align-content: center; gap: 9px; border: 1px solid var(--color-navy-on-border); border-radius: 16px; color: var(--color-white-72); font-size: 11px; }
+.design-load { display: grid; min-width: 130px; min-height: 90px; place-items: center; align-content: center; gap: 9px; border: 1px solid var(--color-navy-on-border); border-radius: 16px; color: var(--color-white-72); font-size: 14px; }
 .section--navy.design-section .design-row { position: relative; z-index: 1; }
 .skeleton--sample { width: 64px; height: 16px; }
-.pattern-sample { position: relative; display: grid; width: 150px; height: 90px; place-items: center; overflow: hidden; border: 1px solid var(--color-navy-on-border); border-radius: 16px; color: var(--color-white); background: var(--color-navy-700); font-size: 11px; }
+.pattern-sample { position: relative; display: grid; width: 150px; height: 90px; place-items: center; overflow: hidden; border: 1px solid var(--color-navy-on-border); border-radius: 16px; color: var(--color-white); background: var(--color-navy-700); font-size: 14px; }
 .pattern-sample > span:last-child { position: relative; z-index: 1; }
 .pattern-sample .stripe { opacity: .2; }
 .pattern-sample--band .stripe { opacity: .4; }

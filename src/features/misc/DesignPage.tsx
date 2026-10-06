@@ -314,7 +314,7 @@ function DesignGallery() {
                   { label: 'Review mode (feedback)', value: 'review' },
                 ]}
               />
-              <span className="text-xs text-navy-900-72">
+              <span className="text-sm text-navy-900-72">
                 {canvasMode === 'play' && 'Play: move cards, draw/delete connections, card content is read-only.'}
                 {canvasMode === 'edit' && 'Edit: author cards, move, delete connections or cards.'}
                 {canvasMode === 'review' && 'Review: read-only feedback graph with status icons and text labels.'}

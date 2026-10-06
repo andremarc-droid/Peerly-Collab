@@ -310,7 +310,7 @@ function CanvasBoardInner({
           <MiniMap
             className="canvas-minimap"
             nodeColor="var(--color-navy-900-12)"
-            maskColor="rgba(245, 246, 255, 0.7)"
+            maskColor="var(--color-canvas-mask)"
             zoomable
             pannable
           />

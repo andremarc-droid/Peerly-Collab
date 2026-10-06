@@ -28,6 +28,16 @@
   --color-danger-bg: #fef2f2;
   --color-danger-border: #fca5a5;
   --color-danger-text: #991b1b;
+  --color-danger-shadow: rgb(220 38 38 / 20%);
+  --color-danger-shadow-hover: rgb(185 28 28 / 28%);
+  --color-danger-shadow-icon: rgb(220 38 38 / 25%);
+  --color-white-28: rgb(255 255 255 / 28%);
+  --color-white-25: rgb(255 255 255 / 25%);
+  --color-white-20: rgb(255 255 255 / 20%);
+  --color-white-15: rgb(255 255 255 / 15%);
+  --color-canvas-node-tint: rgb(245 246 255 / 80%);
+  --color-canvas-panel-tint: rgb(245 246 255 / 90%);
+  --color-canvas-mask: rgb(245 246 255 / 70%);
   --stripe: rgb(255 255 255 / 50%);
   --font-heading: "Outfit Variable", "Outfit", sans-serif;
   --font-sans: "Inter Variable", "Inter", sans-serif;
@@ -52,7 +62,7 @@
 }
 
 * { box-sizing: border-box; }
-body { min-width: 320px; min-height: 100vh; margin: 0; }
+body { min-width: 320px; min-height: 100vh; margin: 0; font-size: 16px; line-height: 1.6; }
 button, input { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }

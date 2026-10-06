@@ -80,7 +80,7 @@ export function QuickCreateQuiz() {
                 }`}
               >
                 <span className="font-semibold text-sm">{item.label}</span>
-                <span className={`text-xs mt-1 leading-snug ${isSelected ? 'text-white/80' : 'text-navy-800-72'}`}>
+                <span className={`text-sm mt-1 leading-snug ${isSelected ? 'text-white/80' : 'text-navy-800-72'}`}>
                   {item.description}
                 </span>
               </button>

@@ -38,7 +38,7 @@ export function ClassColorPicker({
     <fieldset className="grid gap-3 border-0 p-0 m-0">
       <div className="flex items-center justify-between">
         <legend className="field__label m-0">Class color</legend>
-        <span className="text-xs font-semibold text-navy-800-72">{selectedOption.label}</span>
+        <span className="text-sm font-semibold text-navy-800-72">{selectedOption.label}</span>
       </div>
 
       <div
@@ -98,11 +98,11 @@ export function ClassColorPicker({
                 <h4 className="m-0 font-heading text-lg font-bold leading-tight text-white truncate">
                   {previewName}
                 </h4>
-                <p className="m-0 text-xs text-white-72 truncate mt-0.5">{previewSection}</p>
+                <p className="m-0 text-sm text-white-72 truncate mt-0.5">{previewSection}</p>
               </div>
             </div>
           </div>
-          <div className="p-3 text-xs text-navy-800-72 flex items-center justify-between bg-white">
+          <div className="p-3 text-sm text-navy-800-72 flex items-center justify-between bg-white">
             <span>0 students · 0 quizzes</span>
             <span className="font-semibold text-navy-900">Active</span>
           </div>

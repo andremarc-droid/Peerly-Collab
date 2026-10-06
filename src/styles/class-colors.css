@@ -93,11 +93,11 @@
   color: var(--color-white);
   font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1;
   flex-shrink: 0;
   user-select: none;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 1px var(--color-white-20);
 }
 
 /* Class Tile Component */
@@ -194,7 +194,7 @@
   margin-top: 4px;
   margin-bottom: 0;
   color: var(--color-white-72);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
@@ -215,14 +215,14 @@
   min-height: 36px;
   border-radius: 9999px;
   color: var(--color-white);
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: var(--color-white-15);
+  border: 1px solid var(--color-white-25);
   cursor: pointer;
   transition: background 150ms ease;
 }
 
 .class-tile__menu-btn:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: var(--color-white-28);
 }
 
 .class-tile__menu-btn:focus-visible {

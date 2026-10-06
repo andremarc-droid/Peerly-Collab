@@ -139,7 +139,7 @@ export function QuizResultsPage() {
             { key: 'submitted', header: 'Submitted', cell: (row) => {
               if (!row.attempt) return '—'
               const lateInfo = row.attempt.status === 'submitted' ? isLate(row.attempt.startedAt, row.attempt.submittedAt, quiz.settings.timeLimitMinutes) : { late: false, lateBySeconds: 0 }
-              return <div><span>{row.attempt.submittedAt?.toDate().toLocaleString() ?? '—'}</span>{lateInfo.late && <small className="block text-xs font-semibold text-navy-700">Late by {Math.max(1, Math.round(lateInfo.lateBySeconds / 60))} min</small>}</div>
+              return <div><span>{row.attempt.submittedAt?.toDate().toLocaleString() ?? '—'}</span>{lateInfo.late && <small className="block text-sm font-semibold text-navy-700">Late by {Math.max(1, Math.round(lateInfo.lateBySeconds / 60))} min</small>}</div>
             }, sortValue: (row) => row.attempt?.submittedAt?.toMillis() ?? 0 },
             { key: 'review', header: 'Action', cell: (row) => row.attempt && <Button type="button" variant="secondary" disabled={row.attempt.status !== 'submitted'} onClick={() => setSelected(row.attempt!)}><Eye size={16} aria-hidden="true" /> Review</Button> },
           ]} />

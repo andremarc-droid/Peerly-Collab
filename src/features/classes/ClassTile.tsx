@@ -166,7 +166,7 @@ export function ClassTile({
             </div>
 
             {joinCode && (
-              <div className="flex items-center justify-between text-xs text-navy-800-72 pt-2 border-t border-navy-900-08">
+              <div className="flex items-center justify-between text-sm text-navy-800-72 pt-2 border-t border-navy-900-08">
                 <span>Code</span>
                 <span className="font-mono text-sm font-bold tracking-widest text-navy-900">
                   {joinCode}
@@ -192,13 +192,13 @@ export function ClassTile({
             </div>
 
             {isPending && (
-              <div className="rounded-xl bg-navy-900-08 p-2.5 text-xs text-navy-800-72 font-medium">
+              <div className="rounded-xl bg-navy-900-08 p-2.5 text-sm text-navy-800-72 font-medium">
                 Waiting for approval from your instructor
               </div>
             )}
 
             {isBlocked && (
-              <div className="rounded-xl bg-navy-900-08 p-2.5 text-xs text-navy-800-72 font-medium">
+              <div className="rounded-xl bg-navy-900-08 p-2.5 text-sm text-navy-800-72 font-medium">
                 Enrollment is blocked. Contact your instructor.
               </div>
             )}

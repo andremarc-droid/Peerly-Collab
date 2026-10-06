@@ -90,7 +90,7 @@
 
 /* Note Card: Sticky note style */
 .canvas-node--note {
-  background: linear-gradient(180deg, var(--color-white) 0%, rgba(245, 246, 255, 0.8) 100%);
+  background: linear-gradient(180deg, var(--color-white) 0%, var(--color-canvas-node-tint) 100%);
   border-left: 3px solid var(--color-navy-800);
 }
 
@@ -285,9 +285,9 @@
   padding: 0.2rem 0.5rem;
   border-radius: 9999px;
   font-family: var(--font-sans);
-  font-size: 0.65rem;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 1;
+  line-height: 1.4;
   box-shadow: var(--shadow-sm);
   pointer-events: all;
   background-color: var(--color-white);
@@ -330,7 +330,7 @@
 }
 
 .canvas-controls-button:hover {
-  background-color: rgba(245, 246, 255, 0.9) !important;
+  background-color: var(--color-canvas-panel-tint) !important;
   color: var(--color-navy-800) !important;
 }
 
