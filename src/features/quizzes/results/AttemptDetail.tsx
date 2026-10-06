@@ -8,6 +8,8 @@ import { useToast } from '../../../shared/ui/useToast'
 import { setQuestionGradeOverride } from '../services/resultService'
 import type { QuizResult } from '../types'
 import type { SavedQuestion } from '../services/questionService'
+import { CanvasReviewView } from '../../canvas/components/CanvasReviewView'
+import type { CanvasAnswerKey, CanvasQuestion } from '../../canvas/types'
 import { computeTimeSpent, isLate, type AttemptResult } from './resultLogic'
 
 interface Props { quizId: string; attempt: AttemptResult; questions: SavedQuestion[]; ungraded: boolean; onGradeChanged: (result: QuizResult) => void; timeLimitMinutes?: number | null }
@@ -63,7 +65,22 @@ export function AttemptDetail({ quizId, attempt, questions, ungraded, onGradeCha
           : answerKey.type === 'fill_blank' ? answerKey.blanks.map((blank) => blank.join(' / ')).join(' · ')
             : answerKey.type === 'flashcard' ? answerKey.back : ''
       return <SectionCard key={id} title={`Question ${index + 1}`} description={question.prompt}>
-        {question.type === 'flashcard' ? <><p className="m-0"><strong>Student’s rating:</strong> {answer === 'knew' ? 'Knew it' : answer === 'learning' ? 'Still learning' : 'Not rated'}</p>{answerKey.type === 'flashcard' && <p className="m-0"><strong>Card back:</strong> {answerKey.back}</p>}</> : <>
+        {question.type === 'flashcard' ? <><p className="m-0"><strong>Student’s rating:</strong> {answer === 'knew' ? 'Knew it' : answer === 'learning' ? 'Still learning' : 'Not rated'}</p>{answerKey.type === 'flashcard' && <p className="m-0"><strong>Card back:</strong> {answerKey.back}</p>}</> : question.type === 'canvas' && answerKey.type === 'canvas' ? (
+          <div className="grid gap-3">
+            <CanvasReviewView
+              question={question as unknown as CanvasQuestion}
+              attemptId={attempt.id}
+              studentAnswer={answer}
+              answerKey={answerKey as unknown as CanvasAnswerKey}
+            />
+            <p className="m-0"><span className={`attempt-status ${grade?.correct === true ? 'attempt-status--correct' : grade?.correct === false ? 'attempt-status--incorrect' : ''}`}>{grade?.correct === true ? <CircleCheck size={16} aria-hidden="true" /> : grade?.correct === false ? <CircleX size={16} aria-hidden="true" /> : <CircleHelp size={16} aria-hidden="true" />}{grade?.correct === true ? 'Correct' : grade?.correct === false ? 'Incorrect' : 'Not graded'} · {grade?.pointsAwarded ?? 0} / {question.points} points{grade?.overridden ? ' · Instructor override' : ''}</span></p>
+            <div className="mt-2 grid gap-3 rounded-2xl border border-navy/15 p-4">
+              <strong>Override grade</strong>
+              <Input label={`Points awarded (0–${question.points})`} type="number" min={0} max={question.points} step="any" value={points[id] ?? String(grade?.pointsAwarded ?? 0)} onChange={(event) => setPoints((current) => ({ ...current, [id]: event.target.value }))} />
+              <div className="flex flex-wrap gap-2"><Button type="button" variant="secondary" disabled={busy === id} onClick={() => void changeGrade(id, question.points)}>Mark full points</Button><Button type="button" variant="secondary" disabled={busy === id || !Number.isFinite(Number(points[id] ?? grade?.pointsAwarded))} onClick={() => void changeGrade(id, Number(points[id] ?? grade?.pointsAwarded))}>Save points</Button>{grade?.overridden && <Button type="button" variant="secondary" disabled={busy === id} onClick={() => void changeGrade(id, null)}><RotateCcw size={15} aria-hidden="true" /> Restore automatic grade</Button>}</div>
+            </div>
+          </div>
+        ) : <>
           <div className="attempt-answer-grid"><div className="attempt-answer-block"><strong>Student answer</strong><span>{answerText}</span></div><div className="attempt-answer-block"><strong>Correct answer</strong><span>{correctAnswer || '—'}</span></div></div>
           <p className="m-0"><span className={`attempt-status ${grade?.correct === true ? 'attempt-status--correct' : grade?.correct === false ? 'attempt-status--incorrect' : ''}`}>{grade?.correct === true ? <CircleCheck size={16} aria-hidden="true" /> : grade?.correct === false ? <CircleX size={16} aria-hidden="true" /> : <CircleHelp size={16} aria-hidden="true" />}{grade?.correct === true ? 'Correct' : grade?.correct === false ? 'Incorrect' : 'Not graded'} · {grade?.pointsAwarded ?? 0} / {question.points} points{grade?.overridden ? ' · Instructor override' : ''}</span></p>
           {answerKey.explanation && <p className="m-0"><strong>Explanation:</strong> {answerKey.explanation}</p>}

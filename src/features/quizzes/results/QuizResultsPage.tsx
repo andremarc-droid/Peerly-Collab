@@ -145,7 +145,7 @@ export function QuizResultsPage() {
           ]} />
         </>}
       </section>
-      {quiz.mode === 'quiz' && <QuestionAnalytics questions={questions} attempts={attempts} />}
+      {(quiz.mode === 'quiz' || quiz.mode === 'canvas') && <QuestionAnalytics questions={questions} attempts={attempts} />}
     </main>
     <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} title="Attempt detail" description={selected ? `${selected.userName || selected.userId} · Attempt ${selected.attemptNumber}` : undefined} className="dialog--wide">
       {selected && <AttemptDetail quizId={quizId} attempt={selected} questions={questions} ungraded={quiz.mode === 'flashcards'} timeLimitMinutes={quiz.settings.timeLimitMinutes} onGradeChanged={(result: QuizResult) => { setAttempts((items) => items.map((item) => item.id === selected.id ? { ...item, result } : item)); setSelected({ ...selected, result }) }} />}
