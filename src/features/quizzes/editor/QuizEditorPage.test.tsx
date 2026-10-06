@@ -124,6 +124,34 @@ describe('quick create and quiz deletion confirmation', () => {
     expect(workspaceNav).toHaveTextContent('Preview')
     expect(workspaceNav).toHaveTextContent('Results')
   })
+
+  it('guards in-app links when quiz settings are dirty', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-1?tab=settings']}>
+        <div>
+          <a href="/instructor">Back to home</a>
+          <Routes>
+            <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+          </Routes>
+        </div>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByDisplayValue('Practice')).toBeInTheDocument()
+
+    // Edit title to make dirty
+    fireEvent.change(screen.getByLabelText('Quiz title'), { target: { value: 'New title' } })
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+    // Click in-app link
+    const link = screen.getByText('Back to home')
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    link.dispatchEvent(event)
+
+    expect(confirmSpy).toHaveBeenCalledWith('You have unsaved changes. Leave without saving?')
+    expect(event.defaultPrevented).toBe(true)
+  })
 })
 
 

@@ -195,14 +195,14 @@ describe('CanvasBuilderPage Component Tests', () => {
     // Add first card
     fireEvent.click(await screen.findByRole('button', { name: /Add your first card/i }))
 
-    // Only 1 card and 0 connections: should show plain language requirements
-    expect(await screen.findByText('Add at least 2 cards to form connections.')).toBeInTheDocument()
+    // Only 1 card and 0 connections: should show plain language requirements beside button and in alert
+    expect((await screen.findAllByText('Add at least 2 cards to form connections.')).length).toBeGreaterThanOrEqual(1)
 
     // Add second card
     fireEvent.click(screen.getByRole('button', { name: 'Add Link card' }))
 
-    // Now 2 cards but 0 connections: should require at least 1 connection
-    expect(await screen.findByText('Create at least 1 connection for the answer key.')).toBeInTheDocument()
+    // Now 2 cards but 0 connections: should require at least 1 connection (shown in alert and beside button)
+    expect((await screen.findAllByText('Create at least 1 connection for the answer key.')).length).toBeGreaterThanOrEqual(1)
 
     // Link card needs URL: should show specific plain language error
     expect(screen.getByText(/requires an HTTPS link/i)).toBeInTheDocument()
@@ -493,5 +493,112 @@ describe('CanvasBuilderPage Component Tests', () => {
     expect(directedCheckbox).toBeChecked()
 
     expect(mocks.showToast).toHaveBeenCalledWith('success', 'Switched to directed connections.')
+  })
+
+  it('disables Save with zero cards without showing validation error, and shows first error beside button when invalid', async () => {
+    renderBuilder()
+
+    // 0 cards: Save button should be disabled
+    const saveBtn = await screen.findByRole('button', { name: 'Save board' })
+    expect(saveBtn).toBeDisabled()
+
+    // Empty state should be visible
+    expect(screen.getByRole('heading', { name: 'Start your canvas board' })).toBeInTheDocument()
+
+    // No validation alert or error beside the button should exist
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    // Add first card
+    fireEvent.click(screen.getByRole('button', { name: /Add your first card/i }))
+
+    // Now 1 card: Save button still disabled
+    expect(saveBtn).toBeDisabled()
+
+    // First error should appear beside the Save button AND in the alert
+    const firstError = 'Add at least 2 cards to form connections.'
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts.some((el) => el.textContent?.includes(firstError))).toBe(true)
+
+    // Add second card
+    fireEvent.click(screen.getByRole('button', { name: 'Add Note card' }))
+
+    // Now 2 cards but 0 connections: Save button still disabled
+    expect(saveBtn).toBeDisabled()
+    const connError = 'Create at least 1 connection for the answer key.'
+    expect(screen.getAllByRole('alert').some((el) => el.textContent?.includes(connError))).toBe(true)
+  })
+
+  it('renders points clarity labels, connection weight, live weight line, and responsive panel layout classes', async () => {
+    const existingQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Connect concepts',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: true,
+      wrongPenalty: 'half',
+      cards: [
+        { id: 'c1', type: 'note', title: 'Card 1', content: 'Text 1', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'note', title: 'Card 2', content: 'Text 2', position: { x: 100, y: 0 } },
+      ],
+    }
+    const existingKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: '',
+      connections: [
+        { id: 'c1->c2', from: 'c1', to: 'c2', points: 3 },
+      ],
+    }
+
+    mocks.getQuestionWithKey.mockResolvedValueOnce({
+      id: 'board',
+      question: existingQuestion,
+      answerKey: existingKey,
+    })
+
+    renderBuilder()
+
+    // Save should be enabled because board is valid (2 cards, 1 connection)
+    const saveBtn = await screen.findByRole('button', { name: 'Save board' })
+    expect(saveBtn).toBeEnabled()
+
+    // Check status has text and icon
+    const statusEl = screen.getByText('Saved').closest('[role="status"]')!
+    expect(statusEl).toBeInTheDocument()
+    expect(statusEl.querySelector('svg')).toBeInTheDocument()
+
+    // Open Board settings
+    fireEvent.click(screen.getByRole('button', { name: 'Board settings' }))
+
+    // Verify "Points for a perfect board" label
+    expect(await screen.findByLabelText('Points for a perfect board')).toBeInTheDocument()
+
+    // Verify live weight line: "1 connection, total weight 3"
+    const liveWeight = screen.getByTestId('live-weight-line')
+    expect(liveWeight).toHaveTextContent('1 connection, total weight 3')
+
+    // Verify side panel has responsive placement classes (below 1024px full width/scrollable, lg side panel)
+    const sidePanel = screen.getByLabelText('Editor side panel')
+    expect(sidePanel.className).toContain('w-full')
+    expect(sidePanel.className).toContain('lg:w-80')
+    expect(sidePanel.className).toContain('max-h-[500px]')
+    expect(sidePanel.className).toContain('overflow-y-auto')
+
+    // Verify close button has 44px min touch target
+    const closeBtn = screen.getByLabelText('Close side panel')
+    expect(closeBtn.className).toContain('min-h-[44px]')
+    expect(closeBtn.className).toContain('min-w-[44px]')
+
+    // Select the card to check card editor
+    const cardEl = screen.getByRole('article', { name: /Card 1/i })
+    fireEvent.click(cardEl)
+
+    expect(await screen.findByDisplayValue('Card 1')).toBeInTheDocument()
+
+    // Open connection by clicking the edge on the board
+    const board = screen.getByTestId('canvas-board')
+    expect(board.parentElement?.className).toContain('min-h-[420px]')
+    expect(board.parentElement?.className).toContain('w-full')
+    expect(board.parentElement?.className).toContain('lg:flex-1')
   })
 })

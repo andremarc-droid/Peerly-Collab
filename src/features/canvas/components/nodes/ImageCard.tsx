@@ -56,7 +56,7 @@ export function ImageCard({ data, selected, isConnectable }: NodeProps) {
               onLoad={() => setLoaded(true)}
             />
           ) : (
-            <div className="p-2 text-xs text-navy-900-72">Preview not available</div>
+            <div className="p-2 text-sm text-navy-900-72">Preview not available</div>
           )}
           {openUrl && (
             <a

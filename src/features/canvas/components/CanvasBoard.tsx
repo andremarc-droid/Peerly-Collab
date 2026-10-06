@@ -266,7 +266,7 @@ function CanvasBoardInner({
       {mode !== 'review' && (
         <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
           <div
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-white text-navy-900 border border-navy-900-12 shadow-sm"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-white text-navy-900 border border-navy-900-12 shadow-sm"
             role="status"
             aria-label={`Connections used ${connections.length} of ${maxConnections}`}
           >

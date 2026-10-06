@@ -1,8 +1,11 @@
 import {
+  AlertCircle,
   ArrowLeft,
+  CheckCircle2,
   FileText,
   Image as ImageIcon,
   Link as LinkIcon,
+  Loader2,
   Plus,
   StickyNote,
   Trash2,
@@ -110,6 +113,10 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
   }, [prompt, points, layoutMode, directed, wrongPenalty, explanation, cards, positions, connections])
 
   const isDirty = savedSignature !== '' && currentSignature !== savedSignature
+  const totalWeight = useMemo(
+    () => connections.reduce((sum, c) => sum + (c.points ?? 1), 0),
+    [connections],
+  )
 
   // Load quiz and existing 'board' question / answer key
   useEffect(() => {
@@ -562,7 +569,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         {/* Builder Toolbar & Status Header */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-navy-900-12 shadow-sm">
           <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Canvas authoring toolbar">
-            <span className="text-xs font-semibold text-navy-800-72 mr-1">Add:</span>
+            <span className="text-sm font-semibold text-navy-800-72 mr-1">Add:</span>
             <Button
               type="button"
               variant="secondary"
@@ -613,28 +620,54 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
             </Button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span
-              className={`text-xs font-semibold ${isDirty ? 'text-amber-700' : 'text-emerald-700'}`}
+              className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
+                saving ? 'text-navy-700' : isDirty ? 'text-amber-800' : 'text-emerald-800'
+              }`}
               role="status"
             >
-              {saving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'Saved'}
+              {saving ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                  <span>Saving…</span>
+                </>
+              ) : isDirty ? (
+                <>
+                  <AlertCircle size={16} aria-hidden="true" />
+                  <span>Unsaved changes</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={16} aria-hidden="true" />
+                  <span>Saved</span>
+                </>
+              )}
             </span>
+            {cards.length > 0 && validationErrors.length > 0 && (
+              <span
+                className="text-sm font-medium text-amber-800 max-w-xs truncate"
+                role="alert"
+                title={validationErrors[0]}
+              >
+                {validationErrors[0]}
+              </span>
+            )}
             <Button
               type="button"
               onClick={() => void handleSave()}
-              disabled={saving || validationErrors.length > 0}
+              disabled={saving || cards.length === 0 || validationErrors.length > 0}
             >
               {saving ? 'Saving…' : 'Save board'}
             </Button>
           </div>
         </div>
 
-        {/* Plain language validation notice if any */}
-        {validationErrors.length > 0 && (
+        {/* Plain language validation notice if any (hidden when cards.length === 0) */}
+        {cards.length > 0 && validationErrors.length > 0 && (
           <div className="mb-3">
             <Alert tone="warning" label="Review board requirements">
-              <ul className="m-0 pl-5 list-disc text-xs space-y-1">
+              <ul className="m-0 pl-5 list-disc text-sm space-y-1">
                 {validationErrors.map((err, i) => (
                   <li key={i}>{err}</li>
                 ))}
@@ -663,9 +696,9 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
             }
           />
         ) : (
-          <div className="relative flex flex-col lg:flex-row gap-4 h-[650px] w-full">
-            {/* The Canvas Flow Board */}
-            <div className="flex-1 h-full min-h-[400px] rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50 relative">
+          <div className="relative flex flex-col lg:flex-row gap-4 w-full lg:h-[650px]">
+            {/* The Canvas Flow Board (responsive: min 420px below lg, full width) */}
+            <div className="w-full lg:flex-1 h-[420px] sm:h-[480px] lg:h-full min-h-[420px] rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50 relative">
               <CanvasBoard
                 cards={cards}
                 connections={connections}
@@ -690,13 +723,13 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
               />
             </div>
 
-            {/* Side Panel for Card, Connection, or Board Settings */}
+            {/* Side/Bottom Panel for Card, Connection, or Board Settings (responsive: below board on mobile/tablet, side panel on desktop) */}
             {(selectedCard || selectedConnection || showSettingsPanel) && (
               <div
-                className="w-full lg:w-80 bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm overflow-y-auto flex flex-col gap-4"
+                className="w-full lg:w-80 lg:h-full max-h-[500px] lg:max-h-none bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm overflow-y-auto flex flex-col gap-4"
                 aria-label="Editor side panel"
               >
-                {/* Close Button */}
+                {/* Close Button with 44px touch target */}
                 <div className="flex items-center justify-between border-b border-navy-900-12 pb-2">
                   <h3 className="text-sm font-semibold text-navy-900 m-0">
                     {selectedCard
@@ -712,7 +745,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                       setSelectedConnectionId(null)
                       setShowSettingsPanel(false)
                     }}
-                    className="p-1.5 rounded-full hover:bg-navy-900-12 text-navy-800"
+                    className="flex items-center justify-center min-h-[44px] min-w-[44px] rounded-full hover:bg-navy-900-12 text-navy-800 transition-colors"
                     aria-label="Close side panel"
                   >
                     <X size={16} aria-hidden="true" />
@@ -774,13 +807,13 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                 {/* Edit Selected Connection */}
                 {selectedConnection && (
                   <div className="grid gap-3">
-                    <p className="text-xs text-navy-800-72">
+                    <p className="text-sm text-navy-800-72">
                       Connects <strong>{cards.find((c) => c.id === selectedConnection.from)?.title || selectedConnection.from}</strong> to{' '}
                       <strong>{cards.find((c) => c.id === selectedConnection.to)?.title || selectedConnection.to}</strong>
                     </p>
                     <Input
-                      label="Connection points"
-                      name="conn-points"
+                      label="Weight"
+                      name="conn-weight"
                       type="number"
                       min={0}
                       value={String(selectedConnection.points ?? 1)}
@@ -790,7 +823,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                           prev.map((c) => (c.id === selectedConnection.id ? { ...c, points: pts } : c)),
                         )
                       }}
-                      hint="Points awarded for identifying this connection"
+                      hint="Relative importance. The board’s points are split across connections by weight."
                     />
                     <div className="pt-2">
                       <Button
@@ -821,13 +854,16 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                       required
                     />
                     <Input
-                      label="Total points"
+                      label="Points for a perfect board"
                       name="board-points"
                       type="number"
                       min={1}
                       value={String(points)}
                       onChange={(e) => setPoints(Math.max(1, Number(e.target.value) || 1))}
                     />
+                    <p className="text-sm font-medium text-navy-800" data-testid="live-weight-line">
+                      {connections.length} {connections.length === 1 ? 'connection' : 'connections'}, total weight {totalWeight}
+                    </p>
                     <Select
                       label="Card layout for students"
                       name="board-layout"
@@ -915,12 +951,13 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
               ]}
             />
             <Input
-              label="Points (optional)"
-              name="connect-points-val"
+              label="Weight"
+              name="connect-weight-val"
               type="number"
               min={0}
               value={String(connectPoints)}
               onChange={(e) => setConnectPoints(Math.max(0, Number(e.target.value) || 0))}
+              hint="Relative importance. The board’s points are split across connections by weight."
             />
             <div className="dialog__actions">
               <Button type="button" variant="secondary" onClick={() => setShowConnectModal(false)}>
