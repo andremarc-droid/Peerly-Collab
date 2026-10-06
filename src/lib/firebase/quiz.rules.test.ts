@@ -865,7 +865,7 @@ describe('canvas mode Firestore rules', () => {
 
   it('answer-size safety: student autosaves and submits 80 connection strings for a canvas attempt, and result is stored', async () => {
     await seed()
-    const student = environment.authenticatedContext('student').firestore()
+    const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
 
     // Setup published canvas quiz with cards and answer key
     const canvasQDoc = canvasQuestion(40)
@@ -927,8 +927,8 @@ describe('canvas mode Firestore rules', () => {
 
   it('full flow: instructor creates canvas quiz, student plays, submits, and score matches gradeCanvasQuestion', async () => {
     await seed()
-    const owner = environment.authenticatedContext('teacher').firestore()
-    const student = environment.authenticatedContext('student').firestore()
+    const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+    const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
 
     // 1. Instructor creates canvas quiz in class1
     const quizId = 'flow-canvas-qz'
@@ -995,7 +995,7 @@ describe('canvas mode Firestore rules', () => {
 
   it('regression: standard quiz and flashcard flows remain unchanged', async () => {
     await seed()
-    const student = environment.authenticatedContext('student').firestore()
+    const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
 
     // 1. Standard quiz attempt
     const quizAttemptId = await startAttempt('qz', 'student', 'Student', student)
