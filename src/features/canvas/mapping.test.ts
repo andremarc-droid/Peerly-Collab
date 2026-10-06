@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CANVAS_CARD_HEIGHT, CANVAS_CARD_WIDTH } from './schemas'
-import { cardsToNodes, connectionsToEdges, edgeToConnection, nodesToPositions, stringToCanvasConnection } from './mapping'
+import { cardsToNodes, connectionsToEdges, edgeToConnection, getOptimalHandles, nodesToPositions, stringToCanvasConnection } from './mapping'
 import type { CanvasCard, CanvasConnection } from './types'
 
 describe('canvas pure mapping functions', () => {
@@ -126,5 +126,74 @@ describe('canvas pure mapping functions', () => {
     expect(stringToCanvasConnection('corrupted<', false)).toBeNull()
     expect(stringToCanvasConnection('just-text', true)).toBeNull()
     expect(stringToCanvasConnection('', true)).toBeNull()
+  })
+
+  it('determines optimal handles based on relative card positions in getOptimalHandles', () => {
+    // Target below source
+    expect(getOptimalHandles({ x: 100, y: 100 }, { x: 100, y: 300 })).toEqual({
+      sourceHandle: 'bottom',
+      targetHandle: 'top',
+    })
+
+    // Target above source
+    expect(getOptimalHandles({ x: 100, y: 300 }, { x: 100, y: 100 })).toEqual({
+      sourceHandle: 'top',
+      targetHandle: 'bottom',
+    })
+
+    // Target right of source
+    expect(getOptimalHandles({ x: 100, y: 100 }, { x: 400, y: 100 })).toEqual({
+      sourceHandle: 'right',
+      targetHandle: 'left',
+    })
+
+    // Target left of source
+    expect(getOptimalHandles({ x: 400, y: 100 }, { x: 100, y: 100 })).toEqual({
+      sourceHandle: 'left',
+      targetHandle: 'right',
+    })
+  })
+
+  it('preserves explicit handles and computes optimal handles from positions in connectionsToEdges', () => {
+    // Explicit handles
+    const explicitConn: CanvasConnection = {
+      id: 'c1->c2',
+      from: 'c1',
+      to: 'c2',
+      sourceHandle: 'bottom',
+      targetHandle: 'top',
+    }
+    const explicitEdges = connectionsToEdges([explicitConn], true)
+    expect(explicitEdges[0].sourceHandle).toBe('bottom')
+    expect(explicitEdges[0].targetHandle).toBe('top')
+
+    // Derived handles from positions when not explicitly set
+    const unpinnedConn: CanvasConnection = {
+      id: 'c1->c2',
+      from: 'c1',
+      to: 'c2',
+    }
+    const positions = {
+      c1: { x: 200, y: 100 }, // Source card above
+      c2: { x: 200, y: 400 }, // Target card below
+    }
+    const derivedEdges = connectionsToEdges([unpinnedConn], true, undefined, positions)
+    expect(derivedEdges[0].sourceHandle).toBe('bottom')
+    expect(derivedEdges[0].targetHandle).toBe('top')
+  })
+
+  it('preserves sourceHandle and targetHandle in edgeToConnection', () => {
+    const edge = {
+      id: 'e1',
+      source: 'c1',
+      target: 'c2',
+      sourceHandle: 'bottom',
+      targetHandle: 'top',
+      data: { points: 5 },
+    }
+    const conn = edgeToConnection(edge)
+    expect(conn.sourceHandle).toBe('bottom')
+    expect(conn.targetHandle).toBe('top')
+    expect(conn.points).toBe(5)
   })
 })

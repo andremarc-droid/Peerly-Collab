@@ -78,12 +78,21 @@ export function renormalizeConnections(
       existing.points = Math.max(existing.points ?? 1, c.points ?? 1)
     } else {
       const [canonFrom, canonTo] = c.from < c.to ? [c.from, c.to] : [c.to, c.from]
-      map.set(norm, {
+      const isSwapped = canonFrom !== c.from
+      const item: CanvasConnection = {
         id: norm,
         from: canonFrom,
         to: canonTo,
         points: c.points ?? 1,
-      })
+      }
+      if (isSwapped) {
+        if (c.targetHandle) item.sourceHandle = c.targetHandle
+        if (c.sourceHandle) item.targetHandle = c.sourceHandle
+      } else {
+        if (c.sourceHandle) item.sourceHandle = c.sourceHandle
+        if (c.targetHandle) item.targetHandle = c.targetHandle
+      }
+      map.set(norm, item)
     }
   }
 
@@ -350,13 +359,19 @@ export function validateCanvasKey(
     seenEdges.add(norm)
 
     const points = conn.points === undefined ? 1 : numberField(conn.points, `connections[${index}].points`, 0)
+    const sourceHandle = typeof conn.sourceHandle === 'string' ? conn.sourceHandle : undefined
+    const targetHandle = typeof conn.targetHandle === 'string' ? conn.targetHandle : undefined
 
-    return {
+    const result: CanvasConnection = {
       id,
       from,
       to,
       points,
     }
+    if (sourceHandle) result.sourceHandle = sourceHandle
+    if (targetHandle) result.targetHandle = targetHandle
+
+    return result
   })
 
   return {

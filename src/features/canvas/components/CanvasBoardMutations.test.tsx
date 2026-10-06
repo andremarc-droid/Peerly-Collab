@@ -120,4 +120,33 @@ describe('CanvasBoard directed and undirected mutations', () => {
       { id: 'c1<->c3', from: 'c1', to: 'c3' },
     ])
   })
+
+  it('preserves sourceHandle and targetHandle when user connects specific handles', () => {
+    const onConnectionsChange = vi.fn()
+    render(
+      <CanvasBoard
+        cards={sampleCards}
+        connections={[]}
+        directed={true}
+        mode="edit"
+        onConnectionsChange={onConnectionsChange}
+      />,
+    )
+
+    lastCapturedProps.onConnect({
+      source: 'c1',
+      target: 'c2',
+      sourceHandle: 'bottom',
+      targetHandle: 'top',
+    })
+    expect(onConnectionsChange).toHaveBeenCalledWith([
+      {
+        id: 'c1->c2',
+        from: 'c1',
+        to: 'c2',
+        sourceHandle: 'bottom',
+        targetHandle: 'top',
+      },
+    ])
+  })
 })

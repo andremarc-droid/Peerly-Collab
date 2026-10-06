@@ -14,7 +14,7 @@ import {
   type OnConnect,
 } from '@xyflow/react'
 import '../canvas.css'
-import { cardsToNodes, connectionsToEdges, edgeToConnection, nodesToPositions, stringToCanvasConnection, type ConnectionStatus } from '../mapping'
+import { cardsToNodes, connectionsToEdges, edgeToConnection, getOptimalHandles, nodesToPositions, stringToCanvasConnection, type ConnectionStatus } from '../mapping'
 import { normalizeConnection } from '../schemas'
 import type { CanvasCard, CanvasConnection } from '../types'
 import { canvasEdgeTypes } from './edges/edgeTypes'
@@ -68,12 +68,26 @@ function CanvasBoardInner({
     () => cardsToNodes(cards, positions, { readOnly: !isEditMode, deletable: isEditMode }),
     [cards, positions, isEditMode],
   )
-  const initialEdges = useMemo(
-    () => connectionsToEdges(connections, directed, statusByConnection),
-    [connections, directed, statusByConnection],
-  )
 
   const [nodes, setNodes] = useState<Node[]>(initialNodes)
+
+  const nodePositionsMap = useMemo(() => {
+    const map: Record<string, { x: number; y: number }> = {}
+    cards.forEach((c) => {
+      const p = positions?.[c.id] ?? c.position
+      if (p) map[c.id] = { x: p.x, y: p.y }
+    })
+    nodes.forEach((n) => {
+      if (n.position) map[n.id] = { x: n.position.x, y: n.position.y }
+    })
+    return map
+  }, [cards, positions, nodes])
+
+  const initialEdges = useMemo(
+    () => connectionsToEdges(connections, directed, statusByConnection, nodePositionsMap),
+    [connections, directed, statusByConnection, nodePositionsMap],
+  )
+
   const [edges, setEdges] = useState<Edge[]>(initialEdges)
 
   // Stable signature of card ids, contents, titles, URLs, imageIds, and positions
@@ -97,7 +111,7 @@ function CanvasBoardInner({
           if (!conn) return ''
           const normKey = normalizeConnection(conn.from, conn.to, directed)
           const st = statusByConnection?.[conn.id] ?? statusByConnection?.[normKey] ?? ''
-          return `${conn.id}:${conn.from}:${conn.to}:${conn.points ?? ''}:${st}`
+          return `${conn.id}:${conn.from}:${conn.to}:${conn.sourceHandle ?? ''}:${conn.targetHandle ?? ''}:${conn.points ?? ''}:${st}`
         })
         .filter(Boolean)
         .join('|') + `::${directed}`,
@@ -158,17 +172,28 @@ function CanvasBoardInner({
 
       if (isDuplicate) return
 
+      const srcHandle = connection.sourceHandle ?? undefined
+      let tgtHandle = connection.targetHandle ?? undefined
+
+      // If targetHandle wasn't specified (dropped on node body), resolve best handle
+      if (srcHandle && !tgtHandle && nodePositionsMap[connection.source] && nodePositionsMap[connection.target]) {
+        const optimal = getOptimalHandles(nodePositionsMap[connection.source], nodePositionsMap[connection.target])
+        tgtHandle = optimal.targetHandle
+      }
+
       const newConnection: CanvasConnection = {
         id: newEdgeId,
         from: connection.source,
         to: connection.target,
       }
+      if (srcHandle) newConnection.sourceHandle = srcHandle
+      if (tgtHandle) newConnection.targetHandle = tgtHandle
 
       const updated = [...currentList, newConnection]
       setLiveAnnouncement('Connection added')
       onConnectionsChange?.(updated)
     },
-    [mode, connections, directed, maxConnections, getNormalizedEdgeId, onConnectionsChange],
+    [mode, connections, directed, maxConnections, getNormalizedEdgeId, onConnectionsChange, nodePositionsMap],
   )
 
   // Handle edge deletion via Delete key or interaction

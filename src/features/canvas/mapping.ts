@@ -86,12 +86,47 @@ export function stringToCanvasConnection(
 }
 
 /**
+ * Computes optimal handle identifiers ('top', 'right', 'bottom', 'left')
+ * between two card coordinates based on their relative positions.
+ */
+export function getOptimalHandles(
+  fromPos: { x: number; y: number },
+  toPos: { x: number; y: number },
+): { sourceHandle: string; targetHandle: string } {
+  const fromCenterX = fromPos.x + CANVAS_CARD_WIDTH / 2
+  const fromCenterY = fromPos.y + CANVAS_CARD_HEIGHT / 2
+  const toCenterX = toPos.x + CANVAS_CARD_WIDTH / 2
+  const toCenterY = toPos.y + CANVAS_CARD_HEIGHT / 2
+
+  const dx = toCenterX - fromCenterX
+  const dy = toCenterY - fromCenterY
+
+  const normX = dx / CANVAS_CARD_WIDTH
+  const normY = dy / CANVAS_CARD_HEIGHT
+
+  if (Math.abs(normY) >= Math.abs(normX)) {
+    if (dy >= 0) {
+      return { sourceHandle: 'bottom', targetHandle: 'top' }
+    } else {
+      return { sourceHandle: 'top', targetHandle: 'bottom' }
+    }
+  } else {
+    if (dx >= 0) {
+      return { sourceHandle: 'right', targetHandle: 'left' }
+    } else {
+      return { sourceHandle: 'left', targetHandle: 'right' }
+    }
+  }
+}
+
+/**
  * Pure mapping function converting connection records or edge strings into React Flow Edges.
  */
 export function connectionsToEdges(
   connections: (CanvasConnection | string)[] = [],
   directed = true,
   statusByConnection?: Record<string, ConnectionStatus>,
+  positions?: Record<string, { x: number; y: number }>,
 ): Edge<CanvasEdgeData>[] {
   return connections
     .map((conn) => {
@@ -104,10 +139,25 @@ export function connectionsToEdges(
         statusByConnection?.[c.id] ??
         (typeof conn === 'string' ? statusByConnection?.[conn] : undefined)
 
+      let sourceHandle = c.sourceHandle
+      let targetHandle = c.targetHandle
+
+      if ((!sourceHandle || !targetHandle) && positions) {
+        const fromPos = positions[c.from]
+        const toPos = positions[c.to]
+        if (fromPos && toPos) {
+          const optimal = getOptimalHandles(fromPos, toPos)
+          if (!sourceHandle) sourceHandle = optimal.sourceHandle
+          if (!targetHandle) targetHandle = optimal.targetHandle
+        }
+      }
+
       const edge: Edge<CanvasEdgeData> = {
         id: c.id || normKey,
         source: c.from,
         target: c.to,
+        sourceHandle: sourceHandle || undefined,
+        targetHandle: targetHandle || undefined,
         type: 'canvas',
         data: {
           connectionId: c.id,
@@ -161,12 +211,20 @@ export function edgeToConnection(edge: {
   id?: string
   source: string
   target: string
+  sourceHandle?: string | null
+  targetHandle?: string | null
   data?: { points?: number }
 }): CanvasConnection {
   const connection: CanvasConnection = {
     id: edge.id || `${edge.source}->${edge.target}`,
     from: edge.source,
     to: edge.target,
+  }
+  if (edge.sourceHandle) {
+    connection.sourceHandle = edge.sourceHandle
+  }
+  if (edge.targetHandle) {
+    connection.targetHandle = edge.targetHandle
   }
   if (edge.data?.points !== undefined) {
     connection.points = edge.data.points

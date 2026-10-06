@@ -34,6 +34,8 @@ export interface CanvasConnection {
   from: string
   to: string
   points?: number
+  sourceHandle?: string
+  targetHandle?: string
 }
 
 export interface CanvasAnswerKey {
