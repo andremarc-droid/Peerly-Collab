@@ -61,7 +61,7 @@ export function ClassQuizzesTab({ classroom, classes }: { classroom: ClassWithId
   }
 
   return <section className="grid gap-5" aria-labelledby="class-quizzes-heading">
-    <header className="flex flex-wrap items-end justify-between gap-3"><div><span className="section-kicker">CLASS PRACTICE</span><h2 id="class-quizzes-heading" className="m-0 text-2xl">Quizzes</h2></div>{classroom.status === 'active' ? <Button to={`/instructor/quizzes/new?classId=${encodeURIComponent(classroom.id)}`}><Plus size={16} aria-hidden="true" /> Create quiz</Button> : <Button type="button" disabled aria-label="Restore this class before creating quizzes">Restore this class before creating quizzes</Button>}</header>
+    <header className="flex flex-wrap items-end justify-between gap-3"><div><span className="section-kicker">CLASS PRACTICE</span><h2 id="class-quizzes-heading" className="m-0 text-2xl">Quizzes and Activities</h2></div>{classroom.status === 'active' ? <Button to={`/instructor/quizzes/new?classId=${encodeURIComponent(classroom.id)}`}><Plus size={16} aria-hidden="true" /> Create quiz</Button> : <Button type="button" disabled aria-label="Restore this class before creating quizzes">Restore this class before creating quizzes</Button>}</header>
     {(() => {
       const status = resolveListStatus({ loading, error, count: quizzes.length })
       if (status === 'error') {
