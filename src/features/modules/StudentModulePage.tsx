@@ -10,6 +10,7 @@ import { DataCard } from '../../shared/ui/DataCard'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Skeleton } from '../../shared/ui/Skeleton'
+import { resolveListStatus } from '../../shared/ui/listState'
 import { watchClass } from '../classes/services/classService'
 import { listMyEnrollments } from '../classes/services/joinService'
 import { watchPublishedQuizzesForClass } from '../classes/services/quizService'
@@ -300,46 +301,58 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
             <span className="section-kicker">STUDY RESOURCES</span>
             <h2 id="resources-heading" className="m-0 font-heading text-2xl">Resources</h2>
           </header>
-          {resourcesLoading ? (
-            <div className="grid gap-3">
-              {[0, 1].map((index) => (
-                <Skeleton key={index} className="h-32 rounded-3xl" label="Loading module resources" />
-              ))}
-            </div>
-          ) : resourcesError ? (
-            <Alert
-              tone="error"
-              label="Resources unavailable"
-              action={
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    setResourcesLoading(true)
-                    setResourcesError(null)
-                    setResourcesRetry((v) => v + 1)
-                  }}
+          {(() => {
+            const status = resolveListStatus({ loading: resourcesLoading, error: resourcesError, count: resources.length })
+            if (status === 'error') {
+              return (
+                <Alert
+                  tone="error"
+                  label="Resources unavailable"
+                  action={
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setResourcesLoading(true)
+                        setResourcesError(null)
+                        setResourcesRetry((v) => v + 1)
+                      }}
+                    >
+                      Retry
+                    </Button>
+                  }
                 >
-                  Retry
-                </Button>
-              }
-            >
-              {resourcesError}
-            </Alert>
-          ) : resources.length > 0 ? (
-            <ol className="resource-list" aria-label="Module resources in order">
-              {resources.map((resource) => (
-                <li key={resource.id} className="resource-list__item">
-                  <StudentResourceItem resource={resource} />
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <EmptyState
-              title="No resources in this module"
-              description="Your instructor hasn’t added resources to this module yet."
-            />
-          )}
+                  {resourcesError}
+                </Alert>
+              )
+            }
+            if (status === 'loading') {
+              return (
+                <div className="grid gap-3">
+                  {[0, 1].map((index) => (
+                    <Skeleton key={index} className="h-32 rounded-3xl" label="Loading module resources" />
+                  ))}
+                </div>
+              )
+            }
+            if (status === 'empty') {
+              return (
+                <EmptyState
+                  title="No resources in this module"
+                  description="Your instructor hasn’t added resources to this module yet."
+                />
+              )
+            }
+            return (
+              <ol className="resource-list" aria-label="Module resources in order">
+                {resources.map((resource) => (
+                  <li key={resource.id} className="resource-list__item">
+                    <StudentResourceItem resource={resource} />
+                  </li>
+                ))}
+              </ol>
+            )
+          })()}
         </section>
 
         {quizzesError ? (
@@ -348,20 +361,25 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
               <span className="section-kicker">PRACTICE</span>
               <h2 id="attached-quizzes-heading" className="m-0 font-heading text-2xl">Attached quizzes</h2>
             </header>
-            <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-navy-900-12 bg-white" role="alert">
-              <p className="m-0 text-sm text-navy-800-72">We couldn't load attached quizzes.</p>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setQuizzesLoading(true)
-                  setQuizzesError(null)
-                  setQuizzesRetry((v) => v + 1)
-                }}
-              >
-                Retry
-              </Button>
-            </div>
+            <Alert
+              tone="error"
+              label="Attached quizzes unavailable"
+              action={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setQuizzesLoading(true)
+                    setQuizzesError(null)
+                    setQuizzesRetry((v) => v + 1)
+                  }}
+                >
+                  Retry
+                </Button>
+              }
+            >
+              We couldn't load attached quizzes.
+            </Alert>
           </section>
         ) : quizzesLoading && module.quizIds.length > 0 ? (
           <section className="grid gap-4" aria-labelledby="attached-quizzes-heading">

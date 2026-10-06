@@ -10,6 +10,7 @@ import { DropdownMenu } from '../../shared/ui/DropdownMenu'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Input } from '../../shared/ui/Input'
 import { Skeleton } from '../../shared/ui/Skeleton'
+import { resolveListStatus } from '../../shared/ui/listState'
 import { useToast } from '../../shared/ui/useToast'
 import type { ClassWithId } from '../classes/types'
 import { createModule, deleteModuleCascade, duplicateModule, publishModule, reorderModules, subscribeToModules, unpublishModule } from './services'
@@ -80,12 +81,18 @@ export function ModulesTab({ classroom }: { classroom: ClassWithId }) {
       <Button type="button" onClick={() => { setNewTitle(''); setNewOpen(true) }} disabled={classroom.status !== 'active'} title={classroom.status !== 'active' ? 'Restore this class before creating modules' : undefined}><Plus size={17} aria-hidden="true" /> New module</Button>
     </header>
     {classroom.status !== 'active' && <Alert tone="warning" label="Archived class">Restore this class before creating or editing modules.</Alert>}
-    {error ? (
-      <Alert tone="error" label="Modules unavailable" action={<Button type="button" variant="secondary" onClick={() => { setError(''); setLoading(true); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>
-    ) : loading ? (
-      <div className="grid gap-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 rounded-3xl" label="Loading modules" />)}</div>
-    ) : items.length ? (
-      <ol className="module-list" aria-label="Modules in order">{items.map((module, index) => <li key={module.id} draggable onDragStart={() => setDraggedId(module.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => drop(module.id)} onDragEnd={() => setDraggedId('')} className={draggedId === module.id ? 'module-list__item module-list__item--dragging' : 'module-list__item'}>
+    {(() => {
+      const status = resolveListStatus({ loading, error, count: items.length })
+      if (status === 'error') {
+        return <Alert tone="error" label="Modules unavailable" action={<Button type="button" variant="secondary" onClick={() => { setError(''); setLoading(true); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>
+      }
+      if (status === 'loading') {
+        return <div className="grid gap-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 rounded-3xl" label="Loading modules" />)}</div>
+      }
+      if (status === 'empty') {
+        return <EmptyState title="Start with a module" description="Build a lesson from links, notes, Drive files, and class quizzes." action={<Button type="button" onClick={() => { setNewTitle(''); setNewOpen(true) }} disabled={classroom.status !== 'active'}><Plus size={16} aria-hidden="true" /> Create your first module</Button>} />
+      }
+      return <ol className="module-list" aria-label="Modules in order">{items.map((module, index) => <li key={module.id} draggable onDragStart={() => setDraggedId(module.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => drop(module.id)} onDragEnd={() => setDraggedId('')} className={draggedId === module.id ? 'module-list__item module-list__item--dragging' : 'module-list__item'}>
         <article className="data-card module-card">
           <Link className="module-card__primary" to={`/instructor/classes/${classroom.id}/modules/${module.id}`} aria-label={`Open module ${module.title}`}>
             <span className="module-card__icon" aria-hidden="true"><BookOpenText size={20} /></span>
@@ -101,9 +108,7 @@ export function ModulesTab({ classroom }: { classroom: ClassWithId }) {
           </DropdownMenu></div>
         </article>
       </li>)}</ol>
-    ) : (
-      <EmptyState title="Start with a module" description="Build a lesson from links, notes, Drive files, and class quizzes." action={<Button type="button" onClick={() => { setNewTitle(''); setNewOpen(true) }} disabled={classroom.status !== 'active'}><Plus size={16} aria-hidden="true" /> Create your first module</Button>} />
-    )}
+    })()}
 
     <Dialog open={newOpen} onClose={() => setNewOpen(false)} title="New module" description="Start with a title. You can add resources next.">
       <Input label="Module title" name="module-title" value={newTitle} onChange={(event) => setNewTitle(event.target.value)} maxLength={120} autoFocus />

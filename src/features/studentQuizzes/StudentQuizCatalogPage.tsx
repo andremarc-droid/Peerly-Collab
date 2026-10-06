@@ -6,11 +6,13 @@ import { watchPublishedQuizzesForClass } from '../classes/services/quizService'
 import type { EnrollmentWithId } from '../classes/types'
 import { listUserAttempts } from '../quizzes/services/attemptService'
 import { quizModeLabel, type QuizAttempt } from '../quizzes/types'
+import { Alert } from '../../shared/ui/Alert'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { DataCard } from '../../shared/ui/DataCard'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { PageHeader } from '../../shared/ui/PageHeader'
+import { resolveListStatus } from '../../shared/ui/listState'
 import { Select } from '../../shared/ui/Select'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { Toolbar } from '../../shared/ui/Toolbar'
@@ -67,13 +69,21 @@ export function StudentQuizCatalogPage() {
   return <AppShell><PageHeader eyebrow="STUDENT SPACE" title="Practice." subtitle="Find published quizzes from your classes and pick up where you left off." action={<Button to="/join">Join class</Button>} />
     <main className="app-shell__content grid gap-6" id="main-content">
       <Toolbar query={query} onQueryChange={setQuery} placeholder="Search quizzes" filters={<Select label="Quiz mode" options={[{ value: 'all', label: 'All modes' }, { value: 'quiz', label: 'Quiz' }, { value: 'flashcards', label: 'Flashcards' }, { value: 'canvas', label: 'Canvas' }]} value={mode} onChange={(event) => setMode(event.target.value)} />} />
-      {error && <div role="alert" className="alert alert--error"><strong>Quizzes unavailable.</strong> {error} <Button type="button" variant="secondary" onClick={() => { setError(''); setLoading(true); setRetry((n) => n + 1) }}>Retry</Button></div>}
-      {loading ? <div className="grid gap-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-40 rounded-3xl" label="Loading quizzes" />)}</div> : <>
-        <section className="grid gap-3" aria-labelledby="my-classes-heading"><h2 id="my-classes-heading" className="m-0 font-heading text-2xl">My classes</h2>{enrollments.length === 0 ? <EmptyState title="Join a class to get started" description="Use your instructor’s code to see published practice and class details." action={<Button to="/join">Join a class</Button>} /> : <div className="grid gap-3 sm:grid-cols-2">{enrollments.map((entry) => <DataCard key={entry.id} title={entry.className} meta={entry.status === 'active' ? 'Class and published quizzes' : entry.status === 'pending' ? 'Your request is waiting for approval' : 'Contact your instructor about access'} badge={<Badge>{entry.status === 'pending' ? 'Waiting for approval' : entry.status === 'active' ? 'Active' : 'Blocked'}</Badge>}>{entry.status === 'blocked' ? <span className="text-sm">Contact your instructor</span> : <Button to={`/student/classes/${entry.classId}`} variant="secondary">Open class</Button>}</DataCard>)}</div>}</section>
-        <section className="grid gap-3" aria-labelledby="continue-heading"><h2 id="continue-heading" className="m-0 font-heading text-2xl">Continue</h2>{activeAttempts.length ? activeAttempts.map(({ quiz, attempt }) => <QuizCard key={attempt.id} quiz={quiz} attempt={attempt} action="Resume" />) : <p className="m-0 text-sm text-navy-800-72">You have no quizzes in progress.</p>}</section>
-        <section className="grid gap-4" aria-labelledby="catalog-heading"><h2 id="catalog-heading" className="m-0 font-heading text-2xl">Available quizzes</h2>{filtered.length === 0 ? <EmptyState title="No quizzes to show" description={quizzes.length ? 'Try another search or mode filter.' : 'Published quizzes from your active classes will appear here.'} action={<Button to="/join">Join a class</Button>} /> : quizGroups.map(({ entry, items }) => <section className="grid gap-3" key={entry.classId} aria-labelledby={`class-quizzes-${entry.classId}`}><h3 id={`class-quizzes-${entry.classId}`} className="m-0 font-heading text-xl">{entry.className}</h3>{items.length ? items.map((quiz) => <CatalogCard key={quiz.id} quiz={quiz} />) : <p className="m-0 text-sm text-navy-800-72">No matching published quizzes in this class.</p>}</section>)}</section>
-        <section className="grid gap-3" aria-labelledby="attempt-history"><h2 id="attempt-history" className="m-0 font-heading text-2xl">My attempts</h2>{history.length ? history.map(({ quiz, attempt }) => <QuizCard key={attempt.id} quiz={quiz} attempt={attempt} action="View result" />) : <p className="m-0 text-sm text-navy-800-72">Submitted attempts will appear here.</p>}</section>
-      </>}
+      {(() => {
+        const status = resolveListStatus({ loading, error, count: enrollments.length })
+        if (status === 'error') {
+          return <Alert tone="error" label="Quizzes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setError(''); setLoading(true); setRetry((n) => n + 1) }}>Retry</Button>}>{error}</Alert>
+        }
+        if (status === 'loading') {
+          return <div className="grid gap-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-40 rounded-3xl" label="Loading quizzes" />)}</div>
+        }
+        return <>
+          <section className="grid gap-3" aria-labelledby="my-classes-heading"><h2 id="my-classes-heading" className="m-0 font-heading text-2xl">My classes</h2>{enrollments.length === 0 ? <EmptyState title="Join a class to get started" description="Use your instructor’s code to see published practice and class details." action={<Button to="/join">Join a class</Button>} /> : <div className="grid gap-3 sm:grid-cols-2">{enrollments.map((entry) => <DataCard key={entry.id} title={entry.className} meta={entry.status === 'active' ? 'Class and published quizzes' : entry.status === 'pending' ? 'Your request is waiting for approval' : 'Contact your instructor about access'} badge={<Badge>{entry.status === 'pending' ? 'Waiting for approval' : entry.status === 'active' ? 'Active' : 'Blocked'}</Badge>}>{entry.status === 'blocked' ? <span className="text-sm">Contact your instructor</span> : <Button to={`/student/classes/${entry.classId}`} variant="secondary">Open class</Button>}</DataCard>)}</div>}</section>
+          <section className="grid gap-3" aria-labelledby="continue-heading"><h2 id="continue-heading" className="m-0 font-heading text-2xl">Continue</h2>{activeAttempts.length ? activeAttempts.map(({ quiz, attempt }) => <QuizCard key={attempt.id} quiz={quiz} attempt={attempt} action="Resume" />) : <p className="m-0 text-sm text-navy-800-72">You have no quizzes in progress.</p>}</section>
+          <section className="grid gap-4" aria-labelledby="catalog-heading"><h2 id="catalog-heading" className="m-0 font-heading text-2xl">Available quizzes</h2>{filtered.length === 0 ? <EmptyState title="No quizzes to show" description={quizzes.length ? 'Try another search or mode filter.' : 'Published quizzes from your active classes will appear here.'} action={<Button to="/join">Join a class</Button>} /> : quizGroups.map(({ entry, items }) => <section className="grid gap-3" key={entry.classId} aria-labelledby={`class-quizzes-${entry.classId}`}><h3 id={`class-quizzes-${entry.classId}`} className="m-0 font-heading text-xl">{entry.className}</h3>{items.length ? items.map((quiz) => <CatalogCard key={quiz.id} quiz={quiz} />) : <p className="m-0 text-sm text-navy-800-72">No matching published quizzes in this class.</p>}</section>)}</section>
+          <section className="grid gap-3" aria-labelledby="attempt-history"><h2 id="attempt-history" className="m-0 font-heading text-2xl">My attempts</h2>{history.length ? history.map(({ quiz, attempt }) => <QuizCard key={attempt.id} quiz={quiz} attempt={attempt} action="View result" />) : <p className="m-0 text-sm text-navy-800-72">Submitted attempts will appear here.</p>}</section>
+        </>
+      })()}
     </main>
   </AppShell>
 }

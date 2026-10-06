@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { DataCard } from '../../shared/ui/DataCard'
 import { Dialog } from '../../shared/ui/Dialog'
 import { EmptyState } from '../../shared/ui/EmptyState'
+import { resolveListStatus } from '../../shared/ui/listState'
 import { Select } from '../../shared/ui/Select'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
@@ -61,9 +62,18 @@ export function ClassQuizzesTab({ classroom, classes }: { classroom: ClassWithId
 
   return <section className="grid gap-5" aria-labelledby="class-quizzes-heading">
     <header className="flex flex-wrap items-end justify-between gap-3"><div><span className="section-kicker">CLASS PRACTICE</span><h2 id="class-quizzes-heading" className="m-0 text-2xl">Quizzes</h2></div>{classroom.status === 'active' ? <Button to={`/instructor/quizzes/new?classId=${encodeURIComponent(classroom.id)}`}><Plus size={16} aria-hidden="true" /> Create quiz</Button> : <Button type="button" disabled aria-label="Restore this class before creating quizzes">Restore this class before creating quizzes</Button>}</header>
-    {error && <Alert tone="error" label="Quizzes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(null); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>}
-    {loading ? <div className="grid gap-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 rounded-3xl" label="Loading class quiz" />)}</div>
-      : quizzes.length ? <div className="grid gap-3">{quizzes.map((quiz) => <DataCard key={quiz.id} title={quiz.title || 'Untitled quiz'} meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'} · Updated ${quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })}`} badge={<div className="flex gap-2"><Badge>{quiz.status}</Badge><Badge>{quizModeLabel(quiz.mode)}</Badge></div>}>
+    {(() => {
+      const status = resolveListStatus({ loading, error, count: quizzes.length })
+      if (status === 'error') {
+        return <Alert tone="error" label="Quizzes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(null); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>
+      }
+      if (status === 'loading') {
+        return <div className="grid gap-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 rounded-3xl" label="Loading class quiz" />)}</div>
+      }
+      if (status === 'empty') {
+        return <EmptyState title="No quizzes in this class yet" description="Create a quiz to give this class a focused place to practice." action={classroom.status === 'active' ? <Button to={`/instructor/quizzes/new?classId=${encodeURIComponent(classroom.id)}`}><Plus size={16} aria-hidden="true" /> Create quiz</Button> : <Button type="button" disabled>Restore class to create a quiz</Button>} />
+      }
+      return <div className="grid gap-3">{quizzes.map((quiz) => <DataCard key={quiz.id} title={quiz.title || 'Untitled quiz'} meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'} · Updated ${quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })}`} badge={<div className="flex gap-2"><Badge>{quiz.status}</Badge><Badge>{quizModeLabel(quiz.mode)}</Badge></div>}>
         <p className="m-0 flex flex-wrap gap-2 text-sm text-navy-800-72"><span>{quiz.settings.participation.type === 'group' ? `Group of ${quiz.settings.participation.groupSize}` : 'Individual'}</span><span>{quiz.settings.answerReveal === 'never' ? 'Answers hidden' : quiz.settings.answerReveal === 'after_each' ? 'Answers after each question' : 'Answers after submission'}</span><span>{quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} minutes` : 'Untimed'}</span></p>
         <div className="flex flex-wrap gap-2">
           <Button to={`/instructor/quizzes/${quiz.id}`}>Edit</Button>
@@ -75,7 +85,7 @@ export function ClassQuizzesTab({ classroom, classes }: { classroom: ClassWithId
           <Button type="button" variant="secondary" disabled={deleteBusy || busyId === quiz.id} onClick={() => void startDelete(quiz)}><Trash2 size={15} aria-hidden="true" /> Delete</Button>
         </div>
       </DataCard>)}</div>
-      : <EmptyState title="No quizzes in this class yet" description="Create a quiz to give this class a focused place to practice." action={classroom.status === 'active' ? <Button to={`/instructor/quizzes/new?classId=${encodeURIComponent(classroom.id)}`}><Plus size={16} aria-hidden="true" /> Create quiz</Button> : <Button type="button" disabled>Restore class to create a quiz</Button>} />}
+    })()}
 
     <Dialog open={Boolean(copySelection)} onClose={() => setCopySelection(null)} title="Copy quiz to another class" description={copySelection ? `Create a separate draft of “${copySelection.title}”.` : undefined}>
       {targets.length ? <><Select label="Destination class" name="copy-target-class" value={targetClass} onChange={(event) => setTargetClass(event.target.value)} options={targets.map((item) => ({ value: item.id, label: item.name }))} /><div className="dialog__actions"><Button type="button" variant="secondary" onClick={() => setCopySelection(null)}>Cancel</Button><Button type="button" onClick={() => void copyToClass()} disabled={!targetClass || busyId === copySelection?.id}>Copy quiz</Button></div></> : <><p>You need another active class before you can copy this quiz.</p><Link to="/instructor" className="text-navy-800 underline">Create a class</Link></>}

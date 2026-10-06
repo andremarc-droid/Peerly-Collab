@@ -7,6 +7,7 @@ import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { PageHeader } from '../../shared/ui/PageHeader'
+import { resolveListStatus } from '../../shared/ui/listState'
 import { Select } from '../../shared/ui/Select'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { StatRow, StatTile } from '../../shared/ui/StatTile'
@@ -119,9 +120,18 @@ export function ClassesPage() {
       <section className="grid gap-5" aria-labelledby="classes-heading">
         <header className="flex flex-wrap items-end justify-between gap-3"><div><span className="section-kicker">YOUR TEACHING SPACE</span><h2 id="classes-heading" className="m-0 font-heading text-2xl">Classes</h2></div><span className="text-sm text-navy-800-72">{visible.length} {visible.length === 1 ? 'class' : 'classes'}</span></header>
         <Toolbar query={queryText} onQueryChange={setQueryText} placeholder="Search classes" filters={<Select label="Status" name="class-status" value={filter} onChange={(event) => setFilter(event.target.value as ClassFilter)} options={[{ value: 'active', label: 'Active' }, { value: 'archived', label: 'Archived' }, { value: 'all', label: 'All classes' }]} />} />
-        {error && <Alert tone="error" label="Classes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(null); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>}
-        {loading ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" aria-label="Loading classes">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-56 rounded-3xl" label="Loading class" />)}</div>
-          : visible.length ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">{visible.map((item) => <ClassTile
+        {(() => {
+          const listStatus = resolveListStatus({ loading, error, count: classes.length })
+          if (listStatus === 'error') {
+            return <Alert tone="error" label="Classes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(null); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>
+          }
+          if (listStatus === 'loading') {
+            return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" aria-label="Loading classes">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-56 rounded-3xl" label="Loading class" />)}</div>
+          }
+          if (listStatus === 'empty') {
+            return <EmptyState title="Create your first class" description="Classes keep student rosters, invitations, and quizzes together in one place." action={<Button type="button" onClick={() => setCreateOpen(true)}><Plus size={17} aria-hidden="true" /> Create your first class</Button>} />
+          }
+          return visible.length ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">{visible.map((item) => <ClassTile
             role="instructor"
             key={item.id}
             id={item.id}
@@ -139,9 +149,8 @@ export function ClassesPage() {
             onEditAppearance={() => setEditingClass(item)}
             onToggleArchive={() => void toggleArchive(item)}
             busy={busyId === item.id}
-          />)}</div>
-          : classes.length === 0 ? <EmptyState title="Create your first class" description="Classes keep student rosters, invitations, and quizzes together in one place." action={<Button type="button" onClick={() => setCreateOpen(true)}><Plus size={17} aria-hidden="true" /> Create your first class</Button>} />
-            : <p role="status" className="rounded-2xl border border-navy-900-12 p-6 text-navy-800-72">No classes match your search and status filter.</p>}
+          />)}</div> : <p role="status" className="rounded-2xl border border-navy-900-12 p-6 text-navy-800-72">No classes match your search and status filter.</p>
+        })()}
       </section>
     </main>
     <CreateClassDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={create} ownerId={ownerId ?? ''} ownerName={user?.displayName ?? 'Instructor'} busy={creating} />

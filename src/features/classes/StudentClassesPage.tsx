@@ -7,6 +7,7 @@ import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { PageHeader } from '../../shared/ui/PageHeader'
+import { resolveListStatus } from '../../shared/ui/listState'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { ToastContext } from '../../shared/ui/toastContext'
 import { ClassTile } from './ClassTile'
@@ -75,29 +76,38 @@ export function StudentClassesPage() {
   return <AppShell>
     <PageHeader eyebrow="STUDENT SPACE" title="My classes." subtitle="Your classes and the practice shared by each instructor." action={<Button to="/join"><Plus size={18} aria-hidden="true" /> Join class</Button>} />
     <main className="app-shell__content grid gap-6" id="main-content">
-      {error && <Alert tone="error" label="Classes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setError(''); setLoading(true); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>}
-      {loading ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-56 rounded-3xl" label="Loading class" />)}</div>
-        : enrollments.length === 0 ? <EmptyState title="Join a class to get started" description="Use the invitation code from your instructor to see class practice here." action={<Button to="/join"><Plus size={17} aria-hidden="true" /> Join a class</Button>} />
-          : <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" aria-label="Your classes">{enrollments.map((enrollment) => {
-            const detail = details[enrollment.id]
-            const classroom = detail?.classroom
-            const title = classroom?.name ?? enrollment.className
-            const instructor = classroom?.ownerName ?? detail?.preview?.ownerName
-            return <ClassTile
-              role="student"
-              key={enrollment.id}
-              id={enrollment.classId}
-              name={title}
-              section={classroom?.section ?? ''}
-              subject={classroom?.subject ?? ''}
-              color={classroom?.color}
-              accent={classroom?.accent}
-              instructorName={instructor}
-              availableQuizzesCount={detail?.quizzes?.length ?? 0}
-              enrollmentStatus={enrollment.status}
-              onLeaveClass={() => setLeaveEnrollment(enrollment)}
-            />
-          })}</section>}
+      {(() => {
+        const listStatus = resolveListStatus({ loading, error, count: enrollments.length })
+        if (listStatus === 'error') {
+          return <Alert tone="error" label="Classes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setError(''); setLoading(true); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>
+        }
+        if (listStatus === 'loading') {
+          return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-56 rounded-3xl" label="Loading class" />)}</div>
+        }
+        if (listStatus === 'empty') {
+          return <EmptyState title="Join a class to get started" description="Use the invitation code from your instructor to see class practice here." action={<Button to="/join"><Plus size={17} aria-hidden="true" /> Join a class</Button>} />
+        }
+        return <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" aria-label="Your classes">{enrollments.map((enrollment) => {
+          const detail = details[enrollment.id]
+          const classroom = detail?.classroom
+          const title = classroom?.name ?? enrollment.className
+          const instructor = classroom?.ownerName ?? detail?.preview?.ownerName
+          return <ClassTile
+            role="student"
+            key={enrollment.id}
+            id={enrollment.classId}
+            name={title}
+            section={classroom?.section ?? ''}
+            subject={classroom?.subject ?? ''}
+            color={classroom?.color}
+            accent={classroom?.accent}
+            instructorName={instructor}
+            availableQuizzesCount={detail?.quizzes?.length ?? 0}
+            enrollmentStatus={enrollment.status}
+            onLeaveClass={() => setLeaveEnrollment(enrollment)}
+          />
+        })}</section>
+      })()}
       {!loading && enrollments.some((entry) => entry.status === 'active') && <p className="sr-only" aria-live="polite">Class and published quiz counts update automatically.</p>}
     </main>
     {leaveEnrollment && (

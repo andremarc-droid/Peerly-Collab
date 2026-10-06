@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { DataCard } from '../../shared/ui/DataCard'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { PageHeader } from '../../shared/ui/PageHeader'
+import { resolveListStatus } from '../../shared/ui/listState'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { getClassCodePreview, leaveClass, listMyEnrollments } from './services/joinService'
@@ -243,79 +244,91 @@ function StudentClassDetail({ classId }: { classId: string }) {
       )}
       <section className="grid gap-4" aria-labelledby="modules-heading">
         <header><span className="section-kicker">STUDY MATERIAL</span><h2 id="modules-heading" className="m-0 font-heading text-2xl">Modules</h2></header>
-        {modulesLoading ? (
-          <div className="grid gap-3">{[0, 1].map((index) => <Skeleton key={index} className="h-32 rounded-3xl" label="Loading modules" />)}</div>
-        ) : modulesError ? (
-          <Alert tone="error" label="Modules unavailable" action={<Button type="button" variant="secondary" onClick={() => { setModulesLoading(true); setModulesError(null); setModulesRetry((v) => v + 1) }}>Retry</Button>}>{modulesError}</Alert>
-        ) : modules.length ? (
-          <ol className="module-list" aria-label="Published modules in order">
-            {modules.map((item) => (
-              <li key={item.id} className="module-list__item">
-                <DataCard
-                  title={item.title}
-                  meta={`${item.resourceCount} ${item.resourceCount === 1 ? 'resource' : 'resources'} · ${item.quizIds.length} attached ${item.quizIds.length === 1 ? 'quiz' : 'quizzes'}`}
-                  actions={
-                    <Button to={`/student/classes/${classId}/modules/${item.id}`} variant="secondary">
-                      Open module
-                    </Button>
-                  }
-                >
-                  {item.description ? (
-                    <p className="m-0 text-sm text-navy-800-72 line-clamp-2">
-                      {item.description}
-                    </p>
-                  ) : null}
-                </DataCard>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <EmptyState title="No modules yet" description="When your instructor publishes study modules for this class, they will appear here." />
-        )}
+        {(() => {
+          const status = resolveListStatus({ loading: modulesLoading, error: modulesError, count: modules.length })
+          if (status === 'error') {
+            return <Alert tone="error" label="Modules unavailable" action={<Button type="button" variant="secondary" onClick={() => { setModulesLoading(true); setModulesError(null); setModulesRetry((v) => v + 1) }}>Retry</Button>}>{modulesError}</Alert>
+          }
+          if (status === 'loading') {
+            return <div className="grid gap-3">{[0, 1].map((index) => <Skeleton key={index} className="h-32 rounded-3xl" label="Loading modules" />)}</div>
+          }
+          if (status === 'empty') {
+            return <EmptyState title="No modules yet" description="When your instructor publishes study modules for this class, they will appear here." />
+          }
+          return (
+            <ol className="module-list" aria-label="Published modules in order">
+              {modules.map((item) => (
+                <li key={item.id} className="module-list__item">
+                  <DataCard
+                    title={item.title}
+                    meta={`${item.resourceCount} ${item.resourceCount === 1 ? 'resource' : 'resources'} · ${item.quizIds.length} attached ${item.quizIds.length === 1 ? 'quiz' : 'quizzes'}`}
+                    actions={
+                      <Button to={`/student/classes/${classId}/modules/${item.id}`} variant="secondary">
+                        Open module
+                      </Button>
+                    }
+                  >
+                    {item.description ? (
+                      <p className="m-0 text-sm text-navy-800-72 line-clamp-2">
+                        {item.description}
+                      </p>
+                    ) : null}
+                  </DataCard>
+                </li>
+              ))}
+            </ol>
+          )
+        })()}
       </section>
       <section className="grid gap-4" aria-labelledby="published-quizzes-heading">
         <header><span className="section-kicker">CLASS PRACTICE</span><h2 id="published-quizzes-heading" className="m-0 font-heading text-2xl">Published quizzes</h2></header>
-        {quizzesLoading ? (
-          <div className="grid gap-3">{[0, 1].map((index) => <Skeleton key={index} className="h-28 rounded-3xl" label="Loading published quizzes" />)}</div>
-        ) : quizzesError ? (
-          <Alert tone="error" label="Quizzes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setQuizzesLoading(true); setQuizzesError(null); setQuizzesRetry((v) => v + 1) }}>Retry</Button>}>{quizzesError}</Alert>
-        ) : quizzes.length ? (
-          <div className="grid gap-3">
-            {quizzes.map((quiz) => {
-              const groupQuiz = quiz.settings.participation.type === 'group'
-              const attempts = attemptsByQuiz[quiz.id] ?? []
-              const latestActive = attempts.find((a) => a.status === 'in_progress')
-              const remaining = quiz.settings.attemptsAllowed === null ? null : Math.max(0, quiz.settings.attemptsAllowed - attempts.length)
-              const meta = `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} minute time limit` : ' · No time limit'}${remaining !== null ? ` · ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left` : ' · Unlimited attempts'}`
-              const to = groupQuiz ? undefined : latestActive ? `/student/quizzes/${quiz.id}/attempts/${latestActive.id}` : `/student/quizzes/${quiz.id}`
-              const label = groupQuiz ? 'Start · Group quizzes coming soon' : latestActive ? 'Resume' : 'Start'
-              return (
-                <DataCard
-                  key={quiz.id}
-                  title={quiz.title}
-                  meta={meta}
-                  badge={
-                    <div className="flex flex-wrap gap-2">
-                      <Badge>{quizModeLabel(quiz.mode)}</Badge>
-                      <Badge>{answerRevealLabel(quiz.settings.answerReveal)}</Badge>
-                      <Badge>{scoreVisibilityLabel(quiz)}</Badge>
-                    </div>
-                  }
-                >
-                  <Button
-                    to={to}
-                    variant="secondary"
-                    disabled={groupQuiz || (remaining === 0 && !latestActive)}
+        {(() => {
+          const status = resolveListStatus({ loading: quizzesLoading, error: quizzesError, count: quizzes.length })
+          if (status === 'error') {
+            return <Alert tone="error" label="Quizzes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setQuizzesLoading(true); setQuizzesError(null); setQuizzesRetry((v) => v + 1) }}>Retry</Button>}>{quizzesError}</Alert>
+          }
+          if (status === 'loading') {
+            return <div className="grid gap-3">{[0, 1].map((index) => <Skeleton key={index} className="h-28 rounded-3xl" label="Loading published quizzes" />)}</div>
+          }
+          if (status === 'empty') {
+            return <EmptyState title="No published quizzes yet" description="When your instructor publishes a quiz for this class, it will show up here." />
+          }
+          return (
+            <div className="grid gap-3">
+              {quizzes.map((quiz) => {
+                const groupQuiz = quiz.settings.participation.type === 'group'
+                const attempts = attemptsByQuiz[quiz.id] ?? []
+                const latestActive = attempts.find((a) => a.status === 'in_progress')
+                const remaining = quiz.settings.attemptsAllowed === null ? null : Math.max(0, quiz.settings.attemptsAllowed - attempts.length)
+                const meta = `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} minute time limit` : ' · No time limit'}${remaining !== null ? ` · ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left` : ' · Unlimited attempts'}`
+                const to = groupQuiz ? undefined : latestActive ? `/student/quizzes/${quiz.id}/attempts/${latestActive.id}` : `/student/quizzes/${quiz.id}`
+                const label = groupQuiz ? 'Start · Group quizzes coming soon' : latestActive ? 'Resume' : 'Start'
+                return (
+                  <DataCard
+                    key={quiz.id}
+                    title={quiz.title}
+                    meta={meta}
+                    badge={
+                      <div className="flex flex-wrap gap-2">
+                        <Badge>{quizModeLabel(quiz.mode)}</Badge>
+                        <Badge>{answerRevealLabel(quiz.settings.answerReveal)}</Badge>
+                        <Badge>{scoreVisibilityLabel(quiz)}</Badge>
+                      </div>
+                    }
                   >
-                    {remaining === 0 && !latestActive ? 'No attempts left' : label}
-                  </Button>
-                </DataCard>
-              )
-            })}
-          </div>
-        ) : (
-          <EmptyState title="No published quizzes yet" description="When your instructor publishes a quiz for this class, it will show up here." />
-        )}
+                    <Button
+                      to={to}
+                      variant="secondary"
+                      disabled={groupQuiz || (remaining === 0 && !latestActive)}
+                    >
+                      {remaining === 0 && !latestActive ? 'No attempts left' : label}
+                    </Button>
+                  </DataCard>
+                )
+              })}
+            </div>
+          )
+        })()}
       </section>
       {submittedAttempts.length > 0 && (
         <section className="grid gap-3" aria-labelledby="attempt-history-heading">

@@ -1,8 +1,10 @@
 import { BookOpenText, MoveDown, MoveUp, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { EmptyState } from '../../shared/ui/EmptyState'
+import { resolveListStatus } from '../../shared/ui/listState'
 import { SectionCard } from '../../shared/ui/SectionCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
@@ -44,9 +46,18 @@ export function AttachedQuizzesSection({ classroom, module }: { classroom: Class
   }
 
   return <SectionCard title="Attached quizzes" description="Choose practice quizzes from this class. Students can open them when they are published." icon={<BookOpenText size={20} />}>
-    {error && <p className="module-inline-error" role="alert">{error} <button type="button" onClick={() => { setLoading(true); setRetry((value) => value + 1) }}>Retry</button></p>}
-    {loading ? <div className="grid gap-2">{[0, 1].map((index) => <Skeleton key={index} className="h-14 rounded-xl" label="Loading class quizzes" />)}</div>
-      : quizzes.length ? <div className="attached-quiz-layout">
+    {(() => {
+      const status = resolveListStatus({ loading, error, count: quizzes.length })
+      if (status === 'error') {
+        return <Alert tone="error" label="Quizzes unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(''); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>
+      }
+      if (status === 'loading') {
+        return <div className="grid gap-2">{[0, 1].map((index) => <Skeleton key={index} className="h-14 rounded-xl" label="Loading class quizzes" />)}</div>
+      }
+      if (status === 'empty') {
+        return <EmptyState title="No quizzes in this class yet" description="Create a class quiz, then return here to attach it to this module." action={<Button to={'/instructor/quizzes/new?classId=' + encodeURIComponent(classroom.id)}><Plus size={16} aria-hidden="true" /> Create a quiz</Button>} />
+      }
+      return <div className="attached-quiz-layout">
         <fieldset className="attached-quiz-picker" disabled={busy}>
           <legend>Quizzes in this class</legend>
           {quizzes.map((quiz) => <label className="attached-quiz-option" key={quiz.id}>
@@ -58,7 +69,8 @@ export function AttachedQuizzesSection({ classroom, module }: { classroom: Class
           <h3>Attached ({module.quizIds.length}/10)</h3>
           {!module.quizIds.length ? <p>Select quizzes to attach them to this module.</p> : ordered.map((quiz, index) => <AttachedQuizRow key={module.quizIds[index]} quiz={quiz} index={index} total={ordered.length} busy={busy} onMove={move} onRemove={() => toggle(module.quizIds[index], false)} />)}
         </div>
-      </div> : <EmptyState title="No quizzes in this class yet" description="Create a class quiz, then return here to attach it to this module." action={<Button to={'/instructor/quizzes/new?classId=' + encodeURIComponent(classroom.id)}><Plus size={16} aria-hidden="true" /> Create a quiz</Button>} />}
+      </div>
+    })()}
   </SectionCard>
 }
 
