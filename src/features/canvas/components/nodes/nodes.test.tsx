@@ -1,18 +1,26 @@
 import '@testing-library/jest-dom/vitest'
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { ReactFlowProvider } from '@xyflow/react'
+import { CanvasImagesProvider } from '../CanvasImagesContext'
 import { NoteCard } from './NoteCard'
 import { ParagraphCard } from './ParagraphCard'
 import { ImageCard } from './ImageCard'
 import { LinkCard } from './LinkCard'
 import type { CanvasCard } from '../../types'
 
-function renderWithProvider(ui: React.ReactElement) {
-  return render(<ReactFlowProvider>{ui}</ReactFlowProvider>)
+function renderWithProvider(ui: React.ReactElement, images: Record<string, { dataUrl: string; alt?: string }> = {}) {
+  return render(
+    <ReactFlowProvider>
+      <CanvasImagesProvider images={images}>
+        {ui}
+      </CanvasImagesProvider>
+    </ReactFlowProvider>,
+  )
 }
 
 describe('custom canvas card components', () => {
+  afterEach(cleanup)
   it('renders NoteCard with sticky-style title and content and handles on all four sides', () => {
     const card: CanvasCard = {
       id: 'n1',
@@ -77,16 +85,22 @@ describe('custom canvas card components', () => {
     expect(screen.getByText(/In 1896, Jose Rizal/)).toBeInTheDocument()
   })
 
-  it('renders ImageCard with safe Drive embed iframe and fallback link', () => {
+  it('renders ImageCard with base64 image data and alt text', () => {
     const card: CanvasCard = {
       id: 'img1',
       type: 'image',
       title: 'Rizal Monument',
       content: 'Photograph of the monument',
-      driveFileId: '1Abc1234567890xyz',
-      driveKind: 'file',
-      url: 'https://drive.google.com/file/d/1Abc1234567890xyz/view',
+      imageId: 'img_rizal',
+      alt: 'Rizal monument in Luneta park',
       position: { x: 0, y: 0 },
+    }
+
+    const testImages = {
+      img_rizal: {
+        dataUrl: 'data:image/jpeg;base64,QUJDREVGR0g=',
+        alt: 'Rizal monument in Luneta park',
+      },
     }
 
     renderWithProvider(
@@ -104,16 +118,82 @@ describe('custom canvas card components', () => {
         deletable={true}
         draggable={true}
       />,
+      testImages,
     )
 
-    const iframe = screen.getByTitle('Rizal Monument')
-    expect(iframe).toBeInTheDocument()
-    expect(iframe).toHaveAttribute('src', 'https://drive.google.com/file/d/1Abc1234567890xyz/preview')
+    const img = screen.getByAltText('Rizal monument in Luneta park')
+    expect(img).toBeInTheDocument()
+    expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,QUJDREVGR0g=')
+    expect(img.className).toContain('object-contain')
+  })
 
-    const fallbackLink = screen.getByRole('link', { name: /Open Rizal Monument in Google Drive/i })
-    expect(fallbackLink).toBeInTheDocument()
-    expect(fallbackLink).toHaveAttribute('rel', 'noopener noreferrer')
-    expect(fallbackLink).toHaveAttribute('target', '_blank')
+  it('renders ImageCard with Re-upload required alert for legacy Drive cards', () => {
+    const legacyCard: CanvasCard = {
+      id: 'img_legacy',
+      type: 'image',
+      title: 'Legacy Monument',
+      content: '',
+      driveFileId: '1Abc1234567890xyz',
+      driveKind: 'file',
+      url: 'https://drive.google.com/file/d/1Abc1234567890xyz/view',
+      position: { x: 0, y: 0 },
+    }
+
+    renderWithProvider(
+      <ImageCard
+        id="img_legacy"
+        data={{ card: legacyCard } as any}
+        selected={false}
+        type="image"
+        zIndex={1}
+        isConnectable={true}
+        positionAbsoluteX={0}
+        positionAbsoluteY={0}
+        dragging={false}
+        selectable={true}
+        deletable={true}
+        draggable={true}
+      />,
+    )
+
+    const alertEl = screen.getByRole('alert')
+    expect(alertEl).toBeInTheDocument()
+    expect(alertEl).toHaveTextContent('Re-upload required')
+  })
+
+  it('renders ImageCard with Image unavailable fallback when image document is missing', () => {
+    const missingCard: CanvasCard = {
+      id: 'img_missing',
+      type: 'image',
+      title: 'Missing Image',
+      content: '',
+      imageId: 'img_not_found',
+      alt: 'Detailed description of the missing picture',
+      position: { x: 0, y: 0 },
+    }
+
+    renderWithProvider(
+      <ImageCard
+        id="img_missing"
+        data={{ card: missingCard } as any}
+        selected={false}
+        type="image"
+        zIndex={1}
+        isConnectable={true}
+        positionAbsoluteX={0}
+        positionAbsoluteY={0}
+        dragging={false}
+        selectable={true}
+        deletable={true}
+        draggable={true}
+      />,
+      {},
+    )
+
+    const statusEl = screen.getByRole('status')
+    expect(statusEl).toBeInTheDocument()
+    expect(statusEl).toHaveTextContent('Image unavailable')
+    expect(statusEl).toHaveTextContent('Detailed description of the missing picture')
   })
 
   it('renders LinkCard with title, host, and opens in new tab with rel="noopener noreferrer"', () => {

@@ -20,6 +20,7 @@ import type { CanvasCard, CanvasConnection } from '../types'
 import { canvasEdgeTypes } from './edges/edgeTypes'
 import { canvasNodeTypes } from './nodes/nodeTypes'
 import { CanvasControls } from './CanvasControls'
+import { CanvasImagesProvider } from './CanvasImagesContext'
 
 export type CanvasBoardMode = 'edit' | 'play' | 'review'
 
@@ -37,6 +38,7 @@ export interface CanvasBoardProps {
   onCardClick?: (card: CanvasCard) => void
   onConnectionClick?: (connection: CanvasConnection) => void
   connectCardsDialogSlot?: React.ReactNode
+  images?: Record<string, { dataUrl: string; alt?: string }>
   className?: string
 }
 
@@ -54,6 +56,7 @@ function CanvasBoardInner({
   onCardClick,
   onConnectionClick,
   connectCardsDialogSlot,
+  images = {},
   className = '',
 }: CanvasBoardProps) {
   const [liveAnnouncement, setLiveAnnouncement] = useState('')
@@ -73,16 +76,16 @@ function CanvasBoardInner({
   const [nodes, setNodes] = useState<Node[]>(initialNodes)
   const [edges, setEdges] = useState<Edge[]>(initialEdges)
 
-  // Stable signature of card ids, contents, titles, URLs, and positions
+  // Stable signature of card ids, contents, titles, URLs, imageIds, and positions
   const cardsSignature = useMemo(
     () =>
       cards
         .map((c) => {
           const p = positions?.[c.id] ?? c.position
-          return `${c.id}:${c.type}:${c.title ?? ''}:${c.content}:${c.url ?? ''}:${c.driveFileId ?? ''}:${p?.x ?? 0},${p?.y ?? 0}`
+          return `${c.id}:${c.type}:${c.title ?? ''}:${c.content}:${c.url ?? ''}:${c.driveFileId ?? ''}:${c.imageId ?? ''}:${c.alt ?? ''}:${p?.x ?? 0},${p?.y ?? 0}`
         })
-        .join('|') + `::${mode}`,
-    [cards, positions, mode],
+        .join('|') + `::${mode}::${Object.keys(images).sort().join(',')}`,
+    [cards, positions, mode, images],
   )
 
   // Stable signature of connection ids, endpoints, points, and review statuses
@@ -253,7 +256,8 @@ function CanvasBoardInner({
   const onlyRenderVisible = cards.length > 30
 
   return (
-    <div className={`canvas-board-wrapper ${className}`} data-testid="canvas-board">
+    <CanvasImagesProvider images={images}>
+      <div className={`canvas-board-wrapper ${className}`} data-testid="canvas-board">
       {/* Polite live region for accessibility announcements */}
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {liveAnnouncement}
@@ -317,6 +321,7 @@ function CanvasBoardInner({
         </ReactFlow>
       </div>
     </div>
+  </CanvasImagesProvider>
   )
 }
 

@@ -124,4 +124,45 @@ describe('CanvasReviewView component', () => {
     expect(screen.getByText('0 incorrect')).toBeInTheDocument()
     expect(screen.getByText('0 missed')).toBeInTheDocument()
   })
+
+  it('renders image cards with images and handles missing image fallback with alt text', async () => {
+    const questionWithImages: CanvasQuestion = {
+      ...question,
+      cards: [
+        { id: 'c1', type: 'image', title: 'Plant Cell', content: '', imageId: 'img_plant', alt: 'Plant cell structure diagram', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'image', title: 'Animal Cell', content: '', imageId: 'img_missing', alt: 'Animal cell cross section', position: { x: 100, y: 0 } },
+        { id: 'c3', type: 'note', title: 'Organelle', content: 'Subunit', position: { x: 200, y: 0 } },
+      ],
+    }
+
+    const testImages = {
+      img_plant: {
+        dataUrl: 'data:image/jpeg;base64,ZmFrZS1pbWFnZS1kYXRh',
+        alt: 'Plant cell structure diagram',
+      },
+    }
+
+    render(
+      <CanvasReviewView
+        question={questionWithImages}
+        attemptId="attempt-img-review"
+        studentAnswer={['c1->c2']}
+        answerKey={{
+          type: 'canvas',
+          explanation: '',
+          connections: [{ id: 'c1->c2', from: 'c1', to: 'c2' }],
+        }}
+        images={testImages}
+      />,
+    )
+
+    // Provided image card should render the img element inside lazy-loaded CanvasBoard
+    const imgEl = await screen.findByAltText('Plant cell structure diagram')
+    expect(imgEl).toBeInTheDocument()
+    expect(imgEl).toHaveAttribute('src', 'data:image/jpeg;base64,ZmFrZS1pbWFnZS1kYXRh')
+
+    // Missing image card should display "Image unavailable" and its alt text fallback
+    expect(await screen.findByText('Image unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Animal cell cross section')).toBeInTheDocument()
+  })
 })

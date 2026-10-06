@@ -7,6 +7,8 @@ import { Select } from '../../shared/ui/Select'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { sanitizeCanvasAnswers } from '../canvas/mapping'
 import { normalizeConnection, parseConnectionEdge, scatterCards } from '../canvas/schemas'
+import { toDataUrl } from '../canvas/imageProcessing'
+import { listImages } from '../canvas/imageService'
 import type { CanvasCard, CanvasConnection, CanvasQuestion } from '../canvas/types'
 
 const CanvasBoard = lazy(() => import('../canvas/components/CanvasBoard'))
@@ -14,6 +16,7 @@ const CanvasBoard = lazy(() => import('../canvas/components/CanvasBoard'))
 export interface CanvasPlayPageProps {
   question: CanvasQuestion & { id: string }
   attemptId: string
+  quizId?: string
   connections?: string[]
   onChange: (connections: string[]) => void
   disabled?: boolean
@@ -23,6 +26,7 @@ export interface CanvasPlayPageProps {
 export function CanvasPlayPage({
   question,
   attemptId,
+  quizId,
   connections = [],
   onChange,
   disabled = false,
@@ -34,6 +38,43 @@ export function CanvasPlayPage({
   const [connectTo, setConnectTo] = useState('')
   const [connectError, setConnectError] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
+
+  // Images state
+  const [images, setImages] = useState<Record<string, { dataUrl: string; alt?: string }>>({})
+  const [imagesError, setImagesError] = useState(false)
+  const [imagesLoading, setImagesLoading] = useState(false)
+
+  const hasImages = useMemo(
+    () => question.cards.some((c) => c.type === 'image' && c.imageId),
+    [question.cards],
+  )
+
+  const loadImages = useCallback(async () => {
+    if (!quizId || !hasImages) return
+    setImagesLoading(true)
+    setImagesError(false)
+    try {
+      const imgList = await listImages(quizId)
+      const rec: Record<string, { dataUrl: string; alt?: string }> = {}
+      imgList.forEach((img) => {
+        rec[img.id] = { dataUrl: toDataUrl(img.mimeType, img.data) }
+      })
+      question.cards.forEach((c) => {
+        if (c.type === 'image' && c.imageId && rec[c.imageId]) {
+          rec[c.imageId].alt = c.alt
+        }
+      })
+      setImages(rec)
+    } catch {
+      setImagesError(true)
+    } finally {
+      setImagesLoading(false)
+    }
+  }, [quizId, hasImages, question.cards])
+
+  useEffect(() => {
+    void loadImages()
+  }, [loadImages])
 
   const validCardIds = useMemo(
     () => new Set(question.cards.map((c) => c.id)),
@@ -183,12 +224,27 @@ export function CanvasPlayPage({
             directed={question.directed}
             maxConnections={80}
             positions={positions}
+            images={images}
             onPositionsChange={setPositions}
             onConnectionsChange={handleBoardConnectionsChange}
             connectCardsDialogSlot={connectCardsSlot}
           />
         </Suspense>
       </div>
+
+      {imagesError && (
+        <div className="flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
+          <span>Some board images could not be loaded.</span>
+          <button
+            type="button"
+            onClick={() => void loadImages()}
+            disabled={imagesLoading}
+            className="underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
+          >
+            {imagesLoading ? 'Retrying…' : 'Retry'}
+          </button>
+        </div>
+      )}
 
       {/* Current Connections list (Keyboard and Touch accessible alternative) */}
       <section

@@ -1,5 +1,5 @@
 import { ArrowLeft, Plus, Save } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
@@ -23,6 +23,8 @@ import { QuickCreateQuiz } from '../authoring/QuickCreateQuiz'
 const QuestionBuilderPage = lazy(() => import('../builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
 const CanvasBuilderPage = lazy(() => import('../builder/CanvasBuilderPage'))
 const CanvasBoard = lazy(() => import('../../canvas/components/CanvasBoard'))
+import { toDataUrl } from '../../canvas/imageProcessing'
+import { listImages } from '../../canvas/imageService'
 
 const revealOptions = [
   { value: 'after_each', label: 'After each question', hint: 'See the answer and explanation right after responding.' },
@@ -199,6 +201,23 @@ function QuizPreviewTab({ quizId }: { quizId: string }) {
   const [title, setTitle] = useState('Quiz preview')
   const [mode, setMode] = useState<QuizMode>('quiz')
   const [items, setItems] = useState<SavedQuestion[]>([])
+  const [canvasImages, setCanvasImages] = useState<Record<string, { dataUrl: string; alt?: string }>>({})
+  const [canvasImagesError, setCanvasImagesError] = useState(false)
+
+  const loadCanvasImages = useCallback(async () => {
+    if (!quizId) return
+    setCanvasImagesError(false)
+    try {
+      const imgList = await listImages(quizId)
+      const rec: Record<string, { dataUrl: string; alt?: string }> = {}
+      imgList.forEach((img) => {
+        rec[img.id] = { dataUrl: toDataUrl(img.mimeType, img.data) }
+      })
+      setCanvasImages(rec)
+    } catch {
+      setCanvasImagesError(true)
+    }
+  }, [quizId])
 
   useEffect(() => {
     let active = true
@@ -210,11 +229,19 @@ function QuizPreviewTab({ quizId }: { quizId: string }) {
     })
     const stop = watchQuestionPairs(
       quizId,
-      (questions) => { if (active) setItems(questions) },
+      (questions) => {
+        if (active) {
+          setItems(questions)
+          const cq = questions.find((item) => item.question.type === 'canvas')?.question as import('../../canvas/types').CanvasQuestion | undefined
+          if (cq?.cards?.some((c) => c.type === 'image' && c.imageId)) {
+            void loadCanvasImages()
+          }
+        }
+      },
       () => undefined,
     )
     return () => { active = false; stop() }
-  }, [quizId])
+  }, [quizId, loadCanvasImages])
 
   const canvasQuestion = items.find((item) => item.question.type === 'canvas')?.question as import('../../canvas/types').CanvasQuestion | undefined
 
@@ -243,9 +270,22 @@ function QuizPreviewTab({ quizId }: { quizId: string }) {
                   connections={[]}
                   mode="play"
                   directed={canvasQuestion?.directed ?? true}
+                  images={canvasImages}
                 />
               </Suspense>
             </div>
+            {canvasImagesError && (
+              <div className="flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
+                <span>Some board images could not be loaded.</span>
+                <button
+                  type="button"
+                  onClick={() => void loadCanvasImages()}
+                  className="underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <>

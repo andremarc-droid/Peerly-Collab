@@ -249,6 +249,7 @@ export function QuizTakingPage() {
           <CanvasPlayPage
             question={question as unknown as CanvasQuestion & { id: string }}
             attemptId={attemptId}
+            quizId={quizId}
             connections={Array.isArray(answers[question.id]) ? (answers[question.id] as string[]) : []}
             onChange={(nextConnections) => setAnswer(question.id, nextConnections)}
             disabled={Boolean(checkedCurrent)}

@@ -9,9 +9,10 @@ import {
   Plus,
   StickyNote,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
@@ -27,13 +28,25 @@ import { Textarea } from '../../../shared/ui/Textarea'
 import { useToast } from '../../../shared/ui/useToast'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 import CanvasBoard from '../../canvas/components/CanvasBoard'
-import { normalizeGenericUrl, parseDriveUrl } from '../../modules/links'
+import { normalizeGenericUrl } from '../../modules/links'
 import {
+  isLegacyImageCard,
   normalizeConnection,
   renormalizeConnections,
   validateCanvasDefinition,
   validateCanvasKey,
 } from '../../canvas/schemas'
+import {
+  processImageFile,
+  toDataUrl,
+  type ProcessedImageData,
+} from '../../canvas/imageProcessing'
+import {
+  listImages,
+  reconcileImages,
+  saveImage,
+  MAX_CANVAS_IMAGES,
+} from '../../canvas/imageService'
 import type {
   CanvasAnswerKey,
   CanvasCard,
@@ -44,6 +57,12 @@ import type {
   CanvasWrongPenalty,
 } from '../../canvas/types'
 import { getQuestionWithKey, getQuiz, saveQuestionAndKey } from '../services'
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
 
 export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: string }) {
   const params = useParams()
@@ -79,6 +98,13 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
   const [connectPoints, setConnectPoints] = useState(1)
   const [connectError, setConnectError] = useState<string | null>(null)
 
+  // Images state
+  const [storedImages, setStoredImages] = useState<Record<string, ProcessedImageData>>({})
+  const [pendingImages, setPendingImages] = useState<Map<string, ProcessedImageData>>(new Map())
+  const [isProcessingImage, setIsProcessingImage] = useState(false)
+  const [isDraggingImage, setIsDraggingImage] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // Save state
   const [savedSignature, setSavedSignature] = useState('')
   const [saving, setSaving] = useState(false)
@@ -101,6 +127,8 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         title: c.title,
         content: c.content,
         url: c.url,
+        imageId: c.imageId,
+        alt: c.alt,
         position: positions[c.id] ?? c.position,
       })),
       connections: connections.map((c) => ({
@@ -109,8 +137,25 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         to: c.to,
         points: c.points,
       })),
+      pendingImageKeys: Array.from(pendingImages.keys()).sort(),
     })
-  }, [prompt, points, layoutMode, directed, wrongPenalty, explanation, cards, positions, connections])
+  }, [prompt, points, layoutMode, directed, wrongPenalty, explanation, cards, positions, connections, pendingImages])
+
+  const imagesRecord = useMemo(() => {
+    const rec: Record<string, { dataUrl: string; alt?: string }> = {}
+    for (const [id, img] of Object.entries(storedImages)) {
+      rec[id] = { dataUrl: toDataUrl(img.mimeType, img.data) }
+    }
+    pendingImages.forEach((img, id) => {
+      rec[id] = { dataUrl: toDataUrl(img.mimeType, img.data) }
+    })
+    cards.forEach((c) => {
+      if (c.type === 'image' && c.imageId && rec[c.imageId]) {
+        rec[c.imageId].alt = c.alt
+      }
+    })
+    return rec
+  }, [storedImages, pendingImages, cards])
 
   const isDirty = savedSignature !== '' && currentSignature !== savedSignature
   const totalWeight = useMemo(
@@ -134,8 +179,23 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         }
         setQuizTitle(quiz.title || 'Untitled canvas')
 
-        const existingPair = await getQuestionWithKey(quizId, 'board')
+        const [existingPair, loadedImgList] = await Promise.all([
+          getQuestionWithKey(quizId, 'board'),
+          listImages(quizId).catch(() => []),
+        ])
         if (!active) return
+
+        const loadedMap: Record<string, ProcessedImageData> = {}
+        loadedImgList.forEach((img) => {
+          loadedMap[img.id] = {
+            data: img.data,
+            mimeType: img.mimeType,
+            width: img.width,
+            height: img.height,
+            bytes: img.bytes,
+          }
+        })
+        setStoredImages(loadedMap)
 
         if (existingPair) {
           const q = existingPair.question as CanvasQuestion
@@ -156,6 +216,12 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
           setConnections(k.connections ?? [])
           setExplanation(k.explanation ?? '')
 
+          // Silently reconcile orphan image documents on load if any exist
+          const referencedIds = (q.cards ?? [])
+            .filter((c) => c.type === 'image' && typeof c.imageId === 'string')
+            .map((c) => c.imageId!)
+          void reconcileImages(quizId, referencedIds).catch(() => {})
+
           const sig = JSON.stringify({
             prompt: q.prompt || 'Connect related concepts on the board.',
             points: q.points ?? 100,
@@ -169,6 +235,8 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
               title: c.title,
               content: c.content,
               url: c.url,
+              imageId: c.imageId,
+              alt: c.alt,
               position: c.position,
             })),
             connections: (k.connections ?? []).map((c) => ({
@@ -177,6 +245,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
               to: c.to,
               points: c.points,
             })),
+            pendingImageKeys: [],
           })
           setSavedSignature(sig)
         } else {
@@ -190,6 +259,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
             explanation: '',
             cards: [],
             connections: [],
+            pendingImageKeys: [],
           })
           setSavedSignature(sig)
         }
@@ -229,20 +299,25 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
       errors.push('The board cannot have more than 80 connections.')
     }
 
+    const uniqueImageIds = new Set<string>()
+
     cards.forEach((card, idx) => {
       const name = card.title?.trim() || `Card ${idx + 1}`
       if (card.content.length > 1000) {
         errors.push(`“${name}” exceeds 1,000 characters (${card.content.length}/1000).`)
       }
       if (card.type === 'image') {
-        if (!card.url?.trim()) {
-          errors.push(`“${name}” requires a Google Drive file link.`)
+        if (isLegacyImageCard(card)) {
+          errors.push(`“${name}” uses a legacy Google Drive image. Re-upload required before saving.`)
+        } else if (!card.imageId) {
+          errors.push(`“${name}” requires an uploaded image.`)
         } else {
-          try {
-            parseDriveUrl(card.url)
-          } catch {
-            errors.push(`“${name}” has an invalid Google Drive link.`)
-          }
+          uniqueImageIds.add(card.imageId)
+        }
+        if (!card.alt || !card.alt.trim()) {
+          errors.push(`“${name}” requires alt text (description for students who cannot see it).`)
+        } else if (card.alt.length > 200) {
+          errors.push(`“${name}” alt text cannot exceed 200 characters.`)
         }
       }
       if (card.type === 'link') {
@@ -260,6 +335,10 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         }
       }
     })
+
+    if (uniqueImageIds.size > MAX_CANVAS_IMAGES) {
+      errors.push(`A canvas board can have at most ${MAX_CANVAS_IMAGES} images.`)
+    }
 
     return errors
   }, [prompt, cards, connections])
@@ -279,6 +358,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         title: type === 'note' ? 'Note' : type === 'paragraph' ? 'Section' : type === 'image' ? 'Image' : 'Link',
         content: type === 'note' ? 'Key concept' : type === 'paragraph' ? 'Enter detailed description...' : '',
         position: { x: 80 + offset, y: 60 + offset },
+        alt: type === 'image' ? '' : undefined,
       }
       setCards((prev) => [...prev, newCard])
       setSelectedCardId(newId)
@@ -290,7 +370,20 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
 
   // Delete Card
   const handleDeleteCard = useCallback((cardId: string) => {
-    setCards((prev) => prev.filter((c) => c.id !== cardId))
+    setCards((prev) => {
+      const target = prev.find((c) => c.id === cardId)
+      if (target?.imageId) {
+        setPendingImages((pending) => {
+          if (pending.has(target.imageId!)) {
+            const copy = new Map(pending)
+            copy.delete(target.imageId!)
+            return copy
+          }
+          return pending
+        })
+      }
+      return prev.filter((c) => c.id !== cardId)
+    })
     setConnections((prev) => prev.filter((c) => c.from !== cardId && c.to !== cardId))
     setSelectedCardId((curr) => (curr === cardId ? null : curr))
     setPositions((prev) => {
@@ -307,22 +400,98 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
       setCards((prev) =>
         prev.map((c) => {
           if (c.id !== selectedCardId) return c
-          const updated = { ...c, [field]: value }
-          if (c.type === 'image' && field === 'url') {
-            try {
-              const parsed = parseDriveUrl(value)
-              updated.driveFileId = parsed.fileId
-              updated.driveKind = parsed.kind
-            } catch {
-              updated.driveFileId = undefined
-              updated.driveKind = undefined
-            }
-          }
-          return updated
+          return { ...c, [field]: value }
         }),
       )
     },
     [selectedCardId],
+  )
+
+  // Process and upload image for a card
+  const handleProcessFile = useCallback(
+    async (file: File, cardId: string) => {
+      const targetCard = cards.find((c) => c.id === cardId)
+      if (!targetCard) return
+
+      // Enforce 12-image cap
+      const existingImageIds = new Set(
+        cards
+          .filter((c) => c.type === 'image' && c.imageId && c.id !== cardId)
+          .map((c) => c.imageId!),
+      )
+      if (existingImageIds.size >= MAX_CANVAS_IMAGES) {
+        showToast('error', `A canvas board can have at most ${MAX_CANVAS_IMAGES} images.`)
+        return
+      }
+
+      setIsProcessingImage(true)
+      try {
+        const processed = await processImageFile(file)
+        const newImageId = `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+
+        setPendingImages((prev) => {
+          const next = new Map(prev)
+          if (targetCard.imageId && next.has(targetCard.imageId)) {
+            next.delete(targetCard.imageId)
+          }
+          next.set(newImageId, processed)
+          return next
+        })
+
+        setCards((prev) =>
+          prev.map((c) => {
+            if (c.id !== cardId) return c
+            const defaultAlt = c.alt?.trim() ? c.alt : file.name.replace(/\.[^/.]+$/, '').slice(0, 200)
+            return {
+              ...c,
+              imageId: newImageId,
+              alt: defaultAlt,
+              url: undefined,
+              driveFileId: undefined,
+              driveKind: undefined,
+            }
+          }),
+        )
+
+        showToast('success', 'Image processed and ready to save.')
+      } catch (err) {
+        showToast('error', err instanceof Error ? err.message : 'Failed to process image.')
+      } finally {
+        setIsProcessingImage(false)
+      }
+    },
+    [cards, showToast],
+  )
+
+  // Remove image from card
+  const handleRemoveImage = useCallback(
+    (cardId: string) => {
+      const target = cards.find((c) => c.id === cardId)
+      if (!target) return
+      if (target.imageId) {
+        setPendingImages((prev) => {
+          if (prev.has(target.imageId!)) {
+            const next = new Map(prev)
+            next.delete(target.imageId!)
+            return next
+          }
+          return prev
+        })
+      }
+      setCards((prev) =>
+        prev.map((c) => {
+          if (c.id !== cardId) return c
+          return {
+            ...c,
+            imageId: undefined,
+            url: undefined,
+            driveFileId: undefined,
+            driveKind: undefined,
+          }
+        }),
+      )
+    },
+    [cards],
   )
 
   // Add Connection via accessible dialog
@@ -408,6 +577,20 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         position: positions[c.id] ?? c.position,
       }))
 
+      const uniqueImageIds = new Set(
+        cardsWithPositions
+          .filter((c) => c.type === 'image' && c.imageId)
+          .map((c) => c.imageId!),
+      )
+      if (uniqueImageIds.size > MAX_CANVAS_IMAGES) {
+        throw new Error(`A canvas board can have at most ${MAX_CANVAS_IMAGES} images.`)
+      }
+
+      // Step 1: Write pending image documents first (one setDoc per image)
+      for (const [id, imgData] of pendingImages.entries()) {
+        await saveImage(quizId, id, imgData)
+      }
+
       const questionPayload = {
         order: 0,
         type: 'canvas' as const,
@@ -429,9 +612,49 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
       validateCanvasDefinition(questionPayload)
       validateCanvasKey(answerKeyPayload, cardsWithPositions, directed)
 
+      // Step 2: Atomic write of board question and answer key
       await saveQuestionAndKey(quizId, 'board', questionPayload, answerKeyPayload)
 
-      setSavedSignature(currentSignature)
+      // Step 3: Move pending images to storedImages and clear pendingImages
+      const updatedStored = { ...storedImages }
+      pendingImages.forEach((img, id) => {
+        updatedStored[id] = img
+      })
+      setStoredImages(updatedStored)
+      setPendingImages(new Map())
+
+      // Step 4: Reconcile orphan images
+      const referencedIds = Array.from(uniqueImageIds)
+      await reconcileImages(quizId, referencedIds).catch((err) => {
+        console.warn('Silent image reconcile error:', err)
+      })
+
+      const newSignature = JSON.stringify({
+        prompt: prompt.trim(),
+        points: Number(points) || 100,
+        layoutMode,
+        directed,
+        wrongPenalty,
+        explanation: explanation.trim(),
+        cards: cardsWithPositions.map((c) => ({
+          id: c.id,
+          type: c.type,
+          title: c.title,
+          content: c.content,
+          url: c.url,
+          imageId: c.imageId,
+          alt: c.alt,
+          position: c.position,
+        })),
+        connections: connections.map((c) => ({
+          id: c.id,
+          from: c.from,
+          to: c.to,
+          points: c.points,
+        })),
+        pendingImageKeys: [],
+      })
+      setSavedSignature(newSignature)
       showToast('success', 'Canvas saved.')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save canvas.'
@@ -444,6 +667,8 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
     validationErrors,
     cards,
     positions,
+    pendingImages,
+    storedImages,
     prompt,
     points,
     layoutMode,
@@ -452,7 +677,6 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
     explanation,
     connections,
     quizId,
-    currentSignature,
     showToast,
   ])
 
@@ -706,6 +930,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                 directed={directed}
                 maxConnections={80}
                 positions={positions}
+                images={imagesRecord}
                 onPositionsChange={(pos) => setPositions((prev) => ({ ...prev, ...pos }))}
                 onCardsChange={setCards}
                 onConnectionsChange={setConnections}
@@ -772,13 +997,135 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                     />
 
                     {selectedCard.type === 'image' && (
-                      <Input
-                        label="Google Drive link"
-                        name="card-image-url"
-                        value={selectedCard.url ?? ''}
-                        onChange={(e) => handleUpdateSelectedCard('url', e.target.value)}
-                        hint="Paste a Google Drive image or file link"
-                      />
+                      <div className="flex flex-col gap-3">
+                        {isLegacyImageCard(selectedCard) && (
+                          <Alert tone="warning" label="Re-upload required">
+                            Google Drive images are no longer supported. Please upload an image file to save or publish this canvas.
+                          </Alert>
+                        )}
+
+                        {selectedCard.imageId ? (
+                          <div className="flex flex-col gap-2">
+                            <span className="text-sm font-medium text-navy-900">Image</span>
+                            <div className="relative aspect-video max-h-40 rounded-xl overflow-hidden bg-navy-50 border border-navy-900-12 flex items-center justify-center p-1">
+                              {imagesRecord[selectedCard.imageId]?.dataUrl ? (
+                                <img
+                                  src={imagesRecord[selectedCard.imageId].dataUrl}
+                                  alt={selectedCard.alt || 'Card image preview'}
+                                  className="w-full h-full object-contain"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-1.5 text-xs text-navy-800-72">
+                                  <ImageIcon size={16} aria-hidden="true" />
+                                  <span>Image not loaded</span>
+                                </div>
+                              )}
+                            </div>
+                            {(() => {
+                              const meta = storedImages[selectedCard.imageId] || pendingImages.get(selectedCard.imageId)
+                              if (!meta) return null
+                              return (
+                                <span className="text-xs text-navy-800-72">
+                                  {meta.width} × {meta.height} px • {formatBytes(meta.bytes)}
+                                </span>
+                              )
+                            })()}
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isProcessingImage}
+                                className="flex-1"
+                              >
+                                {isProcessingImage ? (
+                                  <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                                ) : (
+                                  'Replace'
+                                )}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => handleRemoveImage(selectedCard.id)}
+                                disabled={isProcessingImage}
+                                className="flex-1"
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-sm font-medium text-navy-900">Image</span>
+                            <div
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                setIsDraggingImage(true)
+                              }}
+                              onDragLeave={() => setIsDraggingImage(false)}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                setIsDraggingImage(false)
+                                const file = e.dataTransfer.files?.[0]
+                                if (file) void handleProcessFile(file, selectedCard.id)
+                              }}
+                              className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors flex flex-col items-center justify-center gap-2 ${
+                                isDraggingImage
+                                  ? 'border-navy-600 bg-navy-50'
+                                  : 'border-navy-900-24 bg-white hover:border-navy-600'
+                              }`}
+                            >
+                              <div className="w-10 h-10 rounded-full bg-navy-50 flex items-center justify-center text-navy-800">
+                                {isProcessingImage ? (
+                                  <Loader2 size={20} className="animate-spin" aria-hidden="true" />
+                                ) : (
+                                  <Upload size={20} aria-hidden="true" />
+                                )}
+                              </div>
+                              <div className="text-sm font-medium text-navy-900">
+                                {isProcessingImage ? 'Optimizing image…' : 'Upload an image'}
+                              </div>
+                              <div className="text-xs text-navy-800-72">
+                                JPEG, PNG or WebP up to 10 MB
+                              </div>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isProcessingImage}
+                              >
+                                Choose file
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="sr-only"
+                          aria-label="Upload card image"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file && selectedCard) {
+                              void handleProcessFile(file, selectedCard.id)
+                            }
+                            e.target.value = ''
+                          }}
+                        />
+
+                        <Input
+                          label="Alt text"
+                          name="card-image-alt"
+                          required
+                          value={selectedCard.alt ?? ''}
+                          onChange={(e) => handleUpdateSelectedCard('alt', e.target.value)}
+                          maxLength={200}
+                          hint="Describe the image for students who cannot see it."
+                        />
+                      </div>
                     )}
 
                     {selectedCard.type === 'link' && (

@@ -1,5 +1,5 @@
 import { CircleCheck, CircleHelp, CircleX, Clock3, RotateCcw } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
@@ -11,6 +11,8 @@ import type { SavedQuestion } from '../services/questionService'
 import { CanvasReviewView } from '../../canvas/components/CanvasReviewView'
 import type { CanvasAnswerKey, CanvasQuestion } from '../../canvas/types'
 import { computeTimeSpent, isLate, type AttemptResult } from './resultLogic'
+import { toDataUrl } from '../../canvas/imageProcessing'
+import { listImages } from '../../canvas/imageService'
 
 interface Props { quizId: string; attempt: AttemptResult; questions: SavedQuestion[]; ungraded: boolean; onGradeChanged: (result: QuizResult) => void; timeLimitMinutes?: number | null }
 
@@ -18,6 +20,33 @@ export function AttemptDetail({ quizId, attempt, questions, ungraded, onGradeCha
   const { showToast } = useToast()
   const [points, setPoints] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
+  const [canvasImages, setCanvasImages] = useState<Record<string, { dataUrl: string; alt?: string }>>({})
+  const [canvasImagesError, setCanvasImagesError] = useState(false)
+
+  const loadCanvasImages = useCallback(async () => {
+    if (!quizId) return
+    setCanvasImagesError(false)
+    try {
+      const imgList = await listImages(quizId)
+      const rec: Record<string, { dataUrl: string; alt?: string }> = {}
+      imgList.forEach((img) => {
+        rec[img.id] = { dataUrl: toDataUrl(img.mimeType, img.data) }
+      })
+      setCanvasImages(rec)
+    } catch {
+      setCanvasImagesError(true)
+    }
+  }, [quizId])
+
+  useEffect(() => {
+    const hasCanvasImages = questions.some(
+      (q) => q.question.type === 'canvas' && (q.question as CanvasQuestion).cards?.some((c) => c.type === 'image' && c.imageId),
+    )
+    if (hasCanvasImages) {
+      void loadCanvasImages()
+    }
+  }, [questions, loadCanvasImages])
+
   const result = attempt.result
   if (!result) return <p>This attempt is submitted, but its result is not available.</p>
 
@@ -72,7 +101,20 @@ export function AttemptDetail({ quizId, attempt, questions, ungraded, onGradeCha
               attemptId={attempt.id}
               studentAnswer={answer}
               answerKey={answerKey as unknown as CanvasAnswerKey}
+              images={canvasImages}
             />
+            {canvasImagesError && (
+              <div className="flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
+                <span>Some board images could not be loaded.</span>
+                <button
+                  type="button"
+                  onClick={() => void loadCanvasImages()}
+                  className="underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             <p className="m-0"><span className={`attempt-status ${grade?.correct === true ? 'attempt-status--correct' : grade?.correct === false ? 'attempt-status--incorrect' : ''}`}>{grade?.correct === true ? <CircleCheck size={16} aria-hidden="true" /> : grade?.correct === false ? <CircleX size={16} aria-hidden="true" /> : <CircleHelp size={16} aria-hidden="true" />}{grade?.correct === true ? 'Correct' : grade?.correct === false ? 'Incorrect' : 'Not graded'} · {grade?.pointsAwarded ?? 0} / {question.points} points{grade?.overridden ? ' · Instructor override' : ''}</span></p>
             <div className="mt-2 grid gap-3 rounded-2xl border border-navy/15 p-4">
               <strong>Override grade</strong>

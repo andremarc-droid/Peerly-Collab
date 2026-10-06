@@ -1,5 +1,5 @@
 import { CircleCheck, CircleX } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
@@ -18,6 +18,8 @@ import { resultVisibility, persistedQuestionOrder } from './quizLogic'
 import { isLate } from '../quizzes/results/resultLogic'
 import { CanvasReviewView } from '../canvas/components/CanvasReviewView'
 import type { CanvasAnswerKey, CanvasQuestion } from '../canvas/types'
+import { toDataUrl } from '../canvas/imageProcessing'
+import { listImages } from '../canvas/imageService'
 
 type QuestionRecord = QuizQuestion & { id: string }
 type ReviewItem = { question: QuestionRecord; key: AnswerKey | null }
@@ -32,6 +34,23 @@ export function QuizResultPage() {
   const [review, setReview] = useState<ReviewItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [canvasImages, setCanvasImages] = useState<Record<string, { dataUrl: string; alt?: string }>>({})
+  const [canvasImagesError, setCanvasImagesError] = useState(false)
+
+  const loadCanvasImages = useCallback(async () => {
+    if (!quizId) return
+    setCanvasImagesError(false)
+    try {
+      const imgList = await listImages(quizId)
+      const rec: Record<string, { dataUrl: string; alt?: string }> = {}
+      imgList.forEach((img) => {
+        rec[img.id] = { dataUrl: toDataUrl(img.mimeType, img.data) }
+      })
+      setCanvasImages(rec)
+    } catch {
+      setCanvasImagesError(true)
+    }
+  }, [quizId])
 
   useEffect(() => {
     if (!user) return undefined
@@ -43,10 +62,18 @@ export function QuizResultPage() {
       const visibility = resultVisibility(foundQuiz, foundQuiz.settings.answerReveal, foundResult)
       const items = await Promise.all(questions.map(async (question) => ({ question, key: visibility.showAnswers ? (await getQuestionWithKey(quizId, question.id))?.answerKey ?? null : null })))
       if (!live) return
+
+      const hasCanvasImages = items.some(
+        (item) => item.question.type === 'canvas' && (item.question as unknown as CanvasQuestion).cards?.some((c) => c.type === 'image' && c.imageId)
+      )
+      if (hasCanvasImages) {
+        void loadCanvasImages()
+      }
+
       setQuiz(foundQuiz); setAttempt({ ...foundAttempt, id: attemptId }); setResult(foundResult); setReview(items); setLoading(false)
     }).catch((reason: unknown) => { if (live) { setError(reason instanceof Error ? reason.message : 'The result could not be loaded.'); setLoading(false) } })
     return () => { live = false }
-  }, [user, quizId, attemptId])
+  }, [user, quizId, attemptId, loadCanvasImages])
 
   if (loading) return <AppShell><main className="app-shell__content"><Skeleton className="h-80 rounded-3xl" label="Loading result" /></main></AppShell>
   if (error || !quiz || !attempt || !result) return <AppShell><PageHeader eyebrow="RESULT" title="Result unavailable." subtitle="We couldn’t load this submission." /><main className="app-shell__content grid gap-4"><Alert tone="error" label="Result unavailable">{error}</Alert><Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
@@ -69,7 +96,20 @@ export function QuizResultPage() {
               attemptId={attemptId}
               studentAnswer={attempt.answers[question.id]}
               answerKey={key as unknown as CanvasAnswerKey}
+              images={canvasImages}
             />
+            {canvasImagesError && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
+                <span>Some board images could not be loaded.</span>
+                <button
+                  type="button"
+                  onClick={() => void loadCanvasImages()}
+                  className="underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <>

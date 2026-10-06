@@ -6,6 +6,14 @@ import { sanitizeCanvasAnswers } from '../canvas/mapping'
 import type { CanvasQuestion } from '../canvas/types'
 import { scatterCards } from '../canvas/schemas'
 
+const imageMocks = vi.hoisted(() => ({
+  listImages: vi.fn(),
+}))
+
+vi.mock('../canvas/imageService', () => ({
+  listImages: imageMocks.listImages,
+}))
+
 class MockResizeObserver {
   observe() {}
   unobserve() {}
@@ -316,5 +324,64 @@ describe('CanvasPlayPage component', () => {
       false,
     )
     expect(fromObjects).toEqual(['c1<->c3'])
+  })
+
+  it('renders image cards with fetched images, handles missing image fallback, and shows retry on error', async () => {
+    const questionWithImages: CanvasQuestion & { id: string } = {
+      ...sampleQuestion,
+      cards: [
+        { id: 'c1', type: 'image', title: 'Chloroplast', content: '', imageId: 'img_chloro', alt: 'Chloroplast organelle diagram', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'image', title: 'Mitochondria', content: '', imageId: 'img_missing', alt: 'Mitochondria cross section', position: { x: 100, y: 0 } },
+      ],
+    }
+
+    imageMocks.listImages.mockResolvedValueOnce([
+      {
+        id: 'img_chloro',
+        data: 'ZmFrZS1pbWFnZS1kYXRh',
+        mimeType: 'image/jpeg',
+        width: 600,
+        height: 400,
+        bytes: 2048,
+        createdAt: null,
+      },
+    ])
+
+    const onChange = vi.fn()
+    const { rerender } = render(
+      <CanvasPlayPage
+        question={questionWithImages}
+        quizId="quiz-img-play"
+        attemptId="attempt-img-play"
+        connections={[]}
+        onChange={onChange}
+      />,
+    )
+
+    // Loaded image card should render img element
+    const chloroImg = await screen.findByAltText('Chloroplast organelle diagram')
+    expect(chloroImg).toBeInTheDocument()
+    expect(chloroImg).toHaveAttribute('src', 'data:image/jpeg;base64,ZmFrZS1pbWFnZS1kYXRh')
+
+    // Missing image should display "Image unavailable" fallback with alt text
+    expect(screen.getByText('Image unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Mitochondria cross section')).toBeInTheDocument()
+
+    // Test error case with retry note
+    imageMocks.listImages.mockRejectedValueOnce(new Error('Network error'))
+
+    rerender(
+      <CanvasPlayPage
+        question={questionWithImages}
+        quizId="quiz-img-err"
+        attemptId="attempt-img-err"
+        connections={[]}
+        onChange={onChange}
+      />,
+    )
+
+    // Retry note should appear and not block the board
+    expect(await screen.findByText('Some board images could not be loaded.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 })

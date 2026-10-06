@@ -26,6 +26,10 @@ const mocks = vi.hoisted(() => ({
   getQuestionWithKey: vi.fn(),
   saveQuestionAndKey: vi.fn(),
   showToast: vi.fn(),
+  listImages: vi.fn(),
+  saveImage: vi.fn(),
+  reconcileImages: vi.fn(),
+  processImageFile: vi.fn(),
 }))
 
 vi.mock('../../auth/useAuth', () => ({
@@ -41,6 +45,21 @@ vi.mock('../services', () => ({
   getQuestionWithKey: mocks.getQuestionWithKey,
   saveQuestionAndKey: mocks.saveQuestionAndKey,
 }))
+
+vi.mock('../../canvas/imageService', () => ({
+  listImages: mocks.listImages,
+  saveImage: mocks.saveImage,
+  reconcileImages: mocks.reconcileImages,
+  MAX_CANVAS_IMAGES: 12,
+}))
+
+vi.mock('../../canvas/imageProcessing', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../canvas/imageProcessing')>()
+  return {
+    ...actual,
+    processImageFile: mocks.processImageFile,
+  }
+})
 
 describe('CanvasBuilderPage Component Tests', () => {
   afterEach(cleanup)
@@ -60,6 +79,16 @@ describe('CanvasBuilderPage Component Tests', () => {
     })
     mocks.getQuestionWithKey.mockResolvedValue(null)
     mocks.saveQuestionAndKey.mockResolvedValue('board')
+    mocks.listImages.mockResolvedValue([])
+    mocks.saveImage.mockResolvedValue(undefined)
+    mocks.reconcileImages.mockResolvedValue(0)
+    mocks.processImageFile.mockResolvedValue({
+      data: 'QUJDREVGR0g=',
+      mimeType: 'image/jpeg',
+      width: 400,
+      height: 300,
+      bytes: 1024,
+    })
   })
 
   function renderBuilder(initialUrl = '/instructor/quizzes/quiz-1?tab=questions') {
@@ -603,5 +632,205 @@ describe('CanvasBuilderPage Component Tests', () => {
     expect(board.parentElement?.className).toContain('min-h-[420px]')
     expect(board.parentElement?.className).toContain('w-full')
     expect(board.parentElement?.className).toContain('lg:flex-1')
+  })
+
+  it('handles image card upload, alt text requirement, replace, and remove', async () => {
+    renderBuilder()
+
+    // Add first card as Image card
+    fireEvent.click(await screen.findByRole('button', { name: /Add your first card/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Image card' }))
+
+    // Side panel should be open for Image card
+    expect(await screen.findByText('Upload an image')).toBeInTheDocument()
+
+    // Verify alt text field exists and is empty
+    const altInput = screen.getByLabelText(/Alt text/i)
+    expect(altInput).toBeInTheDocument()
+    expect(altInput).toHaveValue('')
+
+    // Upload an image file via the hidden input
+    const fileInput = screen.getByLabelText('Upload card image') as HTMLInputElement
+    const file = new File(['dummy-image-binary'], 'cell-membrane.png', { type: 'image/png' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    // processImageFile should have been called
+    await waitFor(() => {
+      expect(mocks.processImageFile).toHaveBeenCalledWith(file)
+    })
+
+    // After processing, preview and Replace/Remove buttons should be visible
+    expect(await screen.findByRole('button', { name: 'Replace' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+    expect(screen.getByText('400 × 300 px • 1.0 KB')).toBeInTheDocument()
+
+    // Alt text should have defaulted to the filename without extension
+    expect(screen.getByLabelText(/Alt text/i)).toHaveValue('cell-membrane')
+
+    // Click Remove image
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(await screen.findByText('Upload an image')).toBeInTheDocument()
+  })
+
+  it('displays "Re-upload required" alert for legacy Google Drive image cards and blocks save', async () => {
+    const legacyQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Identify the organelles',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: true,
+      wrongPenalty: 'half',
+      cards: [
+        {
+          id: 'c_legacy',
+          type: 'image',
+          title: 'Legacy Organelle',
+          content: '',
+          url: 'https://drive.google.com/file/d/1234567890abcdef/view',
+          driveFileId: '1234567890abcdef',
+          driveKind: 'file',
+          position: { x: 0, y: 0 },
+        },
+        { id: 'c2', type: 'note', title: 'Target', content: 'Description', position: { x: 100, y: 0 } },
+      ],
+    }
+    const legacyKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: 'Organelle identification',
+      connections: [{ id: 'c_legacy->c2', from: 'c_legacy', to: 'c2', points: 1 }],
+    }
+
+    mocks.getQuestionWithKey.mockResolvedValueOnce({
+      id: 'board',
+      question: legacyQuestion,
+      answerKey: legacyKey,
+    })
+
+    renderBuilder()
+
+    // Board should load without crashing
+    expect(await screen.findByRole('article', { name: /Legacy Organelle/i })).toBeInTheDocument()
+
+    // Select the legacy image card
+    fireEvent.click(screen.getByRole('article', { name: /Legacy Organelle/i }))
+
+    // Side panel, card badge, and validation alerts should mention re-upload required
+    const reuploadElements = await screen.findAllByText(/Re-upload required/i)
+    expect(reuploadElements.length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText(/Google Drive images are no longer supported/i)).toBeInTheDocument()
+
+    // Save board should be disabled and validation error should warn about legacy Drive image
+    const saveBtn = screen.getByRole('button', { name: 'Save board' })
+    expect(saveBtn).toBeDisabled()
+    expect(screen.getAllByRole('alert').some((el) => el.textContent?.includes('uses a legacy Google Drive image. Re-upload required'))).toBe(true)
+  })
+
+  it('saves image documents first, then saves board and answer key atomically, and reconciles images', async () => {
+    const validQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Connect organelles',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: true,
+      wrongPenalty: 'half',
+      cards: [
+        { id: 'c1', type: 'note', title: 'Note card', content: 'Text', position: { x: 0, y: 0 } },
+        { id: 'c2', type: 'image', title: 'Image card', content: '', alt: 'Existing alt', position: { x: 100, y: 0 } },
+      ],
+    }
+    const validKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: 'Explanation',
+      connections: [{ id: 'c1->c2', from: 'c1', to: 'c2', points: 1 }],
+    }
+
+    mocks.getQuestionWithKey.mockResolvedValueOnce({
+      id: 'board',
+      question: validQuestion,
+      answerKey: validKey,
+    })
+
+    renderBuilder()
+
+    // Select image card to upload an image
+    fireEvent.click(await screen.findByRole('article', { name: /Image card/i }))
+
+    const fileInput = screen.getByLabelText('Upload card image') as HTMLInputElement
+    const file = new File(['image-bytes'], 'mitochondria.jpg', { type: 'image/jpeg' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Replace' })).toBeInTheDocument()
+    })
+
+    // Now board is valid and has pending image: click Save board
+    const saveBtn = screen.getByRole('button', { name: 'Save board' })
+    expect(saveBtn).toBeEnabled()
+    fireEvent.click(saveBtn)
+
+    await waitFor(() => {
+      // 1. saveImage should have been called for the pending image
+      expect(mocks.saveImage).toHaveBeenCalledTimes(1)
+      // 2. saveQuestionAndKey should have been called
+      expect(mocks.saveQuestionAndKey).toHaveBeenCalledTimes(1)
+      // 3. reconcileImages should have been called (on load + on save = 2 times)
+      expect(mocks.reconcileImages).toHaveBeenCalledTimes(2)
+    })
+
+    // Verify call order: saveImage before saveQuestionAndKey
+    const saveImageOrder = mocks.saveImage.mock.invocationCallOrder[0]
+    const saveQuestionOrder = mocks.saveQuestionAndKey.mock.invocationCallOrder[0]
+    expect(saveImageOrder).toBeLessThan(saveQuestionOrder)
+  })
+
+  it('enforces 12-image cap per canvas', async () => {
+    // 12 image cards already existing
+    const twelveCards = Array.from({ length: 12 }, (_, i) => ({
+      id: `c_${i}`,
+      type: 'image' as const,
+      title: `Img ${i}`,
+      content: '',
+      imageId: `img_${i}`,
+      alt: `Alt ${i}`,
+      position: { x: i * 20, y: i * 20 },
+    }))
+
+    const validQuestion: CanvasQuestion = {
+      order: 0,
+      type: 'canvas',
+      prompt: 'Prompt',
+      points: 100,
+      layoutMode: 'scattered',
+      directed: true,
+      wrongPenalty: 'half',
+      cards: twelveCards,
+    }
+    const validKey: CanvasAnswerKey = {
+      type: 'canvas',
+      explanation: '',
+      connections: [{ id: 'c_0->c_1', from: 'c_0', to: 'c_1', points: 1 }],
+    }
+
+    mocks.getQuestionWithKey.mockResolvedValueOnce({
+      id: 'board',
+      question: validQuestion,
+      answerKey: validKey,
+    })
+
+    renderBuilder()
+
+    // Add a 13th card (note card then switch to image upload attempt)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Image card' }))
+
+    // Uploading image to the 13th card should trigger cap error toast
+    const fileInput = screen.getByLabelText('Upload card image') as HTMLInputElement
+    const file = new File(['bytes'], 'thirteenth.jpg', { type: 'image/jpeg' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(mocks.showToast).toHaveBeenCalledWith('error', 'A canvas board can have at most 12 images.')
+    })
   })
 })

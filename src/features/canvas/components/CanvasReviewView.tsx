@@ -12,6 +12,7 @@ export interface CanvasReviewViewProps {
   attemptId: string
   studentAnswer: string | string[] | undefined
   answerKey: CanvasAnswerKey
+  images?: Record<string, { dataUrl: string; alt?: string }>
   className?: string
 }
 
@@ -20,6 +21,7 @@ export function CanvasReviewView({
   attemptId,
   studentAnswer,
   answerKey,
+  images,
   className = '',
 }: CanvasReviewViewProps) {
   const studentEdges: string[] = useMemo(() => {
@@ -84,6 +86,7 @@ export function CanvasReviewView({
             mode="review"
             directed={question.directed}
             statusByConnection={statusByConnection}
+            images={images}
           />
         </Suspense>
       </div>
