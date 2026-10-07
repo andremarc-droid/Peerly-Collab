@@ -1,4 +1,12 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useMemo,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -20,7 +28,7 @@ import { LinkCard } from './LinkCard'
 import { ReferenceCard, type ResolvedReferenceInfo } from './ReferenceCard'
 import { GroupNode } from './GroupNode'
 import { LearningCanvasEdge } from './LearningCanvasEdge'
-import { LearningCanvasToolbar, type AutosaveStatus } from './LearningCanvasToolbar'
+import { LearningCanvasToolbar } from './LearningCanvasToolbar'
 import { CanvasOutlineView } from './CanvasOutlineView'
 import { QuickAddMenu } from './QuickAddMenu'
 import { ConnectCardsDialog } from './ConnectCardsDialog'
@@ -35,6 +43,7 @@ import {
   CANVAS_MIN_ZOOM,
   CANVAS_MAX_ZOOM,
 } from '../../canvas/shared'
+import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 
 import type {
   LearningCanvasContent,
@@ -48,6 +57,15 @@ import type {
 
 import { toJsonCanvas, fromJsonCanvas, type FromJsonCanvasResult } from '../jsonCanvas'
 import { newNodePlacement, clampNode } from '../schemas'
+import { toSavableContent } from '../savableContent'
+import { CanvasConflictError } from '../errors'
+import { useUndoRedo } from '../hooks/useUndoRedo'
+import { useAutosave } from '../hooks/useAutosave'
+import {
+  MAX_LEARNING_CANVAS_NODES,
+  MAX_LEARNING_CANVAS_GROUPS,
+  MAX_LEARNING_CANVAS_EDGES,
+} from '../constants'
 
 interface LearningCanvasProps {
   initialContent: LearningCanvasContent
@@ -56,10 +74,13 @@ interface LearningCanvasProps {
   canEditStatus?: boolean
   status?: 'draft' | 'published'
   availableReferences?: ResolvedReferenceInfo[]
-  onSave?: (content: LearningCanvasContent) => Promise<void>
+  /** `force: true` means "overwrite whatever is on the server" (Keep my changes). */
+  onSave?: (content: LearningCanvasContent, options?: { force?: boolean }) => Promise<void>
   onToggleStatus?: () => void
   onCopyToMyCanvases?: () => void
-  onReloadLatest?: () => Promise<LearningCanvasContent | void>
+  onReloadLatest?: () => Promise<LearningCanvasContent | null | undefined>
+  /** The page knows the class and the viewer's role, so it builds the right URL. */
+  onOpenReference?: (refType: LearningCanvasRefType, refId: string) => void
 }
 
 const nodeTypes = {
@@ -73,6 +94,139 @@ const edgeTypes = {
   learningEdge: LearningCanvasEdge,
 }
 
+// ---------------------------------------------------------------------------
+// Pure helpers (no component state, so they cannot capture stale values)
+// ---------------------------------------------------------------------------
+
+interface Snapshot {
+  nodes: LearningCanvasNode[]
+  edges: DomainEdge[]
+}
+
+interface FlowCallbacks {
+  onUpdate: (id: string, updates: Partial<LearningCanvasNode>) => void
+  onDelete: (id: string) => void
+  onPickReference: (nodeId: string) => void
+  onOpenReference: (refType: LearningCanvasRefType, refId: string) => void
+  onUpdateEdge: (id: string, updates: { label?: string; arrow?: LearningCanvasArrow }) => void
+  onDeleteEdge: (id: string) => void
+}
+
+const VALID_SIDES: readonly string[] = ['top', 'right', 'bottom', 'left']
+
+function toSide(value: unknown): DomainEdge['fromSide'] {
+  return typeof value === 'string' && VALID_SIDES.includes(value)
+    ? (value as DomainEdge['fromSide'])
+    : undefined
+}
+
+function makeId(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
+function domainToFlowNode(n: LearningCanvasNode, readOnly: boolean, cb: FlowCallbacks): Node {
+  return {
+    id: n.id,
+    type: n.type,
+    position: { x: n.x, y: n.y },
+    style: { width: n.width, height: n.height },
+    data: {
+      ...n,
+      readOnly,
+      onUpdate: cb.onUpdate,
+      onDelete: cb.onDelete,
+      onPickReference: cb.onPickReference,
+      onOpenReference: cb.onOpenReference,
+    },
+  }
+}
+
+function domainToFlowEdge(e: DomainEdge, readOnly: boolean, cb: FlowCallbacks): Edge {
+  return {
+    id: e.id,
+    source: e.from,
+    target: e.to,
+    sourceHandle: e.fromSide,
+    targetHandle: e.toSide,
+    type: 'learningEdge',
+    data: {
+      label: e.label,
+      arrow: e.arrow,
+      readOnly,
+      onUpdateEdge: cb.onUpdateEdge,
+      onDeleteEdge: cb.onDeleteEdge,
+    },
+  }
+}
+
+function flowToDomain(nodes: Node[], edges: Edge[]): Snapshot {
+  const domainNodes = nodes.flatMap((n): LearningCanvasNode[] => {
+    const data = n.data as Record<string, unknown>
+    const width = typeof n.style?.width === 'number' ? n.style.width : (n.measured?.width ?? 240)
+    const height = typeof n.style?.height === 'number' ? n.style.height : (n.measured?.height ?? 140)
+    const base = {
+      id: n.id,
+      x: Math.round(n.position.x),
+      y: Math.round(n.position.y),
+      width: Math.round(width),
+      height: Math.round(height),
+      color: (data.color as LearningCanvasColor) || 'none',
+    }
+
+    switch (n.type) {
+      case 'text':
+        return [clampNode<LearningCanvasNode>({ ...base, type: 'text', text: (data.text as string) || '' })]
+      case 'link':
+        return [
+          clampNode<LearningCanvasNode>({
+            ...base,
+            type: 'link',
+            link: data.link as { url: string; title: string; note?: string },
+          }),
+        ]
+      case 'reference':
+        return [
+          clampNode<LearningCanvasNode>({
+            ...base,
+            type: 'reference',
+            reference: data.reference as { refType: LearningCanvasRefType; refId: string },
+          }),
+        ]
+      case 'group':
+        return [
+          clampNode<LearningCanvasNode>({
+            ...base,
+            type: 'group',
+            group: data.group as { label: string },
+          }),
+        ]
+      default:
+        return []
+    }
+  })
+
+  const domainEdges: DomainEdge[] = edges.map((e) => {
+    const data = (e.data ?? {}) as Record<string, unknown>
+    return {
+      id: e.id,
+      from: e.source,
+      to: e.target,
+      fromSide: toSide(e.sourceHandle),
+      toSide: toSide(e.targetHandle),
+      label: (data.label as string) || undefined,
+      arrow: (data.arrow as LearningCanvasArrow) || 'to',
+    }
+  })
+
+  return { nodes: domainNodes, edges: domainEdges }
+}
+
 function LearningCanvasInternal({
   initialContent,
   title = 'Learning Canvas',
@@ -84,29 +238,28 @@ function LearningCanvasInternal({
   onToggleStatus,
   onCopyToMyCanvases,
   onReloadLatest,
+  onOpenReference,
 }: LearningCanvasProps) {
   const { fitView, screenToFlowPosition } = useReactFlow()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const boardRef = useRef<HTMLDivElement>(null)
 
-  // State: snap to grid (20px)
   const [snapToGrid, setSnapToGrid] = useState(false)
   const [isOutlineOpen, setIsOutlineOpen] = useState(false)
-  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('saved')
 
-  // Search state
+  // Search
   const [searchQuery, setSearchQuery] = useState('')
-  const [matchingNodeIds, setMatchingNodeIds] = useState<string[]>([])
   const [searchIndex, setSearchIndex] = useState(0)
 
   // Live accessibility announcements
   const [liveMessage, setLiveMessage] = useState('')
-  const announce = (msg: string) => setLiveMessage(msg)
+  const announce = useCallback((msg: string) => setLiveMessage(msg), [])
 
-  // Quick-add menu state
+  // Quick-add menu
   const [quickAddState, setQuickAddState] = useState<{
-    isOpen: boolean
     screenPos: { x: number; y: number }
     flowPos: { x: number; y: number }
-    sourceHandle?: { nodeId: string; handleId: string }
+    sourceNodeId?: string
   } | null>(null)
 
   // Dialogs
@@ -117,540 +270,372 @@ function LearningCanvasInternal({
   const [pickerForNodeId, setPickerForNodeId] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<FromJsonCanvasResult | null>(null)
 
-  // Map domain nodes to ReactFlow nodes
-  const mapDomainNodesToFlow = useCallback(
-    (domainNodes: LearningCanvasNode[]): Node[] => {
-      return domainNodes.map((n) => ({
-        id: n.id,
-        type: n.type,
-        position: { x: n.x, y: n.y },
-        style: { width: n.width, height: n.height },
-        data: {
-          ...n,
-          readOnly,
-          isHighlighted: matchingNodeIds.includes(n.id),
-          resolvedInfo: n.reference
-            ? availableReferences.find((r) => r.id === n.reference?.refId)
-            : undefined,
-          onUpdate: handleNodeUpdate,
-          onDelete: handleNodeDelete,
-          onPickReference: (nodeId: string) => setPickerForNodeId(nodeId),
-          onOpenReference: handleOpenReference,
-        },
-      }))
-    },
-    [readOnly, matchingNodeIds, availableReferences]
-  )
+  // Stable callbacks handed to every card/edge. They forward to the handlers
+  // below through a ref, so cards created at any point in time (including
+  // before the latest render) always run the current logic. This is what
+  // fixes "autosave saves the original text".
+  const handlersRef = useRef<FlowCallbacks | null>(null)
+  const [callbacks] = useState<FlowCallbacks>(() => ({
+    onUpdate: (id, updates) => handlersRef.current?.onUpdate(id, updates),
+    onDelete: (id) => handlersRef.current?.onDelete(id),
+    onPickReference: (id) => handlersRef.current?.onPickReference(id),
+    onOpenReference: (refType, refId) => handlersRef.current?.onOpenReference(refType, refId),
+    onUpdateEdge: (id, updates) => handlersRef.current?.onUpdateEdge(id, updates),
+    onDeleteEdge: (id) => handlersRef.current?.onDeleteEdge(id),
+  }))
 
-  // Map domain edges to ReactFlow edges
-  const mapDomainEdgesToFlow = useCallback(
-    (domainEdges: DomainEdge[]): Edge[] => {
-      return domainEdges.map((e) => ({
-        id: e.id,
-        source: e.from,
-        target: e.to,
-        sourceHandle: e.fromSide,
-        targetHandle: e.toSide,
-        type: 'learningEdge',
-        data: {
-          label: e.label,
-          arrow: e.arrow,
-          readOnly,
-          onUpdateEdge: handleEdgeUpdate,
-          onDeleteEdge: handleEdgeDelete,
-        },
-      }))
-    },
-    [readOnly]
-  )
+  const [initialFlow] = useState(() => ({
+    nodes: initialContent.nodes.map((n) => domainToFlowNode(n, readOnly, callbacks)),
+    edges: initialContent.edges.map((e) => domainToFlowEdge(e, readOnly, callbacks)),
+  }))
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initialFlow.nodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initialFlow.edges)
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(mapDomainNodesToFlow(initialContent.nodes))
-  const [edges, setEdges, onEdgesChange] = useEdgesState(mapDomainEdgesToFlow(initialContent.edges))
-
-  // Undo / Redo history stack (cap 50)
-  const historyRef = useRef<{ nodes: LearningCanvasNode[]; edges: DomainEdge[] }[]>([])
-  const historyIndexRef = useRef<number>(-1)
-  const isUndoRedoAction = useRef(false)
-
-  // Extract domain representation
-  const getCurrentDomainContent = useCallback((): LearningCanvasContent => {
-    const domainNodes: LearningCanvasNode[] = nodes.map((n) => {
-      const data = n.data as unknown as Record<string, unknown>
-      const width = typeof n.style?.width === 'number' ? n.style.width : (n.measured?.width ?? 240)
-      const height = typeof n.style?.height === 'number' ? n.style.height : (n.measured?.height ?? 140)
-
-      const baseNode = {
-        id: n.id,
-        type: n.type as LearningCanvasNodeType,
-        x: Math.round(n.position.x),
-        y: Math.round(n.position.y),
-        width: Math.round(width),
-        height: Math.round(height),
-        color: (data.color as LearningCanvasColor) || 'none',
-      }
-
-      if (n.type === 'text') {
-        return clampNode({ ...baseNode, text: (data.text as string) || '' })
-      }
-      if (n.type === 'link') {
-        return clampNode({ ...baseNode, link: data.link as { url: string; title?: string; note?: string } })
-      }
-      if (n.type === 'reference') {
-        return clampNode({ ...baseNode, reference: data.reference as { refType: LearningCanvasRefType; refId: string } })
-      }
-      if (n.type === 'group') {
-        return clampNode({ ...baseNode, group: data.group as { label?: string } })
-      }
-      return clampNode(baseNode as unknown as LearningCanvasNode)
-    })
-
-    const domainEdges: DomainEdge[] = edges.map((e) => {
-      const data = e.data as unknown as Record<string, unknown>
-      return {
-        id: e.id,
-        from: e.source,
-        to: e.target,
-        fromSide: (e.sourceHandle as DomainEdge['fromSide']) || undefined,
-        toSide: (e.targetHandle as DomainEdge['toSide']) || undefined,
-        label: (data?.label as string) || undefined,
-        arrow: (data?.arrow as LearningCanvasArrow) || 'to',
-      }
-    })
-
-    return {
-      version: 1,
-      nodes: domainNodes,
-      edges: domainEdges,
-      viewport: { x: 0, y: 0, zoom: 1 },
-    }
+  // Always-current copy of the board, readable from timers and event handlers.
+  const stateRef = useRef({ nodes, edges })
+  useEffect(() => {
+    stateRef.current = { nodes, edges }
   }, [nodes, edges])
 
-  // Push snapshot
-  const pushHistorySnapshot = useCallback(() => {
-    if (readOnly || isUndoRedoAction.current) return
-    const current = getCurrentDomainContent()
-    const history = historyRef.current.slice(0, historyIndexRef.current + 1)
-    history.push({ nodes: current.nodes, edges: current.edges })
-    if (history.length > 50) history.shift()
-    historyRef.current = history
-    historyIndexRef.current = history.length - 1
-  }, [readOnly, getCurrentDomainContent])
+  const readSnapshot = (): Snapshot => flowToDomain(stateRef.current.nodes, stateRef.current.edges)
+  const readContent = (): LearningCanvasContent => ({
+    version: 1,
+    ...readSnapshot(),
+    viewport: { x: 0, y: 0, zoom: 1 },
+  })
 
-  // Initialize history
+  // Keep readOnly in stored card data in sync when the prop changes after mount
+  // (the pages learn the canvas kind asynchronously).
   useEffect(() => {
-    if (historyRef.current.length === 0) {
-      historyRef.current = [{ nodes: initialContent.nodes, edges: initialContent.edges }]
-      historyIndexRef.current = 0
-    }
-  }, [initialContent])
+    setNodes((nds) =>
+      nds.every((n) => n.data.readOnly === readOnly)
+        ? nds
+        : nds.map((n) => (n.data.readOnly === readOnly ? n : { ...n, data: { ...n.data, readOnly } })),
+    )
+    setEdges((eds) =>
+      eds.every((e) => e.data?.readOnly === readOnly)
+        ? eds
+        : eds.map((e) => (e.data?.readOnly === readOnly ? e : { ...e, data: { ...e.data, readOnly } })),
+    )
+  }, [readOnly, setNodes, setEdges])
 
-  // Debounced Autosave (2s)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isDirtyRef = useRef(false)
-
-  const triggerAutosave = useCallback(() => {
-    if (readOnly || !onSave) return
-    isDirtyRef.current = true
-    setAutosaveStatus('unsaved')
-
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(async () => {
-      try {
-        setAutosaveStatus('saving')
-        const content = getCurrentDomainContent()
-        await onSave(content)
-        isDirtyRef.current = false
-        setAutosaveStatus('saved')
-      } catch (err) {
-        setAutosaveStatus('error')
-        const msg = err instanceof Error ? err.message : ''
-        if (msg.includes('modified in another session') || msg.includes('conflict')) {
-          setIsConflictDialogOpen(true)
-        }
-      }
-    }, 2000)
-  }, [readOnly, onSave, getCurrentDomainContent])
-
-  // Browser unsaved changes guard
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirtyRef.current) {
-        e.preventDefault()
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [])
-
-  // Manual retry save
-  const handleRetrySave = async () => {
-    if (!onSave) return
-    try {
-      setAutosaveStatus('saving')
-      const content = getCurrentDomainContent()
-      await onSave(content)
-      isDirtyRef.current = false
-      setAutosaveStatus('saved')
-    } catch {
-      setAutosaveStatus('error')
-    }
+  // Undo / redo (snapshot is recorded BEFORE each change)
+  const history = useUndoRedo<Snapshot>(50)
+  const recordHistory = () => {
+    if (!readOnly) history.record(readSnapshot())
   }
 
-  // Node Mutations
-  function handleNodeUpdate(id: string, updates: Partial<LearningCanvasNode>) {
+  // Autosave (always saves the latest board; flushes when leaving)
+  const autosave = useAutosave<LearningCanvasContent>({
+    enabled: !readOnly && Boolean(onSave),
+    getLatest: () => toSavableContent(readContent()),
+    save: async (content) => {
+      await onSave?.(content)
+    },
+    onError: (error) => {
+      if (error instanceof CanvasConflictError) setIsConflictDialogOpen(true)
+    },
+  })
+  const { markDirty } = autosave
+  useUnsavedChangesGuard(autosave.isDirty)
+
+  const applySnapshot = (snap: Snapshot) => {
+    setNodes(snap.nodes.map((n) => domainToFlowNode(n, readOnly, callbacks)))
+    setEdges(snap.edges.map((e) => domainToFlowEdge(e, readOnly, callbacks)))
+  }
+
+  // ---- Node / edge mutations ----------------------------------------------
+
+  const updateNode = (id: string, updates: Partial<LearningCanvasNode>) => {
+    if (readOnly) return
+    recordHistory()
     setNodes((nds) =>
       nds.map((n) => {
-        if (n.id === id) {
-          return {
-            ...n,
-            style: {
-              ...n.style,
-              width: updates.width ?? n.style?.width,
-              height: updates.height ?? n.style?.height,
-            },
-            data: {
-              ...n.data,
-              ...updates,
-            },
-          }
-        }
-        return n
-      })
+        if (n.id !== id) return n
+        const nodeStyle = { ...n.style }
+        if (updates.width !== undefined) nodeStyle.width = updates.width
+        if (updates.height !== undefined) nodeStyle.height = updates.height
+        return { ...n, style: nodeStyle, data: { ...n.data, ...updates } }
+      }),
     )
-    pushHistorySnapshot()
-    triggerAutosave()
+    markDirty()
   }
 
-  function handleNodeDelete(id: string) {
+  const deleteNode = (id: string) => {
+    if (readOnly) return
+    recordHistory()
     setNodes((nds) => nds.filter((n) => n.id !== id))
     setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id))
     announce('Card deleted')
-    pushHistorySnapshot()
-    triggerAutosave()
+    markDirty()
   }
 
-  function handleEdgeUpdate(id: string, updates: { label?: string; arrow?: LearningCanvasArrow }) {
+  const updateEdge = (id: string, updates: { label?: string; arrow?: LearningCanvasArrow }) => {
+    if (readOnly) return
+    recordHistory()
     setEdges((eds) =>
-      eds.map((e) => {
-        if (e.id === id) {
-          return {
-            ...e,
-            data: {
-              ...e.data,
-              ...updates,
-            },
-          }
-        }
-        return e
-      })
+      eds.map((e) => (e.id === id ? { ...e, data: { ...e.data, ...updates } } : e)),
     )
-    pushHistorySnapshot()
-    triggerAutosave()
+    markDirty()
   }
 
-  function handleEdgeDelete(id: string) {
+  const deleteEdge = (id: string) => {
+    if (readOnly) return
+    recordHistory()
     setEdges((eds) => eds.filter((e) => e.id !== id))
     announce('Connection removed')
-    pushHistorySnapshot()
-    triggerAutosave()
+    markDirty()
   }
 
-  function handleOpenReference(refType: LearningCanvasRefType, refId: string) {
-    if (refType === 'module') {
-      window.open(`/student/modules/${refId}`, '_blank')
-    } else if (refType === 'quiz') {
-      window.open(`/student/quizzes/${refId}`, '_blank')
-    } else if (refType === 'learning') {
-      window.open(`/student/learning/${refId}`, '_blank')
+  // Forward the stable callbacks to the current handlers after every render.
+  useEffect(() => {
+    handlersRef.current = {
+      onUpdate: updateNode,
+      onDelete: deleteNode,
+      onPickReference: (id) => setPickerForNodeId(id),
+      onOpenReference: (refType, refId) => onOpenReference?.(refType, refId),
+      onUpdateEdge: updateEdge,
+      onDeleteEdge: deleteEdge,
     }
+  })
+
+  const addCard = (
+    type: LearningCanvasNodeType,
+    targetPos?: { x: number; y: number },
+    connectFromNodeId?: string,
+  ) => {
+    if (readOnly) return
+    const snapshot = readSnapshot()
+
+    if (snapshot.nodes.length >= MAX_LEARNING_CANVAS_NODES) {
+      announce(`This canvas is full (${MAX_LEARNING_CANVAS_NODES} cards maximum).`)
+      return
+    }
+    if (
+      type === 'group' &&
+      snapshot.nodes.filter((n) => n.type === 'group').length >= MAX_LEARNING_CANVAS_GROUPS
+    ) {
+      announce(`A canvas can have at most ${MAX_LEARNING_CANVAS_GROUPS} groups.`)
+      return
+    }
+
+    const size = type === 'group' ? { width: 360, height: 260 } : { width: 240, height: 140 }
+    const pos = targetPos ?? newNodePlacement(snapshot.nodes, size)
+    const base = {
+      id: makeId('node'),
+      x: Math.round(pos.x),
+      y: Math.round(pos.y),
+      ...size,
+      color: (type === 'group' ? 'tint' : 'none') as LearningCanvasColor,
+    }
+
+    let node: LearningCanvasNode
+    if (type === 'text') node = { ...base, type: 'text', text: '' }
+    else if (type === 'link') node = { ...base, type: 'link', link: { url: 'https://', title: '' } }
+    else if (type === 'reference') node = { ...base, type: 'reference', reference: { refType: 'module', refId: '' } }
+    else node = { ...base, type: 'group', group: { label: 'New Group' } }
+
+    history.record(snapshot)
+    setNodes((nds) => [...nds, domainToFlowNode(node, readOnly, callbacks)])
+
+    if (
+      connectFromNodeId &&
+      snapshot.nodes.some((n) => n.id === connectFromNodeId) &&
+      snapshot.edges.length < MAX_LEARNING_CANVAS_EDGES
+    ) {
+      const edge: DomainEdge = { id: makeId('edge'), from: connectFromNodeId, to: node.id, arrow: 'to' }
+      setEdges((eds) => [...eds, domainToFlowEdge(edge, readOnly, callbacks)])
+    }
+
+    // A reference card is meaningless (and cannot be saved) until it has a target.
+    if (type === 'reference') setPickerForNodeId(node.id)
+
+    announce(`${type} card added`)
+    markDirty()
   }
 
-  // Connect handler
-  const onConnect = useCallback(
-    (params: Connection) => {
-      if (readOnly) return
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...params,
-            type: 'learningEdge',
-            data: {
-              arrow: 'to',
-              readOnly,
-              onUpdateEdge: handleEdgeUpdate,
-              onDeleteEdge: handleEdgeDelete,
-            },
-          },
-          eds
-        )
-      )
-      announce('Cards connected')
-      pushHistorySnapshot()
-      triggerAutosave()
-    },
-    [readOnly, pushHistorySnapshot, triggerAutosave]
-  )
+  // ---- Connections ---------------------------------------------------------
 
-  // Drag handle into empty space -> open quick-add menu
-  const onConnectEnd: OnConnectEnd = useCallback(
-    (event, connectionState) => {
-      if (readOnly || connectionState.isValid || !connectionState.fromNode) return
-
-      const clientX = 'clientX' in event ? event.clientX : event.changedTouches[0]?.clientX ?? 0
-      const clientY = 'clientY' in event ? event.clientY : event.changedTouches[0]?.clientY ?? 0
-
-      const flowPos = screenToFlowPosition({ x: clientX, y: clientY })
-
-      setQuickAddState({
-        isOpen: true,
-        screenPos: { x: clientX, y: clientY },
-        flowPos,
-        sourceHandle: {
-          nodeId: connectionState.fromNode.id,
-          handleId: connectionState.fromHandle?.id ?? 'right',
-        },
-      })
-    },
-    [readOnly, screenToFlowPosition]
-  )
-
-  // Double click pane -> add text card
-  const onPaneDoubleClick = useCallback(
-    (event: React.MouseEvent) => {
-      if (readOnly) return
-      const flowPos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-      const newId = `node_${Date.now()}`
-      const newNode: Node = {
-        id: newId,
-        type: 'text',
-        position: flowPos,
-        style: { width: 240, height: 140 },
-        data: {
-          id: newId,
-          type: 'text',
-          text: '',
-          color: 'none',
-          readOnly,
-          onUpdate: handleNodeUpdate,
-          onDelete: handleNodeDelete,
-        },
-      }
-      setNodes((nds) => [...nds, newNode])
-      announce('Text card created')
-      pushHistorySnapshot()
-      triggerAutosave()
-    },
-    [readOnly, screenToFlowPosition, pushHistorySnapshot, triggerAutosave]
-  )
-
-  // Add Card from Toolbar or QuickAdd
-  const handleAddCard = useCallback(
-    (type: LearningCanvasNodeType, targetPos?: { x: number; y: number }, connectFromNodeId?: string) => {
-      if (readOnly) return
-      const newId = `node_${Date.now()}`
-      const existingDomainNodes = getCurrentDomainContent().nodes
-      const pos = targetPos || newNodePlacement(existingDomainNodes)
-
-      const baseData = {
-        id: newId,
-        type,
-        color: (type === 'group' ? 'tint' : 'none') as LearningCanvasColor,
+  const onConnect = (params: Connection) => {
+    if (readOnly || params.source === params.target) return
+    if (stateRef.current.edges.length >= MAX_LEARNING_CANVAS_EDGES) {
+      announce(`A canvas can have at most ${MAX_LEARNING_CANVAS_EDGES} connections.`)
+      return
+    }
+    recordHistory()
+    const newEdge: Edge = {
+      id: makeId('edge'),
+      source: params.source,
+      target: params.target,
+      sourceHandle: params.sourceHandle,
+      targetHandle: params.targetHandle,
+      type: 'learningEdge',
+      data: {
+        arrow: 'to',
         readOnly,
-        onUpdate: handleNodeUpdate,
-        onDelete: handleNodeDelete,
-        onPickReference: (nodeId: string) => setPickerForNodeId(nodeId),
-        onOpenReference: handleOpenReference,
-      }
+        onUpdateEdge: callbacks.onUpdateEdge,
+        onDeleteEdge: callbacks.onDeleteEdge,
+      },
+    }
+    setEdges((eds) => addEdge(newEdge, eds))
+    announce('Cards connected')
+    markDirty()
+  }
 
-      let extraData = {}
-      let size = { width: 240, height: 140 }
+  const onConnectEnd: OnConnectEnd = (event, connectionState) => {
+    if (readOnly || connectionState.isValid || !connectionState.fromNode) return
+    const clientX = 'clientX' in event ? event.clientX : (event.changedTouches[0]?.clientX ?? 0)
+    const clientY = 'clientY' in event ? event.clientY : (event.changedTouches[0]?.clientY ?? 0)
+    setQuickAddState({
+      screenPos: { x: clientX, y: clientY },
+      flowPos: screenToFlowPosition({ x: clientX, y: clientY }),
+      sourceNodeId: connectionState.fromNode.id,
+    })
+  }
 
-      if (type === 'text') extraData = { text: '' }
-      else if (type === 'link') extraData = { link: { url: 'https://' } }
-      else if (type === 'reference') extraData = { reference: { refType: 'module', refId: '' } }
-      else if (type === 'group') {
-        extraData = { group: { label: 'New Group' } }
-        size = { width: 360, height: 260 }
-      }
+  const handleConnectDialogSubmit = (
+    srcId: string,
+    tgtId: string,
+    arrow: LearningCanvasArrow,
+    label?: string,
+  ) => {
+    if (readOnly || srcId === tgtId) return
+    const { edges: current } = stateRef.current
+    if (current.some((e) => e.source === srcId && e.target === tgtId && !e.sourceHandle && !e.targetHandle)) {
+      announce('Those cards are already connected')
+      return
+    }
+    if (current.length >= MAX_LEARNING_CANVAS_EDGES) {
+      announce(`A canvas can have at most ${MAX_LEARNING_CANVAS_EDGES} connections.`)
+      return
+    }
+    recordHistory()
+    const edge: DomainEdge = { id: makeId('edge'), from: srcId, to: tgtId, arrow, ...(label ? { label } : {}) }
+    setEdges((eds) => [...eds, domainToFlowEdge(edge, readOnly, callbacks)])
+    announce('Cards connected via keyboard')
+    markDirty()
+  }
 
-      const newNode: Node = {
-        id: newId,
-        type,
-        position: pos,
-        style: size,
-        data: { ...baseData, ...extraData },
-      }
+  // ---- Pointer handling ------------------------------------------------------
 
-      setNodes((nds) => [...nds, newNode])
+  // Double-click creates a card only on empty board space. Zoom-on-double-click
+  // is disabled on the <ReactFlow> element so double-clicking a card to edit it
+  // does neither.
+  const handleBoardDoubleClick = (event: ReactMouseEvent) => {
+    if (readOnly) return
+    const target = event.target
+    if (!(target instanceof Element) || !target.classList.contains('react-flow__pane')) return
+    addCard('text', screenToFlowPosition({ x: event.clientX, y: event.clientY }))
+  }
 
-      if (connectFromNodeId) {
-        const newEdge: Edge = {
-          id: `edge_${Date.now()}`,
-          source: connectFromNodeId,
-          target: newId,
-          type: 'learningEdge',
-          data: {
-            arrow: 'to',
-            readOnly,
-            onUpdateEdge: handleEdgeUpdate,
-            onDeleteEdge: handleEdgeDelete,
-          },
-        }
-        setEdges((eds) => [...eds, newEdge])
-      }
-
-      announce(`${type} card added`)
-      pushHistorySnapshot()
-      triggerAutosave()
-    },
-    [readOnly, getCurrentDomainContent, pushHistorySnapshot, triggerAutosave]
-  )
-
-  // Group Dragging Child Movement
+  // Group dragging: children fully inside the group move with it.
   const groupDragRef = useRef<{
     groupId: string
     initialPos: { x: number; y: number }
     containedNodes: Array<{ id: string; initialX: number; initialY: number }>
   } | null>(null)
 
-  const onNodeDragStart: OnNodeDrag<Node> = useCallback(
-    (_event, node) => {
-      if (node.type !== 'group') return
+  const onNodeDragStart: OnNodeDrag<Node> = (_event, node) => {
+    recordHistory() // one history entry per drag
+    if (node.type !== 'group') return
 
-      const groupWidth = typeof node.style?.width === 'number' ? node.style.width : (node.measured?.width ?? 360)
-      const groupHeight = typeof node.style?.height === 'number' ? node.style.height : (node.measured?.height ?? 260)
+    const groupWidth = typeof node.style?.width === 'number' ? node.style.width : (node.measured?.width ?? 360)
+    const groupHeight = typeof node.style?.height === 'number' ? node.style.height : (node.measured?.height ?? 260)
+    const minX = node.position.x
+    const minY = node.position.y
+    const maxX = minX + groupWidth
+    const maxY = minY + groupHeight
 
-      const groupMinX = node.position.x
-      const groupMinY = node.position.y
-      const groupMaxX = groupMinX + groupWidth
-      const groupMaxY = groupMinY + groupHeight
+    const contained = nodes
+      .filter((n) => {
+        if (n.id === node.id || n.type === 'group') return false
+        const w = typeof n.style?.width === 'number' ? n.style.width : (n.measured?.width ?? 240)
+        const h = typeof n.style?.height === 'number' ? n.style.height : (n.measured?.height ?? 140)
+        return n.position.x >= minX && n.position.y >= minY && n.position.x + w <= maxX && n.position.y + h <= maxY
+      })
+      .map((n) => ({ id: n.id, initialX: n.position.x, initialY: n.position.y }))
 
-      const contained = nodes
-        .filter((n) => {
-          if (n.id === node.id || n.type === 'group') return false
-          const nW = typeof n.style?.width === 'number' ? n.style.width : (n.measured?.width ?? 240)
-          const nH = typeof n.style?.height === 'number' ? n.style.height : (n.measured?.height ?? 140)
-          return (
-            n.position.x >= groupMinX &&
-            n.position.y >= groupMinY &&
-            n.position.x + nW <= groupMaxX &&
-            n.position.y + nH <= groupMaxY
-          )
-        })
-        .map((n) => ({
-          id: n.id,
-          initialX: n.position.x,
-          initialY: n.position.y,
-        }))
+    groupDragRef.current = { groupId: node.id, initialPos: { ...node.position }, containedNodes: contained }
+  }
 
-      groupDragRef.current = {
-        groupId: node.id,
-        initialPos: { ...node.position },
-        containedNodes: contained,
-      }
-    },
-    [nodes]
-  )
+  const onNodeDrag: OnNodeDrag<Node> = (_event, node) => {
+    const drag = groupDragRef.current
+    if (!drag || drag.groupId !== node.id) return
+    const dx = node.position.x - drag.initialPos.x
+    const dy = node.position.y - drag.initialPos.y
+    setNodes((nds) =>
+      nds.map((n) => {
+        const match = drag.containedNodes.find((c) => c.id === n.id)
+        return match ? { ...n, position: { x: match.initialX + dx, y: match.initialY + dy } } : n
+      }),
+    )
+  }
 
-  const onNodeDrag: OnNodeDrag<Node> = useCallback(
-    (_event, node) => {
-      if (groupDragRef.current && groupDragRef.current.groupId === node.id) {
-        const dx = node.position.x - groupDragRef.current.initialPos.x
-        const dy = node.position.y - groupDragRef.current.initialPos.y
-
-        setNodes((nds) =>
-          nds.map((n) => {
-            const match = groupDragRef.current?.containedNodes.find((c) => c.id === n.id)
-            if (match) {
-              return {
-                ...n,
-                position: {
-                  x: match.initialX + dx,
-                  y: match.initialY + dy,
-                },
-              }
-            }
-            return n
-          })
-        )
-      }
-    },
-    [setNodes]
-  )
-
-  const onNodeDragStop = useCallback(() => {
+  const onNodeDragStop = () => {
     groupDragRef.current = null
-    pushHistorySnapshot()
-    triggerAutosave()
-  }, [pushHistorySnapshot, triggerAutosave])
+    markDirty()
+  }
 
-  // Undo and Redo
-  const handleUndo = useCallback(() => {
-    if (historyIndexRef.current <= 0) return
-    isUndoRedoAction.current = true
-    const targetIdx = historyIndexRef.current - 1
-    const snapshot = historyRef.current[targetIdx]
-    historyIndexRef.current = targetIdx
+  // ---- Undo / redo -----------------------------------------------------------
 
-    setNodes(mapDomainNodesToFlow(snapshot.nodes))
-    setEdges(mapDomainEdgesToFlow(snapshot.edges))
+  const handleUndo = () => {
+    if (readOnly) return
+    const snap = history.undo(readSnapshot())
+    if (!snap) return
+    applySnapshot(snap)
     announce('Undo performed')
-    triggerAutosave()
-    setTimeout(() => {
-      isUndoRedoAction.current = false
-    }, 50)
-  }, [mapDomainNodesToFlow, mapDomainEdgesToFlow, triggerAutosave])
+    markDirty()
+  }
 
-  const handleRedo = useCallback(() => {
-    if (historyIndexRef.current >= historyRef.current.length - 1) return
-    isUndoRedoAction.current = true
-    const targetIdx = historyIndexRef.current + 1
-    const snapshot = historyRef.current[targetIdx]
-    historyIndexRef.current = targetIdx
-
-    setNodes(mapDomainNodesToFlow(snapshot.nodes))
-    setEdges(mapDomainEdgesToFlow(snapshot.edges))
+  const handleRedo = () => {
+    if (readOnly) return
+    const snap = history.redo(readSnapshot())
+    if (!snap) return
+    applySnapshot(snap)
     announce('Redo performed')
-    triggerAutosave()
-    setTimeout(() => {
-      isUndoRedoAction.current = false
-    }, 50)
-  }, [mapDomainNodesToFlow, mapDomainEdgesToFlow, triggerAutosave])
+    markDirty()
+  }
 
-  // Keyboard Shortcuts Handler
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const activeEl = document.activeElement
-      const isInput =
-        activeEl instanceof HTMLInputElement ||
-        activeEl instanceof HTMLTextAreaElement ||
-        activeEl instanceof HTMLSelectElement ||
-        Boolean(activeEl?.getAttribute('contenteditable'))
+  // ---- Keyboard shortcuts (only while the board has focus) ---------------------
 
-      if (isInput) return
+  const lastNudgeRef = useRef(0)
 
-      // Undo / Redo
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault()
+  const handleKeyDownCapture = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented || isEditableTarget(e.target)) return
+
+    const consume = () => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    const key = e.key.toLowerCase()
+    const mod = e.ctrlKey || e.metaKey
+
+    if (mod && !e.altKey) {
+      if (key === 'z') {
+        consume()
         if (e.shiftKey) handleRedo()
         else handleUndo()
-        return
-      }
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
-        e.preventDefault()
+      } else if (key === 'y') {
+        consume()
         handleRedo()
-        return
-      }
-
-      // Duplicate (Ctrl+D)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
-        e.preventDefault()
+      } else if (key === 'd') {
+        consume()
         if (readOnly) return
-        const selectedNodes = nodes.filter((n) => n.selected)
-        if (selectedNodes.length === 0) return
-        const newNodes = selectedNodes.map((n) => {
-          const newId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+        const current = stateRef.current.nodes
+        const selected = current.filter((n) => n.selected)
+        if (selected.length === 0) return
+        const groups = current.filter((n) => n.type === 'group').length
+        const newGroups = selected.filter((n) => n.type === 'group').length
+        if (
+          current.length + selected.length > MAX_LEARNING_CANVAS_NODES ||
+          groups + newGroups > MAX_LEARNING_CANVAS_GROUPS
+        ) {
+          announce('Not enough room on the canvas to duplicate the selection.')
+          return
+        }
+        recordHistory()
+        const copies = selected.map((n) => {
+          const newId = makeId('node')
           return {
             ...n,
             id: newId,
@@ -659,186 +644,172 @@ function LearningCanvasInternal({
             data: { ...n.data, id: newId },
           }
         })
-        setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), ...newNodes])
+        setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), ...copies])
         announce('Selected cards duplicated')
-        pushHistorySnapshot()
-        triggerAutosave()
-        return
-      }
-
-      // Select All (Ctrl+A)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-        e.preventDefault()
+        markDirty()
+      } else if (key === 'a') {
+        consume()
         setNodes((nds) => nds.map((n) => ({ ...n, selected: true })))
         announce('All cards selected')
-        return
       }
-
-      // Delete (Delete / Backspace)
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (readOnly) return
-        const hasSelected = nodes.some((n) => n.selected) || edges.some((e) => e.selected)
-        if (hasSelected) {
-          e.preventDefault()
-          setNodes((nds) => nds.filter((n) => !n.selected))
-          setEdges((eds) => eds.filter((e) => !e.selected && !nodes.some((n) => n.selected && (n.id === e.source || n.id === e.target))))
-          announce('Selected items deleted')
-          pushHistorySnapshot()
-          triggerAutosave()
-        }
-        return
-      }
-
-      // N: Add text card
-      if (e.key.toLowerCase() === 'n' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault()
-        handleAddCard('text')
-        return
-      }
-
-      // G: Add group
-      if (e.key.toLowerCase() === 'g' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault()
-        handleAddCard('group')
-        return
-      }
-
-      // F: Fit view
-      if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault()
-        fitView({ duration: 300 })
-        return
-      }
-
-      // /: Focus search
-      if (e.key === '/') {
-        e.preventDefault()
-        const searchInput = document.querySelector<HTMLInputElement>('input[type="search"]')
-        searchInput?.focus()
-        return
-      }
-
-      // ?: Help dialog
-      if (e.key === '?') {
-        e.preventDefault()
-        setIsHelpDialogOpen(true)
-        return
-      }
-
-      // Nudge with arrow keys
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-        if (readOnly) return
-        const step = e.shiftKey ? 20 : 5
-        let dx = 0
-        let dy = 0
-        if (e.key === 'ArrowUp') dy = -step
-        if (e.key === 'ArrowDown') dy = step
-        if (e.key === 'ArrowLeft') dx = -step
-        if (e.key === 'ArrowRight') dx = step
-
-        const selectedCount = nodes.filter((n) => n.selected).length
-        if (selectedCount > 0) {
-          e.preventDefault()
-          setNodes((nds) =>
-            nds.map((n) => {
-              if (n.selected) {
-                return {
-                  ...n,
-                  position: { x: n.position.x + dx, y: n.position.y + dy },
-                }
-              }
-              return n
-            })
-          )
-          pushHistorySnapshot()
-          triggerAutosave()
-        }
-      }
+      return
     }
+    if (e.altKey) return
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [
-    readOnly,
-    nodes,
-    edges,
-    handleUndo,
-    handleRedo,
-    handleAddCard,
-    fitView,
-    pushHistorySnapshot,
-    triggerAutosave,
-  ])
-
-  // Search filter and highlight
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setMatchingNodeIds([])
-      setSearchIndex(0)
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (readOnly) return
+      const { nodes: curNodes, edges: curEdges } = stateRef.current
+      const selectedIds = new Set(curNodes.filter((n) => n.selected).map((n) => n.id))
+      if (selectedIds.size === 0 && !curEdges.some((ed) => ed.selected)) return
+      consume()
+      recordHistory()
+      setNodes((nds) => nds.filter((n) => !selectedIds.has(n.id)))
+      setEdges((eds) =>
+        eds.filter((ed) => !ed.selected && !selectedIds.has(ed.source) && !selectedIds.has(ed.target)),
+      )
+      announce('Selected items deleted')
+      markDirty()
       return
     }
 
-    const q = searchQuery.toLowerCase()
-    const matches = nodes
+    if (key === 'n') {
+      consume()
+      addCard('text')
+    } else if (key === 'g') {
+      consume()
+      addCard('group')
+    } else if (key === 'f') {
+      consume()
+      fitView({ duration: 300 })
+    } else if (e.key === '/') {
+      consume()
+      rootRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
+    } else if (e.key === '?') {
+      consume()
+      setIsHelpDialogOpen(true)
+    } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      if (readOnly || !stateRef.current.nodes.some((n) => n.selected)) return
+      // Handled here (capture phase) so React Flow's own arrow-key nudge does not
+      // move the card a second time.
+      consume()
+      const step = e.shiftKey ? 20 : 5
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+      const now = Date.now()
+      if (now - lastNudgeRef.current > 600) recordHistory() // group a burst of nudges into one undo step
+      lastNudgeRef.current = now
+      setNodes((nds) =>
+        nds.map((n) => (n.selected ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } } : n)),
+      )
+      markDirty()
+    }
+  }
+
+  // Clicking empty board space gives the board keyboard focus (shortcuts are scoped to it).
+  const handleBoardMouseDownCapture = () => {
+    const board = boardRef.current
+    if (board && !board.contains(document.activeElement)) {
+      board.focus({ preventScroll: true })
+    }
+  }
+
+  // ---- Search ----------------------------------------------------------------
+
+  const refByKey = useMemo(
+    () => new Map(availableReferences.map((r) => [`${r.type}:${r.id}`, r])),
+    [availableReferences],
+  )
+
+  const matchingNodeIds = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return []
+    return nodes
       .filter((n) => {
         const data = n.data as Record<string, unknown>
         if (n.type === 'text') return ((data.text as string) || '').toLowerCase().includes(q)
         if (n.type === 'link') {
-          const l = data.link as { title?: string; note?: string; url?: string }
-          return (
-            (l?.title || '').toLowerCase().includes(q) ||
-            (l?.note || '').toLowerCase().includes(q) ||
-            (l?.url || '').toLowerCase().includes(q)
-          )
+          const l = data.link as { title?: string; note?: string; url?: string } | undefined
+          return [l?.title, l?.note, l?.url].some((v) => (v || '').toLowerCase().includes(q))
         }
         if (n.type === 'reference') {
-          const info = data.resolvedInfo as ResolvedReferenceInfo | undefined
+          const ref = data.reference as { refType: LearningCanvasRefType; refId: string } | undefined
+          const info = ref ? refByKey.get(`${ref.refType}:${ref.refId}`) : undefined
           return (info?.title || '').toLowerCase().includes(q)
         }
         if (n.type === 'group') {
-          const g = data.group as { label?: string }
+          const g = data.group as { label?: string } | undefined
           return (g?.label || '').toLowerCase().includes(q)
         }
         return false
       })
       .map((n) => n.id)
+  }, [searchQuery, nodes, refByKey])
 
-    setMatchingNodeIds(matches)
-    setSearchIndex(0)
+  const matchSet = useMemo(() => new Set(matchingNodeIds), [matchingNodeIds])
+  const safeSearchIndex = matchingNodeIds.length === 0 ? 0 : Math.min(searchIndex, matchingNodeIds.length - 1)
 
-    if (matches.length > 0) {
-      const matchNode = nodes.find((n) => n.id === matches[0])
-      if (matchNode) {
-        fitView({ nodes: [matchNode], duration: 300, maxZoom: 1.2 })
-      }
+  // Highlight and resolved reference info are derived at render time, so they
+  // update live instead of being frozen when the card was created.
+  const displayNodes = useMemo(
+    () =>
+      nodes.map((n) => {
+        const highlighted = matchSet.has(n.id)
+        const data = n.data as {
+          isHighlighted?: boolean
+          resolvedInfo?: ResolvedReferenceInfo
+          reference?: { refType: LearningCanvasRefType; refId: string }
+        }
+        const info =
+          n.type === 'reference' && data.reference
+            ? refByKey.get(`${data.reference.refType}:${data.reference.refId}`)
+            : undefined
+        if (Boolean(data.isHighlighted) === highlighted && data.resolvedInfo === info) return n
+        return { ...n, data: { ...n.data, isHighlighted: highlighted, resolvedInfo: info } }
+      }),
+    [nodes, matchSet, refByKey],
+  )
+
+  // Re-centre only when the query changes, never because a card was edited.
+  const matchesRef = useRef<string[]>([])
+  useEffect(() => {
+    matchesRef.current = matchingNodeIds
+  })
+  useEffect(() => {
+    const first = matchesRef.current[0]
+    if (searchQuery.trim() && first) {
+      fitView({ nodes: [{ id: first }], duration: 300, maxZoom: 1.2 })
     }
-  }, [searchQuery, nodes, fitView])
+  }, [searchQuery, fitView])
+
+  const focusMatch = (index: number) => {
+    const id = matchingNodeIds[index]
+    if (id) fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2 })
+  }
+
+  const handleSearchChange = (q: string) => {
+    setSearchQuery(q)
+    setSearchIndex(0)
+  }
 
   const handleSearchNext = () => {
     if (matchingNodeIds.length === 0) return
-    const nextIdx = (searchIndex + 1) % matchingNodeIds.length
-    setSearchIndex(nextIdx)
-    const matchNode = nodes.find((n) => n.id === matchingNodeIds[nextIdx])
-    if (matchNode) {
-      fitView({ nodes: [matchNode], duration: 300, maxZoom: 1.2 })
-    }
+    const next = (safeSearchIndex + 1) % matchingNodeIds.length
+    setSearchIndex(next)
+    focusMatch(next)
   }
 
   const handleSearchPrev = () => {
     if (matchingNodeIds.length === 0) return
-    const prevIdx = (searchIndex - 1 + matchingNodeIds.length) % matchingNodeIds.length
-    setSearchIndex(prevIdx)
-    const matchNode = nodes.find((n) => n.id === matchingNodeIds[prevIdx])
-    if (matchNode) {
-      fitView({ nodes: [matchNode], duration: 300, maxZoom: 1.2 })
-    }
+    const prev = (safeSearchIndex - 1 + matchingNodeIds.length) % matchingNodeIds.length
+    setSearchIndex(prev)
+    focusMatch(prev)
   }
 
-  // Export .canvas
+  // ---- Import / export -----------------------------------------------------------
+
   const handleExport = () => {
-    const domainContent = getCurrentDomainContent()
-    const jsonString = toJsonCanvas(domainContent, title)
-    const blob = new Blob([jsonString], { type: 'application/json' })
+    const json = JSON.stringify(toJsonCanvas(readContent()), null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -848,34 +819,29 @@ function LearningCanvasInternal({
     announce('Canvas exported')
   }
 
-  // Import .canvas
   const handleImportFile = async (file: File) => {
     try {
-      const text = await file.text()
-      const result = fromJsonCanvas(text)
-      setImportResult(result)
-    } catch {
-      announce('Failed to read canvas file')
+      setImportResult(fromJsonCanvas(await file.text()))
+    } catch (err) {
+      announce(err instanceof Error ? err.message : 'Failed to read canvas file')
     }
   }
 
   const handleConfirmReplace = () => {
-    if (!importResult) return
-    setNodes(mapDomainNodesToFlow(importResult.content.nodes))
-    setEdges(mapDomainEdgesToFlow(importResult.content.edges))
+    if (!importResult || readOnly) return
+    recordHistory()
+    applySnapshot({ nodes: importResult.content.nodes, edges: importResult.content.edges })
     setImportResult(null)
     announce('Canvas replaced with imported file')
-    pushHistorySnapshot()
-    triggerAutosave()
+    markDirty()
   }
 
-  // Outline View actions
+  // ---- Outline ---------------------------------------------------------------------
+
   const handleJumpToNode = (id: string) => {
-    const node = nodes.find((n) => n.id === id)
-    if (node) {
-      fitView({ nodes: [node], duration: 300, maxZoom: 1.2 })
-      setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === id })))
-    }
+    if (!nodes.some((n) => n.id === id)) return
+    fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2 })
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === id })))
   }
 
   const handleConnectFromNode = (id: string) => {
@@ -883,63 +849,34 @@ function LearningCanvasInternal({
     setIsConnectDialogOpen(true)
   }
 
-  // Keyboard Connect Dialog submit
-  const handleConnectDialogSubmit = (
-    srcId: string,
-    tgtId: string,
-    arrow: LearningCanvasArrow,
-    label?: string
-  ) => {
-    const newEdge: Edge = {
-      id: `edge_${Date.now()}`,
-      source: srcId,
-      target: tgtId,
-      type: 'learningEdge',
-      data: {
-        label,
-        arrow,
-        readOnly,
-        onUpdateEdge: handleEdgeUpdate,
-        onDeleteEdge: handleEdgeDelete,
-      },
-    }
-    setEdges((eds) => [...eds, newEdge])
-    announce('Cards connected via keyboard')
-    pushHistorySnapshot()
-    triggerAutosave()
-  }
-
-  // Domain nodes & edges for outline view
-  const currentDomainContent = useMemo(() => getCurrentDomainContent(), [getCurrentDomainContent])
+  const currentDomain = useMemo(() => flowToDomain(nodes, edges), [nodes, edges])
 
   return (
-    <div className="flex flex-col h-full w-full gap-3" data-testid="learning-canvas-root">
-      {/* Invisible screen reader live region */}
+    <div ref={rootRef} className="flex flex-col h-full w-full gap-3" data-testid="learning-canvas-root">
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {liveMessage}
       </div>
 
-      {/* Top Toolbar */}
       <LearningCanvasToolbar
         readOnly={readOnly}
         canEditStatus={canEditStatus}
         status={status}
-        autosaveStatus={autosaveStatus}
+        autosaveStatus={autosave.status}
         snapToGrid={snapToGrid}
-        canUndo={historyIndexRef.current > 0}
-        canRedo={historyIndexRef.current < historyRef.current.length - 1}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
         isOutlineOpen={isOutlineOpen}
         searchQuery={searchQuery}
         searchMatchCount={matchingNodeIds.length}
-        searchMatchIndex={searchIndex}
-        onToggleSnapToGrid={() => setSnapToGrid(!snapToGrid)}
+        searchMatchIndex={safeSearchIndex}
+        onToggleSnapToGrid={() => setSnapToGrid((v) => !v)}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        onToggleOutline={() => setIsOutlineOpen(!isOutlineOpen)}
-        onSearchChange={setSearchQuery}
+        onToggleOutline={() => setIsOutlineOpen((v) => !v)}
+        onSearchChange={handleSearchChange}
         onSearchNext={handleSearchNext}
         onSearchPrev={handleSearchPrev}
-        onAddCard={(type) => handleAddCard(type)}
+        onAddCard={(type) => addCard(type)}
         onOpenConnectDialog={() => {
           setConnectDialogSourceId(undefined)
           setIsConnectDialogOpen(true)
@@ -948,15 +885,14 @@ function LearningCanvasInternal({
         onImportFile={handleImportFile}
         onOpenHelp={() => setIsHelpDialogOpen(true)}
         onToggleStatus={onToggleStatus}
-        onRetrySave={handleRetrySave}
+        onRetrySave={() => {
+          void autosave.flush()
+        }}
         onCopyToMyCanvases={onCopyToMyCanvases}
       />
 
-      {/* Main Board + Outline View split container */}
       <div className="flex-1 min-h-0 flex gap-3 items-stretch relative">
-        {/* ReactFlow Whiteboard Container */}
         <div className="learning-canvas-wrapper flex-1 min-w-0 h-full relative">
-          {/* SVG Arrow Marker definitions */}
           <svg className="absolute w-0 h-0 pointer-events-none" aria-hidden="true">
             <defs>
               <marker
@@ -984,42 +920,51 @@ function LearningCanvasInternal({
             </defs>
           </svg>
 
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onConnectEnd={onConnectEnd}
-            onDoubleClick={onPaneDoubleClick}
-            onNodeDragStart={onNodeDragStart}
-            onNodeDrag={onNodeDrag}
-            onNodeDragStop={onNodeDragStop}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            snapToGrid={snapToGrid}
-            snapGrid={[20, 20]}
-            minZoom={CANVAS_MIN_ZOOM}
-            maxZoom={CANVAS_MAX_ZOOM}
-            nodesDraggable={!readOnly}
-            nodesConnectable={!readOnly}
-            elementsSelectable={true}
-            selectionOnDrag={!readOnly}
-            panOnDrag={readOnly ? true : [1, 2]}
-            fitView
-            proOptions={{ hideAttribution: true }}
-            className="learning-flow-container"
+          <div
+            ref={boardRef}
+            tabIndex={-1}
+            className="w-full h-full outline-none"
+            data-testid="learning-canvas-board"
+            onKeyDownCapture={handleKeyDownCapture}
+            onMouseDownCapture={handleBoardMouseDownCapture}
           >
-            <CanvasControls />
-          </ReactFlow>
+            <ReactFlow
+              nodes={displayNodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onConnectEnd={onConnectEnd}
+              onDoubleClick={handleBoardDoubleClick}
+              onNodeDragStart={onNodeDragStart}
+              onNodeDrag={onNodeDrag}
+              onNodeDragStop={onNodeDragStop}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              snapToGrid={snapToGrid}
+              snapGrid={[20, 20]}
+              minZoom={CANVAS_MIN_ZOOM}
+              maxZoom={CANVAS_MAX_ZOOM}
+              nodesDraggable={!readOnly}
+              nodesConnectable={!readOnly}
+              elementsSelectable={true}
+              selectionOnDrag={!readOnly}
+              panOnDrag={readOnly ? true : [1, 2]}
+              zoomOnDoubleClick={false}
+              deleteKeyCode={null}
+              fitView
+              proOptions={{ hideAttribution: true }}
+              className="learning-flow-container"
+            >
+              <CanvasControls />
+            </ReactFlow>
+          </div>
 
-          {/* Quick Add Menu upon drag release in empty space */}
-          {quickAddState?.isOpen && (
+          {quickAddState && (
             <QuickAddMenu
               position={quickAddState.screenPos}
               onSelect={(type) => {
-                const srcId = quickAddState.sourceHandle?.nodeId
-                handleAddCard(type, quickAddState.flowPos, srcId)
+                addCard(type, quickAddState.flowPos, quickAddState.sourceNodeId)
                 setQuickAddState(null)
               }}
               onClose={() => setQuickAddState(null)}
@@ -1027,28 +972,29 @@ function LearningCanvasInternal({
           )}
         </div>
 
-        {/* Outline View Drawer */}
         {isOutlineOpen && (
           <CanvasOutlineView
-            nodes={currentDomainContent.nodes}
-            edges={currentDomainContent.edges}
+            nodes={currentDomain.nodes}
+            edges={currentDomain.edges}
             readOnly={readOnly}
             onJumpToNode={handleJumpToNode}
             onConnectFromNode={handleConnectFromNode}
-            onDeleteNode={(id) => handleNodeDelete(id)}
+            onDeleteNode={deleteNode}
             onClose={() => setIsOutlineOpen(false)}
           />
         )}
       </div>
 
-      {/* Accessible Dialogs */}
-      <ConnectCardsDialog
-        open={isConnectDialogOpen}
-        onClose={() => setIsConnectDialogOpen(false)}
-        nodes={currentDomainContent.nodes}
-        initialSourceId={connectDialogSourceId}
-        onConnect={handleConnectDialogSubmit}
-      />
+      {/* Mounted only while open so its source/target selects start from the current cards. */}
+      {isConnectDialogOpen && (
+        <ConnectCardsDialog
+          open
+          onClose={() => setIsConnectDialogOpen(false)}
+          nodes={currentDomain.nodes}
+          initialSourceId={connectDialogSourceId}
+          onConnect={handleConnectDialogSubmit}
+        />
+      )}
 
       <ReferencePickerDialog
         open={Boolean(pickerForNodeId)}
@@ -1056,19 +1002,17 @@ function LearningCanvasInternal({
         items={availableReferences}
         onSelect={(refType, refId) => {
           if (pickerForNodeId) {
-            handleNodeUpdate(pickerForNodeId, { reference: { refType, refId } })
+            updateNode(pickerForNodeId, { reference: { refType, refId } })
+            setPickerForNodeId(null)
           }
         }}
       />
 
-      <ShortcutsHelpDialog
-        open={isHelpDialogOpen}
-        onClose={() => setIsHelpDialogOpen(false)}
-      />
+      <ShortcutsHelpDialog open={isHelpDialogOpen} onClose={() => setIsHelpDialogOpen(false)} />
 
       {importResult && (
         <LossyImportDialog
-          open={Boolean(importResult)}
+          open
           onClose={() => setImportResult(null)}
           importResult={importResult}
           onConfirmReplace={handleConfirmReplace}
@@ -1080,24 +1024,23 @@ function LearningCanvasInternal({
         open={isConflictDialogOpen}
         onClose={() => setIsConflictDialogOpen(false)}
         onReload={async () => {
-          if (onReloadLatest) {
-            const reloaded = await onReloadLatest()
-            if (reloaded) {
-              setNodes(mapDomainNodesToFlow(reloaded.nodes))
-              setEdges(mapDomainEdgesToFlow(reloaded.edges))
-              isDirtyRef.current = false
-              setAutosaveStatus('saved')
-              announce('Canvas reloaded from server')
-            }
+          if (!onReloadLatest) return
+          const reloaded = await onReloadLatest()
+          if (reloaded) {
+            history.clear()
+            applySnapshot({ nodes: reloaded.nodes, edges: reloaded.edges })
+            autosave.markSaved()
+            announce('Canvas reloaded from server')
           }
         }}
         onKeepMine={async () => {
-          if (onSave) {
-            const content = getCurrentDomainContent()
-            await onSave(content)
-            isDirtyRef.current = false
-            setAutosaveStatus('saved')
+          if (!onSave) return
+          try {
+            await onSave(toSavableContent(readContent()), { force: true })
+            autosave.markSaved()
             announce('Overwritten with local changes')
+          } catch {
+            announce('Could not overwrite the saved canvas. Try again.')
           }
         }}
       />

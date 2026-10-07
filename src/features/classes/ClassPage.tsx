@@ -23,8 +23,6 @@ import { ClassCanvasTab } from './ClassCanvasTab'
 import { countActivitiesByMode } from './classActivities'
 import { ClassSettingsTab } from './ClassSettingsTab'
 import { ModulesTab } from '../modules/ModulesTab'
-import { ClassLearningCanvasesTab } from './ClassLearningCanvasesTab'
-import { watchClassCanvases } from '../learningCanvas/services'
 
 interface ClassCounts { students: number; pending: number; enrollments: number }
 const emptyCounts: ClassCounts = { students: 0, pending: 0, enrollments: 0 }
@@ -103,19 +101,6 @@ export function ClassPage() {
     onRetry: () => { setQuizzesLoading(true); setQuizzesError(null); setQuizzesRetry((value) => value + 1) },
   }
 
-  const [learningCanvasCount, setLearningCanvasCount] = useState<number | undefined>(undefined)
-  useEffect(() => {
-    if (!watchedClassId) return undefined
-    return watchClassCanvases(
-      watchedClassId,
-      'instructor',
-      (items) => {
-        setLearningCanvasCount(items.length)
-      },
-      () => {},
-    )
-  }, [watchedClassId])
-
   async function toggleJoining(open: boolean) {
     if (!classroom) return
     setMutating(true)
@@ -144,11 +129,10 @@ export function ClassPage() {
     { label: 'Modules', content: <ModulesTab key={classroom.id} classroom={classroom} /> },
     { label: 'Quizzes', count: quizCount, content: <ClassQuizzesTab key={classroom.id} classroom={classroom} classes={classes} feed={activityFeed} /> },
     { label: 'Canvas', count: canvasCount, content: <ClassCanvasTab key={classroom.id} classroom={classroom} classes={classes} feed={activityFeed} /> },
-    { label: 'Learning', count: learningCanvasCount, content: <ClassLearningCanvasesTab key={classroom.id} classroom={classroom} /> },
     { label: 'People', count: counts.students + counts.pending, content: <ClassPeopleTab key={classroom.id} classroom={classroom} enrollments={enrollments} counts={counts} /> },
     { label: 'Settings', content: <ClassSettingsTab key={classroom.id} classroom={classroom} counts={{ students: counts.enrollments, quizzes: totalActivities }} /> },
   ]
-  const tabNames = ['modules', 'quizzes', 'canvas', 'learning', 'people', 'settings']
+  const tabNames = ['modules', 'quizzes', 'canvas', 'people', 'settings']
   const selectedTab = tabNames.indexOf(searchParams.get('tab') ?? 'modules')
   const defaultTab = selectedTab < 0 ? 0 : selectedTab
 

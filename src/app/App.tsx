@@ -28,6 +28,8 @@ const QuizTakingPage = lazy(() => import('../features/studentQuizzes/QuizTakingP
 const QuizResultPage = lazy(() => import('../features/studentQuizzes/QuizResultPage').then((module) => ({ default: module.QuizResultPage })))
 const InstructorLearningCanvasPage = lazy(() => import('../features/learningCanvas/InstructorLearningCanvasPage').then((module) => ({ default: module.InstructorLearningCanvasPage })))
 const StudentLearningCanvasPage = lazy(() => import('../features/learningCanvas/StudentLearningCanvasPage').then((module) => ({ default: module.StudentLearningCanvasPage })))
+const InstructorLearningHubPage = lazy(() => import('../features/learningCanvas/InstructorLearningHubPage').then((module) => ({ default: module.InstructorLearningHubPage })))
+const StudentLearningHubPage = lazy(() => import('../features/learningCanvas/StudentLearningHubPage').then((module) => ({ default: module.StudentLearningHubPage })))
 
 export function AppRoutes() {
   return (
@@ -46,6 +48,7 @@ export function AppRoutes() {
         <Route path="classes/:classId" element={<ClassPage />} />
         <Route path="classes/:classId/modules/:moduleId" element={<ModuleWorkspacePage />} />
         <Route path="classes/:classId/learning/:canvasId" element={<InstructorLearningCanvasPage />} />
+        <Route path="learning" element={<InstructorLearningHubPage />} />
         <Route path="quizzes" element={<InstructorQuizzesPage />} />
         <Route path="quizzes/new" element={<QuizEditorPage />} />
         <Route path="quizzes/:quizId" element={<QuizEditorPage />} />
@@ -56,6 +59,7 @@ export function AppRoutes() {
       <Route path="/student/classes/:classId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentClassPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId/modules/:moduleId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentModulePage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId/learning/:canvasId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentLearningCanvasPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
+      <Route path="/student/learning" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentLearningHubPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><QuizIntroPage /></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId/attempts/:attemptId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><QuizTakingPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId/attempts/:attemptId/result" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><QuizResultPage /></RoleRoute></ProtectedRoute>} />

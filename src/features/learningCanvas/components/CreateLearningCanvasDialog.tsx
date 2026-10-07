@@ -6,8 +6,10 @@ import { LEARNING_CANVAS_TITLE_MAX, LEARNING_CANVAS_DESCRIPTION_MAX } from '../c
 interface CreateLearningCanvasDialogProps {
   open: boolean
   onClose: () => void
-  onCreate: (title: string, description: string) => Promise<void>
+  onCreate: (title: string, description: string, classId?: string) => Promise<void>
   isPersonal?: boolean
+  classes?: Array<{ id: string; name: string }>
+  defaultClassId?: string
 }
 
 export function CreateLearningCanvasDialog({
@@ -15,9 +17,12 @@ export function CreateLearningCanvasDialog({
   onClose,
   onCreate,
   isPersonal = false,
+  classes,
+  defaultClassId,
 }: CreateLearningCanvasDialogProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [targetClassId, setTargetClassId] = useState(defaultClassId || (classes?.[0]?.id ?? ''))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,7 +36,7 @@ export function CreateLearningCanvasDialog({
     setError(null)
     setLoading(true)
     try {
-      await onCreate(trimmedTitle, description.trim())
+      await onCreate(trimmedTitle, description.trim(), targetClassId || defaultClassId)
       onClose()
       setTitle('')
       setDescription('')
@@ -58,6 +63,26 @@ export function CreateLearningCanvasDialog({
         {error && (
           <div className="p-2.5 rounded-xl bg-feedback-error-bg text-feedback-error text-xs font-semibold">
             {error}
+          </div>
+        )}
+
+        {classes && classes.length > 1 && (
+          <div>
+            <label htmlFor="canvas-create-class" className="block text-xs font-semibold text-navy-900 mb-1">
+              Class
+            </label>
+            <select
+              id="canvas-create-class"
+              value={targetClassId}
+              onChange={(e) => setTargetClassId(e.target.value)}
+              className="w-full p-2 text-sm text-navy-900 bg-white border border-navy-900-20 rounded-xl focus:outline-none focus:ring-2 focus:ring-navy-800"
+            >
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
         )}
 

@@ -14,6 +14,7 @@ import { firestore } from '../../lib/firebase/firestore'
 import {
   MAX_CANVAS_TITLE_LENGTH,
 } from './constants'
+import { CanvasConflictError } from './errors'
 import {
   learningCanvasContentRef,
   learningCanvasRef,
@@ -157,12 +158,12 @@ export async function saveCanvas(
   expectedUpdatedAt: Timestamp,
   patchMeta?: { title?: string; description?: string },
   db: Firestore = firestore,
-): Promise<void> {
+): Promise<Timestamp> {
   const parsedContent = parseLearningCanvasContent(content)
   const refs = computeRefs(parsedContent.nodes)
   const stats = countStats(parsedContent.nodes, parsedContent.edges)
 
-  await runTransaction(db, async (tx) => {
+  return runTransaction(db, async (tx) => {
     const parentRef = learningCanvasRef(db, classId, canvasId)
     const contentRef = learningCanvasContentRef(db, classId, canvasId)
 
@@ -173,7 +174,7 @@ export async function saveCanvas(
 
     const existing = parseLearningCanvasMetadata(parentSnap.data())
     if (existing.updatedAt.toMillis() !== expectedUpdatedAt.toMillis()) {
-      throw new Error('Canvas has been modified by another session. Please reload to see the latest changes.')
+      throw new CanvasConflictError()
     }
 
     const now = Timestamp.now()
@@ -193,6 +194,7 @@ export async function saveCanvas(
 
     tx.set(parentRef, validatedMeta)
     tx.set(contentRef, parsedContent)
+    return now
   })
 }
 
