@@ -41,6 +41,7 @@ export interface BuildGraphOptions {
   searchQuery?: string
   showOrphans?: boolean
   includeClassItems?: boolean
+  includedNodeIds?: Set<string> | null
 }
 
 export function buildLearningGraph({
@@ -53,14 +54,23 @@ export function buildLearningGraph({
   searchQuery,
   showOrphans = true,
   includeClassItems = true,
+  includedNodeIds,
 }: BuildGraphOptions): GraphData {
   const classMap = new Map<string, string>(classes.map((c) => [c.id, c.name]))
 
   // 1. Filter canvases by selected class if specified
-  const filteredCanvases =
+  let filteredCanvases =
     selectedClassId && selectedClassId !== 'all'
       ? canvases.filter((c) => c.classId === selectedClassId)
       : canvases
+
+  if (includedNodeIds) {
+    filteredCanvases = filteredCanvases.filter((c) => {
+      const isNote = c.sourceCanvasId === 'note'
+      const id = `${isNote ? 'note' : 'learning'}:${c.id}`
+      return includedNodeIds.has(id)
+    })
+  }
 
   const nodeMap = new Map<string, GraphNode>()
   const rawLinks: Array<{ source: string; target: string }> = []
@@ -109,23 +119,26 @@ export function buildLearningGraph({
         }
 
         const targetId = `${refTargetType}:${ref.id}`
-        rawLinks.push({ source: id, target: targetId })
+        // If includedNodeIds is set, only connect and add target if it is in includedNodeIds
+        if (!includedNodeIds || includedNodeIds.has(targetId)) {
+          rawLinks.push({ source: id, target: targetId })
 
-        if (!nodeMap.has(targetId)) {
-          nodeMap.set(targetId, {
-            id: targetId,
-            rawId: ref.id,
-            type: refTargetType,
-            title,
-            classId: c.classId,
-            className: classMap.get(c.classId) || 'Class',
-            x: 0,
-            y: 0,
-            vx: 0,
-            vy: 0,
-            radius: refTargetType === 'learning' || refTargetType === 'note' ? 18 : 15,
-            degree: 0,
-          })
+          if (!nodeMap.has(targetId)) {
+            nodeMap.set(targetId, {
+              id: targetId,
+              rawId: ref.id,
+              type: refTargetType,
+              title,
+              classId: c.classId,
+              className: classMap.get(c.classId) || 'Class',
+              x: 0,
+              y: 0,
+              vx: 0,
+              vy: 0,
+              radius: refTargetType === 'learning' || refTargetType === 'note' ? 18 : 15,
+              degree: 0,
+            })
+          }
         }
       }
     }
@@ -138,7 +151,7 @@ export function buildLearningGraph({
 
     for (const [mId, mTitle] of Object.entries(moduleTitles)) {
       const id = `module:${mId}`
-      if (!nodeMap.has(id)) {
+      if ((!includedNodeIds || includedNodeIds.has(id)) && !nodeMap.has(id)) {
         nodeMap.set(id, {
           id,
           rawId: mId,
@@ -158,7 +171,7 @@ export function buildLearningGraph({
 
     for (const [qId, qTitle] of Object.entries(quizTitles)) {
       const id = `quiz:${qId}`
-      if (!nodeMap.has(id)) {
+      if ((!includedNodeIds || includedNodeIds.has(id)) && !nodeMap.has(id)) {
         nodeMap.set(id, {
           id,
           rawId: qId,

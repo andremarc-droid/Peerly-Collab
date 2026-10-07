@@ -221,8 +221,8 @@ export function StudentLearningHubPage() {
     classId: string
     title: string
     content: string
-  }) => {
-    if (!user) return
+  }): Promise<string | undefined> => {
+    if (!user) return undefined
     const initialNodes = [
       {
         id: 'main-note',
@@ -235,7 +235,7 @@ export function StudentLearningHubPage() {
         text: content,
       },
     ]
-    await createCanvas(targetClass, user.uid, {
+    const newId = await createCanvas(targetClass, user.uid, {
       kind: 'personal',
       title,
       description: content.slice(0, 300),
@@ -243,6 +243,31 @@ export function StudentLearningHubPage() {
       initialContent: { nodes: initialNodes },
     })
     showToast('success', `Study note "${title}" added to graph.`)
+    return newId
+  }
+
+  const handleCreatePersonalCanvasInGraph = async ({
+    classId: targetClass,
+    title,
+    description,
+  }: {
+    classId: string
+    title: string
+    description: string
+  }): Promise<string | undefined> => {
+    if (!user) return undefined
+    const classToUse = targetClass || activeTargetClassId
+    if (!classToUse) {
+      showToast('error', 'You must be enrolled in a class to create a study canvas.')
+      return undefined
+    }
+    const newId = await createCanvas(classToUse, user.uid, {
+      kind: 'personal',
+      title,
+      description,
+    })
+    showToast('success', `Study canvas "${title}" created.`)
+    return newId
   }
 
   const handleUpdateNoteContent = async (
@@ -529,9 +554,7 @@ export function StudentLearningHubPage() {
               role="student"
               onSwitchToCanvases={() => setViewMode('canvases')}
               onCreateNote={handleCreatePersonalNote}
-              onCreateCanvas={async ({ classId: cid, title, description: desc }) => {
-                await handleCreate(title, desc, cid)
-              }}
+              onCreateCanvas={handleCreatePersonalCanvasInGraph}
               onUpdateNoteContent={handleUpdateNoteContent}
               onConnectNodes={handleConnectNodes}
               onDisconnectNodes={handleDisconnectNodes}

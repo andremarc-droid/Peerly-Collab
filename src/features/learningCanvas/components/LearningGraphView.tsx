@@ -18,9 +18,15 @@ import {
   Save,
   Link2,
   Unlink,
+  FolderInput,
+  MinusCircle,
+  Cable,
+  Undo2,
 } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
 import { Badge } from '../../../shared/ui/Badge'
+import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
+import { useToast } from '../../../shared/ui/useToast'
 import {
   buildLearningGraph,
   type GraphNode,
@@ -31,6 +37,7 @@ import { stepSimulation, type SimulationParams } from '../graph/simulation'
 import { buildReferencePath, type CanvasViewerRole } from '../referenceRoutes'
 import type { LearningCanvasWithId } from '../types'
 import { AddNodeDialog } from './AddNodeDialog'
+import { ImportExistingDialog } from './ImportExistingDialog'
 import '../graph/graphView.css'
 
 /* ── SVG icon paths (lucide-compatible 24×24 viewBox) ── */
@@ -71,8 +78,8 @@ interface LearningGraphViewProps {
   selectedClassId?: string
   role: CanvasViewerRole
   onSwitchToCanvases?: () => void
-  onCreateNote?: (data: { classId: string; title: string; content: string }) => Promise<void>
-  onCreateCanvas?: (data: { classId: string; title: string; description: string }) => Promise<void>
+  onCreateNote?: (data: { classId: string; title: string; content: string }) => Promise<string | void>
+  onCreateCanvas?: (data: { classId: string; title: string; description: string }) => Promise<string | void>
   onUpdateNoteContent?: (canvasId: string, classId: string, content: string) => Promise<void>
   onConnectNodes?: (sourceId: string, targetId: string, classId: string) => Promise<void>
   onDisconnectNodes?: (sourceId: string, targetId: string, classId: string) => Promise<void>
@@ -92,6 +99,8 @@ export function LearningGraphView({
   onConnectNodes,
   onDisconnectNodes,
 }: LearningGraphViewProps) {
+  const { showToast } = useToast()
+
   /* ── Search & filter state ── */
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
@@ -100,8 +109,61 @@ export function LearningGraphView({
     new Set(['note', 'learning', 'module', 'quiz']),
   )
 
-  /* ── Add Node Dialog ── */
+  /* ── Storage & Included Nodes (Custom Graph View) ── */
+  const storageKey = `peerly:graph_nodes_${role}_${selectedClassId || 'all'}`
+
+  // Load from localStorage once, track as "saved" baseline
+  const loadFromStorage = useCallback((): Set<string> => {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) return new Set<string>(parsed)
+      }
+    } catch {
+      // ignore
+    }
+    return new Set<string>()
+  }, [storageKey])
+
+  const [savedNodeIds, setSavedNodeIds] = useState<Set<string>>(loadFromStorage)
+  const [includedNodeIds, setIncludedNodeIds] = useState<Set<string>>(loadFromStorage)
+
+  // Sync on class/role switch
+  useEffect(() => {
+    const loaded = loadFromStorage()
+    setSavedNodeIds(loaded)
+    setIncludedNodeIds(loaded)
+  }, [loadFromStorage])
+
+  // Dirty tracking
+  const isDirty = useMemo(() => {
+    if (includedNodeIds.size !== savedNodeIds.size) return true
+    for (const id of includedNodeIds) {
+      if (!savedNodeIds.has(id)) return true
+    }
+    return false
+  }, [includedNodeIds, savedNodeIds])
+
+  const handleSaveGraph = () => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(Array.from(includedNodeIds)))
+    } catch {
+      // ignore
+    }
+    setSavedNodeIds(new Set(includedNodeIds))
+    showToast('success', 'Graph view saved.')
+  }
+
+  const handleDiscardGraph = () => {
+    setIncludedNodeIds(new Set(savedNodeIds))
+    showToast('success', 'Changes discarded.')
+  }
+
+  /* ── Dialog States ── */
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [confirmNewGraphOpen, setConfirmNewGraphOpen] = useState(false)
 
   /* ── Note inline edit ── */
   const [isEditingNote, setIsEditingNote] = useState(false)
@@ -111,6 +173,10 @@ export function LearningGraphView({
   /* ── Linking state ── */
   const [linkTargetId, setLinkTargetId] = useState('')
   const [linkingBusy, setLinkingBusy] = useState(false)
+
+  /* ── Connect mode (click-to-connect) ── */
+  const [connectMode, setConnectMode] = useState(false)
+  const [connectSourceId, setConnectSourceId] = useState<string | null>(null)
 
   /* ── Force controls panel ── */
   const [showForcePanel, setShowForcePanel] = useState(false)
@@ -139,6 +205,7 @@ export function LearningGraphView({
       selectedClassId,
       allowedTypes,
       searchQuery: '',
+      includedNodeIds,
     }),
   )
 
@@ -156,6 +223,47 @@ export function LearningGraphView({
     setLinkTargetId('')
   }, [selectedNode])
 
+  /* ── Handlers for New Graph & Import ── */
+  const handleNewGraphView = () => {
+    if (includedNodeIds.size > 0 || graphData.nodes.length > 0) {
+      setConfirmNewGraphOpen(true)
+    } else {
+      setAddDialogOpen(true)
+    }
+  }
+
+  const handleConfirmNewGraph = () => {
+    setIncludedNodeIds(new Set())
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+    setSelectedNode(null)
+    setConfirmNewGraphOpen(false)
+    showToast('success', 'Created fresh knowledge graph view.')
+  }
+
+  const handleImportItems = (newIds: string[]) => {
+    setIncludedNodeIds((prev) => {
+      const next = new Set(prev)
+      newIds.forEach((id) => next.add(id))
+      return next
+    })
+    showToast('success', `Imported ${newIds.length} materials into knowledge graph.`)
+  }
+
+  const handleNodeCreated = (type: 'note' | 'learning', id: string) => {
+    setIncludedNodeIds((prev) => new Set([...prev, `${type}:${id}`]))
+  }
+
+  const handleRemoveFromGraph = (nodeId: string) => {
+    setIncludedNodeIds((prev) => {
+      const next = new Set(prev)
+      next.delete(nodeId)
+      return next
+    })
+    setSelectedNode(null)
+    showToast('success', 'Removed from graph view.')
+  }
+
   /* ── Rebuild graph on data changes ── */
   useEffect(() => {
     const fresh = buildLearningGraph({
@@ -166,6 +274,7 @@ export function LearningGraphView({
       selectedClassId,
       allowedTypes,
       searchQuery,
+      includedNodeIds,
     })
 
     const prevMap = new Map(nodesRef.current.map((n) => [n.id, n]))
@@ -183,11 +292,17 @@ export function LearningGraphView({
     alphaRef.current = 1.0
 
     // Keep selectedNode reference fresh
-    if (selectedNode) {
-      const updated = fresh.nodes.find((n) => n.id === selectedNode.id)
-      setSelectedNode(updated || null)
-    }
-  }, [canvases, classes, moduleTitles, quizTitles, selectedClassId, allowedTypes, searchQuery])
+    setSelectedNode((prev) => (prev ? fresh.nodes.find((n) => n.id === prev.id) || null : null))
+  }, [
+    canvases,
+    classes,
+    moduleTitles,
+    quizTitles,
+    selectedClassId,
+    allowedTypes,
+    searchQuery,
+    includedNodeIds,
+  ])
 
   /* ── Simulation animation loop ── */
   useEffect(() => {
@@ -343,11 +458,19 @@ export function LearningGraphView({
     draggedNodeRef.current = null
   }
 
-  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
-    e.preventDefault()
-    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9
-    setZoom((z) => Math.max(0.2, Math.min(3, z * zoomFactor)))
-  }
+  /* ── Native wheel handler to prevent page scroll ── */
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9
+      setZoom((z) => Math.max(0.2, Math.min(3, z * zoomFactor)))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   const handleResetView = () => {
     setZoom(1)
@@ -381,13 +504,42 @@ export function LearningGraphView({
     }
   }
 
-  /* ── Connect node ── */
+  /* ── Connect node (from inspector dropdown) ── */
   const handleConnect = async () => {
     if (!selectedNode || !linkTargetId || !onConnectNodes) return
     setLinkingBusy(true)
     try {
       await onConnectNodes(selectedNode.id, linkTargetId, selectedNode.classId)
       setLinkTargetId('')
+    } finally {
+      setLinkingBusy(false)
+    }
+  }
+
+  /* ── Click-to-connect in connect mode ── */
+  const handleConnectModeClick = async (node: GraphNode) => {
+    if (!onConnectNodes) return
+    if (!connectSourceId) {
+      setConnectSourceId(node.id)
+      setSelectedNode(node)
+      showToast('info', `Selected "${node.title}" — now click the target node to connect.`)
+      return
+    }
+    if (connectSourceId === node.id) {
+      setConnectSourceId(null)
+      showToast('info', 'Source deselected.')
+      return
+    }
+    // Connect source → target
+    const sourceNode = nodesRef.current.find((n) => n.id === connectSourceId)
+    const classId = sourceNode?.classId || node.classId
+    setLinkingBusy(true)
+    try {
+      await onConnectNodes(connectSourceId, node.id, classId)
+      showToast('success', `Connected "${sourceNode?.title || 'Node'}" → "${node.title}".`)
+      setConnectSourceId(null)
+    } catch {
+      showToast('error', 'Failed to create connection.')
     } finally {
       setLinkingBusy(false)
     }
@@ -515,7 +667,31 @@ export function LearningGraphView({
         </div>
 
         {/* View controls & Add Button */}
-        <div className="graph-view__zoom-controls">
+        <div className="graph-view__zoom-controls flex items-center">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleNewGraphView}
+            className="py-1 px-2.5 text-xs min-h-8 gap-1.5 mr-1"
+            title="Create new blank graph view"
+          >
+            <Plus size={14} aria-hidden="true" />
+            <span className="hidden sm:inline">Create new graph view</span>
+            <span className="sm:hidden">New graph</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setImportDialogOpen(true)}
+            className="py-1 px-2.5 text-xs min-h-8 gap-1.5 mr-1.5"
+            title="Import existing modules and canvases from my class"
+          >
+            <FolderInput size={14} aria-hidden="true" />
+            <span className="hidden sm:inline">Import from class</span>
+            <span className="sm:hidden">Import</span>
+          </Button>
+
           {hasAddCapabilities && (
             <Button
               type="button"
@@ -526,6 +702,23 @@ export function LearningGraphView({
               <Plus size={14} aria-hidden="true" />
               <span>Add Node</span>
             </Button>
+          )}
+
+          {/* Connect Mode toggle */}
+          {onConnectNodes && graphData.nodes.length >= 2 && (
+            <button
+              type="button"
+              className={`graph-view__zoom-btn ${connectMode ? 'graph-view__zoom-btn--active' : ''}`}
+              onClick={() => {
+                setConnectMode((m) => !m)
+                setConnectSourceId(null)
+              }}
+              aria-label="Toggle connect mode"
+              aria-pressed={connectMode}
+              title={connectMode ? 'Exit connect mode' : 'Connect mode — click two nodes to link them'}
+            >
+              <Cable size={16} />
+            </button>
           )}
 
           <button
@@ -629,25 +822,34 @@ export function LearningGraphView({
           <div className="graph-view__empty-icon">
             <Orbit size={24} />
           </div>
-          <h3 className="text-base font-bold text-navy-900 m-0 mb-1">No graph connections</h3>
-          <p className="text-sm text-navy-800-72 max-w-sm m-0 mb-4">
-            Add concept notes or whiteboard canvases to begin exploring your interactive knowledge network.
+          <h3 className="text-base font-bold text-navy-900 m-0 mb-1">
+            Start Your Knowledge Graph
+          </h3>
+          <p className="text-sm text-navy-800-72 max-w-md m-0 mb-5">
+            Your graph view begins as a clean canvas. Create fresh concept notes to map out ideas,
+            or import existing modules and whiteboard canvases from your class.
           </p>
-          <div className="flex items-center gap-2">
-            {hasAddCapabilities && (
-              <Button
-                type="button"
-                variant="primary"
-                onClick={() => setAddDialogOpen(true)}
-              >
-                <Plus size={16} aria-hidden="true" />
-                <span>Add Node</span>
-              </Button>
-            )}
+          <div className="flex flex-wrap items-center justify-center gap-2.5">
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleNewGraphView}
+            >
+              <Plus size={16} aria-hidden="true" />
+              <span>Create new graph view</span>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setImportDialogOpen(true)}
+            >
+              <FolderInput size={16} aria-hidden="true" />
+              <span>Import existing modules and canvases</span>
+            </Button>
             {onSwitchToCanvases && (
               <Button
                 type="button"
-                variant="secondary"
+                variant="ghost"
                 onClick={onSwitchToCanvases}
               >
                 <span>Go to Canvases</span>
@@ -659,11 +861,10 @@ export function LearningGraphView({
       ) : (
         <svg
           ref={svgRef}
-          className="graph-view__svg"
+          className={`graph-view__svg ${connectMode ? 'graph-view__svg--connect-mode' : ''}`}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onWheel={handleWheel}
         >
           {/* Background dot grid */}
           <defs>
@@ -770,24 +971,34 @@ export function LearningGraphView({
                 return (
                   <g
                     key={node.id}
-                    className={nodeGroupClass}
+                    className={`${nodeGroupClass}${connectMode && connectSourceId === node.id ? ' graph-view__node--connect-source' : ''}`}
                     transform={`translate(${node.x}, ${node.y})`}
                     onClick={(e) => {
                       e.stopPropagation()
+                      if (connectMode) {
+                        void handleConnectModeClick(node)
+                        return
+                      }
                       setSelectedNode(node)
                     }}
                     onPointerDown={(e) => {
                       e.stopPropagation()
-                      draggedNodeRef.current = node
+                      if (!connectMode) {
+                        draggedNodeRef.current = node
+                      }
                     }}
                     onPointerEnter={() => setHoveredNodeId(node.id)}
                     onPointerLeave={() => setHoveredNodeId(null)}
                     role="button"
                     tabIndex={0}
-                    aria-label={`${TYPE_LABELS[node.type]}: ${node.title}`}
+                    aria-label={`${TYPE_LABELS[node.type]}: ${node.title}${connectMode ? ' (click to connect)' : ''}`}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
+                        if (connectMode) {
+                          void handleConnectModeClick(node)
+                          return
+                        }
                         setSelectedNode(node)
                       }
                     }}
@@ -835,6 +1046,52 @@ export function LearningGraphView({
             </g>
           </g>
         </svg>
+      )}
+
+      {/* ── Connect mode banner ── */}
+      {connectMode && (
+        <div className="graph-view__connect-banner" role="status" aria-live="polite">
+          <Cable size={14} aria-hidden="true" />
+          <span>
+            {connectSourceId
+              ? `Source selected — click the target node to connect`
+              : `Connect mode active — click a node to select it as source`}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setConnectMode(false)
+              setConnectSourceId(null)
+            }}
+            className="graph-view__connect-banner-close"
+            aria-label="Exit connect mode"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* ── Save / Discard floating bar ── */}
+      {isDirty && (
+        <div className="graph-view__save-bar">
+          <span className="graph-view__save-bar-text">Unsaved changes to your graph view</span>
+          <button
+            type="button"
+            onClick={handleDiscardGraph}
+            className="graph-view__save-bar-discard"
+          >
+            <Undo2 size={14} aria-hidden="true" />
+            <span>Discard</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveGraph}
+            className="graph-view__save-bar-save"
+          >
+            <Save size={14} aria-hidden="true" />
+            <span>Save graph</span>
+          </button>
+        </div>
       )}
 
       {/* ── Stats footer ── */}
@@ -1084,8 +1341,8 @@ export function LearningGraphView({
             )}
           </div>
 
-          {/* Action to open in full view */}
-          <div className="pt-2 border-t border-navy-900-10 flex justify-end">
+          {/* Action to open in full view & remove from graph view */}
+          <div className="pt-2 border-t border-navy-900-10 flex flex-col gap-2">
             <Button
               to={buildReferencePath(
                 role,
@@ -1103,9 +1360,41 @@ export function LearningGraphView({
               <span>{selectedNode.type === 'note' ? 'Open in Whiteboard' : selectedNode.type === 'learning' ? 'Open Canvas' : `Open ${TYPE_LABELS[selectedNode.type]}`}</span>
               <ChevronRight size={14} aria-hidden="true" />
             </Button>
+
+            <button
+              type="button"
+              onClick={() => handleRemoveFromGraph(selectedNode.id)}
+              className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold text-navy-800-72 hover:text-danger hover:bg-feedback-error-bg rounded-xl border border-navy-900-10 transition-colors"
+            >
+              <MinusCircle size={14} aria-hidden="true" />
+              <span>Remove from graph view</span>
+            </button>
           </div>
         </div>
       )}
+
+      {/* Import Existing Dialog */}
+      <ImportExistingDialog
+        open={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
+        canvases={canvases}
+        moduleTitles={moduleTitles}
+        quizTitles={quizTitles}
+        classes={classes}
+        selectedClassId={selectedClassId}
+        alreadyIncludedIds={includedNodeIds}
+        onImport={handleImportItems}
+      />
+
+      {/* Confirm New Graph Dialog */}
+      <ConfirmDialog
+        open={confirmNewGraphOpen}
+        onClose={() => setConfirmNewGraphOpen(false)}
+        onConfirm={handleConfirmNewGraph}
+        title="Create new graph view?"
+        description="Starting a new graph view will reset your canvas to a blank slate so you can build fresh knowledge connections. Your notes, canvases, and class materials remain safely stored."
+        confirmLabel="Start fresh graph"
+      />
 
       {/* Add Node Dialog */}
       {hasAddCapabilities && (
@@ -1114,6 +1403,7 @@ export function LearningGraphView({
           onClose={() => setAddDialogOpen(false)}
           onCreateNote={onCreateNote || (async () => {})}
           onCreateCanvas={onCreateCanvas || (async () => {})}
+          onCreated={handleNodeCreated}
           classes={classes}
           defaultClassId={selectedClassId !== 'all' ? selectedClassId : classes[0]?.id}
           moduleTitles={moduleTitles}

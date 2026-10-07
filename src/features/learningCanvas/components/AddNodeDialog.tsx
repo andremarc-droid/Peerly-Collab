@@ -9,8 +9,9 @@ export type AddNodeType = 'note' | 'learning' | 'module' | 'quiz'
 interface AddNodeDialogProps {
   open: boolean
   onClose: () => void
-  onCreateNote: (data: { classId: string; title: string; content: string }) => Promise<void>
-  onCreateCanvas: (data: { classId: string; title: string; description: string }) => Promise<void>
+  onCreateNote: (data: { classId: string; title: string; content: string }) => Promise<string | void>
+  onCreateCanvas: (data: { classId: string; title: string; description: string }) => Promise<string | void>
+  onCreated?: (type: 'note' | 'learning', id: string) => void
   classes: Array<{ id: string; name: string }>
   defaultClassId?: string
   moduleTitles?: Record<string, string>
@@ -22,6 +23,7 @@ export function AddNodeDialog({
   onClose,
   onCreateNote,
   onCreateCanvas,
+  onCreated,
   classes,
   defaultClassId,
 }: AddNodeDialogProps) {
@@ -52,17 +54,23 @@ export function AddNodeDialog({
 
     try {
       if (nodeType === 'note') {
-        await onCreateNote({
+        const res = await onCreateNote({
           classId: classToUse,
           title: trimmedTitle,
           content: content.trim(),
         })
+        if (res && typeof res === 'string') {
+          onCreated?.('note', res)
+        }
       } else if (nodeType === 'learning') {
-        await onCreateCanvas({
+        const res = await onCreateCanvas({
           classId: classToUse,
           title: trimmedTitle,
           description: description.trim(),
         })
+        if (res && typeof res === 'string') {
+          onCreated?.('learning', res)
+        }
       }
       onClose()
       setTitle('')

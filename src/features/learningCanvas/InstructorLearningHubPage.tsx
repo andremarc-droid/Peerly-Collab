@@ -192,8 +192,8 @@ export function InstructorLearningHubPage() {
     classId: string
     title: string
     content: string
-  }) => {
-    if (!user) return
+  }): Promise<string | undefined> => {
+    if (!user) return undefined
     const initialNodes = [
       {
         id: 'main-note',
@@ -206,7 +206,7 @@ export function InstructorLearningHubPage() {
         text: content,
       },
     ]
-    await createCanvas(targetClass, user.uid, {
+    const newId = await createCanvas(targetClass, user.uid, {
       kind: 'class',
       title,
       description: content.slice(0, 300),
@@ -214,6 +214,31 @@ export function InstructorLearningHubPage() {
       initialContent: { nodes: initialNodes },
     })
     showToast('success', `Concept note "${title}" added to graph.`)
+    return newId
+  }
+
+  const handleCreateCanvasInGraph = async ({
+    classId: targetClass,
+    title,
+    description,
+  }: {
+    classId: string
+    title: string
+    description: string
+  }): Promise<string | undefined> => {
+    if (!user) return undefined
+    const classToUse = targetClass || activeTargetClassId
+    if (!classToUse) {
+      showToast('error', 'Please select or create a class first.')
+      return undefined
+    }
+    const newId = await createCanvas(classToUse, user.uid, {
+      kind: 'class',
+      title,
+      description,
+    })
+    showToast('success', `Learning canvas "${title}" created.`)
+    return newId
   }
 
   const handleUpdateNoteContent = async (
@@ -514,9 +539,7 @@ export function InstructorLearningHubPage() {
               role="instructor"
               onSwitchToCanvases={() => setViewMode('canvases')}
               onCreateNote={handleCreateNote}
-              onCreateCanvas={async ({ classId: cid, title, description: desc }) => {
-                await handleCreate(title, desc, cid)
-              }}
+              onCreateCanvas={handleCreateCanvasInGraph}
               onUpdateNoteContent={handleUpdateNoteContent}
               onConnectNodes={handleConnectNodes}
               onDisconnectNodes={handleDisconnectNodes}

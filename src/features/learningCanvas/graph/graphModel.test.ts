@@ -149,6 +149,39 @@ describe('buildLearningGraph', () => {
     expect(noteNode?.type).toBe('note')
     expect(noteNode?.title).toBe('Mitochondria Note')
   })
+
+  it('respects includedNodeIds for empty graph view and custom imports', () => {
+    // 1. Empty includedNodeIds gives 0 nodes
+    const emptyGraph = buildLearningGraph({
+      canvases: mockCanvases,
+      classes: mockClasses,
+      moduleTitles: { m1: 'Energy Systems' },
+      quizTitles: { q1: 'Cellular ATP Quiz' },
+      includedNodeIds: new Set(),
+    })
+    expect(emptyGraph.nodes).toHaveLength(0)
+    expect(emptyGraph.links).toHaveLength(0)
+
+    // 2. Custom selection of only c1 and m1
+    const customGraph = buildLearningGraph({
+      canvases: mockCanvases,
+      classes: mockClasses,
+      moduleTitles: { m1: 'Energy Systems' },
+      quizTitles: { q1: 'Cellular ATP Quiz' },
+      includedNodeIds: new Set(['learning:c1', 'module:m1']),
+    })
+
+    expect(customGraph.nodes).toHaveLength(2)
+    const ids = customGraph.nodes.map((n) => n.id)
+    expect(ids).toContain('learning:c1')
+    expect(ids).toContain('module:m1')
+    expect(ids).not.toContain('learning:c2')
+    expect(ids).not.toContain('quiz:q1')
+
+    // Link between c1 and m1 is preserved, but c1->q1 is excluded because q1 is not imported
+    expect(customGraph.links).toHaveLength(1)
+    expect(customGraph.links[0].id).toBe('learning:c1->module:m1')
+  })
 })
 
 describe('stepSimulation', () => {
