@@ -16,8 +16,10 @@ export interface GraphNode {
   vx: number
   vy: number
   radius: number
-  degree: number
   isHighlighted?: boolean
+  isFixed?: boolean
+  fx?: number
+  fy?: number
 }
 
 export interface GraphLink {
@@ -42,6 +44,7 @@ export interface BuildGraphOptions {
   showOrphans?: boolean
   includeClassItems?: boolean
   includedNodeIds?: Set<string> | null
+  customPositions?: Record<string, { x: number; y: number; isFixed?: boolean }>
 }
 
 export function buildLearningGraph({
@@ -55,6 +58,7 @@ export function buildLearningGraph({
   showOrphans = true,
   includeClassItems = true,
   includedNodeIds,
+  customPositions,
 }: BuildGraphOptions): GraphData {
   const classMap = new Map<string, string>(classes.map((c) => [c.id, c.name]))
 
@@ -238,11 +242,22 @@ export function buildLearningGraph({
   activeNodes.forEach((node, i) => {
     node.radius = Math.min(32, (node.type === 'learning' || node.type === 'note' ? 18 : 14) + node.degree * 2)
 
-    // Position around center with slight perturbation to avoid zero-distance singularity
-    const angle = i * angleStep
-    const r = initialRadius + ((i % 3) - 1) * 30
-    node.x = Math.cos(angle) * r
-    node.y = Math.sin(angle) * r
+    const customPos = customPositions?.[node.id]
+    if (customPos) {
+      node.x = customPos.x
+      node.y = customPos.y
+      if (customPos.isFixed ?? true) {
+        node.isFixed = true
+        node.fx = customPos.x
+        node.fy = customPos.y
+      }
+    } else {
+      // Position around center with slight perturbation to avoid zero-distance singularity
+      const angle = i * angleStep
+      const r = initialRadius + ((i % 3) - 1) * 30
+      node.x = Math.cos(angle) * r
+      node.y = Math.sin(angle) * r
+    }
 
     if (query) {
       node.isHighlighted = node.title.toLowerCase().includes(query)

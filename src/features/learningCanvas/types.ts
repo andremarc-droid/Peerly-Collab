@@ -28,7 +28,7 @@ export interface LearningCanvasWithId extends LearningCanvasRecord {
   id: string
 }
 
-export type LearningCanvasNodeType = 'text' | 'link' | 'reference' | 'group'
+export type LearningCanvasNodeType = 'text' | 'link' | 'reference' | 'group' | 'image'
 export type LearningCanvasColor = 'none' | 'navy' | 'tint' | 'c1' | 'c2' | 'c3' | 'c4' | 'c5' | 'c6'
 export type LearningCanvasEdgeSide = 'top' | 'right' | 'bottom' | 'left'
 export type LearningCanvasArrow = 'none' | 'to' | 'both'
@@ -72,11 +72,21 @@ export interface LearningCanvasGroupNode extends LearningCanvasNodeBase {
   }
 }
 
+export interface LearningCanvasImageNode extends LearningCanvasNodeBase {
+  type: 'image'
+  image: {
+    dataUrl: string
+    alt?: string
+    caption?: string
+  }
+}
+
 export type LearningCanvasNode =
   | LearningCanvasTextNode
   | LearningCanvasLinkNode
   | LearningCanvasReferenceNode
   | LearningCanvasGroupNode
+  | LearningCanvasImageNode
 
 export interface LearningCanvasEdge {
   id: string

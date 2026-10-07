@@ -27,6 +27,7 @@ import { TextCard } from './TextCard'
 import { LinkCard } from './LinkCard'
 import { ReferenceCard, type ResolvedReferenceInfo } from './ReferenceCard'
 import { GroupNode } from './GroupNode'
+import { ImageCard } from './ImageCard'
 import { LearningCanvasEdge } from './LearningCanvasEdge'
 import { LearningCanvasToolbar } from './LearningCanvasToolbar'
 import { CanvasOutlineView } from './CanvasOutlineView'
@@ -43,11 +44,13 @@ import {
   CANVAS_MIN_ZOOM,
   CANVAS_MAX_ZOOM,
 } from '../../canvas/shared'
+import { processImageFile } from '../../canvas/imageProcessing'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 
 import type {
   LearningCanvasContent,
   LearningCanvasNode,
+  LearningCanvasImageNode,
   LearningCanvasEdge as DomainEdge,
   LearningCanvasNodeType,
   LearningCanvasColor,
@@ -88,6 +91,7 @@ const nodeTypes = {
   link: LinkCard,
   reference: ReferenceCard,
   group: GroupNode,
+  image: ImageCard,
 }
 
 const edgeTypes = {
@@ -204,6 +208,14 @@ function flowToDomain(nodes: Node[], edges: Edge[]): Snapshot {
             ...base,
             type: 'group',
             group: data.group as { label: string },
+          }),
+        ]
+      case 'image':
+        return [
+          clampNode<LearningCanvasNode>({
+            ...base,
+            type: 'image',
+            image: data.image as { dataUrl: string; alt?: string; caption?: string },
           }),
         ]
       default:
@@ -419,7 +431,12 @@ function LearningCanvasInternal({
       return
     }
 
-    const size = type === 'group' ? { width: 360, height: 260 } : { width: 240, height: 140 }
+    const size =
+      type === 'group'
+        ? { width: 360, height: 260 }
+        : type === 'image'
+          ? { width: 280, height: 220 }
+          : { width: 240, height: 140 }
     const pos = targetPos ?? newNodePlacement(snapshot.nodes, size)
     const base = {
       id: makeId('node'),
@@ -433,6 +450,7 @@ function LearningCanvasInternal({
     if (type === 'text') node = { ...base, type: 'text', text: '' }
     else if (type === 'link') node = { ...base, type: 'link', link: { url: 'https://', title: '' } }
     else if (type === 'reference') node = { ...base, type: 'reference', reference: { refType: 'module', refId: '' } }
+    else if (type === 'image') node = { ...base, type: 'image', image: { dataUrl: '', alt: 'Image' } }
     else node = { ...base, type: 'group', group: { label: 'New Group' } }
 
     history.record(snapshot)
@@ -452,6 +470,46 @@ function LearningCanvasInternal({
 
     announce(`${type} card added`)
     markDirty()
+  }
+
+  const handleAddImageFile = async (file: File) => {
+    if (readOnly) return
+    const snapshot = readSnapshot()
+
+    if (snapshot.nodes.length >= MAX_LEARNING_CANVAS_NODES) {
+      announce(`This canvas is full (${MAX_LEARNING_CANVAS_NODES} cards maximum).`)
+      return
+    }
+
+    try {
+      announce('Processing image…')
+      const processed = await processImageFile(file)
+      const dataUrl = `data:${processed.mimeType};base64,${processed.data}`
+
+      const size = { width: 280, height: 220 }
+      const pos = newNodePlacement(snapshot.nodes, size)
+      const node: LearningCanvasImageNode = {
+        id: makeId('node'),
+        type: 'image',
+        x: Math.round(pos.x),
+        y: Math.round(pos.y),
+        width: size.width,
+        height: size.height,
+        color: 'none',
+        image: {
+          dataUrl,
+          alt: file.name.replace(/\.[^/.]+$/, '').slice(0, 120),
+          caption: '',
+        },
+      }
+
+      history.record(snapshot)
+      setNodes((nds) => [...nds, domainToFlowNode(node, readOnly, callbacks)])
+      announce('Image card added')
+      markDirty()
+    } catch (err) {
+      announce(err instanceof Error ? err.message : 'Failed to process image.')
+    }
   }
 
   // ---- Connections ---------------------------------------------------------
@@ -877,6 +935,7 @@ function LearningCanvasInternal({
         onSearchNext={handleSearchNext}
         onSearchPrev={handleSearchPrev}
         onAddCard={(type) => addCard(type)}
+        onAddImageFile={handleAddImageFile}
         onOpenConnectDialog={() => {
           setConnectDialogSourceId(undefined)
           setIsConnectDialogOpen(true)

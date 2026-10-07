@@ -22,6 +22,7 @@ import {
   MinusCircle,
   Cable,
   Undo2,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
 import { Badge } from '../../../shared/ui/Badge'
@@ -109,55 +110,114 @@ export function LearningGraphView({
     new Set(['note', 'learning', 'module', 'quiz']),
   )
 
-  /* ── Storage & Included Nodes (Custom Graph View) ── */
+  /* ── Storage & Included Nodes (Custom Graph View + Positions) ── */
   const storageKey = `peerly:graph_nodes_${role}_${selectedClassId || 'all'}`
 
-  // Load from localStorage once, track as "saved" baseline
-  const loadFromStorage = useCallback((): Set<string> => {
+  type StoredPositions = Record<string, { x: number; y: number; isFixed?: boolean }>
+
+  const loadFromStorage = useCallback((): { ids: Set<string>; positions: StoredPositions } => {
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) {
         const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed)) return new Set<string>(parsed)
+        if (Array.isArray(parsed)) {
+          return { ids: new Set<string>(parsed), positions: {} }
+        }
+        if (parsed && typeof parsed === 'object') {
+          const ids = Array.isArray(parsed.nodeIds) ? new Set<string>(parsed.nodeIds) : new Set<string>()
+          const positions = parsed.positions && typeof parsed.positions === 'object' ? (parsed.positions as StoredPositions) : {}
+          return { ids, positions }
+        }
       }
     } catch {
       // ignore
     }
-    return new Set<string>()
+    return { ids: new Set<string>(), positions: {} }
   }, [storageKey])
 
-  const [savedNodeIds, setSavedNodeIds] = useState<Set<string>>(loadFromStorage)
-  const [includedNodeIds, setIncludedNodeIds] = useState<Set<string>>(loadFromStorage)
+  const [savedNodeIds, setSavedNodeIds] = useState<Set<string>>(() => loadFromStorage().ids)
+  const [includedNodeIds, setIncludedNodeIds] = useState<Set<string>>(() => loadFromStorage().ids)
+  const [savedPositions, setSavedPositions] = useState<StoredPositions>(() => loadFromStorage().positions)
+  const [currentPositions, setCurrentPositions] = useState<StoredPositions>(() => loadFromStorage().positions)
 
   // Sync on class/role switch
   useEffect(() => {
     const loaded = loadFromStorage()
-    setSavedNodeIds(loaded)
-    setIncludedNodeIds(loaded)
+    setSavedNodeIds(loaded.ids)
+    setIncludedNodeIds(loaded.ids)
+    setSavedPositions(loaded.positions)
+    setCurrentPositions(loaded.positions)
   }, [loadFromStorage])
 
-  // Dirty tracking
+  // Dirty tracking (nodes added/removed OR positions moved)
   const isDirty = useMemo(() => {
     if (includedNodeIds.size !== savedNodeIds.size) return true
     for (const id of includedNodeIds) {
       if (!savedNodeIds.has(id)) return true
     }
+    const currKeys = Object.keys(currentPositions)
+    const savedKeys = Object.keys(savedPositions)
+    if (currKeys.length !== savedKeys.length) return true
+    for (const k of currKeys) {
+      const cp = currentPositions[k]
+      const sp = savedPositions[k]
+      if (!sp || cp.x !== sp.x || cp.y !== sp.y) return true
+    }
     return false
-  }, [includedNodeIds, savedNodeIds])
+  }, [includedNodeIds, savedNodeIds, currentPositions, savedPositions])
 
   const handleSaveGraph = () => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(Array.from(includedNodeIds)))
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          nodeIds: Array.from(includedNodeIds),
+          positions: currentPositions,
+        }),
+      )
     } catch {
       // ignore
     }
     setSavedNodeIds(new Set(includedNodeIds))
-    showToast('success', 'Graph view saved.')
+    setSavedPositions({ ...currentPositions })
+    showToast('success', 'Graph layout and nodes saved.')
   }
 
   const handleDiscardGraph = () => {
     setIncludedNodeIds(new Set(savedNodeIds))
+    setCurrentPositions({ ...savedPositions })
+    // Re-apply saved positions to nodes
+    nodesRef.current.forEach((n) => {
+      const savedPos = savedPositions[n.id]
+      if (savedPos) {
+        n.x = savedPos.x
+        n.y = savedPos.y
+        n.fx = savedPos.x
+        n.fy = savedPos.y
+        n.isFixed = true
+      } else {
+        n.isFixed = false
+        n.fx = undefined
+        n.fy = undefined
+      }
+      n.vx = 0
+      n.vy = 0
+    })
+    setGraphData({ nodes: [...nodesRef.current], links: [...linksRef.current] })
     showToast('success', 'Changes discarded.')
+  }
+
+  const handleAutoArrange = () => {
+    setCurrentPositions({})
+    nodesRef.current.forEach((n) => {
+      n.isFixed = false
+      n.fx = undefined
+      n.fy = undefined
+      n.vx = 0
+      n.vy = 0
+    })
+    alphaRef.current = 1.0
+    showToast('info', 'Graph layout relaxed.')
   }
 
   /* ── Dialog States ── */
@@ -215,6 +275,7 @@ export function LearningGraphView({
   const animFrameRef = useRef<number | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const isInitialMountRef = useRef(true)
 
   // Sync draft text on selectedNode change
   useEffect(() => {
@@ -275,6 +336,7 @@ export function LearningGraphView({
       allowedTypes,
       searchQuery,
       includedNodeIds,
+      customPositions: currentPositions,
     })
 
     const prevMap = new Map(nodesRef.current.map((n) => [n.id, n]))
@@ -283,13 +345,21 @@ export function LearningGraphView({
       if (prev) {
         n.x = prev.x
         n.y = prev.y
+        if (prev.isFixed) {
+          n.isFixed = true
+          n.fx = prev.fx ?? prev.x
+          n.fy = prev.fy ?? prev.y
+        }
       }
     })
 
     nodesRef.current = fresh.nodes
     linksRef.current = fresh.links
     setGraphData(fresh)
-    alphaRef.current = 1.0
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false
+      alphaRef.current = 0.5
+    }
 
     // Keep selectedNode reference fresh
     setSelectedNode((prev) => (prev ? fresh.nodes.find((n) => n.id === prev.id) || null : null))
@@ -302,6 +372,7 @@ export function LearningGraphView({
     allowedTypes,
     searchQuery,
     includedNodeIds,
+    currentPositions,
   ])
 
   /* ── Simulation animation loop ── */
@@ -436,11 +507,16 @@ export function LearningGraphView({
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
 
-      draggedNodeRef.current.x = (mouseX - svgCenterX - pan.x) / zoom
-      draggedNodeRef.current.y = (mouseY - svgCenterY - pan.y) / zoom
+      const targetX = Math.round((mouseX - svgCenterX - pan.x) / zoom)
+      const targetY = Math.round((mouseY - svgCenterY - pan.y) / zoom)
+
+      draggedNodeRef.current.x = targetX
+      draggedNodeRef.current.y = targetY
+      draggedNodeRef.current.fx = targetX
+      draggedNodeRef.current.fy = targetY
+      draggedNodeRef.current.isFixed = true
       draggedNodeRef.current.vx = 0
       draggedNodeRef.current.vy = 0
-      alphaRef.current = 0.5
       setGraphData({ nodes: [...nodesRef.current], links: [...linksRef.current] })
       return
     }
@@ -455,8 +531,45 @@ export function LearningGraphView({
 
   const handlePointerUp = () => {
     isPanningRef.current = false
-    draggedNodeRef.current = null
+    if (draggedNodeRef.current) {
+      const node = draggedNodeRef.current
+      node.isFixed = true
+      node.fx = node.x
+      node.fy = node.y
+      node.vx = 0
+      node.vy = 0
+      setCurrentPositions((prev) => ({
+        ...prev,
+        [node.id]: { x: Math.round(node.x), y: Math.round(node.y), isFixed: true },
+      }))
+      draggedNodeRef.current = null
+    }
   }
+
+  useEffect(() => {
+    const handleGlobalRelease = () => {
+      isPanningRef.current = false
+      if (draggedNodeRef.current) {
+        const node = draggedNodeRef.current
+        node.isFixed = true
+        node.fx = node.x
+        node.fy = node.y
+        node.vx = 0
+        node.vy = 0
+        setCurrentPositions((prev) => ({
+          ...prev,
+          [node.id]: { x: Math.round(node.x), y: Math.round(node.y), isFixed: true },
+        }))
+        draggedNodeRef.current = null
+      }
+    }
+    window.addEventListener('pointerup', handleGlobalRelease)
+    window.addEventListener('pointercancel', handleGlobalRelease)
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalRelease)
+      window.removeEventListener('pointercancel', handleGlobalRelease)
+    }
+  }, [])
 
   /* ── Native wheel handler to prevent page scroll ── */
   useEffect(() => {
@@ -578,14 +691,15 @@ export function LearningGraphView({
     }
   }, [graphData.nodes])
 
-  /* ── Container dimensions for centering & minimap ── */
+  /* ── SVG dimensions for centering & transform ── */
   const [dimensions, setDimensions] = useState({ w: 800, h: 620 })
 
   useEffect(() => {
-    const el = containerRef.current
+    const el = svgRef.current || containerRef.current
     if (!el) return
     const update = () => {
-      setDimensions({ w: el.clientWidth || 800, h: el.clientHeight || 620 })
+      const rect = el.getBoundingClientRect()
+      setDimensions({ w: rect.width || 800, h: rect.height || 620 })
     }
     update()
     const ro = new ResizeObserver(update)
@@ -752,8 +866,18 @@ export function LearningGraphView({
             className="graph-view__zoom-btn"
             onClick={handleResetView}
             aria-label="Reset view"
+            title="Center and reset zoom"
           >
             <Maximize2 size={16} />
+          </button>
+          <button
+            type="button"
+            className="graph-view__zoom-btn"
+            onClick={handleAutoArrange}
+            aria-label="Auto-arrange layout"
+            title="Auto-arrange layout (relax node positions)"
+          >
+            <Sparkles size={16} />
           </button>
         </div>
       </div>
@@ -984,7 +1108,18 @@ export function LearningGraphView({
                     onPointerDown={(e) => {
                       e.stopPropagation()
                       if (!connectMode) {
-                        draggedNodeRef.current = node
+                        const liveNode = nodesRef.current.find((n) => n.id === node.id) || node
+                        liveNode.isFixed = true
+                        liveNode.fx = liveNode.x
+                        liveNode.fy = liveNode.y
+                        liveNode.vx = 0
+                        liveNode.vy = 0
+                        draggedNodeRef.current = liveNode
+                        try {
+                          ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+                        } catch {
+                          // ignore
+                        }
                       }
                     }}
                     onPointerEnter={() => setHoveredNodeId(node.id)}

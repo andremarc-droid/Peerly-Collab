@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   RefreshCw,
   AlertCircle,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
 import type { LearningCanvasNodeType } from '../types'
@@ -43,6 +44,7 @@ interface LearningCanvasToolbarProps {
   onSearchNext: () => void
   onSearchPrev: () => void
   onAddCard: (type: LearningCanvasNodeType) => void
+  onAddImageFile?: (file: File) => void
   onOpenConnectDialog?: () => void
   onExport: () => void
   onImportFile: (file: File) => void
@@ -72,6 +74,7 @@ export function LearningCanvasToolbar({
   onSearchNext,
   onSearchPrev,
   onAddCard,
+  onAddImageFile,
   onOpenConnectDialog,
   onExport,
   onImportFile,
@@ -81,6 +84,7 @@ export function LearningCanvasToolbar({
   onCopyToMyCanvases,
 }: LearningCanvasToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageFileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -106,6 +110,22 @@ export function LearningCanvasToolbar({
         aria-label="Upload canvas file"
       />
 
+      {/* Hidden file input for image upload */}
+      <input
+        ref={imageFileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) {
+            onAddImageFile?.(file)
+            e.target.value = ''
+          }
+        }}
+        aria-label="Upload image card"
+      />
+
       {/* Left tool group: Card Creation (if not readOnly) */}
       <div className="flex flex-wrap items-center gap-1">
         {!readOnly ? (
@@ -127,6 +147,15 @@ export function LearningCanvasToolbar({
             >
               <Globe size={16} aria-hidden="true" />
               <span>Link</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => imageFileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 min-h-[44px] px-3 py-2 text-xs font-bold text-navy-900 rounded-xl hover:bg-navy-900-5 focus:outline-none focus:ring-2 focus:ring-navy-800"
+              title="Upload image card"
+            >
+              <ImageIcon size={16} aria-hidden="true" />
+              <span>Image</span>
             </button>
             <button
               type="button"

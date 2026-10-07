@@ -47,6 +47,7 @@ import { CreateLearningCanvasDialog } from './components/CreateLearningCanvasDia
 import { RenameLearningCanvasDialog } from './components/RenameLearningCanvasDialog'
 import { LossyImportDialog } from './components/LossyImportDialog'
 import { LearningGraphView } from './components/LearningGraphView'
+import { NotesTabContent } from './components/NotesTabContent'
 
 export function InstructorLearningHubPage() {
   const { user } = useAuth()
@@ -153,10 +154,14 @@ export function InstructorLearningHubPage() {
 
   // Aggregate all loaded canvases
   const allCanvases = Object.values(canvasMap).flat()
-  const displayCanvases =
+  const classCanvases =
     selectedClassId === 'all'
       ? allCanvases
       : canvasMap[selectedClassId] || []
+
+  // Separate pure whiteboard canvases and concept notes
+  const displayCanvases = classCanvases.filter((c) => c.sourceCanvasId !== 'note')
+  const displayNotes = classCanvases.filter((c) => c.sourceCanvasId === 'note')
 
   const listStatus = resolveListStatus({
     loading: classesLoading,
@@ -277,6 +282,24 @@ export function InstructorLearningHubPage() {
       { description: content.slice(0, 300) },
     )
     showToast('success', 'Note content saved.')
+  }
+
+  const handleUpdateNoteFromTab = async (
+    noteId: string,
+    targetClass: string,
+    content: string,
+    title?: string,
+  ) => {
+    if (!user) return
+    if (title) {
+      await rename(targetClass, noteId, title)
+    }
+    await handleUpdateNoteContent(noteId, targetClass, content)
+  }
+
+  const handleDeleteNoteFromTab = async (note: LearningCanvasWithId) => {
+    await deleteCanvas(note.classId, note.id)
+    showToast('success', `Note "${note.title}" deleted.`)
   }
 
   const handleConnectNodes = async (
@@ -501,6 +524,7 @@ export function InstructorLearningHubPage() {
             onChange={setViewMode}
             options={[
               { label: 'Canvases', value: 'canvases' },
+              { label: 'Notes', value: 'notes' },
               { label: 'Graph view', value: 'graph' },
             ]}
           />
@@ -543,6 +567,22 @@ export function InstructorLearningHubPage() {
               onUpdateNoteContent={handleUpdateNoteContent}
               onConnectNodes={handleConnectNodes}
               onDisconnectNodes={handleDisconnectNodes}
+            />
+          </section>
+        )}
+
+        {/* View mode: Notes List */}
+        {viewMode === 'notes' && (
+          <section aria-label="Concept notes">
+            <NotesTabContent
+              notes={displayNotes}
+              classes={classOptions}
+              selectedClassId={selectedClassId}
+              role="instructor"
+              onCreateNote={handleCreateNote}
+              onUpdateNote={handleUpdateNoteFromTab}
+              onDeleteNote={handleDeleteNoteFromTab}
+              onViewInGraph={(_noteId) => setViewMode('graph')}
             />
           </section>
         )}

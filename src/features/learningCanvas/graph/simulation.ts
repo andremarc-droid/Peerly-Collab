@@ -47,10 +47,14 @@ export function stepSimulation(
       const fx = (dx / dist) * force
       const fy = (dy / dist) * force
 
-      a.vx -= fx
-      a.vy -= fy
-      b.vx += fx
-      b.vy += fy
+      if (!a.isFixed) {
+        a.vx -= fx
+        a.vy -= fy
+      }
+      if (!b.isFixed) {
+        b.vx += fx
+        b.vy += fy
+      }
     }
   }
 
@@ -69,14 +73,26 @@ export function stepSimulation(
     const fx = (dx / dist) * force
     const fy = (dy / dist) * force
 
-    a.vx += fx
-    a.vy += fy
-    b.vx -= fx
-    b.vy -= fy
+    if (!a.isFixed) {
+      a.vx += fx
+      a.vy += fy
+    }
+    if (!b.isFixed) {
+      b.vx += fx
+      b.vy += fy
+    }
   }
 
   // 3. Center gravity and update velocities & positions
   for (const node of nodes) {
+    if (node.isFixed) {
+      node.vx = 0
+      node.vy = 0
+      if (node.fx !== undefined) node.x = node.fx
+      if (node.fy !== undefined) node.y = node.fy
+      continue
+    }
+
     // Gravity towards (0, 0)
     node.vx -= node.x * centerStrength
     node.vy -= node.y * centerStrength

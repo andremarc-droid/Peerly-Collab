@@ -44,6 +44,7 @@ import { CreateLearningCanvasDialog } from './components/CreateLearningCanvasDia
 import { RenameLearningCanvasDialog } from './components/RenameLearningCanvasDialog'
 import { LossyImportDialog } from './components/LossyImportDialog'
 import { LearningGraphView } from './components/LearningGraphView'
+import { NotesTabContent } from './components/NotesTabContent'
 
 export function StudentLearningHubPage() {
   const { user } = useAuth()
@@ -179,15 +180,19 @@ export function StudentLearningHubPage() {
   const allPersonalCanvases = Object.values(personalCanvasesMap).flat()
   const combinedCanvases = [...allInstructorCanvases, ...allPersonalCanvases]
 
-  const displayInstructorCanvases =
+  const instructorList =
     selectedClassId === 'all'
       ? allInstructorCanvases
       : instructorCanvasesMap[selectedClassId] || []
 
-  const displayPersonalCanvases =
+  const personalList =
     selectedClassId === 'all'
       ? allPersonalCanvases
       : personalCanvasesMap[selectedClassId] || []
+
+  const displayInstructorCanvases = instructorList.filter((c) => c.sourceCanvasId !== 'note')
+  const displayPersonalCanvases = personalList.filter((c) => c.sourceCanvasId !== 'note')
+  const displayPersonalNotes = personalList.filter((c) => c.sourceCanvasId === 'note')
 
   const enrolledClasses = enrollments
     .map((e) => classesMap[e.classId])
@@ -306,6 +311,24 @@ export function StudentLearningHubPage() {
       { description: content.slice(0, 300) },
     )
     showToast('success', 'Note content saved.')
+  }
+
+  const handleUpdateNoteFromTab = async (
+    noteId: string,
+    targetClass: string,
+    content: string,
+    title?: string,
+  ) => {
+    if (!user) return
+    if (title) {
+      await rename(targetClass, noteId, title)
+    }
+    await handleUpdateNoteContent(noteId, targetClass, content)
+  }
+
+  const handleDeleteNoteFromTab = async (note: LearningCanvasWithId) => {
+    await deleteCanvas(note.classId, note.id)
+    showToast('success', `Note "${note.title}" deleted.`)
   }
 
   const handleConnectNodes = async (
@@ -516,6 +539,7 @@ export function StudentLearningHubPage() {
             onChange={setViewMode}
             options={[
               { label: 'Canvases', value: 'canvases' },
+              { label: 'Notes', value: 'notes' },
               { label: 'Graph view', value: 'graph' },
             ]}
           />
@@ -558,6 +582,22 @@ export function StudentLearningHubPage() {
               onUpdateNoteContent={handleUpdateNoteContent}
               onConnectNodes={handleConnectNodes}
               onDisconnectNodes={handleDisconnectNodes}
+            />
+          </section>
+        )}
+
+        {/* View mode: Notes List */}
+        {viewMode === 'notes' && (
+          <section aria-label="Personal study notes">
+            <NotesTabContent
+              notes={displayPersonalNotes}
+              classes={classOptions}
+              selectedClassId={selectedClassId}
+              role="student"
+              onCreateNote={handleCreatePersonalNote}
+              onUpdateNote={handleUpdateNoteFromTab}
+              onDeleteNote={handleDeleteNoteFromTab}
+              onViewInGraph={(_noteId) => setViewMode('graph')}
             />
           </section>
         )}

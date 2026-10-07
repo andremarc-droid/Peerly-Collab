@@ -213,7 +213,7 @@ export function validateLearningCanvasNode(value: unknown): LearningCanvasNode {
   const obj = record(value, 'Node')
   const id = string(obj.id, 'Node id')
   const type = string(obj.type, 'Node type') as LearningCanvasNodeType
-  if (!['text', 'link', 'reference', 'group'].includes(type)) {
+  if (!['text', 'link', 'reference', 'group', 'image'].includes(type)) {
     throw new LearningCanvasValidationError(`Unsupported node type: ${type}.`)
   }
 
@@ -325,6 +325,31 @@ export function validateLearningCanvasNode(value: unknown): LearningCanvasNode {
       ...base,
       type: 'group',
       group: { label },
+    }
+  }
+
+  if (type === 'image') {
+    const imgObj = record(obj.image, 'Image object')
+    const dataUrl = string(imgObj.dataUrl, 'Image dataUrl')
+    if (!dataUrl.startsWith('data:image/') && !dataUrl.startsWith('https://')) {
+      throw new LearningCanvasValidationError('Image card requires a valid data URL or https URL.')
+    }
+    let alt: string | undefined
+    if (imgObj.alt !== undefined && imgObj.alt !== null) {
+      alt = typeof imgObj.alt === 'string' ? imgObj.alt.slice(0, 120) : undefined
+    }
+    let caption: string | undefined
+    if (imgObj.caption !== undefined && imgObj.caption !== null) {
+      caption = typeof imgObj.caption === 'string' ? imgObj.caption.slice(0, 300) : undefined
+    }
+    return {
+      ...base,
+      type: 'image',
+      image: {
+        dataUrl,
+        ...(alt ? { alt } : {}),
+        ...(caption ? { caption } : {}),
+      },
     }
   }
 

@@ -135,6 +135,9 @@ export function toJsonCanvas(content: LearningCanvasContent): JsonCanvas {
     if (node.type === 'group') {
       return { ...base, type: 'group', label: node.group.label }
     }
+    if (node.type === 'image') {
+      return { ...base, type: 'file', file: node.image.dataUrl }
+    }
     if (node.type === 'reference') {
       // JSON Canvas has no concept of internal LMS reference nodes, represent as markdown text card
       const text = `**[Reference: ${node.reference.refType}]**\nID: \`${node.reference.refId}\``
@@ -280,17 +283,31 @@ export function fromJsonCanvas(input: unknown): {
       }
       validNodes.push(textNode)
     } else if (type === 'file') {
-      report.fileNodesConverted++
-      const fileName = typeof n.file === 'string' ? n.file : 'Untitled attachment'
-      const subpath = typeof n.subpath === 'string' ? ` (${n.subpath})` : ''
-      const safeText = sanitizeText(`📁 File: ${fileName}${subpath}`).slice(0, MAX_TEXT_NODE_LENGTH)
-      const textNode: LearningCanvasTextNode = {
-        ...base,
-        type: 'text',
-        text: safeText,
+      const fileData = typeof n.file === 'string' ? n.file : ''
+      if (fileData.startsWith('data:image/')) {
+        const imageNode: LearningCanvasImageNode = {
+          ...base,
+          type: 'image',
+          image: {
+            dataUrl: fileData,
+            alt: typeof n.alt === 'string' ? n.alt : 'Imported image',
+            caption: typeof n.subpath === 'string' ? n.subpath : undefined,
+          },
+        }
+        validNodes.push(imageNode)
+      } else {
+        report.fileNodesConverted++
+        const fileName = fileData || 'Untitled attachment'
+        const subpath = typeof n.subpath === 'string' ? ` (${n.subpath})` : ''
+        const safeText = sanitizeText(`📁 File: ${fileName}${subpath}`).slice(0, MAX_TEXT_NODE_LENGTH)
+        const textNode: LearningCanvasTextNode = {
+          ...base,
+          type: 'text',
+          text: safeText,
+        }
+        validNodes.push(textNode)
+        report.notes.push(`File node "${fileName}" converted to text card.`)
       }
-      validNodes.push(textNode)
-      report.notes.push(`File node "${fileName}" converted to text card.`)
     } else if (type === 'link') {
       const urlRaw = typeof n.url === 'string' ? n.url.trim() : ''
       if (urlRaw.startsWith('https://')) {
