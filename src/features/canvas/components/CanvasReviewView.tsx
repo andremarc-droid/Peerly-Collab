@@ -5,6 +5,8 @@ import { buildCanvasDiff, parseConnectionEdge, scatterCards } from '../schemas'
 import type { CanvasAnswerKey, CanvasCard, CanvasQuestion } from '../types'
 import type { ConnectionStatus } from '../mapping'
 
+import { ExpandableCanvasContainer } from './ExpandableCanvasContainer'
+
 const CanvasBoard = lazy(() => import('./CanvasBoard'))
 
 export interface CanvasReviewViewProps {
@@ -89,7 +91,7 @@ export function CanvasReviewView({
               <HelpCircle size={18} />
             </div>
             <div className="min-w-0">
-              <span className="block text-xs font-bold uppercase tracking-wider text-navy-800-72">
+              <span className="block text-sm font-bold uppercase tracking-wider text-navy-800-72">
                 Instructions
               </span>
               <p className="m-0 text-base font-medium text-navy-900 break-words whitespace-pre-wrap">
@@ -100,19 +102,22 @@ export function CanvasReviewView({
         </div>
       )}
 
-      {/* Review mode CanvasBoard - responsive height */}
-      <div className="relative h-[clamp(420px,70vh,680px)] min-h-[420px] max-h-[680px] w-full overflow-hidden rounded-2xl border border-navy-900-12 bg-surface-primary">
-        <Suspense fallback={<Skeleton className="h-full w-full rounded-2xl" label="Loading review board" />}>
-          <CanvasBoard
-            cards={displayCards}
-            connections={allConnections}
-            mode="review"
-            directed={question.directed}
-            statusByConnection={statusByConnection}
-            images={images}
-          />
-        </Suspense>
-      </div>
+      {/* Review mode CanvasBoard - responsive height with Expand button */}
+      <ExpandableCanvasContainer title="Canvas review board">
+        <div className="relative w-full h-full overflow-hidden rounded-2xl border border-navy-900-12 bg-surface-primary">
+          <Suspense fallback={<Skeleton className="h-full w-full rounded-2xl" label="Loading review board" />}>
+            <CanvasBoard
+              cards={displayCards}
+              connections={allConnections}
+              mode="review"
+              directed={question.directed}
+              statusByConnection={statusByConnection}
+              images={images}
+              className="w-full h-full"
+            />
+          </Suspense>
+        </div>
+      </ExpandableCanvasContainer>
 
       {/* Accessible Plain List Companion (Text labels and Icons, not color alone) */}
       <section

@@ -22,10 +22,11 @@ export function CardEditorPanel({
   className = '',
 }: CardEditorPanelProps) {
   const typeLabel = card.type[0].toUpperCase() + card.type.slice(1)
+  const isInvalidUrl = Boolean(card.type === 'link' && card.url && !/^https:\/\/[^\s]+$/.test(card.url))
 
   return (
     <div
-      className={`w-full lg:w-80 bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm flex flex-col gap-4 ${className}`}
+      className={`w-full lg:w-[360px] lg:min-w-[360px] bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm flex flex-col gap-4 ${className}`}
       aria-label={`${typeLabel} card editor`}
     >
       <div className="flex items-center justify-between border-b border-navy-900-12 pb-2">
@@ -47,17 +48,17 @@ export function CardEditorPanel({
           <>
             {card.title && (
               <div>
-                <span className="block text-xs font-semibold uppercase tracking-wider text-navy-800-72">Title</span>
+                <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Title</span>
                 <p className="m-0 text-base font-semibold text-navy-900">{card.title}</p>
               </div>
             )}
             <div>
-              <span className="block text-xs font-semibold uppercase tracking-wider text-navy-800-72">Content</span>
+              <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Content</span>
               <p className="m-0 text-base text-navy-900 whitespace-pre-wrap break-words">{card.content || '—'}</p>
             </div>
             {card.type === 'link' && card.url && (
               <div>
-                <span className="block text-xs font-semibold uppercase tracking-wider text-navy-800-72">Link</span>
+                <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Link</span>
                 <a
                   href={card.url}
                   target="_blank"
@@ -96,6 +97,7 @@ export function CardEditorPanel({
                 value={card.url ?? ''}
                 placeholder="https://"
                 hint="Must begin with https://"
+                error={isInvalidUrl ? 'URL must begin with https:// and contain no whitespace.' : undefined}
                 required
                 onChange={(e) => onUpdate?.('url', e.target.value)}
               />
