@@ -121,6 +121,34 @@ describe('buildLearningGraph', () => {
     expect(c1Node?.isHighlighted).toBe(true)
     expect(c2Node?.isHighlighted).toBe(false)
   })
+
+  it('classifies records with sourceCanvasId as note correctly', () => {
+    const noteCanvas: LearningCanvasWithId = {
+      id: 'n1',
+      ownerId: 'u1',
+      classId: 'class-1',
+      kind: 'class',
+      title: 'Mitochondria Note',
+      description: 'Powerhouse of the cell',
+      status: 'published',
+      nodeCount: 1,
+      edgeCount: 0,
+      refs: [],
+      sourceCanvasId: 'note',
+      createdAt: dummyTimestamp,
+      updatedAt: dummyTimestamp,
+    }
+
+    const graph = buildLearningGraph({
+      canvases: [...mockCanvases, noteCanvas],
+      classes: mockClasses,
+    })
+
+    const noteNode = graph.nodes.find((n) => n.id === 'note:n1')
+    expect(noteNode).toBeDefined()
+    expect(noteNode?.type).toBe('note')
+    expect(noteNode?.title).toBe('Mitochondria Note')
+  })
 })
 
 describe('stepSimulation', () => {

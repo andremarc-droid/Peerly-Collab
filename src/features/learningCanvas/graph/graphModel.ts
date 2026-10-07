@@ -1,6 +1,6 @@
 import type { LearningCanvasWithId, LearningCanvasRefType } from '../types'
 
-export type GraphNodeType = LearningCanvasRefType
+export type GraphNodeType = 'note' | 'learning' | 'module' | 'quiz' | 'link'
 
 export interface GraphNode {
   id: string
@@ -9,6 +9,8 @@ export interface GraphNode {
   title: string
   classId: string
   className: string
+  description?: string
+  content?: string
   x: number
   y: number
   vx: number
@@ -37,6 +39,8 @@ export interface BuildGraphOptions {
   selectedClassId?: string
   allowedTypes?: Set<GraphNodeType>
   searchQuery?: string
+  showOrphans?: boolean
+  includeClassItems?: boolean
 }
 
 export function buildLearningGraph({
@@ -47,56 +51,71 @@ export function buildLearningGraph({
   selectedClassId,
   allowedTypes,
   searchQuery,
+  showOrphans = true,
+  includeClassItems = true,
 }: BuildGraphOptions): GraphData {
   const classMap = new Map<string, string>(classes.map((c) => [c.id, c.name]))
 
   // 1. Filter canvases by selected class if specified
-  const filteredCanvases = selectedClassId && selectedClassId !== 'all'
-    ? canvases.filter((c) => c.classId === selectedClassId)
-    : canvases
+  const filteredCanvases =
+    selectedClassId && selectedClassId !== 'all'
+      ? canvases.filter((c) => c.classId === selectedClassId)
+      : canvases
 
   const nodeMap = new Map<string, GraphNode>()
   const rawLinks: Array<{ source: string; target: string }> = []
 
-  // 2. Add canvas nodes
+  // 2. Add canvas & note nodes
   for (const c of filteredCanvases) {
-    const id = `learning:${c.id}`
+    const isNote = c.sourceCanvasId === 'note'
+    const type: GraphNodeType = isNote ? 'note' : 'learning'
+    const id = `${type}:${c.id}`
+
     nodeMap.set(id, {
       id,
       rawId: c.id,
-      type: 'learning',
+      type,
       title: c.title,
       classId: c.classId,
       className: classMap.get(c.classId) || 'Class',
+      description: c.description,
+      content: c.description,
       x: 0,
       y: 0,
       vx: 0,
       vy: 0,
-      radius: 20,
+      radius: isNote ? 18 : 22,
       degree: 0,
     })
 
     // Add referenced nodes and links
     if (Array.isArray(c.refs)) {
       for (const ref of c.refs) {
-        const targetId = `${ref.type}:${ref.id}`
+        let refTargetType: GraphNodeType = ref.type as GraphNodeType
+        let title = `${ref.type === 'module' ? 'Module' : ref.type === 'quiz' ? 'Quiz' : 'Canvas'}`
+
+        if (ref.type === 'module' && moduleTitles[ref.id]) {
+          title = moduleTitles[ref.id]
+        } else if (ref.type === 'quiz' && quizTitles[ref.id]) {
+          title = quizTitles[ref.id]
+        } else if (ref.type === 'learning') {
+          const refCanvas = canvases.find((item) => item.id === ref.id)
+          if (refCanvas) {
+            title = refCanvas.title
+            if (refCanvas.sourceCanvasId === 'note') {
+              refTargetType = 'note'
+            }
+          }
+        }
+
+        const targetId = `${refTargetType}:${ref.id}`
         rawLinks.push({ source: id, target: targetId })
 
         if (!nodeMap.has(targetId)) {
-          let title = `${ref.type === 'module' ? 'Module' : ref.type === 'quiz' ? 'Quiz' : 'Canvas'}`
-          if (ref.type === 'module' && moduleTitles[ref.id]) {
-            title = moduleTitles[ref.id]
-          } else if (ref.type === 'quiz' && quizTitles[ref.id]) {
-            title = quizTitles[ref.id]
-          } else if (ref.type === 'learning') {
-            const refCanvas = canvases.find((item) => item.id === ref.id)
-            if (refCanvas) title = refCanvas.title
-          }
-
           nodeMap.set(targetId, {
             id: targetId,
             rawId: ref.id,
-            type: ref.type,
+            type: refTargetType,
             title,
             classId: c.classId,
             className: classMap.get(c.classId) || 'Class',
@@ -104,7 +123,7 @@ export function buildLearningGraph({
             y: 0,
             vx: 0,
             vy: 0,
-            radius: ref.type === 'learning' ? 18 : 15,
+            radius: refTargetType === 'learning' || refTargetType === 'note' ? 18 : 15,
             degree: 0,
           })
         }
@@ -112,7 +131,53 @@ export function buildLearningGraph({
     }
   }
 
-  // 3. Filter by allowed types if provided
+  // 3. Optionally include stand-alone class modules and quizzes as discoverable nodes
+  if (includeClassItems) {
+    const targetClassId = selectedClassId && selectedClassId !== 'all' ? selectedClassId : classes[0]?.id || ''
+    const targetClassName = classMap.get(targetClassId) || 'Class'
+
+    for (const [mId, mTitle] of Object.entries(moduleTitles)) {
+      const id = `module:${mId}`
+      if (!nodeMap.has(id)) {
+        nodeMap.set(id, {
+          id,
+          rawId: mId,
+          type: 'module',
+          title: mTitle,
+          classId: targetClassId,
+          className: targetClassName,
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          radius: 16,
+          degree: 0,
+        })
+      }
+    }
+
+    for (const [qId, qTitle] of Object.entries(quizTitles)) {
+      const id = `quiz:${qId}`
+      if (!nodeMap.has(id)) {
+        nodeMap.set(id, {
+          id,
+          rawId: qId,
+          type: 'quiz',
+          title: qTitle,
+          classId: targetClassId,
+          className: targetClassName,
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          radius: 16,
+          degree: 0,
+        })
+      }
+    }
+  }
+
+  // 4. Filter by allowed types if provided
   let activeNodes = Array.from(nodeMap.values())
   if (allowedTypes && allowedTypes.size > 0) {
     activeNodes = activeNodes.filter((n) => allowedTypes.has(n.type))
@@ -120,7 +185,7 @@ export function buildLearningGraph({
 
   const activeNodeIds = new Set(activeNodes.map((n) => n.id))
 
-  // 4. Filter links whose endpoints both exist in activeNodes
+  // 5. Filter links whose endpoints both exist in activeNodes
   const validLinks: GraphLink[] = []
   const linkKeySet = new Set<string>()
 
@@ -134,24 +199,31 @@ export function buildLearningGraph({
     }
   }
 
-  // 5. Calculate degree and adjust radius
+  // 6. Calculate degree
   const degreeMap = new Map<string, number>()
   for (const l of validLinks) {
     degreeMap.set(l.source, (degreeMap.get(l.source) || 0) + 1)
     degreeMap.set(l.target, (degreeMap.get(l.target) || 0) + 1)
   }
 
+  activeNodes.forEach((n) => {
+    n.degree = degreeMap.get(n.id) || 0
+  })
+
+  // 7. Filter orphans if disabled
+  if (!showOrphans) {
+    activeNodes = activeNodes.filter((n) => n.degree > 0)
+  }
+
   const query = (searchQuery || '').trim().toLowerCase()
 
-  // 6. Layout initial positions circularly
+  // 8. Layout initial positions circularly
   const total = activeNodes.length
   const angleStep = (2 * Math.PI) / (total || 1)
-  const initialRadius = Math.min(300, 60 + total * 15)
+  const initialRadius = Math.min(320, 60 + total * 16)
 
   activeNodes.forEach((node, i) => {
-    const deg = degreeMap.get(node.id) || 0
-    node.degree = deg
-    node.radius = Math.min(30, (node.type === 'learning' ? 18 : 14) + deg * 2)
+    node.radius = Math.min(32, (node.type === 'learning' || node.type === 'note' ? 18 : 14) + node.degree * 2)
 
     // Position around center with slight perturbation to avoid zero-distance singularity
     const angle = i * angleStep

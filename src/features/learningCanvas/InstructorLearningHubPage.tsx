@@ -39,6 +39,8 @@ import {
   unpublish,
   rename,
   getContent,
+  getCanvas,
+  saveCanvas,
 } from './services'
 import { toJsonCanvas, fromJsonCanvas, type FromJsonCanvasResult } from './jsonCanvas'
 import { CreateLearningCanvasDialog } from './components/CreateLearningCanvasDialog'
@@ -180,6 +182,150 @@ export function InstructorLearningHubPage() {
     })
     showToast('success', 'Learning canvas created.')
     navigate(`/instructor/classes/${classToUse}/learning/${newId}`)
+  }
+
+  const handleCreateNote = async ({
+    classId: targetClass,
+    title,
+    content,
+  }: {
+    classId: string
+    title: string
+    content: string
+  }) => {
+    if (!user) return
+    const initialNodes = [
+      {
+        id: 'main-note',
+        type: 'text' as const,
+        x: 0,
+        y: 0,
+        width: 380,
+        height: 240,
+        color: 'none' as const,
+        text: content,
+      },
+    ]
+    await createCanvas(targetClass, user.uid, {
+      kind: 'class',
+      title,
+      description: content.slice(0, 300),
+      sourceCanvasId: 'note',
+      initialContent: { nodes: initialNodes },
+    })
+    showToast('success', `Concept note "${title}" added to graph.`)
+  }
+
+  const handleUpdateNoteContent = async (
+    canvasId: string,
+    targetClass: string,
+    content: string,
+  ) => {
+    if (!user) return
+    const [existingMeta, existingContent] = await Promise.all([
+      getCanvas(targetClass, canvasId),
+      getContent(targetClass, canvasId),
+    ])
+    if (!existingMeta || !existingContent) return
+
+    const textNode = existingContent.nodes.find((n) => n.type === 'text')
+    if (textNode && textNode.type === 'text') {
+      textNode.text = content
+    } else {
+      existingContent.nodes.push({
+        id: 'main-note',
+        type: 'text',
+        x: 0,
+        y: 0,
+        width: 380,
+        height: 240,
+        color: 'none',
+        text: content,
+      })
+    }
+
+    await saveCanvas(
+      targetClass,
+      canvasId,
+      existingContent,
+      existingMeta.updatedAt,
+      { description: content.slice(0, 300) },
+    )
+    showToast('success', 'Note content saved.')
+  }
+
+  const handleConnectNodes = async (
+    sourceId: string,
+    targetId: string,
+    targetClass: string,
+  ) => {
+    if (!user) return
+    const [sourceType, sourceRawId] = sourceId.split(':')
+    const [targetType, targetRawId] = targetId.split(':')
+
+    if (sourceType !== 'learning' && sourceType !== 'note') {
+      showToast('error', 'Links can only be created from a Note or Canvas.')
+      return
+    }
+
+    const [existingMeta, existingContent] = await Promise.all([
+      getCanvas(targetClass, sourceRawId),
+      getContent(targetClass, sourceRawId),
+    ])
+    if (!existingMeta || !existingContent) return
+
+    const refType = (targetType === 'note' ? 'learning' : targetType) as
+      | 'module'
+      | 'quiz'
+      | 'learning'
+
+    const alreadyRef = existingContent.nodes.some(
+      (n) =>
+        n.type === 'reference' &&
+        n.reference.refType === refType &&
+        n.reference.refId === targetRawId,
+    )
+
+    if (!alreadyRef) {
+      existingContent.nodes.push({
+        id: `ref-${Date.now()}`,
+        type: 'reference',
+        x: 200,
+        y: 100,
+        width: 240,
+        height: 140,
+        color: 'none',
+        reference: { refType, refId: targetRawId },
+      })
+      await saveCanvas(targetClass, sourceRawId, existingContent, existingMeta.updatedAt)
+      showToast('success', 'Link created in knowledge graph.')
+    }
+  }
+
+  const handleDisconnectNodes = async (
+    sourceId: string,
+    targetId: string,
+    targetClass: string,
+  ) => {
+    if (!user) return
+    const [, sourceRawId] = sourceId.split(':')
+    const [, targetRawId] = targetId.split(':')
+
+    const [existingMeta, existingContent] = await Promise.all([
+      getCanvas(targetClass, sourceRawId),
+      getContent(targetClass, sourceRawId),
+    ])
+    if (!existingMeta || !existingContent) return
+
+    const prevLength = existingContent.nodes.length
+    existingContent.nodes = existingContent.nodes.filter(
+      (n) => !(n.type === 'reference' && n.reference.refId === targetRawId),
+    )
+
+    if (existingContent.nodes.length < prevLength) {
+      await saveCanvas(targetClass, sourceRawId, existingContent, existingMeta.updatedAt)
+      showToast('success', 'Link removed.')
+    }
   }
 
   const handleRename = async (title: string) => {
@@ -367,6 +513,13 @@ export function InstructorLearningHubPage() {
               selectedClassId={selectedClassId}
               role="instructor"
               onSwitchToCanvases={() => setViewMode('canvases')}
+              onCreateNote={handleCreateNote}
+              onCreateCanvas={async ({ classId: cid, title, description: desc }) => {
+                await handleCreate(title, desc, cid)
+              }}
+              onUpdateNoteContent={handleUpdateNoteContent}
+              onConnectNodes={handleConnectNodes}
+              onDisconnectNodes={handleDisconnectNodes}
             />
           </section>
         )}

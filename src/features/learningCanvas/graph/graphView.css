@@ -102,6 +102,7 @@
   transition: r 0.2s ease;
 }
 .graph-view__node-circle--learning { fill: var(--color-navy-900); }
+.graph-view__node-circle--note     { fill: var(--color-navy-800); }
 .graph-view__node-circle--module   { fill: var(--color-navy-700); }
 .graph-view__node-circle--quiz     { fill: var(--color-navy-800); }
 
@@ -223,6 +224,11 @@
 .graph-view__filter--active {
   background: var(--color-navy-900);
   border-color: var(--color-navy-900);
+  color: var(--color-white);
+}
+.graph-view__filter--active-note {
+  background: var(--color-navy-800);
+  border-color: var(--color-navy-800);
   color: var(--color-white);
 }
 .graph-view__filter--active-module {
@@ -384,6 +390,7 @@
   border-radius: 50%;
 }
 .graph-view__stats-dot--learning { background: var(--color-navy-900); }
+.graph-view__stats-dot--note     { background: var(--color-navy-800); }
 .graph-view__stats-dot--module   { background: var(--color-navy-700); }
 .graph-view__stats-dot--quiz     { background: var(--color-navy-800); }
 
@@ -407,6 +414,7 @@
   top: 4rem;
 }
 .graph-view__minimap-node--learning { fill: var(--color-navy-900); }
+.graph-view__minimap-node--note     { fill: var(--color-navy-800); }
 .graph-view__minimap-node--module   { fill: var(--color-navy-700); }
 .graph-view__minimap-node--quiz     { fill: var(--color-navy-800); }
 .graph-view__minimap-viewport {
