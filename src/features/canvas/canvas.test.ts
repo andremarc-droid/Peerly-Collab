@@ -395,6 +395,22 @@ describe('validateCanvasDefinition', () => {
     expect(valid.cards).toEqual([])
   })
 
+  it('validates blank board definition without rubric, omitting the rubric key entirely', () => {
+    const valid = validateCanvasDefinition(
+      {
+        type: 'canvas',
+        prompt: 'Build a concept map explaining photosynthesis.',
+        showRubricToStudents: true,
+        points: 50,
+        cards: [],
+      },
+      { boardKind: 'blank' },
+    )
+
+    expect(valid.rubric).toBeUndefined()
+    expect('rubric' in valid).toBe(false)
+  })
+
   it('rejects blank board definition with invalid parameters', () => {
     // Missing prompt
     expect(() =>

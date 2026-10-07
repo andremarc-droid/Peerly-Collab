@@ -207,19 +207,23 @@ export function validateCanvasDefinition(value: unknown, options?: ValidateCanva
 
     const directed = q.directed === undefined ? false : bool(q.directed, 'directed')
 
-    return {
+    const blankQuestion: CanvasQuestion = {
       order,
       type: 'canvas',
       prompt,
       points,
       cards: [],
-      rubric,
       showRubricToStudents,
       maxCards,
       maxConnections,
       allowedCardTypes,
       directed,
     }
+    if (rubric !== undefined) {
+      blankQuestion.rubric = rubric
+    }
+
+    return blankQuestion
   }
 
   const layoutMode = (q.layoutMode ?? 'scattered') as CanvasLayoutMode

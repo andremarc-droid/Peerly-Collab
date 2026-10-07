@@ -7,6 +7,21 @@ import { validateQuestionAnswerPair } from '../schemas'
 import { parseQuiz } from '../schemas'
 import { answerKeyRef, questionRef, questionsRef, quizRef } from './paths'
 
+function stripUndefined<T>(value: T): T {
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(stripUndefined) as unknown as T
+  if (Object.prototype.toString.call(value) === '[object Object]' && (value.constructor === Object || !value.constructor)) {
+    const res: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      if (v !== undefined) {
+        res[k] = stripUndefined(v)
+      }
+    }
+    return res as T
+  }
+  return value
+}
+
 export async function saveQuestionAndKey(
   quizId: string,
   questionId: string | null,
@@ -34,9 +49,9 @@ export async function saveQuestionAndKey(
       (parent.mode === 'canvas' && question.type === 'canvas') ||
       (parent.mode === 'quiz' && question.type !== 'flashcard' && question.type !== 'canvas')
     if (!matchesMode) throw new Error('Question type must match the quiz format')
-    transaction.set(ref, question)
+    transaction.set(ref, stripUndefined(question))
     if (answerKey !== null) {
-      transaction.set(answerKeyRef(db, quizId, ref.id), answerKey)
+      transaction.set(answerKeyRef(db, quizId, ref.id), stripUndefined(answerKey))
     }
     if (!questionSnapshot.exists()) transaction.update(parentRef, { questionCount: parent.questionCount + 1, updatedAt: Timestamp.now() })
   })

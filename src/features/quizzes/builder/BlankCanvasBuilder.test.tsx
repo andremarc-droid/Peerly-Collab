@@ -165,4 +165,36 @@ describe('BlankCanvasBuilder', () => {
       )
     })
   })
+
+  it('saves blank canvas question without rubric when rubric is omitted', async () => {
+    mocked.saveQuestionAndKey.mockClear()
+
+    render(
+      <MemoryRouter>
+        <BlankCanvasBuilder quizId="quiz-blank-1" />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByLabelText(/Activity instructions/i)).toBeInTheDocument()
+
+    // Fill instructions, leave rubric blank
+    fireEvent.change(screen.getByLabelText(/Activity instructions/i), {
+      target: { value: 'Create your mind map.' },
+    })
+
+    // Save
+    fireEvent.click(screen.getByRole('button', { name: /Save blank canvas/i }))
+
+    await waitFor(() => {
+      expect(mocked.saveQuestionAndKey).toHaveBeenCalledWith(
+        'quiz-blank-1',
+        'board',
+        expect.not.objectContaining({
+          rubric: expect.anything(),
+        }),
+        null,
+        expect.anything(),
+      )
+    })
+  })
 })
