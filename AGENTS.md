@@ -68,6 +68,13 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Legacy image cards: boards with existing Google Drive image cards load safely without crashing, show a "Re-upload required" warning badge in the builder, and block saving or publishing until replaced with an uploaded image.
 - Connection ID formats: directed connections use `fromId->toId`; undirected connections use `fromId<->toId` (with endpoint IDs normalized alphabetically).
 - QuickCreateQuiz supports `mode` and `boardKind` parameters. When opened from the Canvas tab (`?classId=<id>&mode=canvas`), the picker allows choosing between Prebuilt Canvas and Blank Canvas, and routes directly to the respective builder (`CanvasBuilderPage` or `BlankCanvasBuilder`).
+- Canvas geometry & sizing: `src/features/canvas/constants.ts` is the single source of truth for 240x140 cards, 40px padding, 44px handles with 28px dot, 2.5px edges, 22px arrowheads, 3px selection outline, 200x140 minimap, 44px control buttons, zoom bounds (0.2–2.5), and fitView options (padding: 0.2). Wired into `mapping.ts`, `canvas.css`, `CanvasBoard.tsx`, `placement.ts`, and `schemas.ts` (`scatterCards`).
+- Non-overlapping card placement & tidy layout: `findNonOverlappingPosition` ensures newly added cards do not overlap existing cards. `tidyLayout` arranges cards into a clean non-overlapping grid.
+- Responsive board containers & full screen expansion: all canvas boards use `ExpandableCanvasContainer` (`h-[max(70dvh,480px)] lg:h-[max(560px,calc(100dvh-220px))]`) supporting Fullscreen API with fixed `inset-0` fallback, Escape key handling, body scroll lock, and collapsible 360px side panels (`lg:w-[360px] lg:min-w-[360px]`).
+- Text outline companion: `CanvasTextOutline` provides a searchable, copyable plain-text outline with shared selection synchronized with `CanvasBoard`.
+- Blank canvas directed setting: supports optional `directed?: boolean` in `BlankCanvasQuestion`, schema, and Firestore rules. Honors directed arrows (`from->to`) or undirected edges (`from<->to`) in student taking mode.
+- Student link card validation: link cards require valid `https://` URLs on quiz submit; empty URLs are tolerated during draft autosaves.
+- Hidden/unreleased scores: `QuizResultPage` handles unreleased/hidden scores gracefully when student read is denied, rendering "Submitted. Your instructor will check your board." and the read-only submitted board without crashing.
 
 ## WORKING RULES
 - UI work uses shared components and theme tokens in `src/shared/ui`; no hard-coded colors. Unfinished features render visibly disabled with a “Coming soon” label.
