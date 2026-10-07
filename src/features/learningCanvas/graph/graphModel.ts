@@ -1,4 +1,4 @@
-import type { LearningCanvasWithId, LearningCanvasRefType } from '../types'
+import type { LearningCanvasWithId } from '../types'
 
 export type GraphNodeType = 'note' | 'learning' | 'module' | 'quiz' | 'link'
 
@@ -20,7 +20,7 @@ export interface GraphNode {
   isFixed?: boolean
   fx?: number
   fy?: number
-  degree?: number
+  degree: number
 }
 
 export interface GraphLink {

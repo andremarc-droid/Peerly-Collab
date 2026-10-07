@@ -21,6 +21,7 @@ import type {
   LearningCanvasLinkNode,
   LearningCanvasNode,
   LearningCanvasTextNode,
+  LearningCanvasImageNode,
 } from './types'
 
 export interface JsonCanvasNodeGeneric {
