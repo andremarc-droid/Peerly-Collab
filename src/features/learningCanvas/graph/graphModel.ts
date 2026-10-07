@@ -20,6 +20,7 @@ export interface GraphNode {
   isFixed?: boolean
   fx?: number
   fy?: number
+  degree?: number
 }
 
 export interface GraphLink {

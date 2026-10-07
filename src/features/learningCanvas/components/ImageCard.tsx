@@ -220,8 +220,8 @@ export function ImageCard({ id, data, selected }: NodeProps & { data: ImageCardD
             {showColorPicker && (
               <div className="absolute left-0 top-full mt-1 z-40 bg-white border border-navy-900-12 rounded-xl shadow-lg p-2">
                 <CardColorPicker
-                  selectedColor={data.color}
-                  onSelectColor={(c) => {
+                  value={data.color}
+                  onChange={(c) => {
                     data.onUpdate?.(id, { color: c })
                     setShowColorPicker(false)
                   }}
