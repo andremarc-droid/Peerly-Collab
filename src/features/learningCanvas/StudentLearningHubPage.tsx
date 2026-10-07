@@ -8,7 +8,6 @@ import {
   Trash2,
   Edit2,
   MoreVertical,
-  Layout,
 } from 'lucide-react'
 import { AppShell } from '../../app/AppShell'
 import { PageHeader } from '../../shared/ui/PageHeader'
@@ -21,7 +20,6 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { DropdownMenu } from '../../shared/ui/DropdownMenu'
 import { SegmentedControl } from '../../shared/ui/SegmentedControl'
-import { resolveListStatus } from '../../shared/ui/listState'
 import { useToast } from '../../shared/ui/useToast'
 import { useAuth } from '../auth/useAuth'
 import { listMyEnrollments } from '../classes/services/joinService'
@@ -35,7 +33,6 @@ import {
   watchMyCanvases,
   createCanvas,
   deleteCanvas,
-  duplicate,
   copyToMyCanvases,
   rename,
   getContent,
@@ -138,15 +135,20 @@ export function StudentLearningHubPage() {
 
       // Modules
       unsubs.push(
-        subscribeToModules(classId, (mods) => {
-          setModuleTitles((prev) => {
-            const next = { ...prev }
-            mods.forEach((m) => {
-              next[m.id] = m.title
+        subscribeToModules(
+          classId,
+          'student',
+          (mods) => {
+            setModuleTitles((prev) => {
+              const next = { ...prev }
+              mods.forEach((m) => {
+                next[m.id] = m.title
+              })
+              return next
             })
-            return next
-          })
-        }),
+          },
+          () => {},
+        ),
       )
 
       // Quizzes
@@ -382,8 +384,23 @@ export function StudentLearningHubPage() {
         {/* View mode 2: Canvases */}
         {viewMode === 'canvases' && (
           <div className="grid gap-8">
-            {/* 1. Instructor Published Canvases */}
-            <section aria-labelledby="instructor-canvases-heading" className="grid gap-3">
+            {loading && (
+              <div className="grid gap-3" aria-label="Loading canvases">
+                <Skeleton className="h-24 rounded-2xl" />
+                <Skeleton className="h-24 rounded-2xl" />
+              </div>
+            )}
+
+            {error && (
+              <Alert tone="error" label="Could not load learning canvases">
+                {error}
+              </Alert>
+            )}
+
+            {!loading && !error && (
+              <>
+                {/* 1. Instructor Published Canvases */}
+                <section aria-labelledby="instructor-canvases-heading" className="grid gap-3">
               <div className="flex items-center justify-between">
                 <div>
                   <span className="section-kicker">CLASS MATERIALS</span>
@@ -403,40 +420,36 @@ export function StudentLearningHubPage() {
                 />
               ) : (
                 <div className="grid gap-3" role="list" aria-label="Instructor canvases list">
-                  {displayInstructorCanvases.map((canvas) => (
-                    <DataCard
-                      key={canvas.id}
-                      icon={<Layout size={20} />}
-                      title={canvas.title}
-                      subtitle={canvas.description || 'No description provided.'}
-                      badges={
-                        <>
-                          <Badge>{getClassName(canvas.classId)}</Badge>
-                          <span className="text-xs text-navy-800-72 ml-1">
-                            {canvas.nodeCount} {canvas.nodeCount === 1 ? 'card' : 'cards'} · {canvas.edgeCount} {canvas.edgeCount === 1 ? 'connection' : 'connections'}
-                          </span>
-                        </>
-                      }
-                      action={
-                        <div className="flex items-center gap-2">
-                          <Button
-                            to={`/student/classes/${canvas.classId}/learning/${canvas.id}`}
-                            variant="secondary"
-                          >
-                            View board
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => void handleCopy(canvas)}
-                          >
-                            <Copy size={16} aria-hidden="true" />
-                            <span>Save copy</span>
-                          </Button>
-                        </div>
-                      }
-                    />
-                  ))}
+                  {displayInstructorCanvases.map((canvas) => {
+                    const className = getClassName(canvas.classId)
+                    const metaText = `${className} · ${canvas.nodeCount} cards · ${canvas.edgeCount} connections · ${canvas.description || 'No description provided.'}`
+                    return (
+                      <DataCard
+                        key={canvas.id}
+                        title={canvas.title}
+                        meta={metaText}
+                        badge={<Badge>{className}</Badge>}
+                        actions={
+                          <div className="flex items-center gap-2">
+                            <Button
+                              to={`/student/classes/${canvas.classId}/learning/${canvas.id}`}
+                              variant="secondary"
+                            >
+                              View board
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() => void handleCopy(canvas)}
+                            >
+                              <Copy size={16} aria-hidden="true" />
+                              <span>Save copy</span>
+                            </Button>
+                          </div>
+                        }
+                      />
+                    )
+                  })}
                 </div>
               )}
             </section>
@@ -472,21 +485,15 @@ export function StudentLearningHubPage() {
                 <div className="grid gap-3" role="list" aria-label="Personal study canvases list">
                   {displayPersonalCanvases.map((canvas) => {
                     const editHref = `/student/classes/${canvas.classId}/learning/${canvas.id}`
+                    const className = getClassName(canvas.classId)
+                    const metaText = `${className} · ${canvas.nodeCount} cards · ${canvas.edgeCount} connections · ${canvas.description || 'No description provided.'}`
                     return (
                       <DataCard
                         key={canvas.id}
-                        icon={<Layout size={20} />}
                         title={canvas.title}
-                        subtitle={canvas.description || 'No description provided.'}
-                        badges={
-                          <>
-                            <Badge>{getClassName(canvas.classId)}</Badge>
-                            <span className="text-xs text-navy-800-72 ml-1">
-                              {canvas.nodeCount} {canvas.nodeCount === 1 ? 'card' : 'cards'} · {canvas.edgeCount} {canvas.edgeCount === 1 ? 'connection' : 'connections'}
-                            </span>
-                          </>
-                        }
-                        action={
+                        meta={metaText}
+                        badge={<Badge>{className}</Badge>}
+                        actions={
                           <div className="flex items-center gap-2">
                             <Button to={editHref} variant="secondary">
                               Open canvas
@@ -537,6 +544,8 @@ export function StudentLearningHubPage() {
                 </div>
               )}
             </section>
+          </>
+        )}
           </div>
         )}
       </main>
@@ -554,9 +563,12 @@ export function StudentLearningHubPage() {
       {renameTarget && (
         <RenameLearningCanvasDialog
           open={Boolean(renameTarget)}
-          currentTitle={renameTarget.title}
+          initialTitle={renameTarget.title}
+          initialDescription={renameTarget.description}
           onClose={() => setRenameTarget(null)}
-          onRename={handleRename}
+          onRename={async (title) => {
+            await handleRename(title)
+          }}
         />
       )}
 
@@ -564,10 +576,10 @@ export function StudentLearningHubPage() {
         <ConfirmDialog
           open={Boolean(deleteTarget)}
           title="Delete study canvas?"
-          message={`Are you sure you want to delete "${deleteTarget.title}"? This cannot be undone.`}
-          confirmLabel={deleteBusy ? 'Deleting…' : 'Delete canvas'}
-          confirmVariant="danger"
-          onCancel={() => setDeleteTarget(null)}
+          description={`Are you sure you want to delete "${deleteTarget.title}"? This cannot be undone.`}
+          confirmLabel="Delete canvas"
+          busy={deleteBusy}
+          onClose={() => setDeleteTarget(null)}
           onConfirm={() => void handleDelete()}
         />
       )}
@@ -575,9 +587,10 @@ export function StudentLearningHubPage() {
       {importResult && (
         <LossyImportDialog
           open={Boolean(importResult)}
-          report={importResult.report}
+          importResult={importResult}
+          mode="catalog"
           onClose={() => setImportResult(null)}
-          onConfirm={handleConfirmImport}
+          onConfirmNewCanvas={() => void handleConfirmImport()}
         />
       )}
     </AppShell>

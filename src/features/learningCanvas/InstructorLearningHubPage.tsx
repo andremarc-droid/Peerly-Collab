@@ -112,21 +112,27 @@ export function InstructorLearningHubPage() {
 
       // Modules
       unsubs.push(
-        subscribeToModules(cls.id, (mods) => {
-          setModuleTitles((prev) => {
-            const next = { ...prev }
-            mods.forEach((m) => {
-              next[m.id] = m.title
+        subscribeToModules(
+          cls.id,
+          'instructor',
+          (mods) => {
+            setModuleTitles((prev) => {
+              const next = { ...prev }
+              mods.forEach((m) => {
+                next[m.id] = m.title
+              })
+              return next
             })
-            return next
-          })
-        }),
+          },
+          () => {},
+        ),
       )
 
       // Quizzes
       unsubs.push(
         watchQuizzesForClass(
           cls.id,
+          user.uid,
           (quizzes) => {
             setQuizTitles((prev) => {
               const next = { ...prev }
@@ -142,7 +148,7 @@ export function InstructorLearningHubPage() {
     })
 
     return () => unsubs.forEach((u) => u())
-  }, [classes])
+  }, [classes, user])
 
   // Aggregate all loaded canvases
   const allCanvases = Object.values(canvasMap).flat()
@@ -377,20 +383,20 @@ export function InstructorLearningHubPage() {
               </span>
             </div>
 
-            {listStatus.showLoading && (
+            {listStatus === 'loading' && (
               <div className="grid gap-3" aria-label="Loading canvases">
                 <Skeleton className="h-24 rounded-2xl" />
                 <Skeleton className="h-24 rounded-2xl" />
               </div>
             )}
 
-            {listStatus.showError && (
+            {listStatus === 'error' && (
               <Alert tone="error" label="Could not load learning canvases">
                 {classesError || 'Unable to load canvases right now.'}
               </Alert>
             )}
 
-            {listStatus.showEmpty && (
+            {listStatus === 'empty' && (
               <EmptyState
                 title="No learning canvases yet"
                 description={
@@ -409,30 +415,21 @@ export function InstructorLearningHubPage() {
               />
             )}
 
-            {listStatus.showItems && (
+            {listStatus === 'ready' && (
               <div className="grid gap-3" role="list" aria-label="Canvases list">
                 {displayCanvases.map((canvas) => {
                   const editHref = `/instructor/classes/${canvas.classId}/learning/${canvas.id}`
                   const className = classNameMap.get(canvas.classId) || 'Class'
+                  const statusLabel = canvas.status === 'published' ? 'Published' : 'Draft'
+                  const metaText = `${className} · ${statusLabel} · ${canvas.nodeCount} cards · ${canvas.edgeCount} connections · ${canvas.description || 'No description provided.'}`
 
                   return (
                     <DataCard
                       key={canvas.id}
-                      icon={<Layout size={20} />}
                       title={canvas.title}
-                      subtitle={canvas.description || 'No description provided.'}
-                      badges={
-                        <>
-                          <Badge>{className}</Badge>
-                          <Badge tone={canvas.status === 'published' ? 'success' : 'neutral'}>
-                            {canvas.status === 'published' ? 'Published' : 'Draft'}
-                          </Badge>
-                          <span className="text-xs text-navy-800-72 ml-1">
-                            {canvas.nodeCount} {canvas.nodeCount === 1 ? 'card' : 'cards'} · {canvas.edgeCount} {canvas.edgeCount === 1 ? 'connection' : 'connections'}
-                          </span>
-                        </>
-                      }
-                      action={
+                      meta={metaText}
+                      badge={<Badge>{className}</Badge>}
+                      actions={
                         <div className="flex items-center gap-2">
                           <Button to={editHref} variant="secondary">
                             Open canvas
@@ -523,9 +520,12 @@ export function InstructorLearningHubPage() {
       {renameTarget && (
         <RenameLearningCanvasDialog
           open={Boolean(renameTarget)}
-          currentTitle={renameTarget.title}
+          initialTitle={renameTarget.title}
+          initialDescription={renameTarget.description}
           onClose={() => setRenameTarget(null)}
-          onRename={handleRename}
+          onRename={async (title) => {
+            await handleRename(title)
+          }}
         />
       )}
 
@@ -533,10 +533,10 @@ export function InstructorLearningHubPage() {
         <ConfirmDialog
           open={Boolean(deleteTarget)}
           title="Delete learning canvas?"
-          message={`Are you sure you want to delete "${deleteTarget.title}"? This cannot be undone.`}
-          confirmLabel={deleteBusy ? 'Deleting…' : 'Delete canvas'}
-          confirmVariant="danger"
-          onCancel={() => setDeleteTarget(null)}
+          description={`Are you sure you want to delete "${deleteTarget.title}"? This cannot be undone.`}
+          confirmLabel="Delete canvas"
+          busy={deleteBusy}
+          onClose={() => setDeleteTarget(null)}
           onConfirm={() => void handleDelete()}
         />
       )}
@@ -544,9 +544,10 @@ export function InstructorLearningHubPage() {
       {importResult && (
         <LossyImportDialog
           open={Boolean(importResult)}
-          report={importResult.report}
+          importResult={importResult}
+          mode="catalog"
           onClose={() => setImportResult(null)}
-          onConfirm={handleConfirmImport}
+          onConfirmNewCanvas={() => void handleConfirmImport()}
         />
       )}
     </AppShell>
