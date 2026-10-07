@@ -9,6 +9,7 @@ import { sanitizeCanvasAnswers } from '../canvas/mapping'
 import { normalizeConnection, parseConnectionEdge, scatterCards } from '../canvas/schemas'
 import { toDataUrl } from '../canvas/imageProcessing'
 import { listImages } from '../canvas/imageService'
+import { ExpandableCanvasContainer } from '../canvas/components/ExpandableCanvasContainer'
 import type { CanvasCard, CanvasConnection, CanvasQuestion } from '../canvas/types'
 
 const CanvasBoard = lazy(() => import('../canvas/components/CanvasBoard'))
@@ -228,7 +229,7 @@ export function CanvasPlayPage({
               <HelpCircle size={18} />
             </div>
             <div className="min-w-0">
-              <span className="block text-xs font-bold uppercase tracking-wider text-navy-800-72">
+              <span className="block text-sm font-bold uppercase tracking-wider text-navy-800-72">
                 Instructions
               </span>
               <p className="m-0 text-base font-medium text-navy-900 break-words whitespace-pre-wrap">
@@ -240,22 +241,25 @@ export function CanvasPlayPage({
       )}
 
       {/* Main Canvas Board with controls and live counter - responsive height */}
-      <div className="relative h-[clamp(420px,70vh,680px)] min-h-[420px] max-h-[680px] w-full overflow-hidden rounded-2xl border border-navy-900-12 bg-surface-primary">
-        <Suspense fallback={<Skeleton className="h-full w-full rounded-2xl" label="Loading canvas board" />}>
-          <CanvasBoard
-            cards={displayCards}
-            connections={sanitizedConnections}
-            mode="play"
-            directed={question.directed}
-            maxConnections={80}
-            positions={positions}
-            images={images}
-            onPositionsChange={setPositions}
-            onConnectionsChange={handleBoardConnectionsChange}
-            connectCardsDialogSlot={connectCardsSlot}
-          />
-        </Suspense>
-      </div>
+      <ExpandableCanvasContainer title="Canvas board">
+        <div className="relative w-full h-full overflow-hidden rounded-2xl border border-navy-900-12 bg-surface-primary">
+          <Suspense fallback={<Skeleton className="h-full w-full rounded-2xl" label="Loading canvas board" />}>
+            <CanvasBoard
+              cards={displayCards}
+              connections={sanitizedConnections}
+              mode="play"
+              directed={question.directed}
+              maxConnections={80}
+              positions={positions}
+              images={images}
+              onPositionsChange={setPositions}
+              onConnectionsChange={handleBoardConnectionsChange}
+              connectCardsDialogSlot={connectCardsSlot}
+              className="w-full h-full"
+            />
+          </Suspense>
+        </div>
+      </ExpandableCanvasContainer>
 
       {imagesError && (
         <div className="flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">

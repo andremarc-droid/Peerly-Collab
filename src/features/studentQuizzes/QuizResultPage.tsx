@@ -17,6 +17,7 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { resultVisibility, persistedQuestionOrder } from './quizLogic'
 import { isLate } from '../quizzes/results/resultLogic'
 import { CanvasReviewView } from '../canvas/components/CanvasReviewView'
+import { ExpandableCanvasContainer } from '../canvas/components/ExpandableCanvasContainer'
 import type { CanvasAnswerKey, CanvasCard, CanvasQuestion } from '../canvas/types'
 import type { BlankCanvasAnswer } from '../quizzes/types'
 import { toDataUrl } from '../canvas/imageProcessing'
@@ -59,11 +60,22 @@ export function QuizResultPage() {
   useEffect(() => {
     if (!user) return undefined
     let live = true
-    void Promise.all([getQuiz(quizId), getAttempt(quizId, attemptId), getQuizResult(quizId, attemptId), listQuestions(quizId)]).then(async ([foundQuiz, foundAttempt, foundResult, raw]) => {
+    void Promise.all([
+      getQuiz(quizId),
+      getAttempt(quizId, attemptId),
+      getQuizResult(quizId, attemptId).catch(() => null),
+      listQuestions(quizId),
+    ]).then(async ([foundQuiz, foundAttempt, foundResult, raw]) => {
       if (!live) return
-      if (!foundQuiz || !foundAttempt || !foundResult || foundAttempt.userId !== user.uid) { setError('The submitted result could not be found.'); setLoading(false); return }
+      if (!foundQuiz || !foundAttempt || foundAttempt.userId !== user.uid) {
+        setError('The submitted result could not be found.')
+        setLoading(false)
+        return
+      }
       const questions = persistedQuestionOrder(foundAttempt, raw.map(({ id, ...value }) => ({ ...parseQuestion(value), id })))
-      const visibility = resultVisibility(foundQuiz, foundQuiz.settings.answerReveal, foundResult)
+      const visibility = foundResult
+        ? resultVisibility(foundQuiz, foundQuiz.settings.answerReveal, foundResult)
+        : { showScore: false, showAnswers: false }
       const items = await Promise.all(questions.map(async (question) => ({ question, key: visibility.showAnswers ? (await getQuestionWithKey(quizId, question.id))?.answerKey ?? null : null })))
       if (!live) return
 
@@ -80,11 +92,11 @@ export function QuizResultPage() {
   }, [user, quizId, attemptId, loadCanvasImages])
 
   if (loading) return <AppShell><main className="app-shell__content"><Skeleton className="h-80 rounded-3xl" label="Loading result" /></main></AppShell>
-  if (error || !quiz || !attempt || !result) return <AppShell><PageHeader eyebrow="RESULT" title="Result unavailable." subtitle="We couldn’t load this submission." /><main className="app-shell__content grid gap-4"><Alert tone="error" label="Result unavailable">{error}</Alert><Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
-  const visibility = resultVisibility(quiz, quiz.settings.answerReveal, result)
+  if (error || !quiz || !attempt) return <AppShell><PageHeader eyebrow="RESULT" title="Result unavailable." subtitle="We couldn’t load this submission." /><main className="app-shell__content grid gap-4"><Alert tone="error" label="Result unavailable">{error}</Alert><Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
+  const visibility = result ? resultVisibility(quiz, quiz.settings.answerReveal, result) : { showScore: false, showAnswers: false }
   const late = isLate(attempt.startedAt, attempt.submittedAt, quiz.settings.timeLimitMinutes).late
   const isBlankCanvas = quiz.mode === 'canvas' && quiz.boardKind === 'blank'
-  const isGraded = result.reviewStatus === 'graded'
+  const isGraded = result ? result.reviewStatus === 'graded' : false
 
   const boardReviewItem = review.find((item) => item.question.type === 'canvas') ?? review[0]
   const boardQ = boardReviewItem?.question as CanvasQuestion | undefined
@@ -97,14 +109,14 @@ export function QuizResultPage() {
       {late && <Alert tone="warning" label="Late submission">Submitted after the time limit. Your instructor may review this.</Alert>}
       {isBlankCanvas ? (
         <SectionCard
-          title={isGraded && visibility.showScore ? 'Your score' : 'Submitted'}
+          title={isGraded && visibility.showScore && result ? 'Your score' : 'Submitted'}
           description={
-            isGraded && visibility.showScore
+            isGraded && visibility.showScore && result
               ? `Attempt ${attempt.attemptNumber} · Graded by instructor · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}`
               : 'Your instructor will check your board.'
           }
         >
-          {isGraded && visibility.showScore ? (
+          {isGraded && visibility.showScore && result ? (
             <div className="grid gap-4">
               <div className="quiz-score-summary">
                 <ScoreRing percent={result.maxScore > 0 ? Math.round((result.score / result.maxScore) * 100) : 0} />
@@ -112,7 +124,7 @@ export function QuizResultPage() {
               </div>
               {result.feedback && (
                 <div className="p-4 bg-navy-900-5 rounded-2xl border border-navy-900-12">
-                  <span className="block text-xs font-semibold uppercase tracking-wider text-navy-800-72">Instructor feedback</span>
+                  <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Instructor feedback</span>
                   <p className="m-0 mt-1 whitespace-pre-wrap text-base text-navy-900 font-medium">{result.feedback}</p>
                 </div>
               )}
@@ -125,32 +137,34 @@ export function QuizResultPage() {
 
           {boardQ?.showRubricToStudents && boardQ.rubric && (
             <div className="mt-4 pt-4 border-t border-navy-900-12">
-              <span className="block text-xs font-semibold uppercase tracking-wider text-navy-800-72">Grading rubric</span>
+              <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Grading rubric</span>
               <p className="m-0 mt-1 whitespace-pre-wrap text-sm text-navy-900 leading-relaxed">{boardQ.rubric}</p>
             </div>
           )}
 
           <div className="mt-4">
             <h3 className="m-0 text-base font-semibold text-navy-900 mb-2">Your submitted board</h3>
-            <div className="w-full h-[540px] bg-white rounded-3xl border border-navy-900-12 overflow-hidden shadow-sm">
-              <Suspense fallback={<Skeleton label="Loading canvas board" className="w-full h-full" />}>
-                <CanvasBoard
-                  cards={blankCards}
-                  connections={blankConnections}
-                  mode="review"
-                  directed={boardQ?.directed ?? false}
-                  className="w-full h-full"
-                />
-              </Suspense>
-            </div>
+            <ExpandableCanvasContainer title="Submitted concept board">
+              <div className="w-full h-full bg-white rounded-3xl border border-navy-900-12 overflow-hidden shadow-sm">
+                <Suspense fallback={<Skeleton label="Loading canvas board" className="w-full h-full" />}>
+                  <CanvasBoard
+                    cards={blankCards}
+                    connections={blankConnections}
+                    mode="review"
+                    directed={boardQ?.directed ?? false}
+                    className="w-full h-full"
+                  />
+                </Suspense>
+              </div>
+            </ExpandableCanvasContainer>
           </div>
         </SectionCard>
       ) : (
         <>
-          <SectionCard title={visibility.showScore ? 'Your score' : 'Submitted'} description={visibility.showScore ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
-            {quiz.mode === 'flashcards' ? <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p> : visibility.showScore ? <div className="quiz-score-summary"><ScoreRing percent={result.maxScore > 0 ? Math.round(result.score / result.maxScore * 100) : 0} /><strong>{result.score} / {result.maxScore} points</strong></div> : <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>}
+          <SectionCard title={visibility.showScore && result ? 'Your score' : 'Submitted'} description={visibility.showScore && result ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
+            {quiz.mode === 'flashcards' ? <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p> : visibility.showScore && result ? <div className="quiz-score-summary"><ScoreRing percent={result.maxScore > 0 ? Math.round(result.score / result.maxScore * 100) : 0} /><strong>{result.score} / {result.maxScore} points</strong></div> : <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>}
           </SectionCard>
-          {visibility.showAnswers && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {
+          {visibility.showAnswers && result && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {
             const grade = result.perQuestion[question.id]
             return <SectionCard key={question.id} title={`Question ${index + 1}`} description={question.prompt}>
               {quiz.mode !== 'flashcards' && visibility.showScore && <span className={`attempt-status ${grade?.correct ? 'attempt-status--correct' : 'attempt-status--incorrect'}`}>{grade?.correct ? <CircleCheck size={16} aria-hidden="true" /> : <CircleX size={16} aria-hidden="true" />}{grade?.correct ? 'Correct' : 'Needs practice'} · {grade?.pointsAwarded ?? 0} / {question.points}</span>}

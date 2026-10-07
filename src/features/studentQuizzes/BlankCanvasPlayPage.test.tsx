@@ -137,4 +137,79 @@ describe('BlankCanvasPlayPage', () => {
       connections: ['alpha<->beta'],
     })
   })
+
+  it('creates directed connection when directed is true', () => {
+    const onChange = vi.fn()
+    const currentAnswer: BlankCanvasAnswer = {
+      cards: [
+        { id: 'beta', type: 'note', title: 'Beta', content: 'B', position: { x: 0, y: 0 } },
+        { id: 'alpha', type: 'note', title: 'Alpha', content: 'A', position: { x: 0, y: 0 } },
+      ],
+      connections: [],
+    }
+
+    render(
+      <BlankCanvasPlayPage
+        question={{ ...question, directed: true }}
+        attemptId="att-1"
+        value={currentAnswer}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Connect cards/i }))
+    fireEvent.change(screen.getByLabelText(/Source card/i), { target: { value: 'beta' } })
+    fireEvent.change(screen.getByLabelText(/Target card/i), { target: { value: 'alpha' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create connection' }))
+
+    // Directed is true, so directed: 'beta->alpha'
+    expect(onChange).toHaveBeenCalledWith({
+      cards: currentAnswer.cards,
+      connections: ['beta->alpha'],
+    })
+  })
+
+  it('collapses and expands the instructions panel', () => {
+    render(
+      <BlankCanvasPlayPage
+        question={question}
+        attemptId="att-1"
+        value={{ cards: [], connections: [] }}
+        onChange={vi.fn()}
+      />,
+    )
+
+    // Instructions initially visible
+    expect(screen.getByText('Build your photosynthesis diagram.')).toBeInTheDocument()
+
+    // Collapse
+    const collapseBtn = screen.getByRole('button', { name: /Hide details/i })
+    fireEvent.click(collapseBtn)
+
+    // Content hidden
+    expect(screen.queryByText('Build your photosynthesis diagram.')).not.toBeInTheDocument()
+
+    // Expand
+    const expandBtn = screen.getByRole('button', { name: /View instructions/i })
+    fireEvent.click(expandBtn)
+    expect(screen.getByText('Build your photosynthesis diagram.')).toBeInTheDocument()
+  })
+
+  it('toggles expand board container', () => {
+    render(
+      <BlankCanvasPlayPage
+        question={question}
+        attemptId="att-1"
+        value={{ cards: [], connections: [] }}
+        onChange={vi.fn()}
+      />,
+    )
+
+    const expandBtn = screen.getByRole('button', { name: /Expand board/i })
+    expect(expandBtn).toBeInTheDocument()
+    fireEvent.click(expandBtn)
+
+    // After expanding, close or exit button is present
+    expect(screen.getByRole('button', { name: /Exit full screen/i })).toBeInTheDocument()
+  })
 })

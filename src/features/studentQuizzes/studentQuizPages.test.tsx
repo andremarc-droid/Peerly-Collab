@@ -382,4 +382,98 @@ describe('student quiz pages', () => {
     expect(screen.getByText('1 correct')).toBeInTheDocument()
     expect(screen.getByText('Glycolysis connects to Krebs.')).toBeInTheDocument()
   })
+
+  it('blank canvas result page handles hidden/unreleased score without error', async () => {
+    const blankQuiz: Quiz & { id: string } = {
+      ...quiz,
+      id: 'quiz-blank-1',
+      mode: 'canvas',
+      boardKind: 'blank',
+      settings: { ...quiz.settings, scoreVisibility: 'hidden', answerReveal: 'never' },
+    }
+    const blankQuestion = {
+      id: 'board',
+      type: 'canvas' as const,
+      order: 0,
+      prompt: 'Construct your concept board.',
+      points: 50,
+      cards: [],
+      maxCards: 20,
+      maxConnections: 40,
+      allowedCardTypes: ['note', 'paragraph'],
+    }
+    const blankAttempt: QuizAttempt & { id: string } = {
+      ...submittedAttempt,
+      answers: {
+        board: {
+          cards: [{ id: 'b1', type: 'note', title: 'Cell Wall', content: 'Provides support', position: { x: 0, y: 0 } }],
+          connections: [],
+        },
+      },
+      questionOrder: ['board'],
+    }
+
+    vi.mocked(getQuiz).mockResolvedValue(blankQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([blankQuestion])
+    vi.mocked(getAttempt).mockResolvedValue(blankAttempt)
+    // Permission denied on result read
+    vi.mocked(getQuizResult).mockRejectedValue(new Error('Missing or insufficient permissions.'))
+
+    renderRoute('/student/quizzes/quiz-blank-1/attempts/attempt-1/result', <QuizResultPage />)
+
+    expect(await screen.findByText(/Submitted\. Your instructor will check your board\./i)).toBeInTheDocument()
+    expect(await screen.findByText('Cell Wall')).toBeInTheDocument()
+    expect(screen.queryByText(/Something went wrong/i)).not.toBeInTheDocument()
+  })
+
+  it('blank canvas result page displays score and feedback when graded', async () => {
+    const blankQuiz: Quiz & { id: string } = {
+      ...quiz,
+      id: 'quiz-blank-2',
+      mode: 'canvas',
+      boardKind: 'blank',
+      settings: { ...quiz.settings, scoreVisibility: 'immediate', answerReveal: 'after_submit' },
+    }
+    const blankQuestion = {
+      id: 'board',
+      type: 'canvas' as const,
+      order: 0,
+      prompt: 'Construct your concept board.',
+      points: 50,
+      cards: [],
+      maxCards: 20,
+      maxConnections: 40,
+      allowedCardTypes: ['note', 'paragraph'],
+    }
+    const blankAttempt: QuizAttempt & { id: string } = {
+      ...submittedAttempt,
+      answers: {
+        board: {
+          cards: [{ id: 'b1', type: 'note', title: 'Cell Wall', content: 'Provides support', position: { x: 0, y: 0 } }],
+          connections: [],
+        },
+      },
+      questionOrder: ['board'],
+    }
+    const blankResult: QuizResult = {
+      userId: 'student-1',
+      score: 48,
+      maxScore: 50,
+      perQuestion: {},
+      reviewStatus: 'graded',
+      feedback: 'Excellent organization and clear labels.',
+      gradedAt: Timestamp.now(),
+    }
+
+    vi.mocked(getQuiz).mockResolvedValue(blankQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([blankQuestion])
+    vi.mocked(getAttempt).mockResolvedValue(blankAttempt)
+    vi.mocked(getQuizResult).mockResolvedValue(blankResult)
+
+    renderRoute('/student/quizzes/quiz-blank-2/attempts/attempt-1/result', <QuizResultPage />)
+
+    expect(await screen.findByText('48 / 50 points')).toBeInTheDocument()
+    expect(await screen.findByText('Excellent organization and clear labels.')).toBeInTheDocument()
+    expect(await screen.findByText('Cell Wall')).toBeInTheDocument()
+  })
 })

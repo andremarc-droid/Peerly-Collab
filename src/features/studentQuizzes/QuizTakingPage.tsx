@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
@@ -122,8 +122,36 @@ export function QuizTakingPage() {
     return () => { if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current) }
   }, [answers, attempt, quizId, attemptId, showToast])
 
+  const invalidLinkCards = useMemo(() => {
+    const list: Array<{ questionId: string; questionIndex: number; cardId: string; title: string }> = []
+    questions.forEach((q, qIdx) => {
+      const ans = answers[q.id]
+      if (ans && typeof ans === 'object' && 'cards' in ans && Array.isArray((ans as { cards?: unknown[] }).cards)) {
+        const cards = (ans as { cards: Array<{ id?: string; type?: string; title?: string; url?: string }> }).cards
+        cards.forEach((card) => {
+          if (card.type === 'link') {
+            const u = (card.url || '').trim()
+            if (!u || !/^https:\/\/[^\s]+$/.test(u)) {
+              list.push({
+                questionId: q.id,
+                questionIndex: qIdx,
+                cardId: card.id || 'unknown',
+                title: card.title || 'Untitled link',
+              })
+            }
+          }
+        })
+      }
+    })
+    return list
+  }, [questions, answers])
+
   const submit = useCallback(async (isAutoSubmit = false) => {
     if (submitted.current || !attempt || !quiz) return
+    if (invalidLinkCards.length > 0) {
+      showToast('error', 'Link cards must have a valid https:// URL before submitting.')
+      return
+    }
     submitted.current = true; setBusy(true); setError('')
     try {
       await autosaveAnswers(quizId, attemptId, answers)
@@ -139,7 +167,7 @@ export function QuizTakingPage() {
       showToast('error', 'Your quiz could not be submitted.')
       setBusy(false)
     }
-  }, [attempt, quiz, quizId, attemptId, answers, seconds, navigate, showToast, checkedStorageKey])
+  }, [attempt, quiz, quizId, attemptId, answers, seconds, navigate, showToast, checkedStorageKey, invalidLinkCards])
 
   useEffect(() => {
     if (seconds !== null && shouldAutoSubmit(seconds) && !submitted.current && !autoSubmitTriggered.current) {
@@ -151,6 +179,7 @@ export function QuizTakingPage() {
   const question = questions[index]
   const answeredCount = questions.filter((item) => hasAnswer(answers[item.id])).length
   const unanswered = questions.map((item, i) => ({ item, i })).filter(({ item }) => !hasAnswer(answers[item.id]))
+
   const setAnswer = (id: string, value: SubmittedAnswer) => setAnswers((current) => ({ ...current, [id]: value }))
   const go = (next: number) => setIndex(Math.max(0, Math.min(questions.length - 1, next)))
 
@@ -303,8 +332,40 @@ export function QuizTakingPage() {
       <div className="flex flex-wrap justify-between gap-3"><Button type="button" variant="secondary" disabled={index === 0} onClick={() => go(index - 1)}>Previous</Button><Button type="button" variant="secondary" disabled={index === questions.length - 1 || revealEach && !checkedCurrent} onClick={() => go(index + 1)}>Next</Button><Button type="button" onClick={() => setReviewOpen(true)}>Review and submit</Button></div>
     </main>
     <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} title="Review your answers" description={`${answeredCount} of ${questions.length} answered. ${unanswered.length} unanswered.`}>
+      {invalidLinkCards.length > 0 && (
+        <div className="mb-4">
+          <Alert tone="error" label="Link cards must have a valid https:// URL before submitting.">
+            <p className="m-0 text-sm text-navy-900">The following link cards are missing a valid web address:</p>
+            <ul className="m-0 pl-5 text-sm list-disc">
+              {invalidLinkCards.map((c) => (
+                <li key={c.cardId}>
+                  <button
+                    type="button"
+                    className="underline font-semibold hover:text-navy-900 text-left"
+                    onClick={() => {
+                      setReviewOpen(false)
+                      go(c.questionIndex)
+                    }}
+                  >
+                    Question {c.questionIndex + 1}: {c.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        </div>
+      )}
       {unanswered.length > 0 ? <ol className="grid gap-2 pl-5">{unanswered.map(({ item, i }) => <li key={item.id}><Button type="button" variant="ghost" onClick={() => { setReviewOpen(false); go(i) }}>Question {i + 1}: {item.prompt}</Button></li>)}</ol> : <p>Every question has an answer.</p>}
-      <div className="dialog__actions"><Button type="button" variant="secondary" onClick={() => setReviewOpen(false)}>Keep working</Button><Button type="button" onClick={() => { setReviewOpen(false); setConfirmSubmitOpen(true) }}>Continue to submit</Button></div>
+      <div className="dialog__actions">
+        <Button type="button" variant="secondary" onClick={() => setReviewOpen(false)}>Keep working</Button>
+        <Button
+          type="button"
+          disabled={invalidLinkCards.length > 0}
+          onClick={() => { setReviewOpen(false); setConfirmSubmitOpen(true) }}
+        >
+          Continue to submit
+        </Button>
+      </div>
     </Dialog>
     <ConfirmDialog open={confirmSubmitOpen} onClose={() => setConfirmSubmitOpen(false)} onConfirm={() => { setConfirmSubmitOpen(false); void submit() }} title="Submit your quiz?" description="Once submitted, your answers can’t be changed." confirmLabel="Submit quiz" busy={busy} closeOnConfirm={false} />
   </AppShell>

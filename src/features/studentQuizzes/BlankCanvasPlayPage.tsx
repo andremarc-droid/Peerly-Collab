@@ -1,16 +1,21 @@
 import { ChevronDown, ChevronUp, Link as LinkIcon, MessageSquare, Plus, Share2, StickyNote, Trash2 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { Dialog } from '../../shared/ui/Dialog'
 import { Select } from '../../shared/ui/Select'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { CardEditorPanel } from '../canvas/components/CardEditorPanel'
+import { ExpandableCanvasContainer } from '../canvas/components/ExpandableCanvasContainer'
+import { findNonOverlappingPosition } from '../canvas/placement'
 import { normalizeConnection } from '../canvas/schemas'
 import type { CanvasAllowedCardType, CanvasCard, CanvasConnection, CanvasQuestion } from '../canvas/types'
 import type { BlankCanvasAnswer, BlankCanvasAnswerCard } from '../quizzes/types'
 
 const CanvasBoard = lazy(() => import('../canvas/components/CanvasBoard'))
+
+// In-memory persistence of instructions panel toggle state per attempt
+const instructionsStateByAttempt = new Map<string, boolean>()
 
 export interface BlankCanvasPlayPageProps {
   question: CanvasQuestion & { id: string }
@@ -24,13 +29,42 @@ export interface BlankCanvasPlayPageProps {
 
 export function BlankCanvasPlayPage({
   question,
+  attemptId,
   value,
   onChange,
   disabled = false,
   className = '',
 }: BlankCanvasPlayPageProps) {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
-  const [showInstructions, setShowInstructions] = useState(false)
+
+  // Default open on first load; remembers state in-memory per attempt
+  const [showInstructions, setShowInstructions] = useState(() => {
+    if (instructionsStateByAttempt.has(attemptId)) {
+      return instructionsStateByAttempt.get(attemptId)!
+    }
+    return true
+  })
+
+  // On screens < 768px, collapse after first board action
+  const hasInteractedRef = useRef(false)
+  const notifyBoardAction = useCallback(() => {
+    if (!hasInteractedRef.current) {
+      hasInteractedRef.current = true
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        setShowInstructions(false)
+        instructionsStateByAttempt.set(attemptId, false)
+      }
+    }
+  }, [attemptId])
+
+  const handleToggleInstructions = () => {
+    setShowInstructions((prev) => {
+      const next = !prev
+      instructionsStateByAttempt.set(attemptId, next)
+      return next
+    })
+  }
+
   const [showConnectModal, setShowConnectModal] = useState(false)
   const [connectFrom, setConnectFrom] = useState('')
   const [connectTo, setConnectTo] = useState('')
@@ -56,17 +90,16 @@ export function BlankCanvasPlayPage({
 
   const handleAddCard = (type: CanvasAllowedCardType) => {
     if (disabled || cards.length >= maxCards) return
+    notifyBoardAction()
     const id = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
     const defaultTitle = type === 'link' ? 'Resource' : type === 'note' ? 'Idea' : 'Summary'
+    const pos = findNonOverlappingPosition(cards, { x: 320, y: 160 })
     const newCard: CanvasCard = {
       id,
       type,
       title: defaultTitle,
       content: '',
-      position: {
-        x: 100 + (cards.length % 6) * 50,
-        y: 80 + (cards.length % 6) * 50,
-      },
+      position: pos,
     }
     const nextCards = [...cards, newCard]
     setSelectedCardId(id)
@@ -75,6 +108,7 @@ export function BlankCanvasPlayPage({
 
   const handleUpdateCard = (field: 'title' | 'content' | 'url' | 'alt', val: string) => {
     if (!selectedCard || disabled) return
+    notifyBoardAction()
     const nextCards = cards.map((c) => {
       if (c.id !== selectedCard.id) return c
       return { ...c, [field]: val }
@@ -84,9 +118,10 @@ export function BlankCanvasPlayPage({
 
   const handleDeleteCard = (cardId: string) => {
     if (disabled) return
+    notifyBoardAction()
     const nextCards = cards.filter((c) => c.id !== cardId)
     const nextConnections = connections.filter((connStr) => {
-      const parts = connStr.split(directed ? '->' : '<->')
+      const parts = connStr.includes('->') ? connStr.split('->') : connStr.split('<->')
       return parts[0] !== cardId && parts[1] !== cardId
     })
     if (selectedCardId === cardId) {
@@ -97,6 +132,7 @@ export function BlankCanvasPlayPage({
 
   const handlePositionsChange = (positions: Record<string, { x: number; y: number }>) => {
     if (disabled) return
+    notifyBoardAction()
     const nextCards = cards.map((c) => {
       const p = positions[c.id]
       return p ? { ...c, position: { x: Math.round(p.x), y: Math.round(p.y) } } : c
@@ -106,6 +142,7 @@ export function BlankCanvasPlayPage({
 
   const handleConnectionsChange = (newConns: CanvasConnection[]) => {
     if (disabled) return
+    notifyBoardAction()
     const stringList = newConns
       .slice(0, maxConnections)
       .map((c) => normalizeConnection(c.from, c.to, directed))
@@ -131,6 +168,7 @@ export function BlankCanvasPlayPage({
       setConnectError('These cards are already connected.')
       return
     }
+    notifyBoardAction()
     const nextConnections = [...connections, edgeId]
     onChange({ cards: cards as BlankCanvasAnswerCard[], connections: nextConnections })
     setConnectFrom('')
@@ -167,7 +205,7 @@ export function BlankCanvasPlayPage({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => setShowInstructions((prev) => !prev)}
+            onClick={handleToggleInstructions}
             aria-expanded={showInstructions}
           >
             {showInstructions ? (
@@ -185,14 +223,14 @@ export function BlankCanvasPlayPage({
         {showInstructions && (
           <div className="mt-4 pt-4 border-t border-navy-900-12 grid gap-3">
             <div>
-              <span className="block text-xs font-semibold uppercase tracking-wider text-navy-800-72">Prompt</span>
+              <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Prompt</span>
               <p className="m-0 mt-1 whitespace-pre-wrap text-base text-navy-900 leading-relaxed font-body">
                 {question.prompt}
               </p>
             </div>
             {question.showRubricToStudents && question.rubric && (
               <div className="pt-2 border-t border-navy-900-12">
-                <span className="block text-xs font-semibold uppercase tracking-wider text-navy-800-72">Rubric</span>
+                <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Rubric</span>
                 <p className="m-0 mt-1 whitespace-pre-wrap text-sm text-navy-900 leading-relaxed">
                   {question.rubric}
                 </p>
@@ -254,8 +292,8 @@ export function BlankCanvasPlayPage({
       </div>
 
       {/* Board & Side Editor Layout */}
-      <div className="flex flex-col lg:flex-row gap-4 items-start">
-        <div className="relative flex-1 w-full h-[620px] bg-white rounded-3xl border border-navy-900-12 overflow-hidden shadow-sm">
+      <ExpandableCanvasContainer title="Concept map canvas">
+        <div className="relative flex-1 min-w-0 w-full h-full bg-white rounded-3xl border border-navy-900-12 overflow-hidden shadow-sm">
           {cards.length === 0 && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center pointer-events-none bg-white/70">
               <div className="max-w-md p-6 bg-white rounded-2xl border border-navy-900-12 shadow-sm pointer-events-auto">
@@ -293,7 +331,7 @@ export function BlankCanvasPlayPage({
                 if (disabled) return
                 const remainingIds = new Set(remaining.map((c) => c.id))
                 const nextConns = connections.filter((connStr) => {
-                  const parts = connStr.split(directed ? '->' : '<->')
+                  const parts = connStr.includes('->') ? connStr.split('->') : connStr.split('<->')
                   return remainingIds.has(parts[0]) && remainingIds.has(parts[1])
                 })
                 onChange({ cards: remaining as BlankCanvasAnswerCard[], connections: nextConns })
@@ -312,7 +350,7 @@ export function BlankCanvasPlayPage({
             onClose={() => setSelectedCardId(null)}
           />
         )}
-      </div>
+      </ExpandableCanvasContainer>
 
       {/* Connect Cards Dialog */}
       <Dialog
