@@ -153,15 +153,19 @@ export function StudentLearningHubPage() {
 
       // Quizzes
       unsubs.push(
-        watchPublishedQuizzesForClass(classId, (quizzes) => {
-          setQuizTitles((prev) => {
-            const next = { ...prev }
-            quizzes.forEach((q) => {
-              next[q.id] = q.title
+        watchPublishedQuizzesForClass(
+          classId,
+          (quizzes) => {
+            setQuizTitles((prev) => {
+              const next = { ...prev }
+              quizzes.forEach((q) => {
+                next[q.id] = q.title
+              })
+              return next
             })
-            return next
-          })
-        }),
+          },
+          () => {},
+        ),
       )
     })
 

@@ -10,7 +10,6 @@ import {
   Globe,
   EyeOff,
   MoreVertical,
-  Layout,
 } from 'lucide-react'
 import { AppShell } from '../../app/AppShell'
 import { PageHeader } from '../../shared/ui/PageHeader'
@@ -94,7 +93,7 @@ export function InstructorLearningHubPage() {
 
   // 2. Watch canvases, modules, and quizzes for all owned classes
   useEffect(() => {
-    if (!classes.length) return
+    if (!user || !classes.length) return
     const unsubs: Array<() => void> = []
 
     classes.forEach((cls) => {
