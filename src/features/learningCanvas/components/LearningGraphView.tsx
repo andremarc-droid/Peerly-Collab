@@ -56,6 +56,7 @@ interface LearningGraphViewProps {
   quizTitles?: Record<string, string>
   selectedClassId?: string
   role: CanvasViewerRole
+  onSwitchToCanvases?: () => void
 }
 
 export function LearningGraphView({
@@ -65,6 +66,7 @@ export function LearningGraphView({
   quizTitles = {},
   selectedClassId,
   role,
+  onSwitchToCanvases,
 }: LearningGraphViewProps) {
   /* ── Search & filter state ── */
   const [searchQuery, setSearchQuery] = useState('')
@@ -504,10 +506,20 @@ export function LearningGraphView({
             <Orbit size={24} />
           </div>
           <h3 className="text-base font-bold text-navy-900 m-0 mb-1">No graph connections</h3>
-          <p className="text-sm text-navy-800-72 max-w-sm m-0">
+          <p className="text-sm text-navy-800-72 max-w-sm m-0 mb-4">
             Create learning canvases and add references to modules, quizzes, or other canvases to
             explore the interactive knowledge graph.
           </p>
+          {onSwitchToCanvases && (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={onSwitchToCanvases}
+            >
+              <span>Go to Canvases</span>
+              <ChevronRight size={16} aria-hidden="true" />
+            </Button>
+          )}
         </div>
       ) : (
         <svg

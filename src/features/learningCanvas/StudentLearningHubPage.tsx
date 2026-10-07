@@ -381,6 +381,7 @@ export function StudentLearningHubPage() {
               quizTitles={quizTitles}
               selectedClassId={selectedClassId}
               role="student"
+              onSwitchToCanvases={() => setViewMode('canvases')}
             />
           </section>
         )}

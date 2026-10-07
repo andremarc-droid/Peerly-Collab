@@ -366,6 +366,7 @@ export function InstructorLearningHubPage() {
               quizTitles={quizTitles}
               selectedClassId={selectedClassId}
               role="instructor"
+              onSwitchToCanvases={() => setViewMode('canvases')}
             />
           </section>
         )}
