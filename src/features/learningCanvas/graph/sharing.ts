@@ -19,6 +19,7 @@ import {
 import { firestore } from '../../../lib/firebase/firestore'
 import { generateInviteToken, inviteExpiryMs } from '../collab/inviteLink'
 import type { CollabRole, MemberView, InviteView, ActivityRecord } from '../collab/types'
+import { createInviteCode, registerLearningInviteCode } from '../../learningSharing/inviteCodes'
 
 const graphViewsPath = (classId: string) => ['classes', classId, 'graphViews'] as const
 const graphPath = (classId: string, graphId: string) => [...graphViewsPath(classId), graphId] as const
@@ -33,11 +34,35 @@ export interface SharedGraphSnapshot {
   title: string
   nodeIds: string[]
   positions: Record<string, { x: number; y: number; isFixed?: boolean }>
+  nodes: SharedGraphNode[]
+  links: SharedGraphLink[]
+}
+
+export interface SharedGraphNode {
+  id: string
+  rawId: string
+  type: 'note' | 'learning' | 'module' | 'quiz' | 'link'
+  title: string
+  classId: string
+  className: string
+  description?: string
+  content?: string
+  x: number
+  y: number
+  isFixed?: boolean
+}
+
+export interface SharedGraphLink {
+  id: string
+  source: string
+  target: string
 }
 
 export interface GraphConfig {
   nodeIds: string[]
   positions: Record<string, { x: number; y: number; isFixed?: boolean }>
+  nodes: SharedGraphNode[]
+  links: SharedGraphLink[]
 }
 
 export interface GraphPresence {
@@ -49,6 +74,30 @@ export interface GraphPresence {
 
 export interface SharedGraphRef extends SharedGraphSnapshot {
   role: CollabRole
+}
+
+function storedNodes(nodes: SharedGraphNode[]): SharedGraphNode[] {
+  return nodes.slice(0, 80).map((node) => ({
+    id: node.id.slice(0, 300),
+    rawId: node.rawId.slice(0, 300),
+    type: node.type,
+    title: node.title.slice(0, 500),
+    classId: node.classId.slice(0, 150),
+    className: node.className.slice(0, 120),
+    ...(node.description ? { description: node.description.slice(0, 2000) } : {}),
+    ...(node.content ? { content: node.content.slice(0, 2000) } : {}),
+    x: Math.max(-1500, Math.min(1500, node.x)),
+    y: Math.max(-1500, Math.min(1500, node.y)),
+    isFixed: node.isFixed === true,
+  }))
+}
+
+function storedLinks(links: SharedGraphLink[]): SharedGraphLink[] {
+  return links.slice(0, 120).map((link) => ({
+    id: link.id.slice(0, 650),
+    source: link.source.slice(0, 300),
+    target: link.target.slice(0, 300),
+  }))
 }
 
 export function watchGraphPresence(
@@ -103,6 +152,8 @@ export function watchSharedGraphs(
           || data.classId !== classId
           || !Array.isArray(data.nodeIds)
           || !data.nodeIds.every((id) => typeof id === 'string')
+          || (data.nodes !== undefined && !Array.isArray(data.nodes))
+          || (data.links !== undefined && !Array.isArray(data.links))
           || typeof data.positions !== 'object'
           || data.positions === null
           || Array.isArray(data.positions)
@@ -116,6 +167,8 @@ export function watchSharedGraphs(
             positions[id] = { x: position.x, y: position.y, isFixed: position.isFixed === true }
           }
         }
+        const nodes = parseSharedNodes(data.nodes)
+        const links = parseSharedLinks(data.links)
         const graph: SharedGraphRef = {
           id: snap.id,
           classId,
@@ -124,6 +177,8 @@ export function watchSharedGraphs(
           title: typeof data.title === 'string' ? data.title : 'Shared graph view',
           nodeIds: data.nodeIds.filter((id) => id.length <= 300).slice(0, 80),
           positions,
+          nodes,
+          links,
           role,
         }
         return { graph, error: null }
@@ -171,6 +226,8 @@ export async function createSharedGraph(
     title: 'Shared graph view',
     nodeIds: config.nodeIds.slice(0, 80),
     positions: Object.fromEntries(Object.entries(config.positions).slice(0, 80)),
+    nodes: storedNodes(config.nodes),
+    links: storedLinks(config.links),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -186,6 +243,8 @@ export async function saveSharedGraph(
   await updateDoc(doc(db, ...graphPath(classId, graphId)), {
     nodeIds: config.nodeIds.slice(0, 80),
     positions: Object.fromEntries(Object.entries(config.positions).slice(0, 80)),
+    nodes: storedNodes(config.nodes),
+    links: storedLinks(config.links),
     updatedAt: serverTimestamp(),
   })
 }
@@ -209,6 +268,8 @@ export function watchSharedGraph(
       || data.classId !== classId
       || !Array.isArray(data.nodeIds)
       || !data.nodeIds.every((id) => typeof id === 'string')
+      || (data.nodes !== undefined && !Array.isArray(data.nodes))
+      || (data.links !== undefined && !Array.isArray(data.links))
       || typeof data.positions !== 'object'
       || data.positions === null
       || Array.isArray(data.positions)
@@ -227,6 +288,8 @@ export function watchSharedGraph(
         positions[id] = { x: position.x, y: position.y, isFixed: position.isFixed === true }
       }
     }
+    const nodes = parseSharedNodes(data.nodes)
+    const links = parseSharedLinks(data.links)
     onChange({
       id: snap.id,
       ownerId: data.ownerId,
@@ -235,8 +298,56 @@ export function watchSharedGraph(
       title: typeof data.title === 'string' ? data.title : 'Shared graph view',
       nodeIds: data.nodeIds.filter((id) => id.length <= 300).slice(0, 80),
       positions,
+      nodes,
+      links,
     })
   }, onError)
+}
+
+function parseSharedNodes(value: unknown): SharedGraphNode[] {
+  if (!Array.isArray(value)) return []
+  const nodes: SharedGraphNode[] = []
+  for (const candidate of value.slice(0, 80)) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
+    const item = candidate as Record<string, unknown>
+    if (
+      typeof item.id !== 'string' || item.id.length > 300
+      || typeof item.rawId !== 'string' || item.rawId.length > 300
+      || !['note', 'learning', 'module', 'quiz', 'link'].includes(String(item.type))
+      || typeof item.title !== 'string' || item.title.length > 500
+      || typeof item.classId !== 'string' || item.classId.length > 150
+      || typeof item.className !== 'string' || item.className.length > 120
+      || typeof item.x !== 'number' || !Number.isFinite(item.x) || Math.abs(item.x) > 1500
+      || typeof item.y !== 'number' || !Number.isFinite(item.y) || Math.abs(item.y) > 1500
+    ) continue
+    nodes.push({
+      id: item.id,
+      rawId: item.rawId,
+      type: item.type as SharedGraphNode['type'],
+      title: item.title,
+      classId: item.classId,
+      className: item.className,
+      ...(typeof item.description === 'string' ? { description: item.description.slice(0, 2000) } : {}),
+      ...(typeof item.content === 'string' ? { content: item.content.slice(0, 2000) } : {}),
+      x: item.x,
+      y: item.y,
+      isFixed: item.isFixed === true,
+    })
+  }
+  return nodes
+}
+
+function parseSharedLinks(value: unknown): SharedGraphLink[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 120).flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return []
+    const item = candidate as Record<string, unknown>
+    return typeof item.id === 'string' && item.id.length <= 650
+      && typeof item.source === 'string' && item.source.length <= 300
+      && typeof item.target === 'string' && item.target.length <= 300
+      ? [{ id: item.id, source: item.source, target: item.target }]
+      : []
+  })
 }
 
 export async function createGraphInvite(
@@ -248,15 +359,23 @@ export async function createGraphInvite(
   db: Firestore = firestore,
 ): Promise<string> {
   const token = generateInviteToken()
+  const code = createInviteCode()
   const expiresMs = inviteExpiryMs(expiry, Date.now())
   await setDoc(doc(db, ...graphSubPath(classId, graphId, 'invites'), token), {
     createdBy: ownerId,
+    code,
     role,
     active: true,
     createdAt: serverTimestamp(),
     expiresAt: expiresMs === null ? null : Timestamp.fromMillis(expiresMs),
   })
-  return token
+  await registerLearningInviteCode(code, {
+    kind: 'graph',
+    classId,
+    itemId: graphId,
+    inviteToken: token,
+  }, ownerId, expiresMs === null ? null : Timestamp.fromMillis(expiresMs), db)
+  return code
 }
 
 export async function acceptGraphInvite(
@@ -340,6 +459,7 @@ export function watchGraphInvites(
       const data = item.data()
       return {
         token: item.id,
+        code: typeof data.code === 'string' ? data.code : '',
         role: data.role === 'editor' ? 'editor' : 'viewer',
         active: data.active === true,
         createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',

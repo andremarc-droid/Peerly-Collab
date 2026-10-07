@@ -43,7 +43,7 @@ export function GraphSharingPanel({ classId, graphId, uid, name, ownerId, ownerN
   const [actionError, setActionError] = useState<string | null>(null)
   const [role, setRole] = useState<CollabRole>('viewer')
   const [expiry, setExpiry] = useState<'7' | '30' | 'never'>('7')
-  const [newInviteUrl, setNewInviteUrl] = useState<string | null>(null)
+  const [newInviteCode, setNewInviteCode] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -100,11 +100,11 @@ export function GraphSharingPanel({ classId, graphId, uid, name, ownerId, ownerN
     setBusy(true)
     setActionError(null)
     try {
-      const token = await createGraphInvite(classId, graphId, uid, role, expiry)
-      setNewInviteUrl(`${window.location.origin}/learning/join-graph/${encodeURIComponent(classId)}/${encodeURIComponent(graphId)}/${encodeURIComponent(token)}`)
-      await record(`Created a ${role === 'editor' ? 'can edit' : 'view only'} invite link`)
+      const code = await createGraphInvite(classId, graphId, uid, role, expiry)
+      setNewInviteCode(code)
+      await record(`Created a ${role === 'editor' ? 'can edit' : 'view only'} invite code`)
     } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : 'Could not create this invite.')
+      setActionError(cause instanceof Error ? cause.message : 'Could not create this invite code.')
     } finally {
       setBusy(false)
     }
@@ -114,7 +114,7 @@ export function GraphSharingPanel({ classId, graphId, uid, name, ownerId, ownerN
     try {
       await navigator.clipboard.writeText(value)
     } catch {
-      setActionError('Copy was unavailable. Select and copy the invite link.')
+      setActionError('Copy was unavailable. Select and copy the invite code.')
     }
   }
 
@@ -139,7 +139,7 @@ export function GraphSharingPanel({ classId, graphId, uid, name, ownerId, ownerN
   const revoke = async (invite: InviteView) => {
     try {
       await updateGraphInvite(classId, graphId, invite.token, false)
-      await record('Turned off a graph invite link')
+      await record('Turned off a graph invite code')
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : 'Could not update this invite.')
     }
@@ -189,7 +189,7 @@ export function GraphSharingPanel({ classId, graphId, uid, name, ownerId, ownerN
       {owner && (
         <div className="grid gap-3 border-t border-navy-900-12 pt-4">
           <h3 className="m-0 flex items-center gap-2 font-bold text-navy-900">
-            <UserRoundPlus size={17} aria-hidden="true" /> Invite class members
+            <UserRoundPlus size={17} aria-hidden="true" /> Invite people with a code
           </h3>
           <div className="flex flex-wrap items-end gap-3">
             <label className="grid gap-1 text-sm font-semibold text-navy-900">
@@ -200,7 +200,7 @@ export function GraphSharingPanel({ classId, graphId, uid, name, ownerId, ownerN
               </select>
             </label>
             <label className="grid gap-1 text-sm font-semibold text-navy-900">
-              Link expires
+              Code expires
               <select value={expiry} onChange={(event) => setExpiry(event.target.value as typeof expiry)} className="min-h-11 rounded-xl border border-navy-900-30 bg-white px-3 text-sm">
                 <option value="7">7 days</option>
                 <option value="30">30 days</option>
@@ -208,25 +208,28 @@ export function GraphSharingPanel({ classId, graphId, uid, name, ownerId, ownerN
               </select>
             </label>
             <Button variant="primary" onClick={() => void createInvite()} disabled={busy}>
-              <Link2 size={16} aria-hidden="true" /> {busy ? 'Creating…' : 'Create invite link'}
+              <Link2 size={16} aria-hidden="true" /> {busy ? 'Creating…' : 'Create invite code'}
             </Button>
           </div>
-          {newInviteUrl && (
+          {newInviteCode && (
             <div className="grid gap-2 rounded-xl border border-navy-900-12 bg-navy-900-05 p-3">
-              <label htmlFor="graph-invite-url" className="text-sm font-semibold text-navy-900">Invite link</label>
-              <input id="graph-invite-url" readOnly value={newInviteUrl} onFocus={(event) => event.currentTarget.select()} className="min-h-11 w-full rounded-lg border border-navy-900-30 bg-white px-3 text-sm text-navy-900" />
-              <Button variant="secondary" onClick={() => void copy(newInviteUrl)}><Copy size={15} aria-hidden="true" /> Copy link</Button>
+              <label htmlFor="graph-invite-code" className="text-sm font-semibold text-navy-900">Invite code</label>
+              <input id="graph-invite-code" readOnly value={newInviteCode} onFocus={(event) => event.currentTarget.select()} className="min-h-11 w-full rounded-lg border border-navy-900-30 bg-white px-3 font-mono text-lg tracking-widest text-navy-900" />
+              <Button variant="secondary" onClick={() => void copy(newInviteCode)}><Copy size={15} aria-hidden="true" /> Copy code</Button>
             </div>
           )}
           {invites.filter((invite) => invite.active).map((invite) => {
-            const url = `${window.location.origin}/learning/join-graph/${encodeURIComponent(classId)}/${encodeURIComponent(graphId)}/${encodeURIComponent(invite.token)}`
             return (
               <div key={invite.token} className="grid gap-2 rounded-xl border border-navy-900-12 p-3 text-sm text-navy-900">
                 <span>{invite.role === 'editor' ? 'Can edit' : 'View only'} invite · {invite.expiresAtMs ? `expires ${formatTime(invite.expiresAtMs)}` : 'no expiry'}</span>
-                <label className="sr-only" htmlFor={`graph-invite-${invite.token}`}>Graph invite link</label>
-                <input id={`graph-invite-${invite.token}`} readOnly value={url} onFocus={(event) => event.currentTarget.select()} className="min-h-11 w-full rounded-lg border border-navy-900-30 bg-white px-3 text-sm text-navy-900" />
+                {invite.code ? (
+                  <>
+                    <label className="sr-only" htmlFor={`graph-invite-${invite.token}`}>Graph invite code</label>
+                    <input id={`graph-invite-${invite.token}`} readOnly value={invite.code} onFocus={(event) => event.currentTarget.select()} className="min-h-11 w-full rounded-lg border border-navy-900-30 bg-white px-3 font-mono text-lg tracking-widest text-navy-900" />
+                  </>
+                ) : <span className="text-sm text-navy-800">Legacy invite. Create a new code to share this graph.</span>}
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" onClick={() => void copy(url)}><Copy size={15} aria-hidden="true" /> Copy link</Button>
+                  {invite.code && <Button variant="secondary" onClick={() => void copy(invite.code)}><Copy size={15} aria-hidden="true" /> Copy code</Button>}
                   <Button variant="secondary" onClick={() => void revoke(invite)}>Turn off</Button>
                 </div>
               </div>

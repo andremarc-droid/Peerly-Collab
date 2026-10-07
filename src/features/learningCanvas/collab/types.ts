@@ -38,6 +38,7 @@ export interface MemberView {
 
 export interface InviteView {
   token: string
+  code: string
   role: CollabRole
   active: boolean
   createdBy: string

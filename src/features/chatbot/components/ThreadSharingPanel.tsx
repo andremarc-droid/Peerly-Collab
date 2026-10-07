@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Activity, Copy, Link2, Users, UserRoundPlus, X } from 'lucide-react'
 import { Alert } from '../../../shared/ui/Alert'
 import { Button } from '../../../shared/ui/Button'
-import { buildTutorInviteUrl, createTutorInvite, removeTutorMember, setTutorInviteActive, setTutorMemberRole, watchTutorActivity, watchTutorInvites, watchTutorMembers, writeActivity } from '../sharedAccessService'
+import { createTutorInvite, removeTutorMember, setTutorInviteActive, setTutorMemberRole, watchTutorActivity, watchTutorInvites, watchTutorMembers, writeActivity } from '../sharedAccessService'
 import { watchTutorPresence, writeTutorPresence, type TutorPresence } from '../sharedPresence'
 import type { TutorActivity, TutorShareInvite, TutorShareMember } from '../sharedTypes'
 import type { ChatThread } from '../types'
@@ -40,6 +40,7 @@ export function ThreadSharingPanel({
   const [actionError, setActionError] = useState<string | null>(null)
   const [copyError, setCopyError] = useState<string | null>(null)
   const [copyValue, setCopyValue] = useState<string | null>(null)
+  const [newInviteCode, setNewInviteCode] = useState<string | null>(null)
 
   useEffect(() => {
     if (!role) return
@@ -74,7 +75,7 @@ export function ThreadSharingPanel({
       await navigator.clipboard.writeText(text)
       setCopyError(null)
     } catch {
-      setCopyError('Clipboard access failed. Copy the invite link from your browser address bar after opening it.')
+      setCopyError('Clipboard access failed. Select and copy the invite code instead.')
     }
   }
 
@@ -82,10 +83,10 @@ export function ThreadSharingPanel({
     setBusy(true)
     setActionError(null)
     try {
-      const token = await createTutorInvite(thread.id, uid, inviteRole, expiry === 'never' ? null : Number(expiry))
-      const url = buildTutorInviteUrl(window.location.origin, thread.id, token)
-      await writeActivity(thread.id, uid, displayName, `Created a ${inviteRole === 'editor' ? 'can edit' : 'view only'} invite.`)
-      await copy(url)
+      const code = await createTutorInvite(thread.id, uid, inviteRole, expiry === 'never' ? null : Number(expiry))
+      setNewInviteCode(code)
+      setCopyError(null)
+      await writeActivity(thread.id, uid, displayName, `Created a ${inviteRole === 'editor' ? 'can edit' : 'view only'} invite code.`)
     } catch (cause) {
       setActionError(errorMessage(cause))
     } finally {
@@ -114,7 +115,7 @@ export function ThreadSharingPanel({
   const toggleInvite = async (invite: TutorShareInvite) => {
     try {
       await setTutorInviteActive(thread.id, invite.token, !invite.active)
-      if (invite.active) await writeActivity(thread.id, uid, displayName, 'Turned off an invite link.')
+      if (invite.active)       await writeActivity(thread.id, uid, displayName, 'Turned off an invite code.')
     } catch (cause) {
       setActionError(errorMessage(cause))
     }
@@ -154,7 +155,7 @@ export function ThreadSharingPanel({
                   </select>
                 </label>
                 <label className="grid gap-1 text-sm font-semibold text-navy-900">
-                  Link expires
+                  Code expires
                   <select value={expiry} onChange={(event) => setExpiry(event.target.value)} className="min-h-11 rounded-xl border border-navy-900-30 bg-white px-3 text-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-800">
                     <option value="7">In 7 days</option>
                     <option value="30">In 30 days</option>
@@ -162,13 +163,21 @@ export function ThreadSharingPanel({
                   </select>
                 </label>
                 <Button type="button" variant="primary" disabled={busy} onClick={() => void createInvite()}>
-                  <Link2 size={16} aria-hidden="true" /><span>{busy ? 'Creating…' : 'Create invite link'}</span>
+                  <Link2 size={16} aria-hidden="true" /><span>{busy ? 'Creating…' : 'Create invite code'}</span>
                 </Button>
               </div>
+              {newInviteCode && (
+                <div className="grid gap-2 rounded-xl border border-navy-900-12 bg-navy-900-05 p-3">
+                  <label className="grid gap-1 text-sm font-semibold text-navy-900">
+                    Invite code
+                    <input readOnly value={newInviteCode} onFocus={(event) => event.currentTarget.select()} className="min-h-11 rounded-xl border border-navy-900-30 bg-white px-3 font-mono text-lg tracking-widest" />
+                  </label>
+                  <Button type="button" variant="secondary" onClick={() => void copy(newInviteCode)}><Copy size={15} aria-hidden="true" /> Copy code</Button>
+                </div>
+              )}
               {invites.length > 0 && (
                 <ul className="m-0 grid list-none gap-2 p-0">
                   {invites.map((invite) => {
-                    const url = buildTutorInviteUrl(window.location.origin, thread.id, invite.token)
                     return (
                       <li key={invite.token} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-navy-900-12 p-3">
                         <span className="text-sm text-navy-900">
@@ -176,7 +185,12 @@ export function ThreadSharingPanel({
                           {invite.expiresAtMs ? ` · Expires ${new Date(invite.expiresAtMs).toLocaleDateString()}` : ''}
                         </span>
                         <div className="flex gap-2">
-                          <Button type="button" variant="secondary" onClick={() => void copy(url)}><Copy size={15} aria-hidden="true" /><span>Copy</span></Button>
+                          {invite.code ? (
+                            <>
+                              <code className="rounded-lg bg-navy-900-05 px-2 py-1 font-mono tracking-widest text-navy-900">{invite.code}</code>
+                              <Button type="button" variant="secondary" onClick={() => void copy(invite.code)}><Copy size={15} aria-hidden="true" /><span>Copy code</span></Button>
+                            </>
+                          ) : <span className="text-sm text-navy-800">Legacy invite · create a new code to share</span>}
                           <Button type="button" variant="secondary" onClick={() => void toggleInvite(invite)}>{invite.active ? 'Turn off' : 'Turn on'}</Button>
                         </div>
                       </li>
@@ -221,7 +235,7 @@ export function ThreadSharingPanel({
               </ul>
             </div>
           </div>
-              {copyError && copyValue && <p className="m-0 break-all rounded-xl border border-navy-900-12 bg-white p-3 text-sm text-navy-900" aria-label="Invite URL">{copyValue}</p>}
+              {copyError && copyValue && <p className="m-0 break-all rounded-xl border border-navy-900-12 bg-white p-3 font-mono text-sm tracking-widest text-navy-900" aria-label="Invite code">{copyValue}</p>}
             </>
       )}
       {(error || actionError || copyError) && (

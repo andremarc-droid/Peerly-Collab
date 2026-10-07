@@ -581,9 +581,10 @@ service cloud.firestore {
         // Invite links. The token is the document id, so it cannot be listed or guessed.
         match /invites/{token} {
           function validInvite(data) {
-            return data.keys().hasOnly(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+            return data.keys().hasOnly(['createdBy', 'code', 'role', 'active', 'createdAt', 'expiresAt'])
               && data.keys().hasAll(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
               && data.createdBy == request.auth.uid
+              && (!('code' in data) || (data.code is string && data.code.matches('^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$')))
               && data.role in ['viewer', 'editor']
               && data.active is bool
               && data.createdAt == request.time
@@ -669,14 +670,13 @@ service cloud.firestore {
           : '';
       }
       function graphMember() {
-        return signedIn() && exists(graphPath()) && (isClassOwner(classId) || isActiveMember(classId))
-          && graphRole() in ['viewer', 'editor'];
+        return signedIn() && exists(graphPath()) && graphRole() in ['viewer', 'editor'];
       }
       function graphEditor() {
         return graphMember() && graphRole() == 'editor';
       }
       function validGraphConfig(data) {
-        return data.keys().hasOnly(['ownerId', 'ownerName', 'classId', 'title', 'nodeIds', 'positions', 'createdAt', 'updatedAt'])
+        return data.keys().hasOnly(['ownerId', 'ownerName', 'classId', 'title', 'nodeIds', 'positions', 'nodes', 'links', 'createdAt', 'updatedAt'])
           && data.keys().hasAll(['ownerId', 'ownerName', 'classId', 'title', 'nodeIds', 'positions', 'createdAt', 'updatedAt'])
           && data.ownerId is string
           && data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 80
@@ -684,6 +684,8 @@ service cloud.firestore {
           && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
           && data.nodeIds is list && data.nodeIds.size() <= 80
           && data.positions is map && data.positions.size() <= 80
+          && data.get('nodes', []) is list && data.get('nodes', []).size() <= 80
+          && data.get('links', []) is list && data.get('links', []).size() <= 120
           && data.createdAt is timestamp && data.updatedAt is timestamp;
       }
 
@@ -702,22 +704,22 @@ service cloud.firestore {
         && (
           graphOwner()
           || (graphEditor()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nodeIds', 'positions', 'updatedAt']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nodeIds', 'positions', 'nodes', 'links', 'updatedAt']))
         );
       allow delete: if graphOwner();
 
       match /invites/{token} {
         function validGraphInvite(data) {
-          return data.keys().hasOnly(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+          return data.keys().hasOnly(['createdBy', 'code', 'role', 'active', 'createdAt', 'expiresAt'])
             && data.keys().hasAll(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
             && data.createdBy == request.auth.uid
+            && (!('code' in data) || (data.code is string && data.code.matches('^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$')))
             && data.role in ['viewer', 'editor']
             && data.active is bool
             && data.createdAt == request.time
             && (data.expiresAt == null || (data.expiresAt is timestamp && data.expiresAt > request.time));
         }
-        allow get: if signedIn() && exists(graphPath())
-          && (graphOwner() || isClassOwner(classId) || isActiveMember(classId));
+        allow get: if signedIn() && exists(graphPath());
         allow list: if graphOwner();
         allow create: if graphOwner() && validGraphInvite(request.resource.data);
         allow update: if graphOwner()
@@ -749,7 +751,6 @@ service cloud.firestore {
           && memberUid == request.auth.uid
           && exists(graphPath())
           && !graphOwner()
-          && (isClassOwner(classId) || isActiveMember(classId))
           && validGraphMember(request.resource.data);
         allow update: if graphOwner()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
@@ -915,9 +916,10 @@ service cloud.firestore {
 
       match /invites/{token} {
         function validDeckInvite(data) {
-          return data.keys().hasOnly(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+          return data.keys().hasOnly(['createdBy', 'code', 'role', 'active', 'createdAt', 'expiresAt'])
             && data.keys().hasAll(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
             && data.createdBy == request.auth.uid
+            && (!('code' in data) || (data.code is string && data.code.matches('^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$')))
             && data.role in ['viewer', 'editor']
             && data.active is bool
             && data.createdAt == request.time
@@ -1458,6 +1460,27 @@ service cloud.firestore {
       allow list: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
+    match /learningInviteCodes/{code} {
+      function validInviteCode(data) {
+        return data.keys().hasOnly(['kind', 'classId', 'itemId', 'inviteToken', 'ownerId', 'createdAt', 'expiresAt'])
+          && data.keys().hasAll(['kind', 'itemId', 'inviteToken', 'ownerId', 'createdAt', 'expiresAt'])
+          && code.matches('^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$')
+          && data.kind in ['canvas', 'flashcard', 'graph', 'tutor']
+          && data.itemId is string && data.itemId.size() > 0 && data.itemId.size() <= 150
+          && data.inviteToken is string && data.inviteToken.size() >= 32 && data.inviteToken.size() <= 64
+          && data.ownerId == request.auth.uid
+          && data.createdAt == request.time
+          && (data.expiresAt == null || (data.expiresAt is timestamp && data.expiresAt > request.time))
+          && (data.kind == 'tutor'
+            ? !('classId' in data)
+            : data.classId is string && data.classId.size() > 0 && data.classId.size() <= 150);
+      }
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && validInviteCode(request.resource.data);
+      allow update, delete: if false;
+    }
+
     match /sharedTutorThreads/{threadId} {
       function threadPath() {
         return /databases/$(database)/documents/sharedTutorThreads/$(threadId);
@@ -1610,9 +1633,10 @@ service cloud.firestore {
 
       match /invites/{inviteToken} {
         function validInvite(data) {
-          return data.keys().hasOnly(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+          return data.keys().hasOnly(['createdBy', 'code', 'role', 'active', 'createdAt', 'expiresAt'])
             && data.keys().hasAll(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
             && data.createdBy == request.auth.uid
+            && (!('code' in data) || (data.code is string && data.code.matches('^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$')))
             && data.role in ['viewer', 'editor']
             && data.active is bool
             && data.createdAt == request.time

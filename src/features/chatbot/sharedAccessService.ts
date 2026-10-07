@@ -27,6 +27,7 @@ import {
   tutorThreadsRef,
 } from './sharedPaths'
 import type { SharedTutorRef, TutorActivity, TutorShareInvite, TutorShareMember, TutorShareRole } from './sharedTypes'
+import { createInviteCode, registerLearningInviteCode } from '../learningSharing/inviteCodes'
 
 function safeName(name: string | null | undefined): string {
   return (name ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Learner'
@@ -49,15 +50,22 @@ export async function createTutorInvite(
 ): Promise<string> {
   const inviteToken = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(24))))
     .replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+  const code = createInviteCode()
   const expiresAt = durationDays === null ? null : Timestamp.fromMillis(Date.now() + durationDays * 86_400_000)
   await setDoc(tutorInviteRef(db, threadId, inviteToken), {
     createdBy: uid,
+    code,
     role,
     active: true,
     createdAt: serverTimestamp(),
     expiresAt,
   })
-  return inviteToken
+  await registerLearningInviteCode(code, {
+    kind: 'tutor',
+    itemId: threadId,
+    inviteToken,
+  }, uid, expiresAt, db)
+  return code
 }
 
 export async function acceptTutorInvite(
@@ -149,6 +157,7 @@ export function watchTutorInvites(
       if (!inviteRole(data.role)) return []
       return [{
         token: item.id,
+        code: typeof data.code === 'string' ? data.code : '',
         role: data.role,
         active: data.active === true,
         expiresAtMs: timestampMs(data.expiresAt),

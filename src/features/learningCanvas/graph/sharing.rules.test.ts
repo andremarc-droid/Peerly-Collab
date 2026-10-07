@@ -6,16 +6,19 @@ import {
 } from '@firebase/rules-unit-testing'
 import {
   collection,
+  collectionGroup,
   doc,
   deleteDoc,
   getDocs,
   getDoc,
   serverTimestamp,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore'
 import rules from '../../../../firestore.rules?raw'
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 const projectId = 'demo-peerly-graph-sharing'
 const graphPath = 'classes/class-a/graphViews/graph-a'
@@ -46,6 +49,17 @@ beforeEach(async () => {
       title: 'Shared graph',
       nodeIds: ['note:one'],
       positions: { 'note:one': { x: 10, y: 20, isFixed: true } },
+      nodes: [{
+        id: 'note:one',
+        rawId: 'one',
+        type: 'note',
+        title: 'Graph visible outside the class',
+        classId: 'class-a',
+        className: 'Class A',
+        x: 10,
+        y: 20,
+      }],
+      links: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     })
@@ -56,6 +70,8 @@ beforeEach(async () => {
       title: 'Another graph',
       nodeIds: [],
       positions: {},
+      nodes: [],
+      links: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     })
@@ -170,25 +186,60 @@ describe('Graph view sharing security rules', () => {
     await assertFails(getDoc(doc(member, graphPath)))
   })
 
-  it('rejects invite acceptance for a user without active class membership', async () => {
+  it('allows anyone with the invite code to join without class membership', async () => {
     const owner = environment.authenticatedContext('owner').firestore()
     const outsider = environment.authenticatedContext('outsider').firestore()
     await assertSucceeds(setDoc(doc(owner, `${graphPath}/invites/${token}`), {
       createdBy: 'owner',
-      role: 'editor',
+      code: 'ABCD2345',
+      role: 'viewer',
       active: true,
       createdAt: serverTimestamp(),
       expiresAt: null,
     }))
-    await assertFails(setDoc(doc(outsider, `${graphPath}/members/outsider`), {
+    await assertSucceeds(setDoc(doc(outsider, `${graphPath}/members/outsider`), {
       uid: 'outsider',
-      role: 'editor',
+      role: 'viewer',
       displayName: 'Outsider',
       invitedBy: 'owner',
       grantedByToken: token,
       joinedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }))
-    await assertFails(getDoc(doc(outsider, graphPath)))
+    const graph = await assertSucceeds(getDoc(doc(outsider, graphPath)))
+    expect(graph.data()?.nodes[0].title).toBe('Graph visible outside the class')
+    const sharedMemberships = await assertSucceeds(
+      getDocs(query(collectionGroup(outsider, 'members'), where('uid', '==', 'outsider'))),
+    )
+    expect(sharedMemberships.docs.some((member) => member.ref.parent.parent?.id === 'graph-a')).toBe(true)
+    await assertFails(updateDoc(doc(outsider, graphPath), {
+      nodeIds: ['note:changed'],
+      updatedAt: serverTimestamp(),
+    }))
+  })
+
+  it('lets the owner register a code for an existing graph invitation', async () => {
+    const owner = environment.authenticatedContext('owner').firestore()
+    const code = 'ABCD2345'
+    await assertSucceeds(setDoc(doc(owner, `${graphPath}/invites/${token}`), {
+      createdBy: 'owner',
+      code,
+      role: 'editor',
+      active: true,
+      createdAt: serverTimestamp(),
+      expiresAt: null,
+    }))
+    await assertSucceeds(setDoc(doc(owner, `learningInviteCodes/${code}`), {
+      kind: 'graph',
+      classId: 'class-a',
+      itemId: 'graph-a',
+      inviteToken: token,
+      ownerId: 'owner',
+      createdAt: serverTimestamp(),
+      expiresAt: null,
+    }))
+    const outsider = environment.authenticatedContext('outsider').firestore()
+    await assertSucceeds(getDoc(doc(outsider, `learningInviteCodes/${code}`)))
+    await assertFails(getDocs(collection(outsider, 'learningInviteCodes')))
   })
 })

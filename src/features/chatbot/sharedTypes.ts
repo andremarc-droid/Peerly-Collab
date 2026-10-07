@@ -11,6 +11,7 @@ export interface TutorShareMember {
 
 export interface TutorShareInvite {
   token: string
+  code: string
   role: TutorShareRole
   active: boolean
   expiresAtMs: number | null

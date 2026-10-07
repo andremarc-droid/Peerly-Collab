@@ -48,6 +48,7 @@ export function parseInvite(token: string, data: unknown): InviteView | null {
   if (typeof data.createdBy !== 'string') return null
   return {
     token,
+    code: typeof data.code === 'string' ? data.code : '',
     role: data.role,
     active: data.active,
     createdBy: data.createdBy,

@@ -54,6 +54,7 @@ import { ChatbotTab } from '../chatbot'
 import { useSharedCanvases } from './collab/useSharedCanvases'
 import { SharedCanvasList } from './collab/SharedCanvasList'
 import { logActivity } from './collab/activityService'
+import { LearningInviteCodeInput } from '../learningSharing/LearningInviteCodeInput'
 
 export function InstructorLearningHubPage() {
   const { user } = useAuth()
@@ -529,6 +530,7 @@ export function InstructorLearningHubPage() {
         title="Learning"
         subtitle="Visual concept canvases and interactive knowledge graph."
         action={
+          <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="secondary"
@@ -538,6 +540,8 @@ export function InstructorLearningHubPage() {
             <Upload size={16} aria-hidden="true" />
             <span>Import .canvas</span>
           </Button>
+          <LearningInviteCodeInput />
+          </div>
         }
       />
 

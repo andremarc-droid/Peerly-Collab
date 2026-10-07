@@ -51,6 +51,7 @@ import { ChatbotTab } from '../chatbot'
 import { useSharedCanvases } from './collab/useSharedCanvases'
 import { SharedCanvasList } from './collab/SharedCanvasList'
 import { logActivity } from './collab/activityService'
+import { LearningInviteCodeInput } from '../learningSharing/LearningInviteCodeInput'
 
 export function StudentLearningHubPage() {
   const { user } = useAuth()
@@ -543,6 +544,7 @@ export function StudentLearningHubPage() {
         title="Learning"
         subtitle="Explore instructor concept boards and create your own visual study canvases."
         action={
+          <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="secondary"
@@ -552,6 +554,8 @@ export function StudentLearningHubPage() {
             <Upload size={16} aria-hidden="true" />
             <span>Import .canvas</span>
           </Button>
+          <LearningInviteCodeInput />
+          </div>
         }
       />
 

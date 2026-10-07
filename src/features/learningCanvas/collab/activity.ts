@@ -200,6 +200,6 @@ export const memberSummary = {
   roleChanged: (name: string, role: string) =>
     clip(`Changed ${name}’s access to ${role === 'editor' ? 'can edit' : 'view only'}`, 200),
   removed: (name: string) => clip(`Removed ${name} from this canvas`, 200),
-  inviteCreated: (role: string) => `Created an invite link (${role === 'editor' ? 'can edit' : 'view only'})`,
-  inviteRevoked: () => 'Turned off an invite link',
+  inviteCreated: (role: string) => `Created an invite code (${role === 'editor' ? 'can edit' : 'view only'})`,
+  inviteRevoked: () => 'Turned off an invite code',
 }

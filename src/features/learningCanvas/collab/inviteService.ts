@@ -14,8 +14,9 @@ import { generateInviteToken, inviteExpiryMs } from './inviteLink'
 import { inviteRef, invitesRef } from './paths'
 import { parseInvite } from './schemas'
 import type { CollabRole, InviteView } from './types'
+import { createInviteCode, registerLearningInviteCode } from '../../learningSharing/inviteCodes'
 
-/** Creates an invite link and returns its token. Only the canvas owner is allowed to (enforced by rules). */
+/** Creates an invite code and returns it. Only the canvas owner is allowed to (enforced by rules). */
 export async function createInvite(
   classId: string,
   canvasId: string,
@@ -25,15 +26,23 @@ export async function createInvite(
   db: Firestore = firestore,
 ): Promise<string> {
   const token = generateInviteToken()
+  const code = createInviteCode()
   const expiresMs = inviteExpiryMs(expiry, Date.now())
   await setDoc(inviteRef(db, classId, canvasId, token), {
     createdBy: ownerUid,
+    code,
     role,
     active: true,
     createdAt: serverTimestamp(),
     expiresAt: expiresMs === null ? null : Timestamp.fromMillis(expiresMs),
   })
-  return token
+  await registerLearningInviteCode(code, {
+    kind: 'canvas',
+    classId,
+    itemId: canvasId,
+    inviteToken: token,
+  }, ownerUid, expiresMs === null ? null : Timestamp.fromMillis(expiresMs), db)
+  return code
 }
 
 /** Turning a link off stops new people joining. People who already joined keep their access. */

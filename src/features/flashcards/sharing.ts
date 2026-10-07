@@ -32,9 +32,11 @@ import {
 } from './paths'
 import { parseFlashcardDeck } from './schemas'
 import type { FlashcardDeckWithId } from './types'
+import { createInviteCode, registerLearningInviteCode } from '../learningSharing/inviteCodes'
 
 export interface DeckInvite {
   token: string
+  code: string
   role: 'viewer' | 'editor'
   active: boolean
   expiresAtMs: number | null
@@ -67,6 +69,7 @@ function parseInvite(token: string, raw: Record<string, unknown>): DeckInvite | 
   const expiresAt = raw.expiresAt
   return {
     token,
+    code: typeof raw.code === 'string' ? raw.code : '',
     role: raw.role,
     active: raw.active,
     expiresAtMs: expiresAt instanceof Timestamp ? expiresAt.toMillis() : null,
@@ -82,15 +85,23 @@ export async function createDeckInvite(
   db: Firestore = firestore,
 ): Promise<string> {
   const token = makeToken()
+  const code = createInviteCode()
   const expiresMs = inviteExpiryMs(expiry, Date.now())
   await setDoc(deckInviteRef(db, classId, deckId, token), {
     createdBy: ownerId,
+    code,
     role,
     active: true,
     createdAt: serverTimestamp(),
     expiresAt: expiresMs === null ? null : Timestamp.fromMillis(expiresMs),
   })
-  return token
+  await registerLearningInviteCode(code, {
+    kind: 'flashcard',
+    classId,
+    itemId: deckId,
+    inviteToken: token,
+  }, ownerId, expiresMs === null ? null : Timestamp.fromMillis(expiresMs), db)
+  return code
 }
 
 export async function acceptDeckInvite(
@@ -102,18 +113,18 @@ export async function acceptDeckInvite(
   db: Firestore = firestore,
 ): Promise<boolean> {
   if (!new RegExp(`^[A-Za-z0-9_-]{${INVITE_TOKEN_LENGTH}}$`).test(token)) {
-    throw new Error('This flashcard invite link is not valid.')
+    throw new Error('This flashcard invite code is not valid.')
   }
   const memberRef = deckMemberRef(db, classId, deckId, uid)
   const member = await getDoc(memberRef)
   if (member.exists()) return false
   const inviteSnap = await getDoc(deckInviteRef(db, classId, deckId, token))
-  if (!inviteSnap.exists()) throw new Error('This flashcard invite link is not valid.')
+  if (!inviteSnap.exists()) throw new Error('This flashcard invite code is not valid.')
   const invite = parseInvite(token, inviteSnap.data())
-  if (!invite) throw new Error('This flashcard invite link is not valid.')
+  if (!invite) throw new Error('This flashcard invite code is not valid.')
   const status = inviteStatus(invite, Date.now())
-  if (status === 'off') throw new Error('The owner turned this invite link off.')
-  if (status === 'expired') throw new Error('This flashcard invite link has expired.')
+  if (status === 'off') throw new Error('The owner turned this invite code off.')
+  if (status === 'expired') throw new Error('This flashcard invite code has expired.')
   try {
     await setDoc(memberRef, {
       uid,

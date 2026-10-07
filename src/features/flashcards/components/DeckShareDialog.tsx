@@ -39,7 +39,7 @@ function formatTime(timeMs: number | null): string {
 export function DeckShareDialog({ classId, deckId, deckTitle, ownerId, uid, name, owner, onClose }: DeckShareDialogProps) {
   const [role, setRole] = useState<'viewer' | 'editor'>('viewer')
   const [expiry, setExpiry] = useState<(typeof INVITE_EXPIRY_OPTIONS)[number]['value']>('7')
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [members, setMembers] = useState<DeckMember[]>([])
   const [invites, setInvites] = useState<DeckInvite[]>([])
   const [presence, setPresence] = useState<Map<string, number>>(new Map())
@@ -75,28 +75,26 @@ export function DeckShareDialog({ classId, deckId, deckTitle, ownerId, uid, name
   const create = async () => {
     setBusy(true)
     setError(null)
-    setInviteUrl(null)
+    setInviteCode(null)
     let created = false
     try {
-      const token = await createDeckInvite(classId, deckId, uid, role, expiry)
-      const url = `${window.location.origin}/learning/join/deck/${encodeURIComponent(classId)}/${encodeURIComponent(deckId)}/${encodeURIComponent(token)}`
-      setInviteUrl(url)
+      const code = await createDeckInvite(classId, deckId, uid, role, expiry)
+      setInviteCode(code)
       created = true
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not create an invite link.')
+      setError(cause instanceof Error ? cause.message : 'Could not create an invite code.')
     } finally {
       setBusy(false)
     }
     if (created) {
-      await recordAfterAction(`Created an invite link (${role === 'editor' ? 'can edit' : 'view only'})`)
+      await recordAfterAction(`Created an invite code (${role === 'editor' ? 'can edit' : 'view only'})`)
     }
   }
-  const copy = async () => {
-    if (!inviteUrl) return
+  const copy = async (code: string) => {
     try {
-      await navigator.clipboard.writeText(inviteUrl)
+      await navigator.clipboard.writeText(code)
     } catch {
-      setError('Could not copy. Select and copy the invite link instead.')
+      setError('Could not copy. Select and copy the invite code instead.')
     }
   }
   const editRole = async (member: DeckMember, nextRole: 'viewer' | 'editor') => {
@@ -124,7 +122,7 @@ export function DeckShareDialog({ classId, deckId, deckTitle, ownerId, uid, name
       setError(cause instanceof Error ? cause.message : 'Could not update invite.')
       return
     }
-    await recordAfterAction(active ? 'Re-enabled an invite link' : 'Turned off an invite link')
+    await recordAfterAction(active ? 'Re-enabled an invite code' : 'Turned off an invite code')
   }
   const removeInvite = async (invite: DeckInvite) => {
     try {
@@ -133,7 +131,7 @@ export function DeckShareDialog({ classId, deckId, deckTitle, ownerId, uid, name
       setError(cause instanceof Error ? cause.message : 'Could not remove invite.')
       return
     }
-    await recordAfterAction('Removed an invite link')
+    await recordAfterAction('Removed an invite code')
   }
 
   return (
@@ -173,7 +171,7 @@ export function DeckShareDialog({ classId, deckId, deckTitle, ownerId, uid, name
 
         {owner && (
           <section className="grid gap-3 border-t border-navy-900-12 pt-4">
-            <h3 className="m-0 flex items-center gap-2 font-bold text-navy-900"><Link2 size={18} aria-hidden="true" /> Invite link</h3>
+            <h3 className="m-0 flex items-center gap-2 font-bold text-navy-900"><Link2 size={18} aria-hidden="true" /> Invite code</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1 text-sm font-semibold text-navy-900">Access
                 <select value={role} onChange={(event) => setRole(event.target.value as 'viewer' | 'editor')} className="min-h-11 rounded-xl border border-navy-900-30 bg-white px-3">
@@ -186,21 +184,22 @@ export function DeckShareDialog({ classId, deckId, deckTitle, ownerId, uid, name
                 </select>
               </label>
             </div>
-            <Button variant="primary" disabled={busy} onClick={() => void create()}>{busy ? 'Creating…' : 'Create invite link'}</Button>
-            {inviteUrl && (
+            <Button variant="primary" disabled={busy} onClick={() => void create()}>{busy ? 'Creating…' : 'Create invite code'}</Button>
+            {inviteCode && (
               <div className="grid gap-2 rounded-xl border border-navy-900-12 bg-navy-900-05 p-3">
-                <label className="grid gap-1 text-sm font-semibold text-navy-900">Invite link<input readOnly value={inviteUrl} className="min-h-11 min-w-0 rounded-xl border border-navy-900-30 bg-white px-3 font-normal" /></label>
-                <Button variant="secondary" onClick={() => void copy()}><Copy size={16} aria-hidden="true" /> Copy link</Button>
+                <label className="grid gap-1 text-sm font-semibold text-navy-900">Invite code<input readOnly value={inviteCode} className="min-h-11 min-w-0 rounded-xl border border-navy-900-30 bg-white px-3 font-mono text-lg tracking-widest" /></label>
+                <Button variant="secondary" onClick={() => void copy(inviteCode)}><Copy size={16} aria-hidden="true" /> Copy code</Button>
               </div>
             )}
             <ul className="m-0 grid list-none gap-2 p-0">
               {invites.map((invite) => {
                 const state = inviteStatus(invite, nowMs)
                 return <li key={invite.token} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-navy-900-12 p-3">
-                  <span className="text-sm text-navy-900">{invite.role === 'editor' ? 'Can edit' : 'View only'} · {state}</span>
+                  <span className="text-sm text-navy-900">{invite.role === 'editor' ? 'Can edit' : 'View only'} · {invite.code ? `Code ${invite.code}` : 'Legacy invite'} · {state}</span>
                   <div className="flex gap-2">
+                    {invite.active && invite.code && <Button variant="secondary" onClick={() => void copy(invite.code)}><Copy size={16} aria-hidden="true" /> Copy code</Button>}
                     <Button variant="secondary" onClick={() => void toggleInvite(invite, !invite.active)}>{invite.active ? 'Turn off' : 'Turn on'}</Button>
-                    <Button variant="ghost" aria-label="Delete invite link" onClick={() => void removeInvite(invite)}><X size={16} aria-hidden="true" /></Button>
+                    <Button variant="ghost" aria-label="Delete invite code" onClick={() => void removeInvite(invite)}><X size={16} aria-hidden="true" /></Button>
                   </div>
                 </li>
               })}

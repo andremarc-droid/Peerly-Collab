@@ -39,7 +39,7 @@ interface AcceptInviteInput {
 }
 
 /**
- * Joins a canvas through an invite link and returns the role granted.
+ * Joins a canvas through an invite code and returns the role granted.
  * Someone who already joined keeps the role the owner gave them, whichever link they open.
  */
 export async function acceptInvite(
@@ -53,10 +53,10 @@ export async function acceptInvite(
   }
 
   const invite = await getInvite(classId, canvasId, token, db)
-  if (!invite) throw new InviteError('This invite link is not valid.')
+  if (!invite) throw new InviteError('This invite code is not valid.')
   const status = inviteStatus(invite, Date.now())
-  if (status === 'off') throw new InviteError('The owner turned this invite link off.')
-  if (status === 'expired') throw new InviteError('This invite link has expired. Ask the owner for a new one.')
+  if (status === 'off') throw new InviteError('The owner turned this invite code off.')
+  if (status === 'expired') throw new InviteError('This invite code has expired. Ask the owner for a new one.')
 
   try {
     await setDoc(memberRef(db, classId, canvasId, uid), {

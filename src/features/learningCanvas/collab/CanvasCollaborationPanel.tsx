@@ -4,7 +4,7 @@ import { Alert } from '../../../shared/ui/Alert'
 import { Button } from '../../../shared/ui/Button'
 import { INVITE_EXPIRY_OPTIONS, MAX_CANVAS_MEMBERS } from './constants'
 import { memberSummary } from './activity'
-import { buildInviteUrl, inviteStatus } from './inviteLink'
+import { inviteStatus } from './inviteLink'
 import { createInvite, deleteInvite, setInviteActive } from './inviteService'
 import { logActivity } from './activityService'
 import { removeMember, setMemberRole } from './memberService'
@@ -42,7 +42,7 @@ export function CanvasCollaborationPanel({
 }: CanvasCollaborationPanelProps) {
   const [role, setRole] = useState<CollabRole>('viewer')
   const [expiry, setExpiry] = useState<(typeof INVITE_EXPIRY_OPTIONS)[number]['value']>('7')
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -58,7 +58,7 @@ export function CanvasCollaborationPanel({
       await navigator.clipboard.writeText(value)
       setActionError(null)
     } catch {
-      setActionError('Could not copy to clipboard. Select and copy the invite link instead.')
+      setActionError('Could not copy to clipboard. Select and copy the invite code instead.')
     }
   }
 
@@ -66,15 +66,14 @@ export function CanvasCollaborationPanel({
     setBusy(true)
     setActionError(null)
     try {
-      const token = await createInvite(classId, canvasId, uid, role, expiry)
-      const url = buildInviteUrl(window.location.origin, classId, canvasId, token)
-      setInviteUrl(url)
+      const code = await createInvite(classId, canvasId, uid, role, expiry)
+      setInviteCode(code)
       await logActivity(classId, canvasId, { uid, name }, {
         type: 'member',
-        summary: `Created an invite link (${role === 'editor' ? 'can edit' : 'view only'})`,
+        summary: `Created an invite code (${role === 'editor' ? 'can edit' : 'view only'})`,
       })
     } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : 'Could not create an invite link.')
+      setActionError(cause instanceof Error ? cause.message : 'Could not create an invite code.')
     } finally {
       setBusy(false)
     }
@@ -179,7 +178,7 @@ export function CanvasCollaborationPanel({
       {owner && (
         <div className="grid gap-3 border-t border-navy-900-12 pt-4">
           <h2 className="m-0 flex items-center gap-2 text-lg font-bold text-navy-900">
-            <UserRoundPlus size={18} aria-hidden="true" /> Invite people
+            <UserRoundPlus size={18} aria-hidden="true" /> Invite with a code
           </h2>
           <div className="flex flex-wrap items-end gap-3">
             <label className="grid gap-1 text-sm font-semibold text-navy-900">
@@ -194,7 +193,7 @@ export function CanvasCollaborationPanel({
               </select>
             </label>
             <label className="grid gap-1 text-sm font-semibold text-navy-900">
-              Link expires
+              Code expires
               <select
                 className="min-h-11 rounded-xl border border-navy-900-30 bg-white px-3 text-sm text-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-800"
                 value={expiry}
@@ -204,7 +203,7 @@ export function CanvasCollaborationPanel({
               </select>
             </label>
             <Button variant="primary" disabled={busy || atMemberLimit} onClick={() => void create()}>
-              <Link2 size={16} aria-hidden="true" /><span>{busy ? 'Creating…' : 'Create invite link'}</span>
+              <Link2 size={16} aria-hidden="true" /><span>{busy ? 'Creating…' : 'Create invite code'}</span>
             </Button>
           </div>
           {atMemberLimit && (
@@ -212,12 +211,12 @@ export function CanvasCollaborationPanel({
               This canvas has reached the {MAX_CANVAS_MEMBERS}-person sharing limit. Remove a person before inviting someone else.
             </p>
           )}
-          {inviteUrl && (
+          {inviteCode && (
             <div className="grid gap-2 rounded-xl border border-navy-900-12 bg-navy-900-05 p-3">
-              <label className="text-sm font-semibold text-navy-900" htmlFor="new-canvas-invite">Invite link</label>
-              <input id="new-canvas-invite" readOnly value={inviteUrl} className="min-h-11 min-w-0 rounded-lg border border-navy-900-30 bg-white px-3 text-sm text-navy-900" onFocus={(event) => event.currentTarget.select()} />
-              <Button variant="secondary" onClick={() => void copy(inviteUrl)}>
-                <Copy size={16} aria-hidden="true" /><span>Copy invite link</span>
+              <label className="text-sm font-semibold text-navy-900" htmlFor="new-canvas-invite">Invite code</label>
+              <input id="new-canvas-invite" readOnly value={inviteCode} className="min-h-11 min-w-0 rounded-lg border border-navy-900-30 bg-white px-3 font-mono text-lg tracking-widest text-navy-900" onFocus={(event) => event.currentTarget.select()} />
+              <Button variant="secondary" onClick={() => void copy(inviteCode)}>
+                <Copy size={16} aria-hidden="true" /><span>Copy code</span>
               </Button>
             </div>
           )}
@@ -228,19 +227,20 @@ export function CanvasCollaborationPanel({
                 return (
                 <li key={invite.token} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-navy-900-12 p-3">
                   <span className="text-sm text-navy-900">
-                    {ACCESS_LABEL[invite.role]} · {status === 'active' ? 'Active link' : status === 'expired' ? 'Expired link' : 'Turned off'}
+                    {ACCESS_LABEL[invite.role]} · {invite.code ? `${invite.code} · ` : 'Legacy invite · '}
+                    {status === 'active' ? 'Active code' : status === 'expired' ? 'Expired code' : 'Turned off'}
                     {invite.expiresAtMs ? ` · Expires ${formatTime(invite.expiresAtMs)}` : ' · No expiry'}
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {status === 'active' && (
+                    {status === 'active' && invite.code && (
                       <>
-                        <Button variant="secondary" onClick={() => void copy(buildInviteUrl(window.location.origin, classId, canvasId, invite.token))}>
-                          <Copy size={16} aria-hidden="true" /><span>Copy</span>
+                        <Button variant="secondary" onClick={() => void copy(invite.code)}>
+                          <Copy size={16} aria-hidden="true" /><span>Copy code</span>
                         </Button>
                         <Button variant="secondary" onClick={() => void toggleInvite(invite, false)}>Turn off</Button>
                       </>
                     )}
-                    <Button variant="ghost" onClick={() => void revokeInvite(invite)} aria-label="Delete invite link"><X size={16} aria-hidden="true" /></Button>
+                    <Button variant="ghost" onClick={() => void revokeInvite(invite)} aria-label="Delete invite code"><X size={16} aria-hidden="true" /></Button>
                   </div>
                 </li>
                 )

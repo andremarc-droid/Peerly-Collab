@@ -36,7 +36,7 @@ export function GraphInvitePage() {
 
   return (
     <AppShell>
-      <PageHeader eyebrow="LEARNING GRAPH" title="Joining shared graph" subtitle="Checking your invite and class access…" />
+      <PageHeader eyebrow="LEARNING GRAPH" title="Joining shared graph" subtitle="Checking your invite code and access…" />
       <main className="app-shell__content grid gap-4">
         {error ? (
           <>
