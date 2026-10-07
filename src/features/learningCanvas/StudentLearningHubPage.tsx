@@ -8,6 +8,7 @@ import {
   Trash2,
   Edit2,
   MoreVertical,
+  Share2,
 } from 'lucide-react'
 import { AppShell } from '../../app/AppShell'
 import { PageHeader } from '../../shared/ui/PageHeader'
@@ -511,26 +512,15 @@ export function StudentLearningHubPage() {
         title="Learning"
         subtitle="Explore instructor concept boards and create your own visual study canvases."
         action={
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={enrolledClasses.length === 0}
-            >
-              <Upload size={16} aria-hidden="true" />
-              <span>Import .canvas</span>
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => setCreateOpen(true)}
-              disabled={enrolledClasses.length === 0}
-            >
-              <Plus size={16} aria-hidden="true" />
-              <span>New study canvas</span>
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={enrolledClasses.length === 0}
+          >
+            <Upload size={16} aria-hidden="true" />
+            <span>Import .canvas</span>
+          </Button>
         }
       />
 
@@ -715,16 +705,27 @@ export function StudentLearningHubPage() {
 
             {/* 2. My Study Canvases */}
             <section aria-labelledby="my-canvases-heading" className="grid gap-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-navy-900-12 bg-white p-4 shadow-sm">
                 <div>
                   <span className="section-kicker">PERSONAL WORKSPACE</span>
                   <h2 id="my-canvases-heading" className="text-xl font-bold text-navy-900 m-0">
                     My study canvases
                   </h2>
                 </div>
-                <span className="text-xs text-navy-800-72">
-                  {displayPersonalCanvases.length} {displayPersonalCanvases.length === 1 ? 'canvas' : 'canvases'}
-                </span>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm text-navy-800">
+                    {displayPersonalCanvases.length} {displayPersonalCanvases.length === 1 ? 'canvas' : 'canvases'}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => setCreateOpen(true)}
+                    disabled={enrolledClasses.length === 0}
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    <span>New Canvas</span>
+                  </Button>
+                </div>
               </div>
 
               {displayPersonalCanvases.length === 0 ? (
@@ -753,9 +754,13 @@ export function StudentLearningHubPage() {
                         meta={metaText}
                         badge={<Badge>{className}</Badge>}
                         actions={
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <Button to={editHref} variant="secondary">
                               Open canvas
+                            </Button>
+                            <Button to={`${editHref}#canvas-collaboration`} variant="secondary" aria-label={`Share ${canvas.title}`}>
+                              <Share2 size={16} aria-hidden="true" />
+                              <span>Share</span>
                             </Button>
                             <DropdownMenu
                               label="Canvas options"

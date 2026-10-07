@@ -184,6 +184,14 @@ export function StudentLearningCanvasPage() {
     )
   }, [classId, canvasId])
 
+  useEffect(() => {
+    if (loading || !canvasAccess.social || window.location.hash !== '#canvas-collaboration') return undefined
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('canvas-collaboration')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [loading, canvasAccess.social, canvasId])
+
   const handleRemoteContentApplied = useCallback((next: LearningCanvasContent) => {
     baseContentRef.current = next
   }, [])

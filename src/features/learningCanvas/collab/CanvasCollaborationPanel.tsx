@@ -129,7 +129,11 @@ export function CanvasCollaborationPanel({
   }
 
   return (
-    <section className="grid gap-5 rounded-2xl border border-navy-900-12 bg-white p-4 shadow-sm" aria-label="Canvas collaboration">
+    <section
+      id="canvas-collaboration"
+      className="scroll-mt-6 grid gap-5 rounded-2xl border border-navy-900-12 bg-white p-4 shadow-sm"
+      aria-label="Canvas collaboration"
+    >
       <div className="grid gap-3">
         <h2 className="m-0 flex items-center gap-2 text-lg font-bold text-navy-900">
           <UserRound size={18} aria-hidden="true" /> People

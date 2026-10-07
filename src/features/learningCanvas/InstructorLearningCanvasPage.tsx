@@ -171,6 +171,14 @@ export function InstructorLearningCanvasPage() {
     )
   }, [classId, canvasId])
 
+  useEffect(() => {
+    if (loading || window.location.hash !== '#canvas-collaboration') return undefined
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('canvas-collaboration')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [loading, canvasId])
+
   const handleRemoteContentApplied = useCallback((next: LearningCanvasContent) => {
     baseContentRef.current = next
   }, [])

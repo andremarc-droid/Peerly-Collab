@@ -10,6 +10,7 @@ import {
   Globe,
   EyeOff,
   MoreVertical,
+  Share2,
 } from 'lucide-react'
 import { AppShell } from '../../app/AppShell'
 import { PageHeader } from '../../shared/ui/PageHeader'
@@ -496,26 +497,15 @@ export function InstructorLearningHubPage() {
         title="Learning"
         subtitle="Visual concept canvases and interactive knowledge graph."
         action={
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={classes.length === 0}
-            >
-              <Upload size={16} aria-hidden="true" />
-              <span>Import .canvas</span>
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => setCreateOpen(true)}
-              disabled={classes.length === 0}
-            >
-              <Plus size={16} aria-hidden="true" />
-              <span>New canvas</span>
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={classes.length === 0}
+          >
+            <Upload size={16} aria-hidden="true" />
+            <span>Import .canvas</span>
+          </Button>
         }
       />
 
@@ -628,13 +618,24 @@ export function InstructorLearningHubPage() {
               role="instructor"
               selectedClassId={selectedClassId}
             />
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-navy-900-12 bg-white p-4 shadow-sm">
               <h2 id="learning-canvases-heading" className="text-xl font-bold text-navy-900 m-0">
                 Study Canvases
               </h2>
-              <span className="text-xs text-navy-800-72">
-                {displayCanvases.length} {displayCanvases.length === 1 ? 'canvas' : 'canvases'}
-              </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm text-navy-800">
+                  {displayCanvases.length} {displayCanvases.length === 1 ? 'canvas' : 'canvases'}
+                </span>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => setCreateOpen(true)}
+                  disabled={classes.length === 0}
+                >
+                  <Plus size={16} aria-hidden="true" />
+                  <span>New Canvas</span>
+                </Button>
+              </div>
             </div>
 
             {listStatus === 'loading' && (
@@ -684,9 +685,13 @@ export function InstructorLearningHubPage() {
                       meta={metaText}
                       badge={<Badge>{className}</Badge>}
                       actions={
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Button to={editHref} variant="secondary">
                             Open canvas
+                          </Button>
+                          <Button to={`${editHref}#canvas-collaboration`} variant="secondary" aria-label={`Share ${canvas.title}`}>
+                            <Share2 size={16} aria-hidden="true" />
+                            <span>Share</span>
                           </Button>
                           <DropdownMenu
                             label="Canvas options"
