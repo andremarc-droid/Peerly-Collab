@@ -28,4 +28,8 @@ export interface ChatThread {
   summary: string
   /** How many leading messages (by index) are already folded into `summary`. */
   summarizedCount: number
+  /** Set only from an authenticated shared-thread document; not trusted by parseThread. */
+  sharedRole?: 'owner' | 'viewer' | 'editor'
+  /** Owner identity is attached by the authenticated shared-thread listener only. */
+  ownerId?: string
 }

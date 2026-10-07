@@ -150,7 +150,7 @@ export function watchSharedWithMe(
         const role = d.data().role
         const canvas = d.ref.parent.parent
         const classId = canvas?.parent.parent?.id
-        if (!canvas || !classId || !isCollabRole(role)) continue
+        if (!canvas || canvas.parent.id !== 'learningCanvases' || !classId || !isCollabRole(role)) continue
         items.push({ classId, canvasId: canvas.id, role })
       }
       onChange(items)

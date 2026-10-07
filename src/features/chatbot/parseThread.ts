@@ -51,7 +51,7 @@ export function parseThread(value: unknown): ChatThread | null {
   const parsedMessages = messages.map(parseMessage).filter((message): message is ChatMessage => message !== null)
   const count = isFiniteNumber(summarizedCount) ? Math.floor(summarizedCount) : 0
 
-  return {
+  const parsed: ChatThread = {
     id,
     title: title.slice(0, 120) || 'New chat',
     createdAt,
@@ -60,4 +60,9 @@ export function parseThread(value: unknown): ChatThread | null {
     summary: typeof summary === 'string' ? summary : '',
     summarizedCount: Math.min(Math.max(0, count), parsedMessages.length),
   }
+  // A local cache can only mark a thread as shared; the Firestore listener supplies its actual role.
+  if (value.sharedRole === 'owner' || value.sharedRole === 'viewer' || value.sharedRole === 'editor') {
+    parsed.sharedRole = 'viewer'
+  }
+  return parsed
 }

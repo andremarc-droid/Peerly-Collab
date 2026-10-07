@@ -24,6 +24,7 @@ export interface FlashcardDeckRecord {
 
 export interface FlashcardDeckWithId extends FlashcardDeckRecord {
   id: string
+  sharedRole?: 'viewer' | 'editor'
 }
 
 /** What the editor submits. `published` only matters for instructor (class) decks. */

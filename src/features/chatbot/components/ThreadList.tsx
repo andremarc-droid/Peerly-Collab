@@ -32,9 +32,12 @@ export function ThreadList({ threads, activeId, onSelect, onDelete }: ThreadList
                 <span className={`text-sm ${active ? 'text-white-72' : 'text-navy-800-72'}`}>
                   {formatDate(thread.updatedAt)}
                   {thread.messages.length > 0 ? ` · ${thread.messages.length} messages` : ''}
+                  {thread.sharedRole && thread.sharedRole !== 'owner'
+                    ? ` · Shared ${thread.sharedRole === 'editor' ? 'editor' : 'view only'}`
+                    : thread.sharedRole === 'owner' ? ' · Shared by you' : ''}
                 </span>
               </button>
-              {thread.messages.length > 0 && (
+              {thread.messages.length > 0 && !thread.sharedRole && (
                 <button
                   type="button"
                   onClick={() => onDelete(thread)}

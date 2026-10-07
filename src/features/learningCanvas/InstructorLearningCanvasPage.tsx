@@ -20,6 +20,7 @@ import { saveCanvasMerged } from './collab/saveMerged'
 import { useCanvasCollab } from './collab/useCanvasCollab'
 import { CanvasCollaborationPanel } from './collab/CanvasCollaborationPanel'
 import { useActivityRecorder } from './collab/useActivityRecorder'
+import { useCanvasAccess } from './collab/useCanvasAccess'
 import { openReferenceInNewTab } from './referenceRoutes'
 import { watchClass } from '../classes/services'
 import { subscribeToModules } from '../modules/services'
@@ -35,6 +36,7 @@ export function InstructorLearningCanvasPage() {
   const { classId, canvasId } = useParams<{ classId: string; canvasId: string }>()
   const { user } = useAuth()
   const { showToast } = useToast()
+  const canvasAccess = useCanvasAccess(classId, canvasId, user?.uid)
 
   const [canvas, setCanvas] = useState<LearningCanvasRecord | null>(null)
   const [content, setContent] = useState<LearningCanvasContent | null>(null)
@@ -53,16 +55,16 @@ export function InstructorLearningCanvasPage() {
     canvasId: canvasId ?? '',
     uid: user?.uid ?? '',
     name: displayName,
-    ownerId: user?.uid ?? '',
-    enabled: Boolean(classId && canvasId && user),
-    owner: true,
+    ownerId: canvas?.ownerId ?? '',
+    enabled: Boolean(classId && canvasId && user && canvas?.ownerId),
+    owner: canvasAccess.access === 'owner',
   })
   const activityRecorder = useActivityRecorder({
     classId: classId ?? '',
     canvasId: canvasId ?? '',
     uid: user?.uid ?? '',
     name: displayName,
-    enabled: Boolean(classId && canvasId && user),
+    enabled: Boolean(classId && canvasId && user && canvasAccess.social && canvasAccess.canEdit),
   })
 
   useEffect(() => {
@@ -284,32 +286,34 @@ export function InstructorLearningCanvasPage() {
           <LearningCanvas
             title={canvas?.title}
             initialContent={content}
-            readOnly={false}
-            canEditStatus={true}
+            readOnly={!canvasAccess.canEdit}
+            canEditStatus={canvasAccess.access === 'owner'}
             status={canvas?.status === 'published' ? 'published' : 'draft'}
             availableReferences={availableRefs}
             remoteContent={content}
             remoteCursors={collab.cursors}
             onPublishCursor={collab.publishCursor}
             onRemoteContentApplied={handleRemoteContentApplied}
-            onSave={handleSave}
-            onToggleStatus={handleToggleStatus}
+            onSave={canvasAccess.canEdit ? handleSave : undefined}
+            onToggleStatus={canvasAccess.access === 'owner' ? handleToggleStatus : undefined}
             onReloadLatest={handleReloadLatest}
             onOpenReference={handleOpenReference}
           />
         </div>
+        {canvasAccess.social && (
         <CanvasCollaborationPanel
           classId={classId ?? ''}
           canvasId={canvasId ?? ''}
           uid={user?.uid ?? ''}
           name={displayName}
-          owner
+          owner={canvasAccess.access === 'owner'}
           people={collab.people}
           members={collab.members}
           invites={collab.invites}
           activity={collab.activity}
           error={collab.error || activityRecorder.error}
         />
+        )}
       </main>
     </AppShell>
   )

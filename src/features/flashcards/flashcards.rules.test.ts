@@ -13,6 +13,7 @@ import {
   query,
   setDoc,
   updateDoc,
+  serverTimestamp,
   where,
 } from 'firebase/firestore'
 import rules from '../../../firestore.rules?raw'
@@ -94,6 +95,148 @@ describe('Flashcard deck security rules', () => {
       ),
     )
     await assertFails(getDocs(collection(student, 'classes/class-a/flashcardDecks')))
+  })
+
+  describe('Flashcard deck sharing rules', () => {
+    const invitePath = 'classes/class-a/flashcardDecks/pub-deck/invites/0123456789abcdefghijklmnopqrstuv'
+    const memberPath = 'classes/class-a/flashcardDecks/pub-deck/members/student'
+
+    async function addInvite() {
+      const owner = environment.authenticatedContext('owner').firestore()
+      await setDoc(doc(owner, invitePath), {
+        createdBy: 'owner',
+        role: 'editor',
+        active: true,
+        createdAt: serverTimestamp(),
+        expiresAt: null,
+      })
+    }
+
+    async function joinAsStudent(role = 'editor') {
+      const student = environment.authenticatedContext('student').firestore()
+      await setDoc(doc(student, memberPath), {
+        uid: 'student',
+        role,
+        displayName: 'Student',
+        invitedBy: 'owner',
+        grantedByToken: '0123456789abcdefghijklmnopqrstuv',
+        joinedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    }
+
+    it('lets the owner invite an active class member and only grants the invited role', async () => {
+      await addInvite()
+      await assertSucceeds(joinAsStudent())
+
+      const student = environment.authenticatedContext('student').firestore()
+      await assertSucceeds(getDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck')))
+      await assertSucceeds(updateDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck'), {
+        title: 'Shared edit',
+        updatedAt: serverTimestamp(),
+      }))
+      await assertFails(setDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck/members/other-student'), {
+        uid: 'other-student',
+        role: 'editor',
+        displayName: 'Other',
+        invitedBy: 'owner',
+        grantedByToken: '0123456789abcdefghijklmnopqrstuv',
+        joinedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }))
+    })
+
+    it('supports viewer access without deck writes and permits the owner to change roles', async () => {
+      await addInvite()
+      await environment.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(invitePath).update({ role: 'viewer' })
+      })
+      await joinAsStudent('viewer')
+
+      const student = environment.authenticatedContext('student').firestore()
+      await assertSucceeds(getDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck')))
+      await assertFails(updateDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck'), {
+        title: 'Not allowed',
+        updatedAt: serverTimestamp(),
+      }))
+
+      const owner = environment.authenticatedContext('owner').firestore()
+      await assertSucceeds(updateDoc(doc(owner, memberPath), {
+        role: 'editor',
+        updatedAt: serverTimestamp(),
+      }))
+    })
+
+    it('limits invite creation and membership to the deck owner and active class members', async () => {
+      const student = environment.authenticatedContext('student').firestore()
+      await assertFails(setDoc(doc(student, invitePath), {
+        createdBy: 'student',
+        role: 'editor',
+        active: true,
+        createdAt: serverTimestamp(),
+        expiresAt: null,
+      }))
+
+      await addInvite()
+      const blocked = environment.authenticatedContext('blocked-student').firestore()
+      await assertFails(setDoc(doc(blocked, 'classes/class-a/flashcardDecks/pub-deck/members/blocked-student'), {
+        uid: 'blocked-student',
+        role: 'editor',
+        displayName: 'Blocked',
+        invitedBy: 'owner',
+        grantedByToken: '0123456789abcdefghijklmnopqrstuv',
+        joinedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }))
+    })
+
+    it('allows collaborators to record activity and their own presence only', async () => {
+      await addInvite()
+      await joinAsStudent()
+      const student = environment.authenticatedContext('student').firestore()
+      await assertSucceeds(setDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck/activity/change-1'), {
+        actorId: 'student',
+        actorName: 'Student',
+        type: 'edit',
+        summary: 'Updated flashcards',
+        createdAt: serverTimestamp(),
+      }))
+      await assertSucceeds(setDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck/presence/student'), {
+        uid: 'student',
+        name: 'Student',
+        online: true,
+        lastActive: serverTimestamp(),
+      }))
+      await assertFails(setDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck/presence/other-student'), {
+        uid: 'other-student',
+        name: 'Other',
+        online: true,
+        lastActive: serverTimestamp(),
+      }))
+    })
+
+    it('does not let view-only members forge edit activity', async () => {
+      await addInvite()
+      await environment.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(invitePath).update({ role: 'viewer' })
+      })
+      await joinAsStudent('viewer')
+      const student = environment.authenticatedContext('student').firestore()
+      await assertFails(setDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck/activity/forged-edit'), {
+        actorId: 'student',
+        actorName: 'Student',
+        type: 'edit',
+        summary: 'Pretended to edit',
+        createdAt: serverTimestamp(),
+      }))
+      await assertFails(setDoc(doc(student, 'classes/class-a/flashcardDecks/pub-deck/activity/joined'), {
+        actorId: 'student',
+        actorName: 'Student',
+        type: 'member',
+        summary: 'Joined this deck',
+        createdAt: serverTimestamp(),
+      }))
+    })
   })
 
   it('class decks: only the class owner can create, update, or delete', async () => {

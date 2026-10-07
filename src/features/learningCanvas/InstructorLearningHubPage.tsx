@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Plus,
   Upload,
@@ -53,19 +53,21 @@ import { FlashcardsTab, useFlashcardDecks } from '../flashcards'
 import { ChatbotTab } from '../chatbot'
 import { useSharedCanvases } from './collab/useSharedCanvases'
 import { SharedCanvasList } from './collab/SharedCanvasList'
+import { logActivity } from './collab/activityService'
 
 export function InstructorLearningHubPage() {
   const { user } = useAuth()
   const sharedCanvases = useSharedCanvases(user?.uid)
   const { showToast } = useToast()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [classes, setClasses] = useState<ClassWithId[]>([])
   const [classesLoading, setClassesLoading] = useState(true)
   const [classesError, setClassesError] = useState<string | null>(null)
 
-  const [selectedClassId, setSelectedClassId] = useState<string>('all')
-  const [viewMode, setViewMode] = useState<string>('canvases') // 'canvases' | 'graph'
+  const [selectedClassId, setSelectedClassId] = useState<string>(searchParams.get('classId') || 'all')
+  const [viewMode, setViewMode] = useState<string>(searchParams.get('tab') === 'graph' || searchParams.has('graphId') ? 'graph' : 'canvases') // 'canvases' | 'graph'
 
   // Per-class canvases map: classId -> LearningCanvasWithId[]
   const [canvasMap, setCanvasMap] = useState<Record<string, LearningCanvasWithId[]>>({})
@@ -166,6 +168,7 @@ export function InstructorLearningHubPage() {
 
   // Aggregate all loaded canvases
   const allCanvases = Object.values(canvasMap).flat()
+  const graphCanvases = [...allCanvases, ...sharedCanvases.items]
   const classCanvases =
     selectedClassId === 'all'
       ? allCanvases
@@ -173,7 +176,12 @@ export function InstructorLearningHubPage() {
 
   // Separate pure whiteboard canvases and concept notes
   const displayCanvases = classCanvases.filter((c) => c.sourceCanvasId !== 'note')
-  const displayNotes = classCanvases.filter((c) => c.sourceCanvasId === 'note')
+  const displayNotes = [
+    ...classCanvases.filter((c) => c.sourceCanvasId === 'note'),
+    ...sharedCanvases.items.filter((item) =>
+      item.sourceCanvasId === 'note' && (selectedClassId === 'all' || item.classId === selectedClassId),
+    ),
+  ]
 
   const listStatus = resolveListStatus({
     loading: classesLoading,
@@ -294,6 +302,18 @@ export function InstructorLearningHubPage() {
       { description: content.slice(0, 300) },
     )
     showToast('success', 'Note content saved.')
+    try {
+      await logActivity(targetClass, canvasId, {
+        uid: user.uid,
+        name: user.displayName || user.email || 'Learner',
+      }, {
+        type: 'edit',
+        summary: `Updated note “${existingMeta.title}”`,
+        changes: ['Updated note content'],
+      })
+    } catch {
+      showToast('error', 'The note was saved, but its activity could not be recorded.')
+    }
   }
 
   const handleUpdateNoteFromTab = async (
@@ -305,6 +325,18 @@ export function InstructorLearningHubPage() {
     if (!user) return
     if (title) {
       await rename(targetClass, noteId, title)
+      try {
+        await logActivity(targetClass, noteId, {
+          uid: user.uid,
+          name: user.displayName || user.email || 'Learner',
+        }, {
+          type: 'edit',
+          summary: `Renamed note to “${title.trim()}”`,
+          changes: [`Title: ${title.trim()}`],
+        })
+      } catch {
+        showToast('error', 'The note title changed, but its activity could not be recorded.')
+      }
     }
     await handleUpdateNoteContent(noteId, targetClass, content)
   }
@@ -559,7 +591,7 @@ export function InstructorLearningHubPage() {
         {viewMode === 'graph' && (
           <section aria-label="Learning knowledge graph">
             <LearningGraphView
-              canvases={allCanvases}
+              canvases={graphCanvases}
               classes={classOptions}
               moduleTitles={moduleTitles}
               quizTitles={quizTitles}
@@ -598,6 +630,7 @@ export function InstructorLearningHubPage() {
           <section aria-label="Concept notes">
             <NotesTabContent
               notes={displayNotes}
+              sharedError={sharedCanvases.error}
               classes={classOptions}
               selectedClassId={selectedClassId}
               role="instructor"

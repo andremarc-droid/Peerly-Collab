@@ -649,7 +649,180 @@ service cloud.firestore {
       }
     }
 
+    // Individually shared graph views are separate saved snapshots, not class-wide shares.
+    match /classes/{classId}/graphViews/{graphId} {
+      function graphPath() {
+        return /databases/$(database)/documents/classes/$(classId)/graphViews/$(graphId);
+      }
+      function graphMemberPath(uid) {
+        return /databases/$(database)/documents/classes/$(classId)/graphViews/$(graphId)/members/$(uid);
+      }
+      function graphInvitePath(token) {
+        return /databases/$(database)/documents/classes/$(classId)/graphViews/$(graphId)/invites/$(token);
+      }
+      function graphOwner() {
+        return signedIn() && exists(graphPath()) && get(graphPath()).data.ownerId == request.auth.uid;
+      }
+      function graphRole() {
+        return signedIn() && exists(graphMemberPath(request.auth.uid))
+          ? get(graphMemberPath(request.auth.uid)).data.get('role', '')
+          : '';
+      }
+      function graphMember() {
+        return signedIn() && exists(graphPath()) && (isClassOwner(classId) || isActiveMember(classId))
+          && graphRole() in ['viewer', 'editor'];
+      }
+      function graphEditor() {
+        return graphMember() && graphRole() == 'editor';
+      }
+      function validGraphConfig(data) {
+        return data.keys().hasOnly(['ownerId', 'ownerName', 'classId', 'title', 'nodeIds', 'positions', 'createdAt', 'updatedAt'])
+          && data.keys().hasAll(['ownerId', 'ownerName', 'classId', 'title', 'nodeIds', 'positions', 'createdAt', 'updatedAt'])
+          && data.ownerId is string
+          && data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 80
+          && data.classId == classId
+          && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+          && data.nodeIds is list && data.nodeIds.size() <= 80
+          && data.positions is map && data.positions.size() <= 80
+          && data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+
+      allow get: if signedIn() && (resource == null || graphOwner() || graphMember());
+      allow list: if graphOwner();
+      allow create: if signedIn()
+        && validGraphConfig(request.resource.data)
+        && request.resource.data.ownerId == request.auth.uid
+        && (isClassOwner(classId) || isActiveMember(classId));
+      allow update: if signedIn()
+        && validGraphConfig(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.ownerName == resource.data.ownerName
+        && request.resource.data.classId == resource.data.classId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          graphOwner()
+          || (graphEditor()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nodeIds', 'positions', 'updatedAt']))
+        );
+      allow delete: if graphOwner();
+
+      match /invites/{token} {
+        function validGraphInvite(data) {
+          return data.keys().hasOnly(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+            && data.keys().hasAll(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+            && data.createdBy == request.auth.uid
+            && data.role in ['viewer', 'editor']
+            && data.active is bool
+            && data.createdAt == request.time
+            && (data.expiresAt == null || (data.expiresAt is timestamp && data.expiresAt > request.time));
+        }
+        allow get: if signedIn() && exists(graphPath())
+          && (graphOwner() || isClassOwner(classId) || isActiveMember(classId));
+        allow list: if graphOwner();
+        allow create: if graphOwner() && validGraphInvite(request.resource.data);
+        allow update: if graphOwner()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
+          && request.resource.data.active is bool;
+        allow delete: if graphOwner();
+      }
+
+      match /members/{memberUid} {
+        function validGraphMember(data) {
+          let invite = get(graphInvitePath(data.grantedByToken)).data;
+          return data.keys().hasOnly(['uid', 'role', 'displayName', 'invitedBy', 'grantedByToken', 'joinedAt', 'updatedAt'])
+            && data.keys().hasAll(['uid', 'role', 'displayName', 'invitedBy', 'grantedByToken', 'joinedAt', 'updatedAt'])
+            && data.uid == memberUid
+            && data.role in ['viewer', 'editor']
+            && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+            && data.invitedBy is string
+            && data.grantedByToken is string
+            && data.joinedAt == request.time && data.updatedAt == request.time
+            && exists(graphInvitePath(data.grantedByToken))
+            && invite.active == true
+            && (invite.expiresAt == null || request.time < invite.expiresAt)
+            && data.role == invite.role
+            && data.invitedBy == invite.createdBy;
+        }
+        allow get: if signedIn() && (graphOwner() || graphMember() || memberUid == request.auth.uid);
+        allow list: if graphOwner() || graphMember();
+        allow create: if signedIn()
+          && memberUid == request.auth.uid
+          && exists(graphPath())
+          && !graphOwner()
+          && (isClassOwner(classId) || isActiveMember(classId))
+          && validGraphMember(request.resource.data);
+        allow update: if graphOwner()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+          && request.resource.data.role in ['viewer', 'editor']
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if graphOwner();
+      }
+
+      match /activity/{activityId} {
+        function validGraphActivity(data) {
+          return data.keys().hasOnly(['actorId', 'actorName', 'type', 'summary', 'changes', 'createdAt'])
+            && data.keys().hasAll(['actorId', 'actorName', 'type', 'summary', 'changes', 'createdAt'])
+            && data.actorId == request.auth.uid
+            && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 80
+            && data.type in ['edit', 'member']
+            && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 200
+            && data.changes is list && data.changes.size() <= 10
+            && data.createdAt == request.time;
+        }
+        allow get, list: if graphOwner() || graphMember();
+        allow create: if signedIn()
+          && validGraphActivity(request.resource.data)
+          && (
+            (request.resource.data.type == 'edit' && (graphOwner() || graphEditor()))
+            || (request.resource.data.type == 'member' && graphOwner())
+          );
+        allow update, delete: if false;
+      }
+
+      match /presence/{uid} {
+        function validGraphPresence(data) {
+          return data.keys().hasOnly(['uid', 'name', 'online', 'lastActive'])
+            && data.keys().hasAll(['uid', 'name', 'online', 'lastActive'])
+            && data.uid == request.auth.uid
+            && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+            && data.online is bool
+            && data.lastActive == request.time;
+        }
+        allow get, list: if graphOwner() || graphMember();
+        allow create, update: if signedIn() && uid == request.auth.uid
+          && validGraphPresence(request.resource.data)
+          && (graphOwner() || graphMember());
+        allow delete: if signedIn() && uid == request.auth.uid;
+      }
+    }
+
     match /classes/{classId}/flashcardDecks/{deckId} {
+      function deckPath() {
+        return /databases/$(database)/documents/classes/$(classId)/flashcardDecks/$(deckId);
+      }
+      function deckMemberPath(uid) {
+        return /databases/$(database)/documents/classes/$(classId)/flashcardDecks/$(deckId)/members/$(uid);
+      }
+      function deckInvitePath(token) {
+        return /databases/$(database)/documents/classes/$(classId)/flashcardDecks/$(deckId)/invites/$(token);
+      }
+      function isDeckOwner() {
+        return signedIn() && exists(deckPath()) && get(deckPath()).data.ownerId == request.auth.uid;
+      }
+      function deckMemberRole() {
+        return exists(deckMemberPath(request.auth.uid))
+          ? get(deckMemberPath(request.auth.uid)).data.get('role', '')
+          : '';
+      }
+      function isDeckMember() {
+        return signedIn() && exists(deckPath()) && (isClassOwner(classId) || isActiveMember(classId))
+          && deckMemberRole() in ['viewer', 'editor'];
+      }
+      function isDeckEditor() {
+        return signedIn() && (isClassOwner(classId) || isActiveMember(classId))
+          && deckMemberRole() == 'editor';
+      }
+
       function validFlashcardDeck(data) {
         return data.keys().hasOnly(['ownerId', 'classId', 'kind', 'title', 'description', 'status', 'cardCount', 'cards', 'createdAt', 'updatedAt'])
           && data.keys().hasAll(['ownerId', 'classId', 'kind', 'title', 'description', 'status', 'cardCount', 'cards', 'createdAt', 'updatedAt'])
@@ -670,11 +843,13 @@ service cloud.firestore {
         resource == null
         || (resource.data.get('kind', '') == 'class' && (isClassOwner(classId) || (isActiveMember(classId) && resource.data.get('status', '') == 'published')))
         || (resource.data.get('kind', '') == 'personal' && resource.data.get('ownerId', '') == request.auth.uid)
+        || isDeckMember()
       );
       allow list: if signedIn() && (
         isClassOwner(classId)
         || (resource.data.get('kind', '') == 'class' && isActiveMember(classId) && resource.data.get('status', '') == 'published')
         || (resource.data.get('kind', '') == 'personal' && resource.data.get('ownerId', '') == request.auth.uid)
+        || isDeckMember()
       );
 
       allow create: if signedIn()
@@ -694,12 +869,104 @@ service cloud.firestore {
         && (
           (resource.data.kind == 'class' && isClassOwner(classId))
           || (resource.data.kind == 'personal' && resource.data.ownerId == request.auth.uid)
+          || (isDeckEditor()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'description', 'cardCount', 'cards', 'updatedAt'
+            ]))
         );
 
       allow delete: if signedIn() && (
         (resource.data.kind == 'class' && isClassOwner(classId))
         || (resource.data.kind == 'personal' && (resource.data.ownerId == request.auth.uid || isClassOwner(classId)))
       );
+
+      match /members/{memberUid} {
+        function validDeckMember(data) {
+          let invite = get(deckInvitePath(data.grantedByToken)).data;
+          return data.keys().hasOnly(['uid', 'role', 'displayName', 'invitedBy', 'grantedByToken', 'joinedAt', 'updatedAt'])
+            && data.keys().hasAll(['uid', 'role', 'displayName', 'invitedBy', 'grantedByToken', 'joinedAt', 'updatedAt'])
+            && data.uid == memberUid
+            && data.role in ['viewer', 'editor']
+            && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+            && data.invitedBy is string
+            && data.grantedByToken is string
+            && data.joinedAt == request.time && data.updatedAt == request.time
+            && exists(deckInvitePath(data.grantedByToken))
+            && invite.active == true
+            && (invite.expiresAt == null || request.time < invite.expiresAt)
+            && data.role == invite.role
+            && data.invitedBy == invite.createdBy;
+        }
+
+        allow get: if signedIn() && (memberUid == request.auth.uid || isDeckOwner() || isDeckMember());
+        allow list: if signedIn() && (isDeckOwner() || isDeckMember());
+        allow create: if signedIn()
+          && memberUid == request.auth.uid
+          && exists(deckPath())
+          && !isDeckOwner()
+          && (isClassOwner(classId) || isActiveMember(classId))
+          && validDeckMember(request.resource.data);
+        allow update: if isDeckOwner()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+          && request.resource.data.role in ['viewer', 'editor']
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if isDeckOwner() || isClassOwner(classId);
+      }
+
+      match /invites/{token} {
+        function validDeckInvite(data) {
+          return data.keys().hasOnly(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+            && data.keys().hasAll(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+            && data.createdBy == request.auth.uid
+            && data.role in ['viewer', 'editor']
+            && data.active is bool
+            && data.createdAt == request.time
+            && (data.expiresAt == null || (data.expiresAt is timestamp && data.expiresAt > request.time));
+        }
+
+        allow get: if signedIn() && exists(deckPath()) && token.size() >= 32
+          && (isClassOwner(classId) || isActiveMember(classId));
+        allow list: if isDeckOwner();
+        allow create: if isDeckOwner() && token.size() >= 32 && validDeckInvite(request.resource.data);
+        allow update: if isDeckOwner()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
+          && request.resource.data.active is bool;
+        allow delete: if isDeckOwner() || isClassOwner(classId);
+      }
+
+      match /activity/{activityId} {
+        function validDeckActivity(data) {
+          return data.keys().hasOnly(['actorId', 'actorName', 'type', 'summary', 'createdAt'])
+            && data.keys().hasAll(['actorId', 'actorName', 'type', 'summary', 'createdAt'])
+            && data.actorId == request.auth.uid
+            && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 80
+            && data.type in ['edit', 'member']
+            && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 200
+            && data.createdAt == request.time;
+        }
+        allow get, list: if signedIn() && (isDeckOwner() || isDeckMember());
+        allow create: if signedIn() && validDeckActivity(request.resource.data)
+          && ((request.resource.data.type == 'edit' && (isDeckOwner() || isDeckEditor()))
+            || (request.resource.data.type == 'member' && isDeckOwner()));
+        allow update: if false;
+        allow delete: if isDeckOwner() || isClassOwner(classId);
+      }
+
+      match /presence/{uid} {
+        function validDeckPresence(data) {
+          return data.keys().hasOnly(['uid', 'name', 'online', 'lastActive'])
+            && data.keys().hasAll(['uid', 'name', 'online', 'lastActive'])
+            && data.uid == request.auth.uid
+            && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+            && data.online is bool
+            && data.lastActive == request.time;
+        }
+        allow get, list: if signedIn() && (isDeckOwner() || isDeckMember());
+        allow create, update: if signedIn() && uid == request.auth.uid
+          && validDeckPresence(request.resource.data)
+          && (isDeckOwner() || isDeckMember());
+        allow delete: if signedIn() && uid == request.auth.uid;
+      }
     }
 
     // "Shared with me": a person finds the canvases they were invited to by querying their own member records.
@@ -1182,6 +1449,228 @@ service cloud.firestore {
             ? validBlankOwnerResultUpdate(request.resource.data, quizId, resource.data)
             : validResult(request.resource.data));
         allow delete: if quizOwner(quizId);
+      }
+    }
+
+    // Collection-group discovery is intentionally limited to each recipient's own invite record.
+    match /{path=**}/tutorMembers/{memberUid} {
+      allow get: if signedIn() && memberUid == request.auth.uid && resource.data.uid == request.auth.uid;
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /sharedTutorThreads/{threadId} {
+      function threadPath() {
+        return /databases/$(database)/documents/sharedTutorThreads/$(threadId);
+      }
+      function threadMemberPath(uid) {
+        return /databases/$(database)/documents/sharedTutorThreads/$(threadId)/tutorMembers/$(uid);
+      }
+      function threadInvitePath(token) {
+        return /databases/$(database)/documents/sharedTutorThreads/$(threadId)/invites/$(token);
+      }
+      function revokedInvitePath(uid, token) {
+        return /databases/$(database)/documents/sharedTutorThreads/$(threadId)/revokedAccess/$(uid)/invites/$(token);
+      }
+      function isThreadOwner() {
+        return signedIn() && exists(threadPath()) && get(threadPath()).data.ownerId == request.auth.uid;
+      }
+      function threadMemberRole() {
+        return exists(threadMemberPath(request.auth.uid))
+          ? get(threadMemberPath(request.auth.uid)).data.get('role', '')
+          : '';
+      }
+      function isThreadMember() {
+        return signedIn() && exists(threadPath()) && threadMemberRole() in ['viewer', 'editor'];
+      }
+      function canEditThread() {
+        return isThreadOwner() || (signedIn() && threadMemberRole() == 'editor');
+      }
+      function canReadThread() {
+        return isThreadOwner() || isThreadMember();
+      }
+      function validThread(data) {
+        return data.keys().hasOnly([
+            'ownerId', 'title', 'summary', 'summarizedCount', 'createdAtMs',
+            'updatedAtMs', 'createdAt', 'updatedAt'
+          ])
+          && data.keys().hasAll([
+            'ownerId', 'title', 'summary', 'summarizedCount', 'createdAtMs',
+            'updatedAtMs', 'createdAt', 'updatedAt'
+          ])
+          && data.ownerId is string && data.ownerId.size() > 0 && data.ownerId.size() <= 128
+          && data.title is string && data.title.size() > 0 && data.title.size() <= 120
+          && data.summary is string && data.summary.size() <= 12000
+          && data.summarizedCount is int && data.summarizedCount >= 0
+          && data.createdAtMs is number && data.createdAtMs >= 0
+          && data.updatedAtMs is number && data.updatedAtMs >= 0
+          && data.createdAt is timestamp && data.updatedAt == request.time;
+      }
+
+      allow get: if signedIn() && (resource == null || canReadThread());
+      allow list: if signedIn() && (resource.data.ownerId == request.auth.uid || isThreadMember());
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && validThread(request.resource.data);
+      allow update: if canEditThread()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'summary', 'summarizedCount', 'updatedAtMs', 'updatedAt'
+        ])
+        && validThread(request.resource.data);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        function validImageMetadata(image) {
+          return image is map
+            && image.keys().hasOnly(['id', 'name', 'mimeType', 'width', 'height'])
+            && image.keys().hasAll(['id', 'name', 'mimeType', 'width', 'height'])
+            && image.id is string && image.id.size() > 0 && image.id.size() <= 128
+            && image.name is string && image.name.size() <= 60
+            && image.mimeType in ['image/jpeg', 'image/webp']
+            && image.width is int && image.width > 0 && image.width <= 1024
+            && image.height is int && image.height > 0 && image.height <= 1024;
+        }
+        function validMessage(data) {
+          return data.keys().hasOnly(['id', 'role', 'text', 'createdAtMs', 'createdAt', 'failed', 'images'])
+            && data.keys().hasAll(['id', 'role', 'text', 'createdAtMs', 'createdAt', 'images'])
+            && data.id == messageId
+            && data.role in ['user', 'assistant']
+            && data.text is string && data.text.size() <= 50000
+            && data.createdAtMs is number && data.createdAtMs >= 0
+            && data.createdAt is timestamp
+            && data.images is list && data.images.size() <= 2
+            && (data.images.size() == 0 || validImageMetadata(data.images[0]))
+            && (data.images.size() < 2 || validImageMetadata(data.images[1]))
+            && (!('failed' in data) || data.failed == true);
+        }
+        allow get, list: if canReadThread();
+        allow create: if canEditThread() && validMessage(request.resource.data);
+        allow update: if canEditThread()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'failed', 'images'])
+          && validMessage(request.resource.data);
+        allow delete: if isThreadOwner();
+
+        match /images/{imageId} {
+          function validImage(data) {
+            return data.keys().hasOnly(['id', 'data', 'mimeType', 'width', 'height', 'name'])
+              && data.keys().hasAll(['id', 'data', 'mimeType', 'width', 'height', 'name'])
+              && data.id == imageId
+              && data.data is string && data.data.size() > 0 && data.data.size() <= 350000
+              && data.data.matches('^[A-Za-z0-9+/]+={0,2}$')
+              && data.mimeType in ['image/jpeg', 'image/webp']
+              && data.width is int && data.width > 0 && data.width <= 1024
+              && data.height is int && data.height > 0 && data.height <= 1024
+              && data.name is string && data.name.size() <= 60;
+          }
+          allow get, list: if canReadThread();
+          allow create: if canEditThread() && validImage(request.resource.data);
+          allow update: if canEditThread()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['data', 'name'])
+            && validImage(request.resource.data);
+          allow delete: if isThreadOwner();
+        }
+      }
+
+      match /tutorMembers/{memberUid} {
+        function validAcceptedMember(data) {
+          return data.keys().hasOnly([
+              'uid', 'role', 'displayName', 'invitedBy', 'grantedByToken', 'joinedAt', 'updatedAt'
+            ])
+            && data.keys().hasAll([
+              'uid', 'role', 'displayName', 'invitedBy', 'grantedByToken', 'joinedAt', 'updatedAt'
+            ])
+            && data.uid == memberUid
+            && data.role in ['viewer', 'editor']
+            && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 80
+            && data.invitedBy is string
+            && data.grantedByToken is string
+            && data.joinedAt == request.time && data.updatedAt == request.time
+            && exists(threadInvitePath(data.grantedByToken))
+            && get(threadInvitePath(data.grantedByToken)).data.active == true
+            && (get(threadInvitePath(data.grantedByToken)).data.expiresAt == null
+              || request.time < get(threadInvitePath(data.grantedByToken)).data.expiresAt)
+            && data.role == get(threadInvitePath(data.grantedByToken)).data.role
+            && data.invitedBy == get(threadInvitePath(data.grantedByToken)).data.createdBy
+            && !exists(revokedInvitePath(memberUid, data.grantedByToken));
+        }
+        allow get: if signedIn() && (memberUid == request.auth.uid || isThreadOwner());
+        allow list: if signedIn() && (isThreadOwner() || resource.data.uid == request.auth.uid);
+        allow create: if signedIn()
+          && memberUid == request.auth.uid
+          && exists(threadPath())
+          && get(threadPath()).data.ownerId != request.auth.uid
+          && validAcceptedMember(request.resource.data);
+        allow update: if isThreadOwner()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+          && request.resource.data.role in ['viewer', 'editor']
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if isThreadOwner();
+      }
+
+      match /invites/{inviteToken} {
+        function validInvite(data) {
+          return data.keys().hasOnly(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+            && data.keys().hasAll(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+            && data.createdBy == request.auth.uid
+            && data.role in ['viewer', 'editor']
+            && data.active is bool
+            && data.createdAt == request.time
+            && (data.expiresAt == null || (data.expiresAt is timestamp && data.expiresAt > request.time));
+        }
+        allow get: if signedIn() && inviteToken.size() == 32;
+        allow list: if isThreadOwner();
+        allow create: if isThreadOwner() && inviteToken.size() == 32 && validInvite(request.resource.data);
+        allow update: if isThreadOwner()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
+          && request.resource.data.active is bool;
+        allow delete: if isThreadOwner();
+      }
+
+      match /activity/{activityId} {
+        function validActivity(data) {
+          return data.keys().hasOnly(['actorId', 'actorName', 'summary', 'createdAt'])
+            && data.keys().hasAll(['actorId', 'actorName', 'summary', 'createdAt'])
+            && data.actorId == request.auth.uid
+            && data.actorName is string && data.actorName.size() > 0 && data.actorName.size() <= 80
+            && data.summary is string && data.summary.size() > 0 && data.summary.size() <= 200
+            && data.createdAt == request.time;
+        }
+        allow get, list: if canReadThread();
+        allow create: if signedIn() && validActivity(request.resource.data)
+          && (isThreadOwner() || (isThreadMember()
+            && (threadMemberRole() == 'editor' || request.resource.data.summary == 'Joined the conversation.')));
+        allow update: if false;
+        allow delete: if isThreadOwner();
+      }
+
+      match /presence/{uid} {
+        function validPresence(data) {
+          return data.keys().hasOnly(['uid', 'name', 'online', 'lastActive'])
+            && data.keys().hasAll(['uid', 'name', 'online', 'lastActive'])
+            && data.uid == uid
+            && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+            && data.online is bool
+            && data.lastActive == request.time;
+        }
+        allow get, list: if canReadThread();
+        allow create, update: if signedIn() && uid == request.auth.uid
+          && canReadThread() && validPresence(request.resource.data);
+        allow delete: if signedIn() && (uid == request.auth.uid || isThreadOwner());
+      }
+
+      match /revokedAccess/{memberUid}/invites/{inviteToken} {
+        allow get: if signedIn() && (isThreadOwner() || memberUid == request.auth.uid);
+        allow list: if isThreadOwner();
+        allow create: if isThreadOwner()
+          && request.resource.data.keys().hasOnly(['uid', 'inviteToken', 'revokedBy', 'revokedAt'])
+          && request.resource.data.keys().hasAll(['uid', 'inviteToken', 'revokedBy', 'revokedAt'])
+          && request.resource.data.uid == memberUid
+          && request.resource.data.inviteToken == inviteToken
+          && request.resource.data.revokedBy == request.auth.uid
+          && request.resource.data.revokedAt == request.time;
+        allow update: if false;
+        allow delete: if isThreadOwner();
       }
     }
 

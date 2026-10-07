@@ -12,7 +12,9 @@ interface SharedCanvasListProps {
 }
 
 export function SharedCanvasList({ items, error, role, selectedClassId }: SharedCanvasListProps) {
-  const visible = items.filter((item) => selectedClassId === 'all' || item.classId === selectedClassId)
+  const visible = items.filter((item) =>
+    item.sourceCanvasId !== 'note' && (selectedClassId === 'all' || item.classId === selectedClassId),
+  )
   return (
     <section aria-labelledby="shared-canvases-heading" className="grid gap-3">
       <div>

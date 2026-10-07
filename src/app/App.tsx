@@ -31,6 +31,9 @@ const StudentLearningCanvasPage = lazy(() => import('../features/learningCanvas/
 const InstructorLearningHubPage = lazy(() => import('../features/learningCanvas/InstructorLearningHubPage').then((module) => ({ default: module.InstructorLearningHubPage })))
 const StudentLearningHubPage = lazy(() => import('../features/learningCanvas/StudentLearningHubPage').then((module) => ({ default: module.StudentLearningHubPage })))
 const CanvasInvitePage = lazy(() => import('../features/learningCanvas/CanvasInvitePage').then((module) => ({ default: module.CanvasInvitePage })))
+const TutorInvitePage = lazy(() => import('../features/chatbot/TutorInvitePage').then((module) => ({ default: module.TutorInvitePage })))
+const GraphInvitePage = lazy(() => import('../features/learningCanvas/GraphInvitePage').then((module) => ({ default: module.GraphInvitePage })))
+const DeckInvitePage = lazy(() => import('../features/flashcards/DeckInvitePage').then((module) => ({ default: module.DeckInvitePage })))
 
 export function AppRoutes() {
   return (
@@ -45,6 +48,9 @@ export function AppRoutes() {
       <Route path="/join" element={<ToastProvider><JoinClassPage /></ToastProvider>} />
       <Route path="/join/:code" element={<ToastProvider><JoinClassPage /></ToastProvider>} />
       <Route path="/learning/join/:classId/:canvasId/:token" element={<ProtectedRoute><ToastProvider><CanvasInvitePage /></ToastProvider></ProtectedRoute>} />
+      <Route path="/learning/tutor/:threadId/:token" element={<ProtectedRoute><ToastProvider><TutorInvitePage /></ToastProvider></ProtectedRoute>} />
+      <Route path="/learning/join-graph/:classId/:graphId/:token" element={<ProtectedRoute><ToastProvider><GraphInvitePage /></ToastProvider></ProtectedRoute>} />
+      <Route path="/learning/join/deck/:classId/:deckId/:token" element={<ProtectedRoute><DeckInvitePage /></ProtectedRoute>} />
       <Route path="/instructor" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><ToastProvider><Outlet /></ToastProvider></RoleRoute></ProtectedRoute>}>
         <Route index element={<ClassesPage />} />
         <Route path="classes/:classId" element={<ClassPage />} />

@@ -7,8 +7,10 @@ import {
   Trash2,
   Orbit,
   Calendar,
+  Share2,
 } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
+import { Alert } from '../../../shared/ui/Alert'
 import { Badge } from '../../../shared/ui/Badge'
 import { Dialog } from '../../../shared/ui/Dialog'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -18,7 +20,7 @@ import { Textarea } from '../../../shared/ui/Textarea'
 import type { LearningCanvasWithId } from '../types'
 
 interface NotesTabContentProps {
-  notes: LearningCanvasWithId[]
+  notes: Array<LearningCanvasWithId & { shareRole?: 'viewer' | 'editor' }>
   classes: Array<{ id: string; name: string }>
   selectedClassId: string
   role: 'instructor' | 'student'
@@ -26,17 +28,19 @@ interface NotesTabContentProps {
   onUpdateNote: (noteId: string, classId: string, content: string, title?: string) => Promise<void>
   onDeleteNote: (note: LearningCanvasWithId) => Promise<void>
   onViewInGraph: (noteId: string) => void
+  sharedError?: string | null
 }
 
 export function NotesTabContent({
   notes,
   classes,
   selectedClassId,
-  role: _role,
+  role,
   onCreateNote,
   onUpdateNote,
   onDeleteNote,
   onViewInGraph,
+  sharedError,
 }: NotesTabContentProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -141,6 +145,9 @@ export function NotesTabContent({
 
   return (
     <div className="grid gap-6">
+      {sharedError && filteredNotes.length > 0 && (
+        <Alert tone="error" label="Could not load shared notes">{sharedError}</Alert>
+      )}
       {/* Search & Actions Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white rounded-3xl border border-navy-900-12 shadow-xs">
         <div className="relative flex-1 min-w-[240px] max-w-md">
@@ -185,22 +192,26 @@ export function NotesTabContent({
 
       {/* Notes Grid or Empty State */}
       {filteredNotes.length === 0 ? (
-        <EmptyState
-          title={searchQuery ? 'No matching notes found' : 'No notes yet'}
-          description={
-            searchQuery
-              ? 'Try adjusting your search terms or clearing the filter.'
-              : 'Create concept notes to capture insights, summaries, and lecture takeaways. You can visually connect notes directly in the Graph View.'
-          }
-          action={
-            !searchQuery && classes.length > 0 ? (
-              <Button type="button" variant="primary" onClick={handleOpenCreate}>
-                <Plus size={16} aria-hidden="true" />
-                <span>Create first note</span>
-              </Button>
-            ) : undefined
-          }
-        />
+        sharedError ? (
+          <Alert tone="error" label="Could not load shared notes">{sharedError}</Alert>
+        ) : (
+          <EmptyState
+            title={searchQuery ? 'No matching notes found' : 'No notes yet'}
+            description={
+              searchQuery
+                ? 'Try adjusting your search terms or clearing the filter.'
+                : 'Create concept notes to capture insights, summaries, and lecture takeaways. You can visually connect notes directly in the Graph View.'
+            }
+            action={
+              !searchQuery && classes.length > 0 ? (
+                <Button type="button" variant="primary" onClick={handleOpenCreate}>
+                  <Plus size={16} aria-hidden="true" />
+                  <span>Create first note</span>
+                </Button>
+              ) : undefined
+            }
+          />
+        )
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredNotes.map((note) => {
@@ -216,9 +227,14 @@ export function NotesTabContent({
                 <div>
                   {/* Top metadata row */}
                   <div className="flex items-center justify-between gap-2 mb-3">
-                    <Badge variant="neutral" className="text-[11px] truncate max-w-[180px]">
+                    <Badge className="text-sm truncate max-w-[180px]">
                       {className}
                     </Badge>
+                    {note.shareRole && (
+                      <span className="text-sm font-semibold text-navy-900">
+                        Shared · {note.shareRole === 'editor' ? 'Can edit' : 'View only'}
+                      </span>
+                    )}
                     {dateStr && (
                       <span className="inline-flex items-center gap-1 text-[11px] text-navy-800-72">
                         <Calendar size={12} aria-hidden="true" />
@@ -243,18 +259,25 @@ export function NotesTabContent({
                 </div>
 
                 {/* Card Actions */}
-                <div className="flex items-center justify-between pt-3 border-t border-navy-900-08 gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <Button
+                <div className="flex flex-wrap items-center justify-between pt-3 border-t border-navy-900-08 gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {!note.shareRole && <Button
                       type="button"
                       variant="secondary"
                       onClick={() => handleOpenEdit(note)}
-                      className="py-1 px-2.5 text-xs min-h-8 gap-1"
+                      className="py-1 px-2.5 text-xs min-h-11 gap-1"
                       title="Edit note text"
                     >
                       <Edit3 size={13} aria-hidden="true" />
                       <span>Edit</span>
-                    </Button>
+                    </Button>}
+                    {note.shareRole && <Button
+                      to={`/${role}/classes/${encodeURIComponent(note.classId)}/learning/${encodeURIComponent(note.id)}`}
+                      variant="secondary"
+                      className="min-h-11"
+                    >
+                      <span>{note.shareRole === 'editor' ? 'Open to edit' : 'Open'}</span>
+                    </Button>}
                     <Button
                       type="button"
                       variant="ghost"
@@ -265,9 +288,23 @@ export function NotesTabContent({
                       <Orbit size={13} aria-hidden="true" />
                       <span>In Graph</span>
                     </Button>
+                    {!note.shareRole && <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => window.open(
+                        `/${role}/classes/${encodeURIComponent(note.classId)}/learning/${encodeURIComponent(note.id)}#canvas-collaboration`,
+                        '_blank',
+                        'noopener,noreferrer',
+                      )}
+                      className="py-1 px-2.5 text-xs min-h-11 gap-1"
+                      aria-label={`Share note "${note.title}"`}
+                    >
+                      <Share2 size={13} aria-hidden="true" />
+                      <span>Share</span>
+                    </Button>}
                   </div>
 
-                  <Button
+                  {!note.shareRole && <Button
                     type="button"
                     variant="ghost"
                     onClick={() => setDeleteTarget(note)}
@@ -276,7 +313,7 @@ export function NotesTabContent({
                     aria-label={`Delete note "${note.title}"`}
                   >
                     <Trash2 size={14} aria-hidden="true" />
-                  </Button>
+                  </Button>}
                 </div>
               </article>
             )
@@ -316,31 +353,23 @@ export function NotesTabContent({
             </div>
           )}
 
-          <div className="grid gap-1.5">
-            <label htmlFor="create-note-title" className="text-xs font-bold text-navy-900">
-              Note Title
-            </label>
-            <Input
-              id="create-note-title"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="e.g. Newton's Third Law, Krebs Cycle Key Takeaways…"
-              required
-            />
-          </div>
+          <Input
+            id="create-note-title"
+            label="Note title"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="e.g. Newton's Third Law, Krebs Cycle Key Takeaways…"
+            required
+          />
 
-          <div className="grid gap-1.5">
-            <label htmlFor="create-note-content" className="text-xs font-bold text-navy-900">
-              Content / Details
-            </label>
-            <Textarea
-              id="create-note-content"
-              value={newContent}
-              onChange={(e) => setNewContent(e.target.value)}
-              placeholder="Write your study notes, definitions, or bullet points here…"
-              rows={5}
-            />
-          </div>
+          <Textarea
+            id="create-note-content"
+            label="Content / details"
+            value={newContent}
+            onChange={(e) => setNewContent(e.target.value)}
+            placeholder="Write your study notes, definitions, or bullet points here…"
+            rows={5}
+          />
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-navy-900-12">
             <Button
@@ -369,30 +398,22 @@ export function NotesTabContent({
         title="Edit Concept Note"
       >
         <form onSubmit={handleEditSubmit} className="grid gap-4">
-          <div className="grid gap-1.5">
-            <label htmlFor="edit-note-title" className="text-xs font-bold text-navy-900">
-              Note Title
-            </label>
-            <Input
-              id="edit-note-title"
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              required
-            />
-          </div>
+          <Input
+            id="edit-note-title"
+            label="Note title"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            required
+          />
 
-          <div className="grid gap-1.5">
-            <label htmlFor="edit-note-content" className="text-xs font-bold text-navy-900">
-              Content / Details
-            </label>
-            <Textarea
-              id="edit-note-content"
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              placeholder="Write your study notes here…"
-              rows={8}
-            />
-          </div>
+          <Textarea
+            id="edit-note-content"
+            label="Content / details"
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            placeholder="Write your study notes here…"
+            rows={8}
+          />
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-navy-900-12">
             <Button
@@ -421,9 +442,8 @@ export function NotesTabContent({
         onConfirm={handleDeleteConfirm}
         busy={deleteBusy}
         title="Delete Note"
-        message={`Are you sure you want to delete note "${deleteTarget?.title}"? This will also remove it from the knowledge graph.`}
+        description={`Are you sure you want to delete note "${deleteTarget?.title}"? This will also remove it from the knowledge graph.`}
         confirmLabel="Delete Note"
-        isDestructive
       />
     </div>
   )

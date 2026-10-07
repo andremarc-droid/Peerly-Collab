@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Calendar, Edit3, Play, Plus, Search, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Calendar, Edit3, Link2, Play, Plus, Search, Trash2, X } from 'lucide-react'
 import { Alert } from '../../../shared/ui/Alert'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
@@ -8,9 +8,12 @@ import { EmptyState } from '../../../shared/ui/EmptyState'
 import { useToast } from '../../../shared/ui/useToast'
 import { useAuth } from '../../auth/useAuth'
 import { createDeck, deleteDeck, updateDeck } from '../services'
+import { summarizeDeckChanges } from '../activity'
+import { logDeckActivity, writeDeckPresence } from '../sharing'
 import type { FlashcardDeckWithId } from '../types'
 import { DeckEditorDialog, type DeckEditorValues } from './DeckEditorDialog'
 import { FlashcardStudyDialog } from './FlashcardStudyDialog'
+import { DeckShareDialog } from './DeckShareDialog'
 
 interface FlashcardsTabProps {
   decks: FlashcardDeckWithId[]
@@ -21,6 +24,7 @@ interface FlashcardsTabProps {
 }
 
 function statusLabel(deck: FlashcardDeckWithId, uid: string | undefined): string {
+  if (deck.sharedRole) return deck.sharedRole === 'editor' ? 'Shared · Can edit' : 'Shared · View only'
   if (deck.kind === 'personal') return 'Private'
   if (deck.ownerId !== uid) return 'From instructor'
   return deck.status === 'published' ? 'Published' : 'Draft'
@@ -45,9 +49,33 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error }: 
   const [studying, setStudying] = useState<FlashcardDeckWithId | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<FlashcardDeckWithId | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [sharing, setSharing] = useState<FlashcardDeckWithId | null>(null)
+  const presenceFailureShown = useRef(false)
 
   const classNames = useMemo(() => new Map(classes.map((c) => [c.id, c.name])), [classes])
   const defaultClassId = selectedClassId !== 'all' ? selectedClassId : (classes[0]?.id ?? '')
+  const activeDeck = studying ?? editing ?? sharing
+
+  useEffect(() => {
+    if (!activeDeck || !uid || (activeDeck.ownerId !== uid && !activeDeck.sharedRole)) return undefined
+    let active = true
+    const pulse = () => {
+      if (!active || document.visibilityState !== 'visible') return
+      void writeDeckPresence(activeDeck.classId, activeDeck.id, uid, user?.displayName || user?.email || 'Learner', true)
+        .then(() => { presenceFailureShown.current = false })
+        .catch((cause: unknown) => {
+          if (!active || presenceFailureShown.current) return
+          presenceFailureShown.current = true
+          showToast('error', cause instanceof Error ? `Presence could not be updated: ${cause.message}` : 'Presence could not be updated.')
+        })
+    }
+    pulse()
+    const timer = window.setInterval(pulse, 20_000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [activeDeck, uid, user?.displayName, user?.email, showToast])
 
   const visibleDecks = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -85,6 +113,14 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error }: 
     if (editing) {
       await updateDeck(editing.classId, editing.id, values)
       showToast('success', `Deck "${values.title.trim()}" updated.`)
+      try {
+        await logDeckActivity(editing.classId, editing.id, {
+          uid,
+          name: user?.displayName || user?.email || 'Learner',
+        }, summarizeDeckChanges(editing, values))
+      } catch {
+        showToast('error', 'The deck was saved, but its activity could not be recorded.')
+      }
       return
     }
     if (!values.classId) throw new Error('Choose a class for this deck.')
@@ -169,7 +205,8 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error }: 
       ) : (
         <ul className="m-0 grid list-none grid-cols-1 gap-4 p-0 md:grid-cols-2 lg:grid-cols-3">
           {visibleDecks.map((deck) => {
-            const canEdit = deck.ownerId === uid
+            const canEdit = deck.ownerId === uid || deck.sharedRole === 'editor'
+            const canShare = deck.ownerId === uid
             return (
               <li
                 key={deck.id}
@@ -195,7 +232,7 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error }: 
                   </p>
                 </article>
 
-                <div className="mt-4 flex items-center justify-between gap-2 border-t border-navy-900-08 pt-3">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-navy-900-08 pt-3">
                   <Button
                     type="button"
                     variant="primary"
@@ -216,15 +253,21 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error }: 
                         <Edit3 size={16} aria-hidden="true" />
                         <span>Edit</span>
                       </Button>
-                      <Button
+                      {deck.ownerId === uid && <Button
                         type="button"
                         variant="ghost"
                         onClick={() => setDeleteTarget(deck)}
                         aria-label={`Delete deck "${deck.title}"`}
                       >
                         <Trash2 size={16} aria-hidden="true" />
-                      </Button>
+                      </Button>}
                     </div>
+                  )}
+                  {(canShare || deck.sharedRole) && (
+                    <Button type="button" variant="secondary" onClick={() => setSharing(deck)} aria-label={`${canShare ? 'Share' : 'View people and activity for'} deck "${deck.title}"`}>
+                      <Link2 size={16} aria-hidden="true" />
+                      <span>{canShare ? 'Share' : 'People'}</span>
+                    </Button>
                   )}
                 </div>
               </li>
@@ -246,6 +289,18 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error }: 
       )}
 
       {studying && <FlashcardStudyDialog deck={studying} onClose={() => setStudying(null)} />}
+      {sharing && uid && (
+        <DeckShareDialog
+          classId={sharing.classId}
+          deckId={sharing.id}
+          deckTitle={sharing.title}
+          ownerId={sharing.ownerId}
+          uid={uid}
+          name={user?.displayName || user?.email || 'Learner'}
+          owner={sharing.ownerId === uid}
+          onClose={() => setSharing(null)}
+        />
+      )}
 
       {deleteTarget && (
         <ConfirmDialog

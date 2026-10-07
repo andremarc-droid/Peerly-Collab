@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Bot, MessagesSquare, Plus } from 'lucide-react'
 import { Alert } from '../../../shared/ui/Alert'
 import { Button } from '../../../shared/ui/Button'
@@ -6,9 +7,11 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { Spinner } from '../../../shared/ui/Spinner'
 import { useAuth } from '../../auth/useAuth'
 import { useChatbot } from '../useChatbot'
+import { useTutorSharing } from '../useTutorSharing'
 import type { ChatThread } from '../types'
 import { Composer } from './Composer'
 import { MessageBubble } from './MessageBubble'
+import { ThreadSharingPanel } from './ThreadSharingPanel'
 import { ThreadList } from './ThreadList'
 
 interface ChatbotTabProps {
@@ -19,6 +22,9 @@ interface ChatbotTabProps {
 export function ChatbotTab({ classLabel }: ChatbotTabProps) {
   const { user } = useAuth()
   const chat = useChatbot({ uid: user?.uid, classLabel })
+  const sharing = useTutorSharing(user?.uid, user?.displayName || user?.email || 'Learner', chat)
+  const [searchParams] = useSearchParams()
+  const selectThread = chat.selectThread
   const [listOpen, setListOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
@@ -26,6 +32,15 @@ export function ChatbotTab({ classLabel }: ChatbotTabProps) {
   const messages = chat.activeThread?.messages ?? []
   const lastMessage = messages[messages.length - 1]
   const savedThreads = chat.threads.filter((thread) => thread.messages.length > 0)
+  const localThreads = savedThreads.filter((thread) => thread.sharedRole === undefined || thread.sharedRole === 'owner')
+  const sharedThreads = savedThreads.filter((thread) => thread.sharedRole === 'viewer' || thread.sharedRole === 'editor')
+
+  useEffect(() => {
+    const requestedThread = searchParams.get('thread')
+    if (chat.ready && requestedThread && chat.activeId !== requestedThread && chat.threads.some((thread) => thread.id === requestedThread)) {
+      selectThread(requestedThread)
+    }
+  }, [chat.activeId, chat.ready, chat.threads, searchParams, selectThread])
 
   useEffect(() => {
     const element = scroller.current
@@ -60,15 +75,20 @@ export function ChatbotTab({ classLabel }: ChatbotTabProps) {
           {savedThreads.length === 0 ? (
             <p className="m-0 p-3 text-sm text-navy-800-72">Your chats will appear here.</p>
           ) : (
-            <ThreadList
-              threads={savedThreads}
-              activeId={chat.activeId}
-              onSelect={(id) => {
-                chat.selectThread(id)
-                setListOpen(false)
-              }}
-              onDelete={setDeleteTarget}
-            />
+            <div className="grid gap-4">
+              {localThreads.length > 0 && (
+                <section aria-label="Your tutor conversations" className="grid gap-2">
+                  {sharedThreads.length > 0 && <h3 className="m-0 px-2 text-sm font-bold text-navy-900">Your chats</h3>}
+                  <ThreadList threads={localThreads} activeId={chat.activeId} onSelect={(id) => { chat.selectThread(id); setListOpen(false) }} onDelete={setDeleteTarget} />
+                </section>
+              )}
+              {sharedThreads.length > 0 && (
+                <section aria-label="Shared tutor conversations" className="grid gap-2">
+                  <h3 className="m-0 px-2 text-sm font-bold text-navy-900">Shared with you</h3>
+                  <ThreadList threads={sharedThreads} activeId={chat.activeId} onSelect={(id) => { chat.selectThread(id); setListOpen(false) }} onDelete={setDeleteTarget} />
+                </section>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -86,12 +106,27 @@ export function ChatbotTab({ classLabel }: ChatbotTabProps) {
               {chat.activeThread && messages.length > 0 ? chat.activeThread.title : 'AI tutor'}
             </h2>
             <p className="m-0 text-sm text-navy-800-72">
-              {chat.activeThread?.summary
+              {chat.activeThread?.sharedRole === 'viewer'
+                ? 'You have view-only access to this shared conversation.'
+                : chat.activeThread?.sharedRole === 'editor'
+                  ? 'You can add messages to this shared conversation.'
+                  : chat.activeThread?.summary
                 ? 'Long chat: older messages are summarized so the tutor keeps the context.'
                 : 'Ask about a concept, or attach a photo of your notes or homework.'}
             </p>
           </div>
         </header>
+
+        {chat.activeThread && user && (
+          <ThreadSharingPanel
+            thread={chat.activeThread}
+            uid={user.uid}
+            displayName={user.displayName || user.email || 'Learner'}
+            onShare={sharing.shareThread}
+            error={sharing.error}
+            onClearError={sharing.clearError}
+          />
+        )}
 
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto p-4" role="log" aria-live="polite" aria-label="Messages">
           {!user || !chat.ready ? (
@@ -112,7 +147,10 @@ export function ChatbotTab({ classLabel }: ChatbotTabProps) {
                 <MessageBubble
                   key={message.id}
                   message={message}
-                  canRetry={message === lastMessage && message.role === 'user' && !chat.isSending}
+                  canRetry={message === lastMessage
+                    && message.role === 'user'
+                    && !chat.isSending
+                    && chat.activeThread?.sharedRole !== 'viewer'}
                   onRetry={chat.retry}
                 />
               ))}
@@ -156,13 +194,14 @@ export function ChatbotTab({ classLabel }: ChatbotTabProps) {
 
         <Composer
           key={chat.activeId ?? 'new'}
-          disabled={!user || !chat.ready || Boolean(chat.configIssue)}
+          disabled={!user || !chat.ready || Boolean(chat.configIssue) || chat.activeThread?.sharedRole === 'viewer'}
           busy={chat.isSending}
           onSend={chat.send}
           onStop={chat.stop}
         />
         <p className="m-0 px-4 pb-3 text-sm text-navy-800-72">
-          Chats are saved on this device only. Your messages and images are sent to Groq to generate replies.
+          Unshared chats stay on this device. Explicitly shared conversations sync to Peerly for invited people.
+          Your messages and images are sent to Groq to generate replies.
         </p>
       </section>
 

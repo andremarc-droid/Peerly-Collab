@@ -86,6 +86,16 @@ export function useChatbot({ uid, classLabel, storage, complete = createChatComp
     [getStorage],
   )
 
+  const importThread = useCallback(
+    (thread: ChatThread, select = false) => {
+      const next = sortThreads([thread, ...threadsRef.current.filter((existing) => existing.id !== thread.id)])
+      publish(next)
+      persist(thread)
+      if (select) selectId(thread.id)
+    },
+    [persist, publish, selectId],
+  )
+
   const forget = useCallback(
     (threadId: string) => {
       const owner = uidRef.current
@@ -162,7 +172,7 @@ export function useChatbot({ uid, classLabel, storage, complete = createChatComp
   const run = useCallback(
     async (id: string) => {
       const current = threadsRef.current.find((thread) => thread.id === id)
-      if (!current || controllers.current.has(id)) return
+      if (!current || current.sharedRole === 'viewer' || controllers.current.has(id)) return
 
       const controller = new AbortController()
       controllers.current.set(id, controller)
@@ -198,6 +208,7 @@ export function useChatbot({ uid, classLabel, storage, complete = createChatComp
 
       const base =
         threadsRef.current.find((thread) => thread.id === activeIdRef.current) ?? createThread()
+      if (base.sharedRole === 'viewer') return false
       if (controllers.current.has(base.id)) return false
       if (trimmed.length > MAX_MESSAGE_CHARS) {
         setError(base.id, `Messages can be up to ${MAX_MESSAGE_CHARS} characters.`)
@@ -216,7 +227,7 @@ export function useChatbot({ uid, classLabel, storage, complete = createChatComp
   const retry = useCallback(() => {
     const id = activeIdRef.current
     const thread = threadsRef.current.find((existing) => existing.id === id)
-    if (!id || !thread || controllers.current.has(id)) return
+    if (!id || !thread || thread.sharedRole === 'viewer' || controllers.current.has(id)) return
     const last = thread.messages[thread.messages.length - 1]
     if (!last || last.role !== 'user' || !last.failed) return
     commit(setMessageFailed(thread, last.id, false))
@@ -276,6 +287,7 @@ export function useChatbot({ uid, classLabel, storage, complete = createChatComp
     stop,
     newChat,
     selectThread,
+    importThread,
     deleteThread,
     dismissError,
   }

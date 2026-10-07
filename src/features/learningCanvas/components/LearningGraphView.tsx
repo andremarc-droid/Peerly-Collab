@@ -25,9 +25,11 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
+import { Alert } from '../../../shared/ui/Alert'
 import { Badge } from '../../../shared/ui/Badge'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { useToast } from '../../../shared/ui/useToast'
+import { useAuth } from '../../auth/useAuth'
 import {
   buildLearningGraph,
   type GraphNode,
@@ -37,8 +39,12 @@ import {
 import { stepSimulation, type SimulationParams } from '../graph/simulation'
 import { buildReferencePath, type CanvasViewerRole } from '../referenceRoutes'
 import type { LearningCanvasWithId } from '../types'
+import { createSharedGraph, logGraphActivity, saveSharedGraph, watchGraphRole, watchSharedGraph } from '../graph/sharing'
 import { AddNodeDialog } from './AddNodeDialog'
 import { ImportExistingDialog } from './ImportExistingDialog'
+import { GraphSharingPanel } from '../graph/GraphSharingPanel'
+import { SharedGraphList } from '../graph/SharedGraphList'
+import { useSearchParams } from 'react-router-dom'
 import '../graph/graphView.css'
 
 /* ── SVG icon paths (lucide-compatible 24×24 viewBox) ── */
@@ -122,6 +128,28 @@ export function LearningGraphView({
   onDisconnectNodes,
 }: LearningGraphViewProps) {
   const { showToast } = useToast()
+  const { user } = useAuth()
+  const uid = user?.uid
+  const [searchParams, setSearchParams] = useSearchParams()
+  const sharedGraphId = searchParams.get('graphId')
+  const graphClassId = sharedGraphId
+    ? searchParams.get('classId') || selectedClassId || ''
+    : selectedClassId || ''
+  const [loadedSharedGraph, setLoadedSharedGraph] = useState<{ id: string; ownerId: string | null; ownerName: string | null } | null>(null)
+  const [sharedGraphRoleRecord, setSharedGraphRoleRecord] = useState<{ graphId: string; role: 'viewer' | 'editor' | null } | null>(null)
+  const [sharedGraphErrorRecord, setSharedGraphErrorRecord] = useState<{ graphId: string; message: string } | null>(null)
+  const invalidGraphLink = Boolean(sharedGraphId && (!graphClassId || graphClassId === 'all'))
+  const sharedGraphReady = !sharedGraphId || invalidGraphLink || loadedSharedGraph?.id === sharedGraphId
+  const sharedGraphOwnerId = loadedSharedGraph?.id === sharedGraphId ? loadedSharedGraph.ownerId : null
+  const sharedGraphOwnerName = loadedSharedGraph?.id === sharedGraphId ? loadedSharedGraph.ownerName : null
+  const sharedGraphRole = sharedGraphRoleRecord?.graphId === sharedGraphId ? sharedGraphRoleRecord.role : null
+  const sharedGraphError = sharedGraphErrorRecord?.graphId === sharedGraphId
+    ? sharedGraphErrorRecord.message
+    : invalidGraphLink ? 'This shared graph link is missing its class.' : null
+  const [sharingBusy, setSharingBusy] = useState(false)
+  const [syncingSharedGraph, setSyncingSharedGraph] = useState(false)
+  const isSharedGraphOwner = Boolean(sharedGraphOwnerId && user?.uid === sharedGraphOwnerId)
+  const canEditSharedGraph = !sharedGraphId || (sharedGraphReady && (isSharedGraphOwner || sharedGraphRole === 'editor'))
 
   /* ── Search & filter state ── */
   const [searchQuery, setSearchQuery] = useState('')
@@ -230,6 +258,7 @@ export function LearningGraphView({
   // Auto-save the unsaved work as a draft; clear it once it matches the saved graph.
   useEffect(() => {
     const draftKey = `${storageKeyRef.current}:draft`
+    if (sharedGraphId) return
     try {
       if (isDirty) {
         sessionStorage.setItem(
@@ -245,9 +274,31 @@ export function LearningGraphView({
     } catch {
       // ignore (storage unavailable)
     }
-  }, [isDirty, includedNodeIds, currentPositions])
+  }, [isDirty, includedNodeIds, currentPositions, sharedGraphId])
+
+  useEffect(() => {
+    if (!sharedGraphId || !graphClassId || !user || !sharedGraphReady || !canEditSharedGraph || !isDirty) return
+    const timer = window.setTimeout(() => {
+      setSyncingSharedGraph(true)
+      void saveSharedGraph(graphClassId, sharedGraphId, {
+        nodeIds: Array.from(includedNodeIds),
+        positions: currentPositions,
+      }).then(async () => {
+        setSavedNodeIds(new Set(includedNodeIds))
+        setSavedPositions({ ...currentPositions })
+        await logGraphActivity(graphClassId, sharedGraphId, {
+          uid: user.uid,
+          name: user.displayName || user.email || 'Learner',
+        }, 'Updated the graph layout or included materials')
+      }).catch((error: unknown) => {
+        showToast('error', error instanceof Error ? error.message : 'Could not sync this graph.')
+      }).finally(() => setSyncingSharedGraph(false))
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [canEditSharedGraph, currentPositions, graphClassId, includedNodeIds, isDirty, sharedGraphId, sharedGraphReady, showToast, user])
 
   const handleSaveGraph = () => {
+    if (sharedGraphId) return
     try {
       localStorage.setItem(
         storageKey,
@@ -264,7 +315,50 @@ export function LearningGraphView({
     showToast('success', 'Graph layout and nodes saved.')
   }
 
+  const handleCreateSharedGraph = async () => {
+    if (!user || !graphClassId || graphClassId === 'all' || sharedGraphId) return
+    setSharingBusy(true)
+    try {
+      const id = await createSharedGraph(graphClassId, user.uid, user.displayName || user.email || 'Graph owner', {
+        nodeIds: Array.from(includedNodeIds),
+        positions: currentPositions,
+      })
+      await logGraphActivity(graphClassId, id, {
+        uid: user.uid,
+        name: user.displayName || user.email || 'Learner',
+      }, 'Created and saved this shared graph view', 'member')
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous)
+        next.set('tab', 'graph')
+        next.set('classId', graphClassId)
+        next.set('graphId', id)
+        return next
+      })
+      showToast('success', 'Saved a shareable graph view.')
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : 'Could not share this graph.')
+    } finally {
+      setSharingBusy(false)
+    }
+  }
+
+  const handleReturnToMyGraph = () => {
+    const loaded = loadFromStorage()
+    const working = loadDraft() ?? loaded
+    setSavedNodeIds(loaded.ids)
+    setIncludedNodeIds(working.ids)
+    setSavedPositions(loaded.positions)
+    setCurrentPositions(working.positions)
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.delete('graphId')
+      next.set('classId', selectedClassId || 'all')
+      return next
+    })
+  }
+
   const handleDiscardGraph = () => {
+    if (!canEditSharedGraph) return
     setIncludedNodeIds(new Set(savedNodeIds))
     setCurrentPositions({ ...savedPositions })
     // Re-apply saved positions to nodes
@@ -289,6 +383,7 @@ export function LearningGraphView({
   }
 
   const handleAutoArrange = () => {
+    if (!canEditSharedGraph) return
     setCurrentPositions({})
     nodesRef.current.forEach((n) => {
       n.isFixed = false
@@ -361,6 +456,34 @@ export function LearningGraphView({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const isInitialMountRef = useRef(true)
 
+  useEffect(() => {
+    if (!sharedGraphId || !graphClassId || graphClassId === 'all' || !uid) return
+    const onError = (error: Error) => {
+      setSharedGraphErrorRecord({ graphId: sharedGraphId, message: error.message || 'This graph is unavailable.' })
+    }
+    const stopGraph = watchSharedGraph(graphClassId, sharedGraphId, (graph) => {
+      if (!graph) {
+        setLoadedSharedGraph({ id: sharedGraphId, ownerId: null, ownerName: null })
+        return
+      }
+      setGraphData({ nodes: [], links: [] })
+      const ids = new Set(graph.nodeIds)
+      const positions = sanitizePositions(graph.positions)
+      setSavedNodeIds(ids)
+      setIncludedNodeIds(ids)
+      setSavedPositions(positions)
+      setCurrentPositions(positions)
+      setLoadedSharedGraph({ id: sharedGraphId, ownerId: graph.ownerId, ownerName: graph.ownerName })
+    }, onError)
+    const stopRole = watchGraphRole(graphClassId, sharedGraphId, uid, (role) => {
+      setSharedGraphRoleRecord({ graphId: sharedGraphId, role })
+    }, onError)
+    return () => {
+      stopGraph()
+      stopRole()
+    }
+  }, [graphClassId, sharedGraphId, uid])
+
   // On leaving the graph view, remember where every node ended up.
   useEffect(() => {
     return () => {
@@ -387,6 +510,7 @@ export function LearningGraphView({
 
   /* ── Handlers for New Graph & Import ── */
   const handleNewGraphView = () => {
+    if (!canEditSharedGraph) return
     if (includedNodeIds.size > 0 || graphData.nodes.length > 0) {
       setConfirmNewGraphOpen(true)
     } else {
@@ -395,6 +519,7 @@ export function LearningGraphView({
   }
 
   const handleConfirmNewGraph = () => {
+    if (!canEditSharedGraph) return
     setIncludedNodeIds(new Set())
     setZoom(1)
     setPan({ x: 0, y: 0 })
@@ -404,6 +529,7 @@ export function LearningGraphView({
   }
 
   const handleImportItems = (newIds: string[]) => {
+    if (!canEditSharedGraph) return
     setIncludedNodeIds((prev) => {
       const next = new Set(prev)
       newIds.forEach((id) => next.add(id))
@@ -413,10 +539,12 @@ export function LearningGraphView({
   }
 
   const handleNodeCreated = (type: 'note' | 'learning', id: string) => {
+    if (!canEditSharedGraph) return
     setIncludedNodeIds((prev) => new Set([...prev, `${type}:${id}`]))
   }
 
   const handleRemoveFromGraph = (nodeId: string) => {
+    if (!canEditSharedGraph) return
     setIncludedNodeIds((prev) => {
       const next = new Set(prev)
       next.delete(nodeId)
@@ -728,7 +856,7 @@ export function LearningGraphView({
 
   /* ── Save note inline edit ── */
   const handleSaveNote = async () => {
-    if (!selectedNode || !onUpdateNoteContent) return
+    if (!selectedNode || !onUpdateNoteContent || sharedGraphId) return
     setSavingNote(true)
     try {
       await onUpdateNoteContent(selectedNode.rawId, selectedNode.classId, noteDraft)
@@ -742,7 +870,7 @@ export function LearningGraphView({
 
   /* ── Connect node (from inspector dropdown) ── */
   const handleConnect = async () => {
-    if (!selectedNode || !linkTargetId || !onConnectNodes) return
+    if (!selectedNode || !linkTargetId || !onConnectNodes || sharedGraphId) return
     setLinkingBusy(true)
     try {
       await onConnectNodes(selectedNode.id, linkTargetId, selectedNode.classId)
@@ -754,7 +882,7 @@ export function LearningGraphView({
 
   /* ── Click-to-connect in connect mode ── */
   const handleConnectModeClick = async (node: GraphNode) => {
-    if (!onConnectNodes) return
+    if (!onConnectNodes || sharedGraphId || !canEditSharedGraph) return
     if (!connectSourceId) {
       setConnectSourceId(node.id)
       setSelectedNode(node)
@@ -783,7 +911,7 @@ export function LearningGraphView({
 
   /* ── Disconnect node ── */
   const handleDisconnect = async (neighborId: string) => {
-    if (!selectedNode || !onDisconnectNodes) return
+    if (!selectedNode || !onDisconnectNodes || sharedGraphId) return
     setLinkingBusy(true)
     try {
       await onDisconnectNodes(selectedNode.id, neighborId, selectedNode.classId)
@@ -839,10 +967,11 @@ export function LearningGraphView({
     return 'graph-view__filter graph-view__filter--active-quiz'
   }
 
-  const hasAddCapabilities = Boolean(onCreateNote || onCreateCanvas)
+  const hasAddCapabilities = Boolean(onCreateNote || onCreateCanvas) && canEditSharedGraph
 
   return (
     <div className="graph-view" ref={containerRef}>
+      {!sharedGraphId && user && <SharedGraphList uid={user.uid} selectedClassId={selectedClassId || 'all'} />}
       {/* ── Toolbar ── */}
       <div className="graph-view__toolbar">
         {/* Search */}
@@ -905,6 +1034,31 @@ export function LearningGraphView({
 
         {/* View controls & Add Button */}
         <div className="graph-view__zoom-controls flex items-center">
+          {sharedGraphId && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleReturnToMyGraph}
+              className="py-1 px-2.5 text-xs min-h-11 gap-1.5 mr-1"
+            >
+              <Orbit size={14} aria-hidden="true" />
+              <span>My graph</span>
+            </Button>
+          )}
+          {!sharedGraphId && user && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void handleCreateSharedGraph()}
+              disabled={sharingBusy || !graphClassId || graphClassId === 'all'}
+              className="py-1 px-2.5 text-xs min-h-11 gap-1.5 mr-1"
+              title={graphClassId && graphClassId !== 'all' ? 'Save and share this graph view with class members' : 'Select one class before sharing a graph'}
+            >
+              <Link2 size={14} aria-hidden="true" />
+              <span>{sharingBusy ? 'Preparing…' : graphClassId && graphClassId !== 'all' ? 'Share graph' : 'Select class to share'}</span>
+            </Button>
+          )}
+          {canEditSharedGraph && (
           <Button
             type="button"
             variant="secondary"
@@ -916,7 +1070,9 @@ export function LearningGraphView({
             <span className="hidden sm:inline">Create new graph view</span>
             <span className="sm:hidden">New graph</span>
           </Button>
+          )}
 
+          {canEditSharedGraph && (
           <Button
             type="button"
             variant="secondary"
@@ -928,6 +1084,7 @@ export function LearningGraphView({
             <span className="hidden sm:inline">Import from class</span>
             <span className="sm:hidden">Import</span>
           </Button>
+          )}
 
           {hasAddCapabilities && (
             <Button
@@ -942,7 +1099,7 @@ export function LearningGraphView({
           )}
 
           {/* Connect Mode toggle */}
-          {onConnectNodes && graphData.nodes.length >= 2 && (
+          {canEditSharedGraph && !sharedGraphId && onConnectNodes && graphData.nodes.length >= 2 && (
             <button
               type="button"
               className={`graph-view__zoom-btn ${connectMode ? 'graph-view__zoom-btn--active' : ''}`}
@@ -999,11 +1156,35 @@ export function LearningGraphView({
             onClick={handleAutoArrange}
             aria-label="Auto-arrange layout"
             title="Auto-arrange layout (relax node positions)"
+            disabled={!canEditSharedGraph}
           >
             <Sparkles size={16} />
           </button>
         </div>
       </div>
+
+      {sharedGraphId && (
+        <>
+          {sharedGraphError && <Alert tone="error" label="Shared graph unavailable">{sharedGraphError}</Alert>}
+          {sharedGraphReady && !sharedGraphError && !isSharedGraphOwner && !sharedGraphRole && (
+            <Alert tone="error" label="No access to this graph">This graph is only available to its owner and invited active class members.</Alert>
+          )}
+          {sharedGraphReady && (isSharedGraphOwner || sharedGraphRole) && user && (
+            <GraphSharingPanel
+              classId={graphClassId}
+              graphId={sharedGraphId}
+              uid={user.uid}
+              name={user.displayName || user.email || 'Learner'}
+              ownerId={sharedGraphOwnerId || ''}
+              ownerName={sharedGraphOwnerName || 'Graph owner'}
+              owner={isSharedGraphOwner}
+            />
+          )}
+          {canEditSharedGraph && syncingSharedGraph && (
+            <p className="m-0 text-sm text-navy-800" role="status" aria-live="polite">Syncing graph changes…</p>
+          )}
+        </>
+      )}
 
       {/* ── Force controls panel ── */}
       {showForcePanel && (
@@ -1064,35 +1245,42 @@ export function LearningGraphView({
       )}
 
       {/* ── SVG Canvas ── */}
-      {graphData.nodes.length === 0 ? (
+      {sharedGraphId && (!sharedGraphReady || (!isSharedGraphOwner && !sharedGraphRole)) ? (
+        sharedGraphReady ? null : <p className="m-0 text-sm text-navy-900" role="status">Loading this graph view…</p>
+      ) : graphData.nodes.length === 0 ? (
         <div className="graph-view__empty">
           <div className="graph-view__empty-icon">
             <Orbit size={24} />
           </div>
           <h3 className="text-base font-bold text-navy-900 m-0 mb-1">
-            Start Your Knowledge Graph
+            {sharedGraphId ? 'This graph is empty' : 'Start Your Knowledge Graph'}
           </h3>
           <p className="text-sm text-navy-800-72 max-w-md m-0 mb-5">
-            Your graph view begins as a clean canvas. Create fresh concept notes to map out ideas,
-            or import existing modules and whiteboard canvases from your class.
+            {sharedGraphId
+              ? 'No materials have been added to this shared graph yet.'
+              : 'Your graph view begins as a clean canvas. Create fresh concept notes to map out ideas, or import existing modules and whiteboard canvases from your class.'}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2.5">
-            <Button
-              type="button"
-              variant="primary"
-              onClick={handleNewGraphView}
-            >
-              <Plus size={16} aria-hidden="true" />
-              <span>Create new graph view</span>
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setImportDialogOpen(true)}
-            >
-              <FolderInput size={16} aria-hidden="true" />
-              <span>Import existing modules and canvases</span>
-            </Button>
+            {canEditSharedGraph && (
+              <>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={handleNewGraphView}
+                >
+                  <Plus size={16} aria-hidden="true" />
+                  <span>Create new graph view</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setImportDialogOpen(true)}
+                >
+                  <FolderInput size={16} aria-hidden="true" />
+                  <span>Import existing modules and canvases</span>
+                </Button>
+              </>
+            )}
             {onSwitchToCanvases && (
               <Button
                 type="button"
@@ -1230,7 +1418,7 @@ export function LearningGraphView({
                     }}
                     onPointerDown={(e) => {
                       e.stopPropagation()
-                      if (!connectMode) {
+                      if (!connectMode && canEditSharedGraph) {
                         const liveNode = nodesRef.current.find((n) => n.id === node.id) || node
                         dragStartRef.current = { x: e.clientX, y: e.clientY }
                         dragMovedRef.current = false
@@ -1327,7 +1515,7 @@ export function LearningGraphView({
       )}
 
       {/* ── Save / Discard floating bar ── */}
-      {isDirty && (
+      {isDirty && !sharedGraphId && (
         <div className="graph-view__save-bar">
           <span className="graph-view__save-bar-text">Unsaved changes to your graph view</span>
           <button
@@ -1470,7 +1658,7 @@ export function LearningGraphView({
                 <span className="text-[11px] font-bold text-navy-800-72 uppercase tracking-wider">
                   Note Content
                 </span>
-                {onUpdateNoteContent && !isEditingNote && (
+                {onUpdateNoteContent && !isEditingNote && !sharedGraphId && (
                   <button
                     type="button"
                     onClick={() => setIsEditingNote(true)}
@@ -1568,7 +1756,7 @@ export function LearningGraphView({
             )}
 
             {/* In-Graph Link Creator */}
-            {onConnectNodes && (selectedNode.type === 'note' || selectedNode.type === 'learning') && unlinkedCandidates.length > 0 && (
+            {!sharedGraphId && onConnectNodes && (selectedNode.type === 'note' || selectedNode.type === 'learning') && unlinkedCandidates.length > 0 && (
               <div className="mt-2 pt-2 border-t border-navy-900-08 flex items-center gap-1.5">
                 <select
                   value={linkTargetId}
@@ -1616,6 +1804,7 @@ export function LearningGraphView({
               <ChevronRight size={14} aria-hidden="true" />
             </Button>
 
+            {canEditSharedGraph && (
             <button
               type="button"
               onClick={() => handleRemoveFromGraph(selectedNode.id)}
@@ -1624,6 +1813,7 @@ export function LearningGraphView({
               <MinusCircle size={14} aria-hidden="true" />
               <span>Remove from graph view</span>
             </button>
+            )}
           </div>
         </div>
       )}

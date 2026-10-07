@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { sortDecksByUpdated, watchClassDecks, watchMyDecks } from './services'
+import { watchSharedDecks } from './sharing'
 import type { FlashcardDeckWithId } from './types'
 
 interface UseFlashcardDecksOptions {
@@ -17,7 +18,7 @@ interface DeckState {
 
 /**
  * Live flashcard decks across the given classes.
- * Instructors get their class decks; students get published class decks plus their own private decks.
+ * Loads class decks, private decks the user owns, and individually shared decks.
  */
 export function useFlashcardDecks({ role, uid, classIds }: UseFlashcardDecksOptions) {
   const classKey = classIds.join('|')
@@ -25,7 +26,7 @@ export function useFlashcardDecks({ role, uid, classIds }: UseFlashcardDecksOpti
   const [state, setState] = useState<DeckState>({ key: viewKey, decks: {}, error: null })
 
   useEffect(() => {
-    if (!uid || !classKey) return undefined
+    if (!uid) return undefined
 
     const update = (source: string, items: FlashcardDeckWithId[]) =>
       setState((prev) => {
@@ -44,7 +45,8 @@ export function useFlashcardDecks({ role, uid, classIds }: UseFlashcardDecksOpti
       }))
 
     const unsubs: Array<() => void> = []
-    for (const classId of classKey.split('|')) {
+    unsubs.push(watchSharedDecks(uid, (items) => update('shared', items), (err) => fail(err.message)))
+    for (const classId of classKey ? classKey.split('|') : []) {
       unsubs.push(
         watchClassDecks(
           classId,
@@ -69,7 +71,16 @@ export function useFlashcardDecks({ role, uid, classIds }: UseFlashcardDecksOpti
 
   const current = state.key === viewKey ? state : null
   const decks = useMemo(
-    () => (current ? sortDecksByUpdated(Object.values(current.decks).flat()) : []),
+    () => {
+      if (!current) return []
+      const unique = new Map<string, FlashcardDeckWithId>()
+      for (const deck of Object.values(current.decks).flat()) {
+        const key = `${deck.classId}/${deck.id}`
+        const existing = unique.get(key)
+        if (!existing || deck.sharedRole) unique.set(key, deck)
+      }
+      return sortDecksByUpdated([...unique.values()])
+    },
     [current],
   )
 

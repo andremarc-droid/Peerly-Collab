@@ -76,6 +76,29 @@ describe('useChatbot', () => {
     expect(complete).not.toHaveBeenCalled()
   })
 
+  it('keeps a shared viewer read-only', async () => {
+    const complete = vi.fn<CompleteFn>()
+    const chat = await openChat(complete)
+    const shared = {
+      ...createThread(5, () => 'shared-thread'),
+      sharedRole: 'viewer' as const,
+      messages: [createUserMessage({ text: 'Shared prompt', images: [] }, 10, () => 'shared-message')],
+    }
+    act(() => {
+      chat.result.current.importThread(shared, true)
+    })
+
+    let accepted = true
+    act(() => {
+      accepted = chat.result.current.send({ text: 'Should not be accepted', images: [] })
+      chat.result.current.retry()
+    })
+
+    expect(accepted).toBe(false)
+    expect(complete).not.toHaveBeenCalled()
+    expect(chat.result.current.activeThread?.messages).toHaveLength(1)
+  })
+
   describe('retry', () => {
     it('marks the message failed, then Retry sends it again and gets the reply', async () => {
       const complete = vi
