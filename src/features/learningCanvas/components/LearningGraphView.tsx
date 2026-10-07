@@ -55,7 +55,7 @@ const TYPE_LABELS: Record<GraphNodeType, string> = {
   link: 'Link',
 }
 
-const TYPE_ICONS: Record<GraphNodeType, React.ComponentType<{ size: number }>> = {
+const TYPE_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; className?: string }>> = {
   note: FileText,
   learning: Layout,
   module: BookOpen,
@@ -201,7 +201,6 @@ export function LearningGraphView({
           nodesRef.current,
           linksRef.current,
           forceParams,
-          alphaRef.current,
         )
 
         alphaRef.current *= 0.985
@@ -1088,7 +1087,16 @@ export function LearningGraphView({
           {/* Action to open in full view */}
           <div className="pt-2 border-t border-navy-900-10 flex justify-end">
             <Button
-              to={buildReferencePath(role, selectedNode.classId, selectedNode.type === 'note' ? 'learning' : selectedNode.type, selectedNode.rawId)}
+              to={buildReferencePath(
+                role,
+                selectedNode.classId,
+                selectedNode.type === 'module'
+                  ? 'module'
+                  : selectedNode.type === 'quiz'
+                    ? 'quiz'
+                    : 'learning',
+                selectedNode.rawId,
+              )}
               variant="primary"
               className="w-full justify-center text-xs"
             >
