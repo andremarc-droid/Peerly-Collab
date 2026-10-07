@@ -61,6 +61,11 @@ export interface JsonCanvasImportReport {
   notes: string[]
 }
 
+export interface FromJsonCanvasResult {
+  content: LearningCanvasContent
+  report: JsonCanvasImportReport
+}
+
 function sanitizeText(raw: string): string {
   // Strip out executable script tags and iframe injections to ensure pure markdown/text
   return raw

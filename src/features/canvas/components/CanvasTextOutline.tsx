@@ -1,7 +1,8 @@
-import { Check, Copy, ExternalLink, Search } from 'lucide-react'
+import { Check, Copy, ExternalLink, Search, X } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { parseConnectionEdge } from '../schemas'
+import { safeHttpsUrl } from '../safeUrl'
 import type { CanvasCard, CanvasConnection } from '../types'
 
 export interface CanvasTextOutlineProps {
@@ -11,6 +12,17 @@ export interface CanvasTextOutlineProps {
   selectedCardId?: string | null
   onSelectCard?: (cardId: string | null) => void
   className?: string
+  /**
+   * Whether the outline starts open. When omitted it is open on screens 1024px
+   * and wider, closed below that, and open when matchMedia is unavailable.
+   */
+  defaultOpen?: boolean
+}
+
+function initialOpen(defaultOpen?: boolean): boolean {
+  if (typeof defaultOpen === 'boolean') return defaultOpen
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true
+  return window.matchMedia('(min-width: 1024px)').matches
 }
 
 export function CanvasTextOutline({
@@ -20,9 +32,11 @@ export function CanvasTextOutline({
   selectedCardId,
   onSelectCard,
   className = '',
+  defaultOpen,
 }: CanvasTextOutlineProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [copied, setCopied] = useState(false)
+  const [open, setOpen] = useState(() => initialOpen(defaultOpen))
 
   // Map card titles for easy connection rendering
   const cardMap = useMemo(() => {
@@ -106,6 +120,23 @@ export function CanvasTextOutline({
     }
   }
 
+  if (!open) {
+    return (
+      <div className={`w-full lg:w-auto flex items-start ${className}`}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => setOpen(true)}
+          aria-expanded={false}
+          aria-label="Show text outline"
+          className="min-h-[44px]"
+        >
+          <span>Show text outline</span>
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div
       className={`w-full lg:w-[360px] lg:min-w-[360px] bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm flex flex-col gap-3 h-full overflow-hidden ${className}`}
@@ -113,25 +144,36 @@ export function CanvasTextOutline({
     >
       <div className="flex items-center justify-between gap-2 border-b border-navy-900-12 pb-2">
         <h3 className="m-0 text-base font-semibold text-navy-900">Text outline</h3>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => void handleCopyOutline()}
-          className="min-h-[36px] py-1 px-2.5 text-sm"
-          aria-label="Copy board outline to clipboard"
-        >
-          {copied ? (
-            <>
-              <Check size={14} className="text-feedback-success" aria-hidden="true" />
-              <span>Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy size={14} aria-hidden="true" />
-              <span>Copy</span>
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void handleCopyOutline()}
+            className="min-h-[36px] py-1 px-2.5 text-sm"
+            aria-label="Copy board outline to clipboard"
+          >
+            {copied ? (
+              <>
+                <Check size={14} className="text-feedback-success" aria-hidden="true" />
+                <span>Copied</span>
+              </>
+            ) : (
+              <>
+                <Copy size={14} aria-hidden="true" />
+                <span>Copy</span>
+              </>
+            )}
+          </Button>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-expanded={true}
+            aria-label="Hide text outline"
+            className="flex items-center justify-center min-h-[44px] min-w-[44px] rounded-full hover:bg-navy-900-12 text-navy-800 transition-colors"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -166,6 +208,8 @@ export function CanvasTextOutline({
             <div className="grid gap-2">
               {filteredCards.map((card) => {
                 const isSelected = selectedCardId === card.id
+                const safeUrl = card.type === 'link' ? safeHttpsUrl(card.url) : null
+                const hasBlockedUrl = card.type === 'link' && Boolean(card.url) && !safeUrl
                 return (
                   <button
                     key={card.id}
@@ -192,17 +236,25 @@ export function CanvasTextOutline({
                       </p>
                     )}
 
-                    {card.type === 'link' && card.url && (
+                    {safeUrl && (
                       <a
-                        href={card.url}
+                        href={safeUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-navy-900 underline hover:text-navy-700 break-all"
                       >
                         <ExternalLink size={13} aria-hidden="true" />
-                        <span className="truncate">{card.url}</span>
+                        <span className="truncate">{safeUrl}</span>
                       </a>
+                    )}
+
+                    {hasBlockedUrl && (
+                      <p className="m-0 mt-2 text-sm font-medium text-navy-800 break-all">
+                        <span className="font-semibold">Link blocked</span>
+                        <span className="text-navy-800-72"> (not a valid https:// address): </span>
+                        <span>{card.url}</span>
+                      </p>
                     )}
                   </button>
                 )

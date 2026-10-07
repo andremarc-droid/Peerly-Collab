@@ -1,6 +1,7 @@
 import type { NodeProps } from '@xyflow/react'
 import { ExternalLink } from 'lucide-react'
 import type { CanvasNodeData } from '../../mapping'
+import { safeHttpsUrl } from '../../safeUrl'
 import { CardHandles } from './CardHandles'
 
 export function LinkCard({ data, selected, isConnectable }: NodeProps) {
@@ -8,12 +9,16 @@ export function LinkCard({ data, selected, isConnectable }: NodeProps) {
   const card = nodeData?.card
   if (!card) return null
 
+  // Card links can come from students, so only well-formed https URLs become clickable.
+  const safeUrl = safeHttpsUrl(card.url)
+  const hasBlockedUrl = Boolean(card.url) && !safeUrl
+
   let host = ''
-  if (card.url) {
+  if (safeUrl) {
     try {
-      host = new URL(card.url).hostname.replace(/^www\./, '')
+      host = new URL(safeUrl).hostname.replace(/^www\./, '')
     } catch {
-      host = card.url
+      host = ''
     }
   }
 
@@ -31,18 +36,26 @@ export function LinkCard({ data, selected, isConnectable }: NodeProps) {
       <div className="canvas-node__body">
         {card.title && <div className="canvas-node__title">{card.title}</div>}
         {card.content && <div className="canvas-node__text mb-1">{card.content}</div>}
-        {card.url && (
+        {safeUrl && (
           <a
-            href={card.url}
+            href={safeUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="canvas-node__host"
             aria-label={`Visit ${label} (${host})`}
-            title={`Open ${card.url} in new tab`}
+            title={`Open ${safeUrl} in new tab`}
           >
             <ExternalLink size={11} aria-hidden="true" />
             <span className="truncate">{host || 'External link'}</span>
           </a>
+        )}
+        {hasBlockedUrl && (
+          <span
+            className="canvas-node__host"
+            title="This link was blocked because it is not a valid https:// address."
+          >
+            <span className="truncate">Link blocked</span>
+          </span>
         )}
       </div>
     </div>

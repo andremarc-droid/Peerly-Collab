@@ -26,6 +26,7 @@ import type { QuizAttempt } from '../quizzes/types'
 import { subscribeToModules } from '../modules/services'
 import type { ModuleWithId } from '../modules/types'
 import '../modules/modules.css'
+import { StudentLearningCanvasesSection } from '../learningCanvas/components/StudentLearningCanvasesSection'
 
 function answerRevealLabel(value: QuizRecord['settings']['answerReveal']): string {
   if (value === 'after_each') return 'Answers after each question'
@@ -333,6 +334,9 @@ function StudentClassDetail({ classId }: { classId: string }) {
           )
         })()}
       </section>
+
+      <StudentLearningCanvasesSection classId={classId} />
+
       {submittedAttempts.length > 0 && (
         <section className="grid gap-3" aria-labelledby="attempt-history-heading">
           <header><span className="section-kicker">SUBMISSIONS</span><h2 id="attempt-history-heading" className="m-0 font-heading text-2xl">My attempts</h2></header>

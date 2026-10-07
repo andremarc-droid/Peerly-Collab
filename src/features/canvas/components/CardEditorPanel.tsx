@@ -2,6 +2,7 @@ import { X, Trash2 } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
 import { Textarea } from '../../../shared/ui/Textarea'
+import { safeHttpsUrl } from '../safeUrl'
 import type { CanvasCard } from '../types'
 
 export interface CardEditorPanelProps {
@@ -59,14 +60,20 @@ export function CardEditorPanel({
             {card.type === 'link' && card.url && (
               <div>
                 <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Link</span>
-                <a
-                  href={card.url}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-sm text-navy-900 underline break-all font-medium"
-                >
-                  {card.url}
-                </a>
+                {safeHttpsUrl(card.url) ? (
+                  <a
+                    href={safeHttpsUrl(card.url) ?? undefined}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-sm text-navy-900 underline break-all font-medium"
+                  >
+                    {card.url}
+                  </a>
+                ) : (
+                  <p className="m-0 text-sm text-navy-900 break-all font-medium">
+                    <span className="font-semibold">Link blocked</span> (not a valid https:// address): {card.url}
+                  </p>
+                )}
               </div>
             )}
           </>

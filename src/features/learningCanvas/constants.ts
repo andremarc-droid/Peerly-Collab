@@ -1,5 +1,17 @@
 import type { LearningCanvasColor } from './types'
 
+export const LEARNING_CANVAS_COLORS: LearningCanvasColor[] = [
+  'none',
+  'navy',
+  'tint',
+  'c1',
+  'c2',
+  'c3',
+  'c4',
+  'c5',
+  'c6',
+]
+
 export const MAX_LEARNING_CANVAS_NODES = 80
 export const MAX_LEARNING_CANVAS_GROUPS = 10
 export const MAX_LEARNING_CANVAS_EDGES = 120
@@ -18,6 +30,13 @@ export const MAX_EDGE_LABEL_LENGTH = 80
 
 export const MAX_CANVAS_TITLE_LENGTH = 120
 export const MAX_CANVAS_DESCRIPTION_LENGTH = 300
+
+// Aliases for editor components
+export const LEARNING_CANVAS_TEXT_MAX = MAX_TEXT_NODE_LENGTH
+export const LEARNING_CANVAS_TITLE_MAX = MAX_CANVAS_TITLE_LENGTH
+export const LEARNING_CANVAS_DESCRIPTION_MAX = MAX_CANVAS_DESCRIPTION_LENGTH
+export const LEARNING_CANVAS_GROUP_LABEL_MAX = MAX_GROUP_LABEL_LENGTH
+export const LEARNING_CANVAS_EDGE_LABEL_MAX = MAX_EDGE_LABEL_LENGTH
 
 export interface ResolvedCanvasColorStyles {
   background: string

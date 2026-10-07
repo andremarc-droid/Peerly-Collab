@@ -243,7 +243,11 @@ export function loadAllCssRules(): { rules: Map<string, Map<string, string>>; to
     }
   }
 
-  const extraFiles = ['src/features/canvas/canvas.css', 'src/features/modules/modules.css']
+  const extraFiles = [
+    'src/features/canvas/canvas.css',
+    'src/features/modules/modules.css',
+    'src/features/learningCanvas/learningCanvas.css',
+  ]
   for (const ef of extraFiles) {
     const fullPath = path.resolve(process.cwd(), ef)
     if (fs.existsSync(fullPath)) {
@@ -377,6 +381,14 @@ export const TOKEN_ONLY_CONTRAST_REGISTRY: TokenContrastEntry[] = [
   { name: 'Canvas handle dot on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Canvas double focus ring (white on navy-800)', fgToken: '--color-white', bgToken: '--color-navy-800', minRatio: 3.0 },
 
+  // Learning canvas items
+  { name: 'Learning canvas card text on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
+  { name: 'Learning canvas card text on navy-08', fgToken: '--color-navy-900', bgToken: '--color-navy-900-08', minRatio: 4.5 },
+  { name: 'Learning canvas card text on tint', fgToken: '--color-navy-900', bgToken: '--color-navy-700-05', minRatio: 4.5 },
+  { name: 'Learning canvas group label on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
+  { name: 'Learning canvas link title on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
+  { name: 'Learning canvas edge label text on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
+
   // Module items
   { name: 'Module card title on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
   { name: 'Module card meta on white', fgToken: '--color-navy-800-72', bgToken: '--color-white', minRatio: 4.5 },
@@ -499,6 +511,8 @@ describe('Contrast Test 3: Source Scanner for Unallowed Palette, Hex, Inline Sty
   const ALLOWED_INLINE_STYLE_FILES = new Set([
     // Dynamic ReactFlow node/edge positioning calculation for canvas label renderer
     path.normalize('src/features/canvas/components/edges/CanvasEdge.tsx'),
+    path.normalize('src/features/learningCanvas/components/LearningCanvasEdge.tsx'),
+    path.normalize('src/features/learningCanvas/components/QuickAddMenu.tsx'),
   ])
 
   const ALLOWED_COLOR_FUNC_FILES = new Set([
