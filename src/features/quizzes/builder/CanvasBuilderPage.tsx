@@ -190,7 +190,12 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         }
         setQuizRecord(quiz)
         setQuizTitle(quiz.title || 'Untitled canvas')
-        setBoardKind(quiz.boardKind ?? 'prebuilt')
+        const kind = quiz.boardKind ?? 'prebuilt'
+        setBoardKind(kind)
+        if (kind === 'blank') {
+          setLoading(false)
+          return
+        }
         const isReview = quiz.settings.scoreVisibility === 'immediate' && quiz.settings.answerReveal !== 'never'
         setSubmissionReview(isReview ? 'review' : 'submitted')
 
@@ -214,7 +219,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
 
         if (existingPair) {
           const q = existingPair.question as CanvasQuestion
-          const k = existingPair.answerKey as CanvasAnswerKey
+          const k = existingPair.answerKey as CanvasAnswerKey | null
           setPrompt(q.prompt || 'Connect related concepts on the board.')
           setPoints(q.points ?? 100)
           setLayoutMode(q.layoutMode ?? 'scattered')
@@ -228,8 +233,8 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
           })
           setPositions(loadedPositions)
 
-          setConnections(k.connections ?? [])
-          setExplanation(k.explanation ?? '')
+          setConnections(k?.connections ?? [])
+          setExplanation(k?.explanation ?? '')
 
           // Silently reconcile orphan image documents on load if any exist without downloading payloads
           const referencedIds = (q.cards ?? [])
@@ -244,7 +249,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
             layoutMode: q.layoutMode ?? 'scattered',
             directed: q.directed ?? true,
             wrongPenalty: q.wrongPenalty ?? 'half',
-            explanation: k.explanation ?? '',
+            explanation: k?.explanation ?? '',
             cards: (q.cards ?? []).map((c) => ({
               id: c.id,
               type: c.type,
@@ -255,7 +260,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
               alt: c.alt,
               position: c.position,
             })),
-            connections: (k.connections ?? []).map((c) => ({
+            connections: (k?.connections ?? []).map((c) => ({
               id: c.id,
               from: c.from,
               to: c.to,
@@ -756,6 +761,10 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
     )
   }
 
+  if (boardKind === 'blank') {
+    return <BlankCanvasBuilder quizId={quizId} />
+  }
+
   if (loadError) {
     return (
       <AppShell>
@@ -768,10 +777,6 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         </main>
       </AppShell>
     )
-  }
-
-  if (boardKind === 'blank') {
-    return <BlankCanvasBuilder quizId={quizId} />
   }
 
   const connectCardsSlot = (

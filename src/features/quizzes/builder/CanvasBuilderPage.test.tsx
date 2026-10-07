@@ -46,6 +46,15 @@ vi.mock('../services', () => ({
   saveQuestionAndKey: mocks.saveQuestionAndKey,
 }))
 
+vi.mock('../services/quizService', () => ({
+  getQuiz: mocks.getQuiz,
+}))
+
+vi.mock('../services/questionService', () => ({
+  getQuestionWithKey: mocks.getQuestionWithKey,
+  saveQuestionAndKey: mocks.saveQuestionAndKey,
+}))
+
 vi.mock('../../canvas/imageService', () => ({
   listImages: mocks.listImages,
   saveImage: mocks.saveImage,
@@ -876,6 +885,42 @@ describe('CanvasBuilderPage Component Tests', () => {
     // 4. Click Done to close inline editor
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(screen.getByText('Updated instructions for cell structure.')).toBeInTheDocument()
+  })
+
+  it('renders BlankCanvasBuilder without error when boardKind is blank and answerKey is null', async () => {
+    mocks.getQuiz.mockResolvedValue({
+      id: 'quiz-blank',
+      ownerId: 'teacher-1',
+      title: 'Blank Concept Map',
+      mode: 'canvas',
+      boardKind: 'blank',
+      settings: {
+        participation: { type: 'individual' },
+        answerReveal: 'never',
+        scoreVisibility: 'immediate',
+      },
+    })
+    mocks.getQuestionWithKey.mockResolvedValue({
+      id: 'board',
+      question: {
+        order: 0,
+        type: 'canvas',
+        prompt: 'Build your mind map.',
+        points: 50,
+        cards: [],
+        showRubricToStudents: true,
+        maxCards: 20,
+        maxConnections: 40,
+        allowedCardTypes: ['note', 'paragraph', 'link'],
+      },
+      answerKey: null,
+    })
+
+    renderBuilder('/instructor/quizzes/quiz-blank?tab=questions')
+
+    expect(await screen.findByRole('button', { name: /Save blank canvas/i })).toBeInTheDocument()
+    expect(screen.queryByText(/Cannot read properties of null/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Canvas unavailable/i)).not.toBeInTheDocument()
   })
 })
 
