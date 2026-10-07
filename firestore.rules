@@ -396,6 +396,118 @@ service cloud.firestore {
           allow delete: if resourceOwner() && resourceCountWithinLimit();
         }
       }
+
+      match /learningCanvases/{canvasId} {
+        function validLearningCanvas(data) {
+          return data.keys().hasOnly(['ownerId', 'classId', 'kind', 'title', 'description', 'status', 'nodeCount', 'edgeCount', 'refs', 'sourceCanvasId', 'createdAt', 'updatedAt'])
+            && data.keys().hasAll(['ownerId', 'classId', 'kind', 'title', 'description', 'status', 'nodeCount', 'edgeCount', 'refs', 'createdAt', 'updatedAt'])
+            && data.ownerId is string
+            && data.classId == classId
+            && data.kind in ['class', 'personal']
+            && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+            && data.description is string && data.description.size() <= 300
+            && (data.kind == 'class'
+              ? data.status in ['draft', 'published']
+              : data.status == 'private')
+            && data.nodeCount is int && data.nodeCount >= 0 && data.nodeCount <= 80
+            && data.edgeCount is int && data.edgeCount >= 0 && data.edgeCount <= 120
+            && data.refs is list && data.refs.size() <= 80
+            && (!('sourceCanvasId' in data) || data.sourceCanvasId == null || data.sourceCanvasId is string)
+            && data.createdAt is timestamp && data.updatedAt is timestamp;
+        }
+
+        allow get: if signedIn() && (
+          resource == null
+          || (resource.data.get('kind', '') == 'class' && (isClassOwner(classId) || (isActiveMember(classId) && resource.data.get('status', '') == 'published')))
+          || (resource.data.get('kind', '') == 'personal' && resource.data.get('ownerId', '') == request.auth.uid)
+        );
+        allow list: if signedIn() && (
+          isClassOwner(classId)
+          || (resource.data.get('kind', '') == 'class' && isActiveMember(classId) && resource.data.get('status', '') == 'published')
+          || (resource.data.get('kind', '') == 'personal' && resource.data.get('ownerId', '') == request.auth.uid)
+        );
+
+        allow create: if signedIn()
+          && validLearningCanvas(request.resource.data)
+          && request.resource.data.ownerId == request.auth.uid
+          && (
+            (request.resource.data.kind == 'class' && isClassOwner(classId))
+            || (request.resource.data.kind == 'personal' && isActiveMember(classId))
+          );
+
+        allow update: if signedIn()
+          && validLearningCanvas(request.resource.data)
+          && request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.classId == resource.data.classId
+          && request.resource.data.kind == resource.data.kind
+          && request.resource.data.createdAt == resource.data.createdAt
+          && (
+            (resource.data.kind == 'class' && isClassOwner(classId))
+            || (resource.data.kind == 'personal' && resource.data.ownerId == request.auth.uid)
+          );
+
+        allow delete: if signedIn() && (
+          (resource.data.kind == 'class' && isClassOwner(classId))
+          || (resource.data.kind == 'personal' && (resource.data.ownerId == request.auth.uid || isClassOwner(classId)))
+        );
+
+        match /content/{contentId} {
+          function parentPath() {
+            return /databases/$(database)/documents/classes/$(classId)/learningCanvases/$(canvasId);
+          }
+          function parentExists() {
+            return exists(parentPath()) || existsAfter(parentPath());
+          }
+          function parentCanvas() {
+            return exists(parentPath()) ? get(parentPath()).data : getAfter(parentPath()).data;
+          }
+
+          function validContent(data) {
+            return contentId == 'main'
+              && data.keys().hasOnly(['version', 'nodes', 'edges', 'viewport'])
+              && data.keys().hasAll(['version', 'nodes', 'edges', 'viewport'])
+              && data.version == 1
+              && data.nodes is list && data.nodes.size() <= 80
+              && data.edges is list && data.edges.size() <= 120
+              && data.viewport is map
+              && data.viewport.keys().hasOnly(['x', 'y', 'zoom'])
+              && data.viewport.keys().hasAll(['x', 'y', 'zoom'])
+              && data.viewport.x is number
+              && data.viewport.y is number
+              && data.viewport.zoom is number;
+          }
+
+          allow get: if signedIn() && (
+            resource == null
+            || (exists(parentPath()) && (
+              (get(parentPath()).data.kind == 'class' && (isClassOwner(classId) || (isActiveMember(classId) && get(parentPath()).data.status == 'published')))
+              || (get(parentPath()).data.kind == 'personal' && get(parentPath()).data.ownerId == request.auth.uid)
+            ))
+          );
+
+          allow list: if signedIn()
+            && exists(parentPath()) && (
+              (get(parentPath()).data.kind == 'class' && (isClassOwner(classId) || (isActiveMember(classId) && get(parentPath()).data.status == 'published')))
+              || (get(parentPath()).data.kind == 'personal' && get(parentPath()).data.ownerId == request.auth.uid)
+            );
+
+          allow create, update: if signedIn()
+            && parentExists()
+            && validContent(request.resource.data)
+            && (
+              (parentCanvas().kind == 'class' && isClassOwner(classId))
+              || (parentCanvas().kind == 'personal' && parentCanvas().ownerId == request.auth.uid)
+            );
+
+          allow delete: if signedIn() && (
+            isClassOwner(classId)
+            || (exists(parentPath()) && (
+              (get(parentPath()).data.kind == 'class' && isClassOwner(classId))
+              || (get(parentPath()).data.kind == 'personal' && get(parentPath()).data.ownerId == request.auth.uid)
+            ))
+          );
+        }
+      }
     }
 
     match /classCodes/{code} {

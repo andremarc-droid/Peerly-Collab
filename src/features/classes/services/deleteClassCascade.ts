@@ -1,9 +1,9 @@
-import { collection, deleteDoc, getDoc, getDocs, limit, query, where, writeBatch, type Firestore } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, getDocs, limit, query, where, writeBatch, type Firestore } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
+import { deleteModuleCascade } from '../../modules/services'
 import { deleteQuizCascade } from '../../quizzes/services/deleteQuizCascade'
 import { parseClass } from '../schemas'
 import { classCodeRef, classRef, enrollmentsRef } from './paths'
-import { deleteModuleCascade } from '../../modules/services'
 
 export async function deleteClassCascade(classId: string, db: Firestore = firestore): Promise<void> {
   const classSnapshot = await getDoc(classRef(db, classId))
@@ -13,6 +13,17 @@ export async function deleteClassCascade(classId: string, db: Firestore = firest
     const modulePage = await getDocs(query(collection(db, 'classes', classId, 'modules'), limit(100)))
     if (modulePage.empty) break
     for (const module of modulePage.docs) await deleteModuleCascade(classId, module.id, db)
+  }
+  while (true) {
+    const canvasPage = await getDocs(query(collection(db, 'classes', classId, 'learningCanvases'), limit(100)))
+    if (canvasPage.empty) break
+    const batch = writeBatch(db)
+    for (const canvasDoc of canvasPage.docs) {
+      batch.delete(doc(db, 'classes', classId, 'learningCanvases', canvasDoc.id, 'content', 'main'))
+      batch.delete(canvasDoc.ref)
+    }
+    await batch.commit()
+    if (canvasPage.size < 100) break
   }
   while (true) {
     const enrollmentPage = await getDocs(query(enrollmentsRef(db), where('ownerId', '==', classData.ownerId), where('classId', '==', classId), limit(400)))
