@@ -105,6 +105,21 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Module documents live at `classes/{classId}/modules/{moduleId}` with child resources. Validate inputs at runtime and enforce the 10-resource limit in services and rules where possible.
 - Drive access follows the file's own sharing settings. Generic links open in a new tab and are never embedded. Allow embeds only for Drive, Docs, Sheets, Slides, and privacy-enhanced YouTube hosts.
 
+## LEARNING CANVAS
+- Learning canvases are non-graded spatial study materials that do not touch quizzes, attempts, or answer keys.
+- Canvas documents live at `classes/{classId}/learningCanvases/{canvasId}` with metadata: `ownerId`, `classId`, `kind` (`'class'` | `'personal'`), `title` (1–120), `description` (max 300), `status` (`'draft'` | `'published'` for class kind, `'private'` for personal kind), `nodeCount` (0–80), `edgeCount` (0–120), `refs` (max 80 `{ type: 'module' | 'quiz' | 'learning', id }`, ids only, never titles), `sourceCanvasId` (for copies), `createdAt`, `updatedAt`.
+- Canvas content lives at `classes/{classId}/learningCanvases/{canvasId}/content/main` with `version: 1`, `nodes` (max 80, max 10 groups), `edges` (max 120), `viewport` (`{ x, y, zoom }`).
+- Node types: `text` (max 2000 chars), `link` (`https://` only, title max 120, note max 300), `reference` (`refType: 'module' | 'quiz' | 'learning'`, `refId`), and `group` (`label` max 80). Coords within `+-20000`, dimensions 80–1200. Colors use tokens `'none' | 'navy' | 'tint' | 'c1'..'c6'`, mapped to theme tokens via pure function `mapLearningCanvasColor`.
+- Edges: `id`, `from`, `to`, `fromSide?`, `toSide?` (`'top' | 'right' | 'bottom' | 'left'`), `label?` (max 80), `arrow` (`'none' | 'to' | 'both'`). No self-edges, no duplicates, endpoints must reference existing nodes.
+- Rules & security:
+  - Class kind: instructor (class owner) creates, updates, and deletes; active members read only when `status == 'published'`; drafts hidden. `kind`, `ownerId`, `classId` immutable.
+  - Personal kind: student owner creates (requires active enrollment), reads, updates, and deletes; status must be `'private'`; class owner may delete (for cascades) but can never read personal canvas metadata or content.
+  - Content document inherits access from parent canvas document through `get()` / `getAfter()`. List sizes capped (`refs <= 80`, `nodes <= 80`, `edges <= 120`) and keys restricted via `hasOnly`. Per-node fields are enforced by the client domain schema.
+  - Cascade deletion: `deleteClassCascade` removes all learning canvases and their content in the class (including students' personal canvases) with safe batch sizes to keep rule lookups bounded.
+- JSON Canvas 1.0:
+  - Standard JSON Canvas 1.0 import and export via `toJsonCanvas` and `fromJsonCanvas`.
+  - Lossy import produces a diagnostic report: file nodes become text cards with file name, unknown types dropped, positions and dimensions clamped, capacity limits enforced, duplicate IDs regenerated, scripts and HTML sanitized.
+
 ### Emulator tests in PowerShell
 Emulator tests in PowerShell need `JAVA_HOME` set to the JDK 21 path above. Run the full suite with:
 ```powershell
