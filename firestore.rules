@@ -556,8 +556,9 @@ service cloud.firestore {
     }
 
     function validBlankCanvasQuestion(data) {
-      return data.keys().hasOnly(['order', 'type', 'prompt', 'points', 'cards', 'rubric', 'showRubricToStudents', 'maxCards', 'maxConnections', 'allowedCardTypes'])
+      return data.keys().hasOnly(['order', 'type', 'prompt', 'points', 'cards', 'rubric', 'showRubricToStudents', 'maxCards', 'maxConnections', 'allowedCardTypes', 'directed'])
         && data.keys().hasAll(['order', 'type', 'prompt', 'points', 'cards', 'showRubricToStudents', 'maxCards', 'maxConnections', 'allowedCardTypes'])
+        && (!('directed' in data) || data.directed is bool)
         && data.order is int && data.order >= 0
         && data.type == 'canvas'
         && data.prompt is string && data.prompt.size() > 0 && data.prompt.size() <= 2000
@@ -626,11 +627,11 @@ service cloud.firestore {
       return card is map
         && card.keys().hasOnly(['id', 'type', 'content', 'title', 'url', 'position'])
         && card.keys().hasAll(['id', 'type', 'content', 'position'])
-        && card.id is string
+        && card.id is string && card.id.size() > 0 && card.id.size() <= 40
         && card.type in ['note', 'paragraph', 'link']
         && card.content is string && card.content.size() <= 1000
         && (!('title' in card) || (card.title is string && card.title.size() <= 120))
-        && (card.type != 'link' || (card.keys().hasAll(['url']) && card.url is string && card.url.size() <= 500 && card.url.matches('^https://[^\\s]+$')))
+        && (card.type != 'link' || (!('url' in card) || card.url == '' || (card.url is string && card.url.size() <= 500 && card.url.matches('^https://[^\\s]+$'))))
         && card.position is map
         && card.position.keys().hasOnly(['x', 'y'])
         && card.position.keys().hasAll(['x', 'y'])
@@ -648,27 +649,25 @@ service cloud.firestore {
           && (cards.size() < 7 || validBlankCard(cards[6]))
           && (cards.size() < 8 || validBlankCard(cards[7]))
           && (cards.size() < 9 || validBlankCard(cards[8]))
-          && (cards.size() < 10 || validBlankCard(cards[9]))
-          && (cards.size() < 11 || validBlankCard(cards[10]))
-          && (cards.size() < 12 || validBlankCard(cards[11]))
-          && (cards.size() < 13 || validBlankCard(cards[12]))
-          && (cards.size() < 14 || validBlankCard(cards[13]))
-          && (cards.size() < 15 || validBlankCard(cards[14]))
-          && (cards.size() < 16 || validBlankCard(cards[15]))
-          && (cards.size() < 17 || validBlankCard(cards[16]))
-          && (cards.size() < 18 || validBlankCard(cards[17]))
-          && (cards.size() < 19 || validBlankCard(cards[18]))
-          && (cards.size() < 20 || validBlankCard(cards[19]))
-          && (cards.size() < 21 || validBlankCard(cards[20]))
-          && (cards.size() < 22 || validBlankCard(cards[21]))
-          && (cards.size() < 23 || validBlankCard(cards[22]))
-          && (cards.size() < 24 || validBlankCard(cards[23]))
-          && (cards.size() < 25 || validBlankCard(cards[24]))
-          && (cards.size() < 26 || validBlankCard(cards[25]))
-          && (cards.size() < 27 || validBlankCard(cards[26]))
-          && (cards.size() < 28 || validBlankCard(cards[27]))
-          && (cards.size() < 29 || validBlankCard(cards[28]))
-          && (cards.size() < 30 || validBlankCard(cards[29])));
+          && (cards.size() < 10 || validBlankCard(cards[9])));
+    }
+
+    function validBlankConnection(conn) {
+      return conn is string && conn.size() > 0 && conn.size() <= 100;
+    }
+
+    function validBlankConnectionsList(connections) {
+      return connections.size() == 0
+        || (validBlankConnection(connections[0])
+          && (connections.size() < 2 || validBlankConnection(connections[1]))
+          && (connections.size() < 3 || validBlankConnection(connections[2]))
+          && (connections.size() < 4 || validBlankConnection(connections[3]))
+          && (connections.size() < 5 || validBlankConnection(connections[4]))
+          && (connections.size() < 6 || validBlankConnection(connections[5]))
+          && (connections.size() < 7 || validBlankConnection(connections[6]))
+          && (connections.size() < 8 || validBlankConnection(connections[7]))
+          && (connections.size() < 9 || validBlankConnection(connections[8]))
+          && (connections.size() < 10 || validBlankConnection(connections[9])));
     }
 
     function validBlankBoardAnswer(board) {
@@ -677,7 +676,8 @@ service cloud.firestore {
         && board.keys().hasAll(['cards', 'connections'])
         && board.cards is list && board.cards.size() <= 30
         && validBlankCardsList(board.cards)
-        && board.connections is list && board.connections.size() <= 80;
+        && board.connections is list && board.connections.size() <= 80
+        && validBlankConnectionsList(board.connections);
     }
 
     function validAttempt(data, quizId) {
@@ -691,7 +691,8 @@ service cloud.firestore {
         && data.status in ['in_progress', 'submitted']
         && data.answers is map && data.answers.size() <= 200
         && (isBlank
-          ? (!data.answers.keys().hasAny(['board']) || validBlankBoardAnswer(data.answers.board))
+          ? data.answers.keys().hasOnly(['board'])
+            && (!('board' in data.answers) || validBlankBoardAnswer(data.answers.board))
           : (!data.answers.keys().hasAny(['board']) || (data.answers.board is list && data.answers.board.size() <= 80))
             && (!data.answers.keys().hasAny(['layout']) || (data.answers.layout is list && data.answers.layout.size() <= 50)))
         && data.questionOrder is list && data.optionOrder is map

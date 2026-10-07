@@ -206,6 +206,17 @@ describe('quiz Firestore rules', () => {
     await assertSucceeds(getDoc(doc(student, 'quizzes/qz/results/att')))
   })
 
+  it('denies student score reads when scoreVisibility is hidden regardless of release state', async () => {
+    await seed({ visibility: 'hidden' })
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, 'quizzes/qz/results/att'), result())
+      await updateDoc(doc(db, 'quizzes/qz'), { settings: { ...settings, scoreVisibility: 'hidden', scoresReleased: true } })
+    })
+    const student = environment.authenticatedContext('student').firestore()
+    await assertFails(getDoc(doc(student, 'quizzes/qz/results/att')))
+  })
+
   it('allows the quiz owner to list results and prevents students from listing results or another student’s results', async () => {
     await seed({ visibility: 'immediate' })
     await environment.withSecurityRulesDisabled(async (context) => {
@@ -1329,6 +1340,20 @@ describe('canvas mode Firestore rules', () => {
         }),
       )
 
+      // Optional directed mode is allowed (directed: true or false)
+      await assertSucceeds(
+        setDoc(doc(teacher, `quizzes/${blankQuizId}/questions/board`), {
+          ...validBlankQuestion,
+          directed: true,
+        }),
+      )
+      await assertSucceeds(
+        setDoc(doc(teacher, `quizzes/${blankQuizId}/questions/board`), {
+          ...validBlankQuestion,
+          directed: false,
+        }),
+      )
+
       // Answer key creation must be rejected on a blank canvas quiz
       await assertFails(
         setDoc(doc(teacher, `quizzes/${blankQuizId}/answerKeys/board`), {
@@ -1452,6 +1477,57 @@ describe('canvas mode Firestore rules', () => {
                 { id: 'c6', type: 'image', content: 'Not allowed type', position: { x: 0, y: 0 } },
               ],
             },
+          },
+        }),
+      )
+
+      // Valid: empty/missing link url is allowed during autosave
+      await assertSucceeds(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          answers: {
+            board: {
+              ...validBoardAnswer,
+              cards: [
+                { id: 'c_empty', type: 'link', content: 'Empty link', url: '', position: { x: 0, y: 0 } },
+                { id: 'c_nourl', type: 'link', content: 'No url', position: { x: 0, y: 0 } },
+              ],
+            },
+          },
+        }),
+      )
+
+      // Invalid: card id > 40 chars
+      await assertFails(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          answers: {
+            board: {
+              ...validBoardAnswer,
+              cards: [
+                { id: 'c'.repeat(41), type: 'note', content: 'Too long id', position: { x: 0, y: 0 } },
+              ],
+            },
+          },
+        }),
+      )
+
+      // Invalid: connection > 100 chars
+      await assertFails(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          answers: {
+            board: {
+              ...validBoardAnswer,
+              connections: ['a'.repeat(101)],
+            },
+          },
+        }),
+      )
+
+      // Invalid: extra answer keys rejected on blank attempts
+      await assertFails(
+        updateDoc(doc(student, `quizzes/${blankQuizId}/attempts/${attemptId}`), {
+          answers: {
+            board: validBoardAnswer,
+            extraAnswerKey: 'disallowed',
           },
         }),
       )
