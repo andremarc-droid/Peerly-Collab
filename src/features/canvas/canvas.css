@@ -29,8 +29,8 @@
 
 /* Node card shell */
 .canvas-node {
-  width: 180px;
-  height: 100px;
+  width: 240px;
+  height: 140px;
   box-sizing: border-box;
   background-color: var(--color-white);
   border-radius: 1rem;
@@ -54,14 +54,14 @@
 .canvas-node:focus-within {
   outline: none;
   border-color: var(--color-navy-700);
-  box-shadow: 0 0 0 2px var(--color-white), 0 0 0 4px var(--color-navy-800);
+  box-shadow: 0 0 0 2px var(--color-white), 0 0 0 5px var(--color-navy-800);
 }
 
 /* Inner content area with clamped scroll */
 .canvas-node__body {
   width: 100%;
   height: 100%;
-  padding: 0.625rem;
+  padding: 0.75rem;
   box-sizing: border-box;
   overflow-y: auto;
   overflow-x: hidden;
@@ -96,11 +96,11 @@
 
 .canvas-node__title {
   font-family: var(--font-heading);
-  font-size: 0.75rem;
+  font-size: 1rem;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.3;
   color: var(--color-navy-900);
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.35rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -108,8 +108,8 @@
 
 .canvas-node__text {
   font-family: var(--font-sans);
-  font-size: 0.7rem;
-  line-height: 1.35;
+  font-size: 1rem;
+  line-height: 1.5;
   color: var(--color-navy-900-88);
   white-space: pre-wrap;
   word-break: break-word;
@@ -117,7 +117,8 @@
 
 /* Paragraph Card */
 .canvas-node--paragraph .canvas-node__text {
-  font-size: 0.7rem;
+  font-size: 1rem;
+  line-height: 1.5;
   color: var(--color-navy-900);
 }
 
@@ -125,13 +126,13 @@
 .canvas-node--link .canvas-node__host {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  font-size: 0.65rem;
+  gap: 0.35rem;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--color-navy-800);
   text-decoration: none;
   margin-top: auto;
-  padding-top: 0.25rem;
+  padding-top: 0.35rem;
 }
 
 .canvas-node--link .canvas-node__host:hover,
@@ -187,10 +188,10 @@
   color: var(--color-white);
 }
 
-/* Handles: 24px minimum hit area, centered indicator */
+/* Handles: 44px hit area with a 28px dot indicator */
 .canvas-handle {
-  width: 24px !important;
-  height: 24px !important;
+  width: 44px !important;
+  height: 44px !important;
   border-radius: 9999px !important;
   background: transparent !important;
   border: none !important;
@@ -202,22 +203,22 @@
   justify-content: center;
 }
 
-/* Visual indicator inside the 24px hit area */
+/* Visual indicator dot inside the 44px hit area: 28px dot */
 .canvas-handle::after {
   content: "";
   display: block;
-  width: 8px;
-  height: 8px;
+  width: 28px;
+  height: 28px;
   border-radius: 9999px;
   background-color: var(--color-navy-900);
-  border: 1.5px solid var(--color-white);
+  border: 2px solid var(--color-white);
   box-shadow: 0 0 0 1px var(--color-navy-900-22);
   transition: transform 0.1s ease, background-color 0.1s ease;
 }
 
 .canvas-handle:hover::after,
 .canvas-handle:focus-visible::after {
-  transform: scale(1.35);
+  transform: scale(1.15);
   background-color: var(--color-navy-700);
 }
 
@@ -235,33 +236,33 @@
   }
 }
 
-/* Handle positions adjusting for 24px hit box centering */
+/* Handle positions adjusting for 44px hit box centering (half is 22px) */
 .canvas-handle--top {
-  top: -12px !important;
+  top: -22px !important;
 }
 
 .canvas-handle--right {
-  right: -12px !important;
+  right: -22px !important;
 }
 
 .canvas-handle--bottom {
-  bottom: -12px !important;
+  bottom: -22px !important;
 }
 
 .canvas-handle--left {
-  left: -12px !important;
+  left: -22px !important;
 }
 
-/* Custom Edge */
+/* Custom Edge: 2.5px stroke width */
 .canvas-edge__path {
   stroke: var(--color-navy-900);
-  stroke-width: 2;
+  stroke-width: 2.5;
   transition: stroke 0.15s ease, stroke-width 0.15s ease;
 }
 
 .canvas-edge__path.is-selected {
   stroke: var(--color-navy-700);
-  stroke-width: 3.5;
+  stroke-width: 4;
 }
 
 .canvas-edge__path--correct {
@@ -339,7 +340,12 @@
   box-shadow: 0 0 0 2px var(--color-white), 0 0 0 4px var(--color-navy-800) !important;
 }
 
-/* Minimap responsiveness: hidden below 768px */
+/* Minimap styling: 200x140, hidden below 768px */
+.canvas-minimap {
+  width: 200px !important;
+  height: 140px !important;
+}
+
 @media (max-width: 767px) {
   .canvas-minimap {
     display: none !important;

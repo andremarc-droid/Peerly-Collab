@@ -1,6 +1,7 @@
 import type { Edge, Node } from '@xyflow/react'
 import { MarkerType } from '@xyflow/react'
-import { CANVAS_CARD_HEIGHT, CANVAS_CARD_WIDTH, normalizeConnection, parseConnectionEdge } from './schemas'
+import { CANVAS_ARROWHEAD_SIZE, CANVAS_CARD_HEIGHT, CANVAS_CARD_WIDTH } from './constants'
+import { normalizeConnection, parseConnectionEdge } from './schemas'
 import type { CanvasCard, CanvasConnection } from './types'
 
 export interface CanvasNodeData extends Record<string, unknown> {
@@ -23,7 +24,7 @@ export interface CanvasEdgeData extends Record<string, unknown> {
 
 /**
  * Pure mapping function converting domain CanvasCards into React Flow Nodes.
- * Uses fixed dimensions CANVAS_CARD_WIDTH (180) and CANVAS_CARD_HEIGHT (100).
+ * Uses fixed dimensions CANVAS_CARD_WIDTH (240) and CANVAS_CARD_HEIGHT (140).
  */
 export function cardsToNodes(
   cards: CanvasCard[] = [],
@@ -172,8 +173,8 @@ export function connectionsToEdges(
       if (directed) {
         edge.markerEnd = {
           type: MarkerType.ArrowClosed,
-          width: 16,
-          height: 16,
+          width: CANVAS_ARROWHEAD_SIZE,
+          height: CANVAS_ARROWHEAD_SIZE,
           color:
             status === 'correct'
               ? 'var(--color-feedback-success)'

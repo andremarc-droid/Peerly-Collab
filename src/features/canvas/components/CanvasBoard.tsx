@@ -19,6 +19,13 @@ import { normalizeConnection } from '../schemas'
 import type { CanvasCard, CanvasConnection } from '../types'
 import { canvasEdgeTypes } from './edges/edgeTypes'
 import { canvasNodeTypes } from './nodes/nodeTypes'
+import {
+  CANVAS_FIT_VIEW_MAX_ZOOM,
+  CANVAS_FIT_VIEW_MIN_ZOOM,
+  CANVAS_FIT_VIEW_PADDING,
+  CANVAS_MAX_ZOOM,
+  CANVAS_MIN_ZOOM,
+} from '../constants'
 import { CanvasControls } from './CanvasControls'
 import { CanvasImagesProvider } from './CanvasImagesContext'
 
@@ -315,10 +322,14 @@ function CanvasBoardInner({
           nodesConnectable={isConnectable}
           elementsSelectable={mode !== 'review'}
           deleteKeyCode={mode === 'review' ? null : ['Backspace', 'Delete']}
-          minZoom={0.3}
-          maxZoom={2}
+          minZoom={CANVAS_MIN_ZOOM}
+          maxZoom={CANVAS_MAX_ZOOM}
           fitView
-          fitViewOptions={{ padding: 0.15 }}
+          fitViewOptions={{
+            padding: CANVAS_FIT_VIEW_PADDING,
+            maxZoom: CANVAS_FIT_VIEW_MAX_ZOOM,
+            minZoom: CANVAS_FIT_VIEW_MIN_ZOOM,
+          }}
           panOnDrag
           panOnScroll
           zoomOnScroll

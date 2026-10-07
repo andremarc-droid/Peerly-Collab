@@ -12,9 +12,16 @@ import type {
   CanvasWrongPenalty,
 } from './types'
 
-export const CANVAS_CARD_WIDTH = 180
-export const CANVAS_CARD_HEIGHT = 100
-export const CANVAS_CARD_PADDING = 20
+import {
+  CANVAS_CARD_HEIGHT,
+  CANVAS_CARD_PADDING,
+  CANVAS_CARD_WIDTH,
+} from './constants'
+export {
+  CANVAS_CARD_HEIGHT,
+  CANVAS_CARD_PADDING,
+  CANVAS_CARD_WIDTH,
+}
 
 type RecordValue = Record<string, unknown>
 
@@ -198,6 +205,8 @@ export function validateCanvasDefinition(value: unknown, options?: ValidateCanva
       throw new DomainValidationError('Blank canvas cards must be empty []')
     }
 
+    const directed = q.directed === undefined ? false : bool(q.directed, 'directed')
+
     return {
       order,
       type: 'canvas',
@@ -209,6 +218,7 @@ export function validateCanvasDefinition(value: unknown, options?: ValidateCanva
       maxCards,
       maxConnections,
       allowedCardTypes,
+      directed,
     }
   }
 
