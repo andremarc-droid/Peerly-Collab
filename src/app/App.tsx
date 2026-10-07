@@ -30,6 +30,7 @@ const InstructorLearningCanvasPage = lazy(() => import('../features/learningCanv
 const StudentLearningCanvasPage = lazy(() => import('../features/learningCanvas/StudentLearningCanvasPage').then((module) => ({ default: module.StudentLearningCanvasPage })))
 const InstructorLearningHubPage = lazy(() => import('../features/learningCanvas/InstructorLearningHubPage').then((module) => ({ default: module.InstructorLearningHubPage })))
 const StudentLearningHubPage = lazy(() => import('../features/learningCanvas/StudentLearningHubPage').then((module) => ({ default: module.StudentLearningHubPage })))
+const CanvasInvitePage = lazy(() => import('../features/learningCanvas/CanvasInvitePage').then((module) => ({ default: module.CanvasInvitePage })))
 
 export function AppRoutes() {
   return (
@@ -43,6 +44,7 @@ export function AppRoutes() {
       <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
       <Route path="/join" element={<ToastProvider><JoinClassPage /></ToastProvider>} />
       <Route path="/join/:code" element={<ToastProvider><JoinClassPage /></ToastProvider>} />
+      <Route path="/learning/join/:classId/:canvasId/:token" element={<ProtectedRoute><ToastProvider><CanvasInvitePage /></ToastProvider></ProtectedRoute>} />
       <Route path="/instructor" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><ToastProvider><Outlet /></ToastProvider></RoleRoute></ProtectedRoute>}>
         <Route index element={<ClassesPage />} />
         <Route path="classes/:classId" element={<ClassPage />} />

@@ -10,6 +10,7 @@ import {
 import {
   ReactFlow,
   ReactFlowProvider,
+  ViewportPortal,
   useReactFlow,
   useNodesState,
   useEdgesState,
@@ -64,6 +65,8 @@ import { toSavableContent } from '../savableContent'
 import { CanvasConflictError } from '../errors'
 import { useUndoRedo } from '../hooks/useUndoRedo'
 import { useAutosave } from '../hooks/useAutosave'
+import { mergeContent, sameBoard } from '../collab/mergeContent'
+import type { CursorPosition, RemoteCursor } from '../collab/types'
 import {
   MAX_LEARNING_CANVAS_NODES,
   MAX_LEARNING_CANVAS_GROUPS,
@@ -72,13 +75,20 @@ import {
 
 interface LearningCanvasProps {
   initialContent: LearningCanvasContent
+  remoteContent?: LearningCanvasContent | null
+  remoteCursors?: RemoteCursor[]
+  onPublishCursor?: (position: CursorPosition | null) => void
+  onRemoteContentApplied?: (content: LearningCanvasContent) => void
   title?: string
   readOnly?: boolean
   canEditStatus?: boolean
   status?: 'draft' | 'published'
   availableReferences?: ResolvedReferenceInfo[]
   /** `force: true` means "overwrite whatever is on the server" (Keep my changes). */
-  onSave?: (content: LearningCanvasContent, options?: { force?: boolean }) => Promise<void>
+  onSave?: (
+    content: LearningCanvasContent,
+    options?: { force?: boolean },
+  ) => Promise<LearningCanvasContent | void>
   onToggleStatus?: () => void
   onCopyToMyCanvases?: () => void
   onReloadLatest?: () => Promise<LearningCanvasContent | null | undefined>
@@ -241,6 +251,10 @@ function flowToDomain(nodes: Node[], edges: Edge[]): Snapshot {
 
 function LearningCanvasInternal({
   initialContent,
+  remoteContent,
+  remoteCursors = [],
+  onPublishCursor,
+  onRemoteContentApplied,
   title = 'Learning Canvas',
   readOnly = false,
   canEditStatus = false,
@@ -302,6 +316,7 @@ function LearningCanvasInternal({
   }))
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initialFlow.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initialFlow.edges)
+  const remoteBaseRef = useRef(initialContent)
 
   // Always-current copy of the board, readable from timers and event handlers.
   const stateRef = useRef({ nodes, edges })
@@ -342,7 +357,16 @@ function LearningCanvasInternal({
     enabled: !readOnly && Boolean(onSave),
     getLatest: () => toSavableContent(readContent()),
     save: async (content) => {
-      await onSave?.(content)
+      const saved = await onSave?.(content)
+      if (!saved) return
+      remoteBaseRef.current = saved
+      onRemoteContentApplied?.(saved)
+      const latestLocal = readContent()
+      const reconciled = mergeContent(content, latestLocal, saved).content
+      if (!sameBoard(latestLocal, reconciled)) {
+        applySnapshot({ nodes: reconciled.nodes, edges: reconciled.edges })
+      }
+      if (!sameBoard(reconciled, saved)) markDirty()
     },
     onError: (error) => {
       if (error instanceof CanvasConflictError) setIsConflictDialogOpen(true)
@@ -351,10 +375,26 @@ function LearningCanvasInternal({
   const { markDirty } = autosave
   useUnsavedChangesGuard(autosave.isDirty)
 
-  const applySnapshot = (snap: Snapshot) => {
+  const applySnapshot = useCallback((snap: Snapshot) => {
     setNodes(snap.nodes.map((n) => domainToFlowNode(n, readOnly, callbacks)))
     setEdges(snap.edges.map((e) => domainToFlowEdge(e, readOnly, callbacks)))
-  }
+  }, [callbacks, readOnly, setEdges, setNodes])
+
+  useEffect(() => {
+    if (!remoteContent || sameBoard(remoteBaseRef.current, remoteContent)) return
+    const local: LearningCanvasContent = {
+      version: 1,
+      ...flowToDomain(stateRef.current.nodes, stateRef.current.edges),
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }
+    const merged = mergeContent(remoteBaseRef.current, local, remoteContent).content
+    remoteBaseRef.current = remoteContent
+    if (!sameBoard(local, merged)) {
+      applySnapshot({ nodes: merged.nodes, edges: merged.edges })
+      if (!sameBoard(merged, remoteContent)) markDirty()
+    }
+    onRemoteContentApplied?.(remoteContent)
+  }, [remoteContent, applySnapshot, markDirty, onRemoteContentApplied])
 
   // ---- Node / edge mutations ----------------------------------------------
 
@@ -584,6 +624,11 @@ function LearningCanvasInternal({
     const target = event.target
     if (!(target instanceof Element) || !target.classList.contains('react-flow__pane')) return
     addCard('text', screenToFlowPosition({ x: event.clientX, y: event.clientY }))
+  }
+
+  const handleBoardMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!onPublishCursor) return
+    onPublishCursor(screenToFlowPosition({ x: event.clientX, y: event.clientY }))
   }
 
   // Group dragging: children fully inside the group move with it.
@@ -986,6 +1031,8 @@ function LearningCanvasInternal({
             data-testid="learning-canvas-board"
             onKeyDownCapture={handleKeyDownCapture}
             onMouseDownCapture={handleBoardMouseDownCapture}
+            onMouseMove={handleBoardMouseMove}
+            onMouseLeave={() => onPublishCursor?.(null)}
           >
             <ReactFlow
               nodes={displayNodes}
@@ -1017,6 +1064,23 @@ function LearningCanvasInternal({
             >
               <CanvasControls />
             </ReactFlow>
+            <ViewportPortal>
+              <svg className="learning-canvas-cursors" aria-hidden="false">
+                {remoteCursors.map((cursor) => (
+                  <g
+                    key={cursor.uid}
+                    className="learning-canvas-cursor"
+                    transform={`translate(${cursor.x} ${cursor.y})`}
+                    role="img"
+                    aria-label={`${cursor.name} cursor`}
+                  >
+                    <path className="learning-canvas-cursor__pointer" d="M 0 0 L 0 18 L 5 13 L 10 23 L 14 21 L 9 11 L 16 10 Z" />
+                    <rect className="learning-canvas-cursor__label" x="14" y="14" width={Math.max(42, cursor.name.length * 8 + 12)} height="22" rx="8" />
+                    <text className="learning-canvas-cursor__name" x="20" y="29">{cursor.name}</text>
+                  </g>
+                ))}
+              </svg>
+            </ViewportPortal>
           </div>
 
           {quickAddState && (

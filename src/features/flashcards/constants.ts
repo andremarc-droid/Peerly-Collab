@@ -1,0 +1,5 @@
+export const MAX_DECK_CARDS = 100
+export const MAX_DECK_TITLE_LENGTH = 120
+export const MAX_DECK_DESCRIPTION_LENGTH = 300
+export const MAX_CARD_FRONT_LENGTH = 300
+export const MAX_CARD_BACK_LENGTH = 600

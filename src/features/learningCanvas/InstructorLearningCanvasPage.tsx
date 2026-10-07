@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import type { Timestamp } from 'firebase/firestore'
 import { AppShell } from '../../app/AppShell'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Alert } from '../../shared/ui/Alert'
@@ -12,11 +11,15 @@ import { LearningCanvas } from './components/LearningCanvas'
 import {
   getCanvas,
   getContent,
-  saveCanvas,
+  watchCanvasContent,
   publish,
   unpublish,
   watchClassCanvases,
 } from './services'
+import { saveCanvasMerged } from './collab/saveMerged'
+import { useCanvasCollab } from './collab/useCanvasCollab'
+import { CanvasCollaborationPanel } from './collab/CanvasCollaborationPanel'
+import { useActivityRecorder } from './collab/useActivityRecorder'
 import { openReferenceInNewTab } from './referenceRoutes'
 import { watchClass } from '../classes/services'
 import { subscribeToModules } from '../modules/services'
@@ -43,10 +46,24 @@ export function InstructorLearningCanvasPage() {
 
   const [className, setClassName] = useState<string>('Classroom')
 
-  // The updatedAt token of the version this editor is based on. Set on load,
-  // advanced only by our own saves or an explicit reload / overwrite. It must
-  // not follow the live metadata listener (that would hide other sessions' edits).
-  const expectedUpdatedAtRef = useRef<Timestamp | null>(null)
+  const baseContentRef = useRef<LearningCanvasContent | null>(null)
+  const displayName = user?.displayName || user?.email || 'Instructor'
+  const collab = useCanvasCollab({
+    classId: classId ?? '',
+    canvasId: canvasId ?? '',
+    uid: user?.uid ?? '',
+    name: displayName,
+    ownerId: user?.uid ?? '',
+    enabled: Boolean(classId && canvasId && user),
+    owner: true,
+  })
+  const activityRecorder = useActivityRecorder({
+    classId: classId ?? '',
+    canvasId: canvasId ?? '',
+    uid: user?.uid ?? '',
+    name: displayName,
+    enabled: Boolean(classId && canvasId && user),
+  })
 
   useEffect(() => {
     if (!classId) return
@@ -125,7 +142,9 @@ export function InstructorLearningCanvasPage() {
         getContent(classId, canvasId),
         getCanvas(classId, canvasId),
       ])
-      expectedUpdatedAtRef.current = meta?.updatedAt ?? null
+      if (!meta) throw new Error('Canvas not found.')
+      setCanvas(meta)
+      baseContentRef.current = initialContent
       setContent(initialContent)
       setLoading(false)
     } catch (err) {
@@ -137,6 +156,24 @@ export function InstructorLearningCanvasPage() {
   useEffect(() => {
     void loadData()
   }, [loadData])
+
+  useEffect(() => {
+    if (!classId || !canvasId) return undefined
+    return watchCanvasContent(
+      classId,
+      canvasId,
+      (next) => {
+        if (next) {
+          setContent(next)
+        }
+      },
+      (cause) => setError(cause.message),
+    )
+  }, [classId, canvasId])
+
+  const handleRemoteContentApplied = useCallback((next: LearningCanvasContent) => {
+    baseContentRef.current = next
+  }, [])
 
   // Watch canvas metadata doc for status updates
   useEffect(() => {
@@ -155,18 +192,13 @@ export function InstructorLearningCanvasPage() {
 
   const handleSave = async (
     updatedContent: LearningCanvasContent,
-    options?: { force?: boolean },
-  ) => {
+  ): Promise<LearningCanvasContent> => {
     if (!classId || !canvasId) throw new Error('Canvas is not ready to save.')
-    if (options?.force || !expectedUpdatedAtRef.current) {
-      const latest = await getCanvas(classId, canvasId)
-      if (!latest) throw new Error('Canvas not found.')
-      expectedUpdatedAtRef.current = latest.updatedAt
-    }
-    const expected = expectedUpdatedAtRef.current
-    if (!expected) throw new Error('Canvas is not ready to save.')
-    const savedAt = await saveCanvas(classId, canvasId, updatedContent, expected)
-    if (savedAt) expectedUpdatedAtRef.current = savedAt
+    const base = baseContentRef.current ?? updatedContent
+    const result = await saveCanvasMerged({ classId, canvasId, base, local: updatedContent })
+    baseContentRef.current = result.content
+    activityRecorder.recordEdit(base, updatedContent)
+    return result.content
   }
 
   const handleReloadLatest = async () => {
@@ -175,7 +207,10 @@ export function InstructorLearningCanvasPage() {
       getContent(classId, canvasId),
       getCanvas(classId, canvasId),
     ])
-    if (meta) expectedUpdatedAtRef.current = meta.updatedAt
+    if (meta && latestContent) {
+      setCanvas(meta)
+      baseContentRef.current = latestContent
+    }
     return latestContent
   }
 
@@ -196,8 +231,6 @@ export function InstructorLearningCanvasPage() {
         await publish(classId, canvasId)
         showToast('success', 'Canvas published to class.')
       }
-      const latest = await getCanvas(classId, canvasId)
-      if (latest) expectedUpdatedAtRef.current = latest.updatedAt
     } catch (err) {
       showToast('error', err instanceof Error ? err.message : 'Status update failed.')
     }
@@ -247,12 +280,28 @@ export function InstructorLearningCanvasPage() {
             canEditStatus={true}
             status={canvas?.status === 'published' ? 'published' : 'draft'}
             availableReferences={availableRefs}
+            remoteContent={content}
+            remoteCursors={collab.cursors}
+            onPublishCursor={collab.publishCursor}
+            onRemoteContentApplied={handleRemoteContentApplied}
             onSave={handleSave}
             onToggleStatus={handleToggleStatus}
             onReloadLatest={handleReloadLatest}
             onOpenReference={handleOpenReference}
           />
         </div>
+        <CanvasCollaborationPanel
+          classId={classId ?? ''}
+          canvasId={canvasId ?? ''}
+          uid={user?.uid ?? ''}
+          name={displayName}
+          owner
+          people={collab.people}
+          members={collab.members}
+          invites={collab.invites}
+          activity={collab.activity}
+          error={collab.error || activityRecorder.error}
+        />
       </main>
     </AppShell>
   )

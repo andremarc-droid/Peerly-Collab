@@ -416,10 +416,39 @@ service cloud.firestore {
             && data.createdAt is timestamp && data.updatedAt is timestamp;
         }
 
+        // ---- Sharing (collaboration) helpers -------------------------------------------
+        // Invited people live in members/{uid}. They must still belong to the class, so
+        // removing a student from the class also removes their access to shared canvases.
+        function canvasPath() {
+          return /databases/$(database)/documents/classes/$(classId)/learningCanvases/$(canvasId);
+        }
+        function memberPath(uid) {
+          return /databases/$(database)/documents/classes/$(classId)/learningCanvases/$(canvasId)/members/$(uid);
+        }
+        function invitePath(token) {
+          return /databases/$(database)/documents/classes/$(classId)/learningCanvases/$(canvasId)/invites/$(token);
+        }
+        function isCanvasOwner() {
+          return signedIn() && exists(canvasPath()) && get(canvasPath()).data.ownerId == request.auth.uid;
+        }
+        function stillInClass() {
+          return isClassOwner(classId) || isActiveMember(classId);
+        }
+        function memberRole() {
+          return exists(memberPath(request.auth.uid)) ? get(memberPath(request.auth.uid)).data.get('role', '') : '';
+        }
+        function isCanvasMember() {
+          return signedIn() && stillInClass() && memberRole() in ['viewer', 'editor'];
+        }
+        function isCanvasEditor() {
+          return signedIn() && stillInClass() && memberRole() == 'editor';
+        }
+
         allow get: if signedIn() && (
           resource == null
           || (resource.data.get('kind', '') == 'class' && (isClassOwner(classId) || (isActiveMember(classId) && resource.data.get('status', '') == 'published')))
           || (resource.data.get('kind', '') == 'personal' && resource.data.get('ownerId', '') == request.auth.uid)
+          || isCanvasMember()
         );
         allow list: if signedIn() && (
           isClassOwner(classId)
@@ -444,6 +473,9 @@ service cloud.firestore {
           && (
             (resource.data.kind == 'class' && isClassOwner(classId))
             || (resource.data.kind == 'personal' && resource.data.ownerId == request.auth.uid)
+            // An invited editor may only refresh the derived counters when saving the board.
+            || (isCanvasEditor()
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nodeCount', 'edgeCount', 'refs', 'updatedAt']))
           );
 
         allow delete: if signedIn() && (
@@ -482,6 +514,7 @@ service cloud.firestore {
             || (exists(parentPath()) && (
               (get(parentPath()).data.kind == 'class' && (isClassOwner(classId) || (isActiveMember(classId) && get(parentPath()).data.status == 'published')))
               || (get(parentPath()).data.kind == 'personal' && get(parentPath()).data.ownerId == request.auth.uid)
+              || isCanvasMember()
             ))
           );
 
@@ -489,6 +522,7 @@ service cloud.firestore {
             && exists(parentPath()) && (
               (get(parentPath()).data.kind == 'class' && (isClassOwner(classId) || (isActiveMember(classId) && get(parentPath()).data.status == 'published')))
               || (get(parentPath()).data.kind == 'personal' && get(parentPath()).data.ownerId == request.auth.uid)
+              || isCanvasMember()
             );
 
           allow create, update: if signedIn()
@@ -497,6 +531,7 @@ service cloud.firestore {
             && (
               (parentCanvas().kind == 'class' && isClassOwner(classId))
               || (parentCanvas().kind == 'personal' && parentCanvas().ownerId == request.auth.uid)
+              || isCanvasEditor()
             );
 
           allow delete: if signedIn() && (
@@ -507,7 +542,169 @@ service cloud.firestore {
             ))
           );
         }
+
+        // Who was invited and what they may do. Only the canvas owner changes a role; a member
+        // can never edit or remove their own record, so a downgrade cannot be undone by re-joining.
+        match /members/{memberUid} {
+          function validMember(data) {
+            let invite = get(invitePath(data.grantedByToken)).data;
+            return data.keys().hasOnly(['uid', 'role', 'displayName', 'invitedBy', 'grantedByToken', 'joinedAt', 'updatedAt'])
+              && data.keys().hasAll(['uid', 'role', 'displayName', 'invitedBy', 'grantedByToken', 'joinedAt', 'updatedAt'])
+              && data.uid == memberUid
+              && data.role in ['viewer', 'editor']
+              && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+              && data.invitedBy is string
+              && data.grantedByToken is string
+              && data.joinedAt == request.time && data.updatedAt == request.time
+              && exists(invitePath(data.grantedByToken))
+              && invite.active == true
+              && (invite.expiresAt == null || request.time < invite.expiresAt)
+              && data.role == invite.role
+              && data.invitedBy == invite.createdBy;
+          }
+
+          allow get: if signedIn() && (memberUid == request.auth.uid || isCanvasOwner() || isCanvasMember());
+          allow list: if signedIn() && (isCanvasOwner() || isCanvasMember());
+          allow create: if signedIn()
+            && memberUid == request.auth.uid
+            && exists(canvasPath())
+            && !isCanvasOwner()
+            && stillInClass()
+            && validMember(request.resource.data);
+          allow update: if isCanvasOwner()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+            && request.resource.data.role in ['viewer', 'editor']
+            && request.resource.data.updatedAt == request.time;
+          allow delete: if isCanvasOwner() || isClassOwner(classId);
+        }
+
+        // Invite links. The token is the document id, so it cannot be listed or guessed.
+        match /invites/{token} {
+          function validInvite(data) {
+            return data.keys().hasOnly(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+              && data.keys().hasAll(['createdBy', 'role', 'active', 'createdAt', 'expiresAt'])
+              && data.createdBy == request.auth.uid
+              && data.role in ['viewer', 'editor']
+              && data.active is bool
+              && data.createdAt == request.time
+              && (data.expiresAt == null || (data.expiresAt is timestamp && data.expiresAt > request.time));
+          }
+
+          allow get: if signedIn() && token.size() >= 32;
+          allow list: if isCanvasOwner();
+          allow create: if isCanvasOwner() && token.size() >= 32 && validInvite(request.resource.data);
+          allow update: if isCanvasOwner()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
+            && request.resource.data.active is bool;
+          allow delete: if isCanvasOwner() || isClassOwner(classId);
+        }
+
+        // One heartbeat document per person: online flag, last-active time and pointer position.
+        match /presence/{presenceUid} {
+          function validPresence(data) {
+            return data.keys().hasOnly(['uid', 'name', 'online', 'cursor', 'lastActive'])
+              && data.keys().hasAll(['uid', 'name', 'online', 'cursor', 'lastActive'])
+              && data.uid == request.auth.uid
+              && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+              && data.online is bool
+              && data.lastActive == request.time
+              && (data.cursor == null || (data.cursor is map
+                && data.cursor.keys().hasOnly(['x', 'y'])
+                && data.cursor.x is number && data.cursor.y is number
+                && data.cursor.x >= -100000 && data.cursor.x <= 100000
+                && data.cursor.y >= -100000 && data.cursor.y <= 100000));
+          }
+
+          allow get, list: if signedIn() && (isCanvasOwner() || isCanvasMember());
+          allow create, update: if signedIn()
+            && presenceUid == request.auth.uid
+            && (isCanvasOwner() || isCanvasMember())
+            && validPresence(request.resource.data);
+          allow delete: if signedIn() && (presenceUid == request.auth.uid || isCanvasOwner() || isClassOwner(classId));
+        }
+
+        // Append-only log of who changed what. Entries cannot be edited, so the history is trustworthy.
+        match /activity/{activityId} {
+          function validActivity(data) {
+            return data.keys().hasOnly(['actorId', 'actorName', 'type', 'summary', 'changes', 'createdAt'])
+              && data.keys().hasAll(['actorId', 'actorName', 'type', 'summary', 'changes', 'createdAt'])
+              && data.actorId == request.auth.uid
+              && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 80
+              && data.type in ['edit', 'member']
+              && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 200
+              && data.changes is list && data.changes.size() <= 20
+              && data.createdAt == request.time;
+          }
+
+          allow get, list: if signedIn() && (isCanvasOwner() || isCanvasMember());
+          allow create: if signedIn()
+            && validActivity(request.resource.data)
+            && (
+              (request.resource.data.type == 'edit' && (isCanvasOwner() || isCanvasEditor()))
+              || (request.resource.data.type == 'member' && (isCanvasOwner() || isCanvasMember()))
+            );
+          allow update: if false;
+          allow delete: if isCanvasOwner() || isClassOwner(classId);
+        }
       }
+    }
+
+    match /classes/{classId}/flashcardDecks/{deckId} {
+      function validFlashcardDeck(data) {
+        return data.keys().hasOnly(['ownerId', 'classId', 'kind', 'title', 'description', 'status', 'cardCount', 'cards', 'createdAt', 'updatedAt'])
+          && data.keys().hasAll(['ownerId', 'classId', 'kind', 'title', 'description', 'status', 'cardCount', 'cards', 'createdAt', 'updatedAt'])
+          && data.ownerId is string
+          && data.classId == classId
+          && data.kind in ['class', 'personal']
+          && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+          && data.description is string && data.description.size() <= 300
+          && (data.kind == 'class'
+            ? data.status in ['draft', 'published']
+            : data.status == 'private')
+          && data.cards is list && data.cards.size() >= 1 && data.cards.size() <= 100
+          && data.cardCount is int && data.cardCount == data.cards.size()
+          && data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+
+      allow get: if signedIn() && (
+        resource == null
+        || (resource.data.get('kind', '') == 'class' && (isClassOwner(classId) || (isActiveMember(classId) && resource.data.get('status', '') == 'published')))
+        || (resource.data.get('kind', '') == 'personal' && resource.data.get('ownerId', '') == request.auth.uid)
+      );
+      allow list: if signedIn() && (
+        isClassOwner(classId)
+        || (resource.data.get('kind', '') == 'class' && isActiveMember(classId) && resource.data.get('status', '') == 'published')
+        || (resource.data.get('kind', '') == 'personal' && resource.data.get('ownerId', '') == request.auth.uid)
+      );
+
+      allow create: if signedIn()
+        && validFlashcardDeck(request.resource.data)
+        && request.resource.data.ownerId == request.auth.uid
+        && (
+          (request.resource.data.kind == 'class' && isClassOwner(classId))
+          || (request.resource.data.kind == 'personal' && isActiveMember(classId))
+        );
+
+      allow update: if signedIn()
+        && validFlashcardDeck(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.classId == resource.data.classId
+        && request.resource.data.kind == resource.data.kind
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          (resource.data.kind == 'class' && isClassOwner(classId))
+          || (resource.data.kind == 'personal' && resource.data.ownerId == request.auth.uid)
+        );
+
+      allow delete: if signedIn() && (
+        (resource.data.kind == 'class' && isClassOwner(classId))
+        || (resource.data.kind == 'personal' && (resource.data.ownerId == request.auth.uid || isClassOwner(classId)))
+      );
+    }
+
+    // "Shared with me": a person finds the canvases they were invited to by querying their own member records.
+    match /{path=**}/members/{memberUid} {
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
     match /classCodes/{code} {

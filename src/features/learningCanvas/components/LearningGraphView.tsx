@@ -71,6 +71,27 @@ const TYPE_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; cla
   link: ExternalLink,
 }
 
+/** Saved/dragged node coordinates beyond this are treated as corrupt (graph units). */
+const MAX_NODE_COORD = 1500
+
+function sanitizePositions<T extends Record<string, { x: number; y: number; isFixed?: boolean }>>(
+  positions: T,
+): T {
+  const out: Record<string, { x: number; y: number; isFixed?: boolean }> = {}
+  for (const [id, p] of Object.entries(positions)) {
+    if (
+      p &&
+      Number.isFinite(p.x) &&
+      Number.isFinite(p.y) &&
+      Math.abs(p.x) <= MAX_NODE_COORD &&
+      Math.abs(p.y) <= MAX_NODE_COORD
+    ) {
+      out[id] = p
+    }
+  }
+  return out as T
+}
+
 interface LearningGraphViewProps {
   canvases: LearningCanvasWithId[]
   classes: Array<{ id: string; name: string }>
@@ -125,7 +146,9 @@ export function LearningGraphView({
         }
         if (parsed && typeof parsed === 'object') {
           const ids = Array.isArray(parsed.nodeIds) ? new Set<string>(parsed.nodeIds) : new Set<string>()
-          const positions = parsed.positions && typeof parsed.positions === 'object' ? (parsed.positions as StoredPositions) : {}
+          const positions = sanitizePositions(
+            parsed.positions && typeof parsed.positions === 'object' ? (parsed.positions as StoredPositions) : {},
+          )
           return { ids, positions }
         }
       }
@@ -135,19 +158,57 @@ export function LearningGraphView({
     return { ids: new Set<string>(), positions: {} }
   }, [storageKey])
 
+  /* ── Unsaved draft (auto-saved per browser session) ──
+     Survives switching tabs / refreshing; "Save graph" commits it to localStorage,
+     "Discard" drops it. */
+  const storageKeyRef = useRef(storageKey)
+
+  const loadDraft = useCallback((): { ids: Set<string>; positions: StoredPositions } | null => {
+    try {
+      const raw = sessionStorage.getItem(`${storageKey}:draft`)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.nodeIds)) return null
+      const positions = sanitizePositions(
+        parsed.positions && typeof parsed.positions === 'object' ? (parsed.positions as StoredPositions) : {},
+      )
+      return { ids: new Set<string>(parsed.nodeIds), positions }
+    } catch {
+      return null
+    }
+  }, [storageKey])
+
+  /** Last on-screen positions of every node (pinned or not), so a remount doesn't re-run the layout from scratch. */
+  const loadLayout = useCallback((): StoredPositions => {
+    try {
+      const raw = sessionStorage.getItem(`${storageKey}:layout`)
+      if (!raw) return {}
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === 'object' ? sanitizePositions(parsed as StoredPositions) : {}
+    } catch {
+      return {}
+    }
+  }, [storageKey])
+
   const [savedNodeIds, setSavedNodeIds] = useState<Set<string>>(() => loadFromStorage().ids)
-  const [includedNodeIds, setIncludedNodeIds] = useState<Set<string>>(() => loadFromStorage().ids)
+  const [includedNodeIds, setIncludedNodeIds] = useState<Set<string>>(
+    () => (loadDraft() ?? loadFromStorage()).ids,
+  )
   const [savedPositions, setSavedPositions] = useState<StoredPositions>(() => loadFromStorage().positions)
-  const [currentPositions, setCurrentPositions] = useState<StoredPositions>(() => loadFromStorage().positions)
+  const [currentPositions, setCurrentPositions] = useState<StoredPositions>(
+    () => (loadDraft() ?? loadFromStorage()).positions,
+  )
 
   // Sync on class/role switch
   useEffect(() => {
+    storageKeyRef.current = storageKey
     const loaded = loadFromStorage()
+    const working = loadDraft() ?? loaded
     setSavedNodeIds(loaded.ids)
-    setIncludedNodeIds(loaded.ids)
+    setIncludedNodeIds(working.ids)
     setSavedPositions(loaded.positions)
-    setCurrentPositions(loaded.positions)
-  }, [loadFromStorage])
+    setCurrentPositions(working.positions)
+  }, [storageKey, loadFromStorage, loadDraft])
 
   // Dirty tracking (nodes added/removed OR positions moved)
   const isDirty = useMemo(() => {
@@ -165,6 +226,26 @@ export function LearningGraphView({
     }
     return false
   }, [includedNodeIds, savedNodeIds, currentPositions, savedPositions])
+
+  // Auto-save the unsaved work as a draft; clear it once it matches the saved graph.
+  useEffect(() => {
+    const draftKey = `${storageKeyRef.current}:draft`
+    try {
+      if (isDirty) {
+        sessionStorage.setItem(
+          draftKey,
+          JSON.stringify({
+            nodeIds: Array.from(includedNodeIds),
+            positions: currentPositions,
+          }),
+        )
+      } else {
+        sessionStorage.removeItem(draftKey)
+      }
+    } catch {
+      // ignore (storage unavailable)
+    }
+  }, [isDirty, includedNodeIds, currentPositions])
 
   const handleSaveGraph = () => {
     try {
@@ -254,6 +335,8 @@ export function LearningGraphView({
 
   /* ── Node dragging ── */
   const draggedNodeRef = useRef<GraphNode | null>(null)
+  const dragStartRef = useRef({ x: 0, y: 0 })
+  const dragMovedRef = useRef(false)
 
   /* ── Simulation ── */
   const [graphData, setGraphData] = useState<GraphData>(() =>
@@ -266,6 +349,7 @@ export function LearningGraphView({
       allowedTypes,
       searchQuery: '',
       includedNodeIds,
+      customPositions: { ...loadLayout(), ...currentPositions },
     }),
   )
 
@@ -276,6 +360,23 @@ export function LearningGraphView({
   const svgRef = useRef<SVGSVGElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const isInitialMountRef = useRef(true)
+
+  // On leaving the graph view, remember where every node ended up.
+  useEffect(() => {
+    return () => {
+      try {
+        const layout: StoredPositions = {}
+        for (const n of nodesRef.current) {
+          if (Number.isFinite(n.x) && Number.isFinite(n.y)) {
+            layout[n.id] = { x: Math.round(n.x), y: Math.round(n.y), isFixed: false }
+          }
+        }
+        sessionStorage.setItem(`${storageKeyRef.current}:layout`, JSON.stringify(layout))
+      } catch {
+        // ignore
+      }
+    }
+  }, [])
 
   // Sync draft text on selectedNode change
   useEffect(() => {
@@ -343,12 +444,16 @@ export function LearningGraphView({
     fresh.nodes.forEach((n) => {
       const prev = prevMap.get(n.id)
       if (prev) {
-        n.x = prev.x
-        n.y = prev.y
         if (prev.isFixed) {
+          n.x = prev.x
+          n.y = prev.y
           n.isFixed = true
           n.fx = prev.fx ?? prev.x
           n.fy = prev.fy ?? prev.y
+        } else if (!n.isFixed) {
+          // Keep the live position, but never overwrite a saved (pinned) one.
+          n.x = prev.x
+          n.y = prev.y
         }
       }
     })
@@ -501,14 +606,23 @@ export function LearningGraphView({
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (draggedNodeRef.current) {
+      if (!dragMovedRef.current) {
+        const moved = Math.hypot(
+          e.clientX - dragStartRef.current.x,
+          e.clientY - dragStartRef.current.y,
+        )
+        if (moved < 4) return
+        dragMovedRef.current = true
+      }
       const rect = e.currentTarget.getBoundingClientRect()
       const svgCenterX = rect.width / 2
       const svgCenterY = rect.height / 2
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
 
-      const targetX = Math.round((mouseX - svgCenterX - pan.x) / zoom)
-      const targetY = Math.round((mouseY - svgCenterY - pan.y) / zoom)
+      const clamp = (v: number) => Math.max(-MAX_NODE_COORD, Math.min(MAX_NODE_COORD, v))
+      const targetX = clamp(Math.round((mouseX - svgCenterX - pan.x) / zoom))
+      const targetY = clamp(Math.round((mouseY - svgCenterY - pan.y) / zoom))
 
       draggedNodeRef.current.x = targetX
       draggedNodeRef.current.y = targetY
@@ -531,7 +645,12 @@ export function LearningGraphView({
 
   const handlePointerUp = () => {
     isPanningRef.current = false
+    if (draggedNodeRef.current && !dragMovedRef.current) {
+      // Plain click: select only, do not pin or save a position.
+      draggedNodeRef.current = null
+    }
     if (draggedNodeRef.current) {
+      dragMovedRef.current = false
       const node = draggedNodeRef.current
       node.isFixed = true
       node.fx = node.x
@@ -549,7 +668,11 @@ export function LearningGraphView({
   useEffect(() => {
     const handleGlobalRelease = () => {
       isPanningRef.current = false
+      if (draggedNodeRef.current && !dragMovedRef.current) {
+        draggedNodeRef.current = null
+      }
       if (draggedNodeRef.current) {
+        dragMovedRef.current = false
         const node = draggedNodeRef.current
         node.isFixed = true
         node.fx = node.x
@@ -1109,11 +1232,8 @@ export function LearningGraphView({
                       e.stopPropagation()
                       if (!connectMode) {
                         const liveNode = nodesRef.current.find((n) => n.id === node.id) || node
-                        liveNode.isFixed = true
-                        liveNode.fx = liveNode.x
-                        liveNode.fy = liveNode.y
-                        liveNode.vx = 0
-                        liveNode.vy = 0
+                        dragStartRef.current = { x: e.clientX, y: e.clientY }
+                        dragMovedRef.current = false
                         draggedNodeRef.current = liveNode
                         try {
                           ;(e.currentTarget as Element).setPointerCapture(e.pointerId)

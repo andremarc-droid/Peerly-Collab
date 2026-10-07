@@ -15,6 +15,7 @@ import {
   MAX_CANVAS_TITLE_LENGTH,
 } from './constants'
 import { CanvasConflictError } from './errors'
+import { deleteCanvasSubcollections } from './collab/cleanup'
 import {
   learningCanvasContentRef,
   learningCanvasRef,
@@ -51,6 +52,20 @@ export async function getContent(
   const snap = await getDoc(learningCanvasContentRef(db, classId, canvasId))
   if (!snap.exists()) return null
   return parseLearningCanvasContent(snap.data())
+}
+
+export function watchCanvasContent(
+  classId: string,
+  canvasId: string,
+  onChange: (content: LearningCanvasContent | null) => void,
+  onError: (error: Error) => void,
+  db: Firestore = firestore,
+) {
+  return onSnapshot(
+    learningCanvasContentRef(db, classId, canvasId),
+    (snap) => onChange(snap.exists() ? parseLearningCanvasContent(snap.data()) : null),
+    onError,
+  )
 }
 
 export function watchClassCanvases(
@@ -380,8 +395,27 @@ export async function deleteCanvas(
   canvasId: string,
   db: Firestore = firestore,
 ): Promise<void> {
+  // Sharing records go first; the canvas document is what the rules use to decide who may delete them.
+  await deleteCanvasSubcollections(classId, canvasId, db)
   const batch = writeBatch(db)
   batch.delete(learningCanvasContentRef(db, classId, canvasId))
   batch.delete(learningCanvasRef(db, classId, canvasId))
   await batch.commit()
+}
+
+/** Live metadata for one canvas. Reports null when it is gone or this person may not read it (e.g. access removed). */
+export function watchCanvas(
+  classId: string,
+  canvasId: string,
+  onChange: (canvas: LearningCanvasWithId | null) => void,
+  onError: (error: Error) => void,
+  db: Firestore = firestore,
+) {
+  return onSnapshot(
+    learningCanvasRef(db, classId, canvasId),
+    (snap) => {
+      onChange(snap.exists() ? { ...parseLearningCanvasMetadata(snap.data()), id: snap.id } : null)
+    },
+    onError,
+  )
 }

@@ -48,9 +48,14 @@ import { RenameLearningCanvasDialog } from './components/RenameLearningCanvasDia
 import { LossyImportDialog } from './components/LossyImportDialog'
 import { LearningGraphView } from './components/LearningGraphView'
 import { NotesTabContent } from './components/NotesTabContent'
+import { FlashcardsTab, useFlashcardDecks } from '../flashcards'
+import { ChatbotTab } from '../chatbot'
+import { useSharedCanvases } from './collab/useSharedCanvases'
+import { SharedCanvasList } from './collab/SharedCanvasList'
 
 export function InstructorLearningHubPage() {
   const { user } = useAuth()
+  const sharedCanvases = useSharedCanvases(user?.uid)
   const { showToast } = useToast()
   const navigate = useNavigate()
 
@@ -73,6 +78,12 @@ export function InstructorLearningHubPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [importResult, setImportResult] = useState<FromJsonCanvasResult | null>(null)
   const [importedTitle, setImportedTitle] = useState('Imported Canvas')
+
+  const { decks: flashcardDecks, error: flashcardError } = useFlashcardDecks({
+    role: 'instructor',
+    uid: user?.uid,
+    classIds: classes.map((c) => c.id),
+  })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -476,6 +487,7 @@ export function InstructorLearningHubPage() {
   }
 
   const classNameMap = new Map(classes.map((c) => [c.id, c.name]))
+  const selectedClassName = selectedClassId === 'all' ? undefined : classNameMap.get(selectedClassId)
 
   return (
     <AppShell>
@@ -525,7 +537,9 @@ export function InstructorLearningHubPage() {
             options={[
               { label: 'Canvases', value: 'canvases' },
               { label: 'Notes', value: 'notes' },
+              { label: 'Flashcards', value: 'flashcards' },
               { label: 'Graph view', value: 'graph' },
+              { label: 'AI Tutor', value: 'tutor' },
             ]}
           />
 
@@ -571,6 +585,24 @@ export function InstructorLearningHubPage() {
           </section>
         )}
 
+        {/* View mode: AI Tutor. Always mounted (just hidden) so a reply in progress survives switching tabs. */}
+        <section aria-label="AI tutor" hidden={viewMode !== 'tutor'}>
+          <ChatbotTab classLabel={selectedClassName} />
+        </section>
+
+        {/* View mode: Flashcards */}
+        {viewMode === 'flashcards' && (
+          <section aria-label="Flashcard decks">
+            <FlashcardsTab
+              decks={flashcardDecks}
+              classes={classOptions}
+              selectedClassId={selectedClassId}
+              role="instructor"
+              error={flashcardError}
+            />
+          </section>
+        )}
+
         {/* View mode: Notes List */}
         {viewMode === 'notes' && (
           <section aria-label="Concept notes">
@@ -590,6 +622,12 @@ export function InstructorLearningHubPage() {
         {/* View mode 2: Canvases List */}
         {viewMode === 'canvases' && (
           <section aria-labelledby="learning-canvases-heading" className="grid gap-4">
+            <SharedCanvasList
+              items={sharedCanvases.items}
+              error={sharedCanvases.error}
+              role="instructor"
+              selectedClassId={selectedClassId}
+            />
             <div className="flex items-center justify-between">
               <h2 id="learning-canvases-heading" className="text-xl font-bold text-navy-900 m-0">
                 Study Canvases

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import type { Timestamp } from 'firebase/firestore'
 import { AppShell } from '../../app/AppShell'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Alert } from '../../shared/ui/Alert'
@@ -12,11 +11,16 @@ import { LearningCanvas } from './components/LearningCanvas'
 import {
   getCanvas,
   getContent,
-  saveCanvas,
+  watchCanvasContent,
   copyToMyCanvases,
   watchClassCanvases,
   watchMyCanvases,
 } from './services'
+import { saveCanvasMerged } from './collab/saveMerged'
+import { useCanvasAccess } from './collab/useCanvasAccess'
+import { useCanvasCollab } from './collab/useCanvasCollab'
+import { CanvasCollaborationPanel } from './collab/CanvasCollaborationPanel'
+import { useActivityRecorder } from './collab/useActivityRecorder'
 import { openReferenceInNewTab } from './referenceRoutes'
 import { watchClass } from '../classes/services'
 import { subscribeToModules } from '../modules/services'
@@ -42,11 +46,25 @@ export function StudentLearningCanvasPage() {
   const [quizRefs, setQuizRefs] = useState<ResolvedReferenceInfo[]>([])
   const [className, setClassName] = useState<string>('Classroom')
 
-  // The updatedAt token of the version this editor is based on. It is set when
-  // the content is loaded and advanced only by our own saves (or an explicit
-  // reload / overwrite). It must NOT follow the live metadata listener, or a
-  // save by another session would be adopted silently and never detected.
-  const expectedUpdatedAtRef = useRef<Timestamp | null>(null)
+  const baseContentRef = useRef<LearningCanvasContent | null>(null)
+  const canvasAccess = useCanvasAccess(classId, canvasId, user?.uid)
+  const displayName = user?.displayName || user?.email || 'Learner'
+  const collab = useCanvasCollab({
+    classId: classId ?? '',
+    canvasId: canvasId ?? '',
+    uid: user?.uid ?? '',
+    name: displayName,
+    ownerId: canvasAccess.canvas?.ownerId ?? '',
+    enabled: Boolean(classId && canvasId && user && canvasAccess.social),
+    owner: canvasAccess.access === 'owner',
+  })
+  const activityRecorder = useActivityRecorder({
+    classId: classId ?? '',
+    canvasId: canvasId ?? '',
+    uid: user?.uid ?? '',
+    name: displayName,
+    enabled: Boolean(classId && canvasId && user && canvasAccess.canEdit && canvasAccess.social),
+  })
 
   useEffect(() => {
     if (!classId) return
@@ -137,7 +155,9 @@ export function StudentLearningCanvasPage() {
         getContent(classId, canvasId),
         getCanvas(classId, canvasId),
       ])
-      expectedUpdatedAtRef.current = meta?.updatedAt ?? null
+      if (!meta) throw new Error('Canvas not found.')
+      setCanvas(meta)
+      baseContentRef.current = initialContent
       setContent(initialContent)
       setLoading(false)
     } catch (err) {
@@ -150,22 +170,35 @@ export function StudentLearningCanvasPage() {
     void loadData()
   }, [loadData])
 
-  const isReadOnly = canvas ? canvas.kind === 'class' : true
+  useEffect(() => {
+    if (!classId || !canvasId) return undefined
+    return watchCanvasContent(
+      classId,
+      canvasId,
+      (next) => {
+        if (next) {
+          setContent(next)
+        }
+      },
+      (cause) => setError(cause.message),
+    )
+  }, [classId, canvasId])
+
+  const handleRemoteContentApplied = useCallback((next: LearningCanvasContent) => {
+    baseContentRef.current = next
+  }, [])
+
+  const isReadOnly = !canvasAccess.canEdit
 
   const handleSave = async (
     updatedContent: LearningCanvasContent,
-    options?: { force?: boolean },
-  ) => {
+  ): Promise<LearningCanvasContent> => {
     if (!classId || !canvasId) throw new Error('Canvas is not ready to save.')
-    if (options?.force || !expectedUpdatedAtRef.current) {
-      const latest = await getCanvas(classId, canvasId)
-      if (!latest) throw new Error('Canvas not found.')
-      expectedUpdatedAtRef.current = latest.updatedAt
-    }
-    const expected = expectedUpdatedAtRef.current
-    if (!expected) throw new Error('Canvas is not ready to save.')
-    const savedAt = await saveCanvas(classId, canvasId, updatedContent, expected)
-    if (savedAt) expectedUpdatedAtRef.current = savedAt
+    const base = baseContentRef.current ?? updatedContent
+    const result = await saveCanvasMerged({ classId, canvasId, base, local: updatedContent })
+    baseContentRef.current = result.content
+    activityRecorder.recordEdit(base, updatedContent)
+    return result.content
   }
 
   const handleReloadLatest = async () => {
@@ -174,7 +207,10 @@ export function StudentLearningCanvasPage() {
       getContent(classId, canvasId),
       getCanvas(classId, canvasId),
     ])
-    if (meta) expectedUpdatedAtRef.current = meta.updatedAt
+    if (meta && latestContent) {
+      setCanvas(meta)
+      baseContentRef.current = latestContent
+    }
     return latestContent
   }
 
@@ -237,12 +273,30 @@ export function StudentLearningCanvasPage() {
             readOnly={isReadOnly}
             canEditStatus={false}
             availableReferences={availableRefs}
+            remoteContent={content}
+            remoteCursors={collab.cursors}
+            onPublishCursor={collab.publishCursor}
+            onRemoteContentApplied={handleRemoteContentApplied}
             onSave={isReadOnly ? undefined : handleSave}
             onCopyToMyCanvases={isReadOnly ? handleCopyToMyCanvases : undefined}
             onReloadLatest={handleReloadLatest}
             onOpenReference={handleOpenReference}
           />
         </div>
+        {canvasAccess.social && (
+          <CanvasCollaborationPanel
+            classId={classId ?? ''}
+            canvasId={canvasId ?? ''}
+            uid={user?.uid ?? ''}
+            name={displayName}
+            owner={canvasAccess.access === 'owner'}
+            people={collab.people}
+            members={collab.members}
+            invites={collab.invites}
+            activity={collab.activity}
+            error={collab.error || activityRecorder.error}
+          />
+        )}
       </main>
     </AppShell>
   )

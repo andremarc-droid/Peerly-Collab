@@ -78,11 +78,31 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Student link card validation: link cards require valid `https://` URLs on quiz submit; empty URLs are tolerated during draft autosaves.
 - Hidden/unreleased scores: `QuizResultPage` handles unreleased/hidden scores gracefully when student read is denied, rendering "Submitted. Your instructor will check your board." and the read-only submitted board without crashing.
 
+## CHATBOT
+- The Learning hub has an AI Tutor tab (last tab, both roles) implemented in `src/features/chatbot`. It is non-graded study help and never touches quizzes, attempts, or answer keys.
+- Provider is Groq via `src/lib/groq`. Env vars: `VITE_GROQ_API_KEY` (required, enables the tab) and `VITE_GROQ_MODEL` (optional, default `qwen/qwen3.8-27b`, which supports images). A missing key shows a clear error in the tab and never crashes the app. Vite exposes `VITE_` variables to the browser, so the key is visible to anyone who opens dev tools; move calls behind a Cloud Function before a public launch.
+- Each chat is a `ChatThread` stored in IndexedDB on the learner's device, keyed by user id (`peerly-chatbot` database). Nothing is written to Firestore, so no rules change is needed.
+- Per-chat memory: every request is built only from that chat's own history (`buildContext`). Recent messages are sent word for word within a token budget sized for Groq's 8K tokens-per-minute limit. When a chat outgrows it, `planCompaction` + `summarizeMessages` fold the oldest messages into `thread.summary`, which goes into the system prompt, so older context is condensed rather than forgotten.
+- Images: up to 2 per message (JPEG, PNG, WebP up to 10 MB), processed by `processImageFile` (max 1024px, re-encoded JPEG), stored as base64 without the `data:` prefix and sent as `data:image/jpeg;base64,...` URLs. Each image costs 2,048 input tokens, so images from older messages are replaced by a short text note after a few turns.
+- Failed or stopped requests mark the user message `failed` (excluded from model context) and show Retry. A reply interrupted by closing the tab is recovered as failed on next load.
+- Treat stored chats and model replies as untrusted: `parseThread` validates stored data and replies render through `SafeMarkdown` (no HTML, no images).
+- Chatbot tests need no emulator: `npx vitest run src/features/chatbot src/lib/groq`. They cover context building and compaction, the reply engine, storage and `parseThread`, image preparation, the `useChatbot` hook (retry, Stop, reload persistence, per-chat memory) and the Composer and MessageBubble components. Shared builders live in `testFactories.ts`.
+
 ## WORKING RULES
 - UI work uses shared components and theme tokens in `src/shared/ui`; no hard-coded colors. Unfinished features render visibly disabled with a “Coming soon” label.
 - Keep interfaces accessible and mobile-first. Keep code feature-based and modules small and focused.
 - Write tests for logic. Automated Firebase tests and scripts use only the demo emulator project; never deploy rules or touch the real Firebase project.
 - Never print secrets or read `.env.local`. Make one commit per prompt.
+
+## FLASHCARDS
+- The Learning hub has a Flashcards tab (order: Canvases, Notes, Flashcards, Graph view, AI Tutor) for both roles, implemented in `src/features/flashcards`. Decks are non-graded study material and never touch quizzes, attempts, or answer keys (quiz `flashcards` mode is separate).
+- Decks live at `classes/{classId}/flashcardDecks/{deckId}` as a single document: `ownerId`, `classId`, `kind` (`'class'` | `'personal'`), `title` (1–120), `description` (max 300), `status` (`'draft'` | `'published'` for class kind, `'private'` for personal kind), `cardCount` (must equal `cards.length`), `cards` (1–100 of `{ id, front, back }`, front max 300 chars, back max 600), `createdAt`, `updatedAt`.
+- Instructors (class owner) author class decks and publish them; active students read only published class decks. Students author personal decks that only they can read; the class owner can delete but never read them. `kind`, `ownerId`, `classId`, and `createdAt` are immutable.
+- Known rules gap: rules check list size and `cardCount` but not per-card shape or text length. Per-card validation (`prepareCards`, `parseFlashcardDeck`) is client-side, so treat card text as untrusted and always render it as plain text.
+- Study flow is retrieval before reveal: the answer must be revealed before a card can be graded "Got it" or "Still learning", and missed cards can be reviewed again. Session logic is pure and lives in `studySession.ts`. Study progress is not stored.
+- `deleteClassCascade` removes all decks in the class, including students' personal decks.
+- Bulk entry: `parseBulkCards` accepts one card per line with `::` or a tab between front and back.
+- AI card generation is available in the deck editor: choose up to five class modules, optionally add notes, and request 1–30 cards. Generated prompts and answers are parsed, constrained to source material, and reviewed in the editor before saving. Groq configuration and browser-key limitations are documented under `CHATBOT`.
 
 ## CLASSROOMS
 - Classes live at `classes/{classId}` and are owned by instructors. Students only see published quizzes for classes where their enrollment is active.
@@ -118,6 +138,8 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
   - Personal kind: student owner creates (requires active enrollment), reads, updates, and deletes; status must be `'private'`; class owner may delete (for cascades) but can never read personal canvas metadata or content.
   - Content document inherits access from parent canvas document through `get()` / `getAfter()`. List sizes capped (`refs <= 80`, `nodes <= 80`, `edges <= 120`) and keys restricted via `hasOnly`. Per-node fields are enforced by the client domain schema.
   - Cascade deletion: `deleteClassCascade` removes all learning canvases and their content in the class (including students' personal canvases) with safe batch sizes to keep rule lookups bounded.
+  - Canvas sharing is owner-controlled through unguessable invite links. Accepted invitees must still be active members of the class and receive `viewer` or `editor` access; owners can change roles, remove members, and disable links. Shared canvases appear in the recipient's Learning hub.
+  - Owners and invited members see a live presence roster and cursor positions. Heartbeats indicate active/offline status, while editors' concurrent saves are transactionally merged by item id. Append-only activity entries record board changes and membership changes with the actor's display name.
 - JSON Canvas 1.0:
   - Standard JSON Canvas 1.0 import and export via `toJsonCanvas` and `fromJsonCanvas`.
   - Lossy import produces a diagnostic report: file nodes become text cards with file name, unknown types dropped, positions and dimensions clamped, capacity limits enforced, duplicate IDs regenerated, scripts and HTML sanitized.
@@ -127,4 +149,3 @@ Emulator tests in PowerShell need `JAVA_HOME` set to the JDK 21 path above. Run 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-21.0.2.13-hotspot'; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"; $env:XDG_CONFIG_HOME='node_modules/.cache/firebase-cli-config'; npx firebase emulators:exec --only auth,firestore --project demo-peerly-collab "npx vitest run --maxWorkers=1"
 ```
-
