@@ -23,6 +23,7 @@ import { QuickCreateQuiz } from '../authoring/QuickCreateQuiz'
 const QuestionBuilderPage = lazy(() => import('../builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
 const CanvasBuilderPage = lazy(() => import('../builder/CanvasBuilderPage'))
 const CanvasBoard = lazy(() => import('../../canvas/components/CanvasBoard'))
+import { ExpandableCanvasContainer } from '../../canvas/components/ExpandableCanvasContainer'
 import { toDataUrl } from '../../canvas/imageProcessing'
 import { listImages } from '../../canvas/imageService'
 
@@ -285,19 +286,22 @@ function QuizPreviewTab({ quizId }: { quizId: string }) {
         {mode === 'canvas' ? (
           <div className="mt-4 grid gap-4">
             <p className="text-sm text-navy-800-72">{canvasQuestion?.prompt || 'Connect the cards according to the activity instructions.'}</p>
-            <div className="h-[600px] w-full rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50">
-              <Suspense fallback={<div className="quiz-editor-skeleton" aria-label="Loading canvas preview" />}>
-                <CanvasBoard
-                  cards={canvasQuestion?.cards ?? []}
-                  connections={[]}
-                  mode="play"
-                  directed={canvasQuestion?.directed ?? true}
-                  images={canvasImages}
-                />
-              </Suspense>
-            </div>
+            <ExpandableCanvasContainer title="Canvas preview">
+              <div className="w-full h-full rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50">
+                <Suspense fallback={<div className="quiz-editor-skeleton" aria-label="Loading canvas preview" />}>
+                  <CanvasBoard
+                    cards={canvasQuestion?.cards ?? []}
+                    connections={[]}
+                    mode="play"
+                    directed={canvasQuestion?.directed ?? true}
+                    images={canvasImages}
+                    className="w-full h-full"
+                  />
+                </Suspense>
+              </div>
+            </ExpandableCanvasContainer>
             {canvasImagesError && (
-              <div className="flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
+              <div className="flex items-center gap-2 text-sm text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
                 <span>Some board images could not be loaded.</span>
                 <button
                   type="button"

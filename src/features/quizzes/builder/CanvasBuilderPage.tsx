@@ -6,6 +6,7 @@ import {
   FileText,
   HelpCircle,
   Image as ImageIcon,
+  LayoutGrid,
   Link as LinkIcon,
   Loader2,
   Plus,
@@ -30,6 +31,8 @@ import { Textarea } from '../../../shared/ui/Textarea'
 import { useToast } from '../../../shared/ui/useToast'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 import CanvasBoard from '../../canvas/components/CanvasBoard'
+import { ExpandableCanvasContainer } from '../../canvas/components/ExpandableCanvasContainer'
+import { findNonOverlappingPosition, tidyLayout } from '../../canvas/placement'
 import { normalizeGenericUrl } from '../../modules/links'
 import {
   isLegacyImageCard,
@@ -356,6 +359,23 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
     return errors
   }, [prompt, cards, connections])
 
+  const [confirmTidyOpen, setConfirmTidyOpen] = useState(false)
+
+  // Tidy Layout into a neat grid
+  const handleTidyLayout = useCallback(() => {
+    setCards((prev) => {
+      const nextCards = tidyLayout(prev)
+      const nextPositions: Record<string, { x: number; y: number }> = {}
+      nextCards.forEach((c) => {
+        nextPositions[c.id] = c.position
+      })
+      setPositions(nextPositions)
+      return nextCards
+    })
+    setConfirmTidyOpen(false)
+    showToast('success', 'Layout rearranged into a neat grid.')
+  }, [showToast])
+
   // Add Card
   const handleAddCard = useCallback(
     (type: CanvasCardType) => {
@@ -364,13 +384,13 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         return
       }
       const newId = `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-      const offset = (cards.length % 8) * 30
+      const pos = findNonOverlappingPosition(cards, { x: 320, y: 160 })
       const newCard: CanvasCard = {
         id: newId,
         type,
         title: type === 'note' ? 'Note' : type === 'paragraph' ? 'Section' : type === 'image' ? 'Image' : 'Link',
         content: type === 'note' ? 'Key concept' : type === 'paragraph' ? 'Enter detailed description...' : '',
-        position: { x: 80 + offset, y: 60 + offset },
+        position: pos,
         alt: type === 'image' ? '' : undefined,
       }
       setCards((prev) => [...prev, newCard])
@@ -378,7 +398,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
       setSelectedConnectionId(null)
       setShowSettingsPanel(false)
     },
-    [cards.length, showToast],
+    [cards, showToast],
   )
 
   // Delete Card
@@ -864,6 +884,16 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
             </Button>
             <Button
               type="button"
+              variant="secondary"
+              onClick={() => setConfirmTidyOpen(true)}
+              disabled={cards.length === 0}
+              aria-label="Tidy layout"
+              title="Arrange cards into a neat grid"
+            >
+              <LayoutGrid size={15} aria-hidden="true" /> Tidy layout
+            </Button>
+            <Button
+              type="button"
               variant="ghost"
               onClick={() => {
                 setShowSettingsPanel((prev) => !prev)
@@ -949,7 +979,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
           {editingPrompt ? (
             <div className="grid gap-2">
               <div className="flex items-center justify-end">
-                <span className="text-xs text-navy-800-72">{prompt.length}/2000</span>
+                <span className="text-sm text-navy-800-72">{prompt.length}/2000</span>
               </div>
               <Textarea
                 label="Instructions for students"
@@ -978,7 +1008,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                   <HelpCircle size={18} />
                 </div>
                 <div className="min-w-0">
-                  <span className="block text-xs font-bold uppercase tracking-wider text-navy-800-72">
+                  <span className="block text-sm font-bold uppercase tracking-wider text-navy-800-72">
                     Student Instructions
                   </span>
                   <p className="m-0 text-base font-medium text-navy-900 break-words whitespace-pre-wrap">
@@ -1014,40 +1044,44 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
             }
           />
         ) : (
-          <div className="relative flex flex-col lg:flex-row gap-4 w-full lg:h-[650px]">
-            {/* The Canvas Flow Board (responsive: min 420px below lg, full width) */}
-            <div className="w-full lg:flex-1 h-[420px] sm:h-[480px] lg:h-full min-h-[420px] rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50 relative">
-              <CanvasBoard
-                cards={cards}
-                connections={connections}
-                mode="edit"
-                directed={directed}
-                maxConnections={80}
-                positions={positions}
-                images={imagesRecord}
-                onPositionsChange={(pos) => setPositions((prev) => ({ ...prev, ...pos }))}
-                onCardsChange={setCards}
-                onConnectionsChange={setConnections}
-                onCardClick={(card) => {
-                  setSelectedCardId(card.id)
-                  setSelectedConnectionId(null)
-                  setShowSettingsPanel(false)
-                }}
-                onConnectionClick={(conn) => {
-                  setSelectedConnectionId(conn.id)
-                  setSelectedCardId(null)
-                  setShowSettingsPanel(false)
-                }}
-                connectCardsDialogSlot={connectCardsSlot}
-              />
-            </div>
+          <ExpandableCanvasContainer
+            title="Prebuilt Canvas Board"
+            className="w-full h-[max(560px,calc(100dvh-220px))] min-h-[480px]"
+          >
+            <div className="relative flex flex-col lg:flex-row gap-4 w-full h-full">
+              {/* The Canvas Flow Board */}
+              <div className="w-full lg:flex-1 h-full min-h-[420px] rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50 relative">
+                <CanvasBoard
+                  cards={cards}
+                  connections={connections}
+                  mode="edit"
+                  directed={directed}
+                  maxConnections={80}
+                  positions={positions}
+                  images={imagesRecord}
+                  onPositionsChange={(pos) => setPositions((prev) => ({ ...prev, ...pos }))}
+                  onCardsChange={setCards}
+                  onConnectionsChange={setConnections}
+                  onCardClick={(card) => {
+                    setSelectedCardId(card.id)
+                    setSelectedConnectionId(null)
+                    setShowSettingsPanel(false)
+                  }}
+                  onConnectionClick={(conn) => {
+                    setSelectedConnectionId(conn.id)
+                    setSelectedCardId(null)
+                    setShowSettingsPanel(false)
+                  }}
+                  connectCardsDialogSlot={connectCardsSlot}
+                />
+              </div>
 
-            {/* Side/Bottom Panel for Card, Connection, or Board Settings (responsive: below board on mobile/tablet, side panel on desktop) */}
-            {(selectedCard || selectedConnection || showSettingsPanel) && (
-              <div
-                className="w-full lg:w-80 lg:h-full max-h-[500px] lg:max-h-none bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm overflow-y-auto flex flex-col gap-4"
-                aria-label="Editor side panel"
-              >
+              {/* Side/Bottom Panel for Card, Connection, or Board Settings (responsive: below board on mobile/tablet, side panel on desktop) */}
+              {(selectedCard || selectedConnection || showSettingsPanel) && (
+                <div
+                  className="w-full lg:w-[360px] lg:min-w-[360px] lg:h-full max-h-[500px] lg:max-h-none bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm overflow-y-auto flex flex-col gap-4"
+                  aria-label="Editor side panel"
+                >
                 {/* Close Button with 44px touch target */}
                 <div className="flex items-center justify-between border-b border-navy-900-12 pb-2">
                   <h3 className="text-sm font-semibold text-navy-900 m-0">
@@ -1373,6 +1407,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
               </div>
             )}
           </div>
+        </ExpandableCanvasContainer>
         )}
 
         {/* Keyboard Accessible Connect Cards Modal */}
@@ -1452,6 +1487,16 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
           title="Leave with unsaved changes?"
           description="Your edits have not been saved. Leaving this page will discard changes made to the canvas board."
           confirmLabel="Discard and leave"
+        />
+
+        {/* Tidy layout confirmation dialog */}
+        <ConfirmDialog
+          open={confirmTidyOpen}
+          onClose={() => setConfirmTidyOpen(false)}
+          onConfirm={handleTidyLayout}
+          title="Tidy canvas layout?"
+          description="This will reposition all cards into a clean, non-overlapping grid. Your cards and connections will not be deleted."
+          confirmLabel="Tidy layout"
         />
 
         {/* Directed mode change confirmation dialog */}

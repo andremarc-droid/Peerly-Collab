@@ -612,7 +612,7 @@ describe('CanvasBuilderPage Component Tests', () => {
     // Verify side panel has responsive placement classes (below 1024px full width/scrollable, lg side panel)
     const sidePanel = screen.getByLabelText('Editor side panel')
     expect(sidePanel.className).toContain('w-full')
-    expect(sidePanel.className).toContain('lg:w-80')
+    expect(sidePanel.className).toContain('lg:w-[360px]')
     expect(sidePanel.className).toContain('max-h-[500px]')
     expect(sidePanel.className).toContain('overflow-y-auto')
 

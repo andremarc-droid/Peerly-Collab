@@ -12,6 +12,8 @@ import type { BlankCanvasAnswer, QuizResult } from '../types'
 import type { SavedQuestion } from '../services/questionService'
 import CanvasBoard from '../../canvas/components/CanvasBoard'
 import { CanvasReviewView } from '../../canvas/components/CanvasReviewView'
+import { ExpandableCanvasContainer } from '../../canvas/components/ExpandableCanvasContainer'
+import { CanvasTextOutline } from '../../canvas/components/CanvasTextOutline'
 import type { CanvasAnswerKey, CanvasCard, CanvasQuestion } from '../../canvas/types'
 import { computeTimeSpent, isLate, type AttemptResult } from './resultLogic'
 import { toDataUrl } from '../../canvas/imageProcessing'
@@ -52,6 +54,7 @@ export function AttemptDetail({
   const [blankFeedback, setBlankFeedback] = useState<string>(() => attempt.result?.feedback ?? '')
   const [gradeSaved, setGradeSaved] = useState<boolean>(() => attempt.result?.reviewStatus === 'graded')
   const [savingGrade, setSavingGrade] = useState(false)
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
 
   useEffect(() => {
     setBlankScore(String(attempt.result?.score ?? 0))
@@ -118,8 +121,14 @@ export function AttemptDetail({
     const maxPoints = boardQ?.points ?? result.maxScore ?? 100
 
     const boardAnswer = attempt.answers.board as BlankCanvasAnswer | undefined
-    const studentCards = (boardAnswer?.cards ?? []) as CanvasCard[]
+    const rawStudentCards = (boardAnswer?.cards ?? []) as CanvasCard[]
     const studentConnections = boardAnswer?.connections ?? []
+
+    const studentCards = rawStudentCards.map((c) => ({
+      ...c,
+      selected: c.id === selectedCardId,
+    }))
+
     const cardPositions: Record<string, { x: number; y: number }> = {}
     studentCards.forEach((c) => {
       cardPositions[c.id] = c.position
@@ -201,15 +210,26 @@ export function AttemptDetail({
           {studentCards.length === 0 ? (
             <p className="m-0 text-sm text-navy-800-72">The student did not add any cards to their board.</p>
           ) : (
-            <div className="relative h-[440px] w-full rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50">
-              <CanvasBoard
-                cards={studentCards}
+            <ExpandableCanvasContainer title="Student concept board">
+              <div className="flex-1 min-w-0 h-full relative rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50 shadow-sm">
+                <CanvasBoard
+                  cards={studentCards}
+                  connections={studentConnections}
+                  mode="review"
+                  directed={boardQ?.directed ?? false}
+                  positions={cardPositions}
+                  onCardClick={(c) => setSelectedCardId((prev) => (prev === c.id ? null : c.id))}
+                  className="w-full h-full"
+                />
+              </div>
+              <CanvasTextOutline
+                cards={rawStudentCards}
                 connections={studentConnections}
-                mode="review"
-                directed={false}
-                positions={cardPositions}
+                directed={boardQ?.directed ?? false}
+                selectedCardId={selectedCardId}
+                onSelectCard={setSelectedCardId}
               />
-            </div>
+            </ExpandableCanvasContainer>
           )}
         </SectionCard>
 
@@ -307,7 +327,7 @@ export function AttemptDetail({
               images={canvasImages}
             />
             {canvasImagesError && (
-              <div className="flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
+              <div className="flex items-center gap-2 text-sm text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
                 <span>Some board images could not be loaded.</span>
                 <button
                   type="button"

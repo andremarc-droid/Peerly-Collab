@@ -8,6 +8,7 @@ import { Button } from '../../../shared/ui/Button'
 import { Input } from '../../../shared/ui/Input'
 import { PageHeader } from '../../../shared/ui/PageHeader'
 import { SectionCard } from '../../../shared/ui/SectionCard'
+import { SegmentedControl } from '../../../shared/ui/SegmentedControl'
 import { Switch } from '../../../shared/ui/Switch'
 import { Textarea } from '../../../shared/ui/Textarea'
 import { useToast } from '../../../shared/ui/useToast'
@@ -36,6 +37,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
   const [maxCards, setMaxCards] = useState(20)
   const [maxConnections, setMaxConnections] = useState(40)
   const [allowedCardTypes, setAllowedCardTypes] = useState<CanvasAllowedCardType[]>(['note', 'paragraph', 'link'])
+  const [directed, setDirected] = useState(false)
 
   // UI state
   const [previewTab, setPreviewTab] = useState<'form' | 'empty-board' | 'student-view'>('form')
@@ -52,8 +54,9 @@ export function BlankCanvasBuilder({ quizId }: Props) {
       maxCards,
       maxConnections,
       allowedCardTypes: [...allowedCardTypes].sort(),
+      directed,
     })
-  }, [prompt, rubric, showRubricToStudents, points, maxCards, maxConnections, allowedCardTypes])
+  }, [prompt, rubric, showRubricToStudents, points, maxCards, maxConnections, allowedCardTypes, directed])
 
   const isDirty = savedSignature !== '' && currentSignature !== savedSignature
   useUnsavedChangesGuard(isDirty)
@@ -86,6 +89,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
           setMaxCards(q.maxCards ?? 20)
           setMaxConnections(q.maxConnections ?? 40)
           setAllowedCardTypes(q.allowedCardTypes ?? ['note', 'paragraph', 'link'])
+          setDirected(q.directed ?? false)
 
           const sig = JSON.stringify({
             prompt: (q.prompt || 'Build your concept board.').trim(),
@@ -95,6 +99,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
             maxCards: q.maxCards ?? 20,
             maxConnections: q.maxConnections ?? 40,
             allowedCardTypes: [...(q.allowedCardTypes ?? ['note', 'paragraph', 'link'])].sort(),
+            directed: q.directed ?? false,
           })
           setSavedSignature(sig)
         } else {
@@ -106,6 +111,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
             maxCards: 20,
             maxConnections: 40,
             allowedCardTypes: ['link', 'note', 'paragraph'],
+            directed: false,
           })
           setSavedSignature(sig)
         }
@@ -163,6 +169,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
         maxCards,
         maxConnections,
         allowedCardTypes,
+        directed,
       }
       if (rubric.trim()) {
         questionData.rubric = rubric.trim()
@@ -178,7 +185,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
     } finally {
       setSaving(false)
     }
-  }, [validationErrors, prompt, rubric, points, showRubricToStudents, maxCards, maxConnections, allowedCardTypes, quizId, currentSignature, showToast])
+  }, [validationErrors, prompt, rubric, points, showRubricToStudents, maxCards, maxConnections, allowedCardTypes, directed, quizId, currentSignature, showToast])
 
   if (loading) {
     return (
@@ -447,6 +454,22 @@ export function BlankCanvasBuilder({ quizId }: Props) {
                 </label>
               </div>
             </SectionCard>
+            <SectionCard
+              title="Connection style"
+              description="Choose whether student connections are directed (with arrows) or undirected relationships."
+            >
+              <div className="max-w-md">
+                <SegmentedControl
+                  label="Connection direction"
+                  value={directed ? 'directed' : 'undirected'}
+                  options={[
+                    { label: 'Undirected (default)', value: 'undirected' },
+                    { label: 'Directed (arrows)', value: 'directed' },
+                  ]}
+                  onChange={(val) => setDirected(val === 'directed')}
+                />
+              </div>
+            </SectionCard>
           </div>
         )}
 
@@ -468,6 +491,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
                 <div className="mt-4 flex flex-wrap justify-center gap-2">
                   <Badge>Up to {maxCards} cards</Badge>
                   <Badge>Up to {maxConnections} connections</Badge>
+                  <Badge>{directed ? 'Directed' : 'Undirected'}</Badge>
                   <Badge>{points} points</Badge>
                 </div>
               </div>
@@ -487,11 +511,11 @@ export function BlankCanvasBuilder({ quizId }: Props) {
 
             {/* Mock instructions & rubric */}
             <div className="rounded-2xl border border-navy-900-12 bg-white p-4 shadow-sm">
-              <span className="block text-xs font-bold uppercase tracking-wider text-navy-800-72">Instructions</span>
+              <span className="block text-sm font-bold uppercase tracking-wider text-navy-800-72">Instructions</span>
               <p className="m-0 text-base font-medium text-navy-900 mt-1 whitespace-pre-wrap">{prompt}</p>
               {showRubricToStudents && rubric && (
                 <div className="mt-3 pt-3 border-t border-navy-900-12">
-                  <span className="block text-xs font-bold uppercase tracking-wider text-navy-800-72">Rubric</span>
+                  <span className="block text-sm font-bold uppercase tracking-wider text-navy-800-72">Rubric</span>
                   <p className="m-0 text-sm text-navy-800 mt-1 whitespace-pre-wrap">{rubric}</p>
                 </div>
               )}

@@ -129,4 +129,40 @@ describe('BlankCanvasBuilder', () => {
       )
     })
   })
+
+  it('configures and saves directed connections mode', async () => {
+    mocked.saveQuestionAndKey.mockClear()
+
+    render(
+      <MemoryRouter>
+        <BlankCanvasBuilder quizId="quiz-blank-1" />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByLabelText(/Activity instructions/i)).toBeInTheDocument()
+
+    // Fill instructions
+    fireEvent.change(screen.getByLabelText(/Activity instructions/i), {
+      target: { value: 'Draw directed flowchart.' },
+    })
+
+    // Switch to Directed
+    const directedBtn = screen.getByRole('button', { name: /^Directed/i })
+    fireEvent.click(directedBtn)
+
+    // Save
+    fireEvent.click(screen.getByRole('button', { name: /Save blank canvas/i }))
+
+    await waitFor(() => {
+      expect(mocked.saveQuestionAndKey).toHaveBeenCalledWith(
+        'quiz-blank-1',
+        'board',
+        expect.objectContaining({
+          directed: true,
+        }),
+        null,
+        expect.anything(),
+      )
+    })
+  })
 })
