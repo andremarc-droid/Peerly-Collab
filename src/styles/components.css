@@ -7,6 +7,20 @@
 .dropdown-menu__trigger { display: flex; min-height: 52px; max-width: min(70vw, 370px); align-items: center; gap: 11px; padding: 5px 12px 5px 6px; border: 1px solid var(--color-navy-on-border); border-radius: 999px; color: var(--color-white); background: var(--color-navy-700); cursor: pointer; transition: background-color 180ms ease-out, box-shadow 180ms ease-out; }
 .dropdown-menu__trigger:hover { background: var(--color-navy-800); box-shadow: var(--shadow-sm); }
 .dropdown-menu__trigger > svg:last-child { flex: 0 0 auto; color: var(--color-white-72); }
+.dropdown-menu { position: relative; }
+.dropdown-menu__trigger--icon { width: 44px; min-height: 44px; height: 44px; max-width: none; justify-content: center; gap: 0; padding: 0; border-color: var(--color-navy-900-12); border-radius: 12px; color: var(--color-navy-800); background: var(--color-white); }
+.dropdown-menu__trigger--icon:hover { background: var(--color-navy-900-08); box-shadow: none; }
+.dropdown-menu__trigger--icon[aria-expanded="true"] { border-color: var(--color-navy-800); background: var(--color-navy-900-08); }
+.dropdown-menu__trigger--icon > svg:last-child { color: inherit; }
+.dropdown-menu__panel > [role="menuitem"]:disabled { opacity: .45; cursor: not-allowed; }
+.dropdown-menu__panel > [role="menuitem"].is-danger { color: var(--color-danger-hover); }
+.dropdown-menu__panel > [role="menuitem"].is-danger:hover:not(:disabled) { background: var(--color-danger-bg); }
+.data-card:has(.dropdown-menu__trigger[aria-expanded="true"]) { position: relative; z-index: 5; }
+.quiz-card__actions--compact { flex-wrap: nowrap; justify-content: space-between; }
+.quiz-card__actions--compact .quiz-card__publish-hint { min-width: 0; flex: 1; }
+.quiz-card__actions--compact .dropdown-menu { flex: 0 0 auto; margin-left: auto; }
+/* Active nav tab: the global `a { color: inherit }` is unlayered and beats Tailwind's layered text-* utilities, so the label turned white on the white pill. */
+.app-shell__header nav a[aria-current="page"] { color: var(--color-navy-700); background: var(--color-white); }
 .account-avatar { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 2px solid var(--color-white); border-radius: 50%; color: var(--color-navy-900); background: var(--color-white); object-fit: cover; box-shadow: 0 0 0 2px var(--color-navy-700); }
 .account-avatar--initial { font-family: var(--font-heading); font-size: 15px; font-weight: 700; }
 .account-avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -117,10 +131,10 @@
 .radio-group { display: grid; gap: 9px; min-width: 0; padding: 0; border: 0; }.radio-group legend { margin-bottom: 8px; font-size: 14px; font-weight: 650; }.radio-group__options { display: grid; gap: 5px; }
 .segmented-control { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 4px; border: 1px solid var(--color-navy-900-12); border-radius: 15px; background: var(--color-navy-900-08); }.segmented-control button { min-height: 44px; padding: 0 15px; border: 1px solid transparent; border-radius: 11px; color: var(--color-navy-800-72); background: transparent; font-size: 14px; font-weight: 620; cursor: pointer; }.segmented-control button.is-selected { border-color: var(--color-navy-900-08); color: var(--color-navy-900); background: var(--color-white); box-shadow: var(--shadow-sm); }
 .tabs { min-width: 0; max-width: 100%; }
-.tabs__scroll { position: relative; max-width: 100%; overflow-x: auto; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
-.tabs__scroll::after { position: absolute; top: 0; right: 0; display: block; width: 28px; height: 100%; background: linear-gradient(90deg, transparent, var(--color-white)); content: ''; pointer-events: none; }
+.tabs__scroll { position: relative; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.tabs__scroll::-webkit-scrollbar { display: none; }
 .tabs__list { display: inline-flex; width: max-content; min-width: 100%; gap: 6px; padding: 6px; border: 0; border-radius: 16px; background: var(--color-navy-900-08); }
-.tabs__list button, .tabs__list button:not([aria-selected="true"]) { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; padding-inline: 16px; font-size: 14px; color: var(--color-navy-800-72); font-weight: 600; cursor: pointer; transition: background-color 150ms ease-out, color 150ms ease-out; }
+.tabs__list button, .tabs__list button:not([aria-selected="true"]) { min-height: 44px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; padding-inline: 16px; font-size: 14px; color: var(--color-navy-800-72); font-weight: 600; white-space: nowrap; cursor: pointer; transition: background-color 150ms ease-out, color 150ms ease-out; }
 .tabs__list button:not([aria-selected="true"]):hover { color: var(--color-navy-900); background: var(--color-navy-900-12); }
 .tabs__list button[aria-selected="true"] { color: var(--color-white); background: var(--color-navy-800); box-shadow: var(--shadow-sm); }
 .tabs__count { display: inline-grid; min-width: 24px; height: 24px; place-items: center; padding-inline: 6px; border-radius: 999px; font-size: 14px; font-weight: 700; }

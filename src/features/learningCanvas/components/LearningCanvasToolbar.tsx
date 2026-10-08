@@ -290,8 +290,8 @@ export function LearningCanvasToolbar({
         </div>
       </div>
 
-      {/* Right tool group: Save state, status, import/export, help */}
-      <div className="flex items-center gap-2">
+      {/* Right tool group: Save state, status, import/export, help. Wraps so nothing is clipped on phones. */}
+      <div className="flex flex-wrap items-center gap-2">
         {/* Autosave Status */}
         {!readOnly && (
           <div className="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg">
@@ -333,7 +333,7 @@ export function LearningCanvasToolbar({
           <button
             type="button"
             onClick={onToggleStatus}
-            className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-navy-800 ${
+            className={`inline-flex min-h-[44px] items-center px-3 py-1.5 text-xs font-bold rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-navy-800 ${
               status === 'published'
                 ? 'bg-feedback-success/15 border-feedback-success/30 text-feedback-success'
                 : 'bg-navy-900-8 border-navy-900-20 text-navy-900'

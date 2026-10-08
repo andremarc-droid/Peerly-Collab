@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Copy, RefreshCw, Share2, SquareArrowOutUpRight } from 'lucide-react'
+import { Copy, Ellipsis, RefreshCw, Share2, SquareArrowOutUpRight } from 'lucide-react'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Dialog } from '../../shared/ui/Dialog'
+import { DropdownMenu } from '../../shared/ui/DropdownMenu'
 import { Switch } from '../../shared/ui/Switch'
 import { useToast } from '../../shared/ui/useToast'
 import { copyText, inviteUrl } from './classUtilities'
@@ -32,12 +33,29 @@ export function ClassCodePanel({ classroom, onJoiningChange, onRegenerate, busy,
             <span className="font-mono text-[32px] font-bold tracking-[0.24em] text-navy-900 sm:text-[40px] leading-none">
               {classroom.joinCode}
             </span>
-            <Button type="button" variant="primary" onClick={() => void copy(classroom.joinCode, 'Join code copied.')}>
-              <Copy size={16} aria-hidden="true" /> Copy code
-            </Button>
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <Button type="button" variant="primary" className="flex-1 sm:flex-none" onClick={() => void copy(classroom.joinCode, 'Join code copied.')}>
+                <Copy size={16} aria-hidden="true" /> Copy code
+              </Button>
+              {/* Phone and tablet: the secondary actions live in a three-dot menu to save space. */}
+              <DropdownMenu label="More invite actions" iconOnly className="lg:hidden" trigger={<Ellipsis size={20} aria-hidden="true" />}>
+                <button type="button" role="menuitem" onClick={() => void copy(invite, 'Invite link copied.')}>
+                  <SquareArrowOutUpRight size={16} aria-hidden="true" /> Copy invite link
+                </button>
+                <button type="button" role="menuitem" onClick={() => setShare(true)}>
+                  <Share2 size={16} aria-hidden="true" /> Share invite
+                </button>
+                <button type="button" role="menuitem" onClick={() => setProjector(true)}>
+                  <Share2 size={16} aria-hidden="true" /> Show to class
+                </button>
+                <button type="button" role="menuitem" onClick={() => setConfirmRegenerate(true)} disabled={busy}>
+                  <RefreshCw size={16} aria-hidden="true" /> Regenerate code
+                </button>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="hidden flex-wrap items-center gap-2 lg:flex">
           <Button type="button" variant="secondary" onClick={() => void copy(invite, 'Invite link copied.')}>
             <SquareArrowOutUpRight size={16} aria-hidden="true" /> Copy invite link
           </Button>

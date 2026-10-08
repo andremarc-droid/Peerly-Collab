@@ -8,6 +8,7 @@ import {
   MAX_INPUT_TOKENS,
   MESSAGE_TOKEN_OVERHEAD,
 } from './constants'
+import { selectPromptDocuments } from './documents'
 import { buildSystemPrompt } from './systemPrompt'
 import { estimateTokens } from './tokenEstimate'
 import type { ChatImage, ChatMessage, ChatThread } from './types'
@@ -68,8 +69,10 @@ function imageNotes(message: ChatMessage): string {
 }
 
 function visibleText(message: ChatMessage, withImages: boolean): string {
-  if (withImages || message.images.length === 0) return message.text
-  return [message.text, imageNotes(message)].filter(Boolean).join('\n')
+  // A message that only attaches a document still needs words for the model to answer.
+  const text = message.text || (message.documents?.length ? 'Please help me with the attached document.' : '')
+  if (withImages || message.images.length === 0) return text
+  return [text, imageNotes(message)].filter(Boolean).join('\n')
 }
 
 function tokenCost(
@@ -109,7 +112,8 @@ function prepare({ thread, classLabel, limits }: ContextInput): Prepared {
   if (!latest || latest.message.role !== 'user') throw new Error('There is no message to send.')
 
   const latestImages = latest.message.images.slice(0, resolved.maxImagesPerRequest)
-  const systemText = buildSystemPrompt({ classLabel, summary: thread.summary })
+  const documents = selectPromptDocuments(slots.map(({ message }) => message))
+  const systemText = buildSystemPrompt({ classLabel, summary: thread.summary, documents })
   const fixed =
     estimateTokens(systemText) + tokenCost(latest.message, latestImages.length > 0, resolved, latestImages.length)
 

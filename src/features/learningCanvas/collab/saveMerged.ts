@@ -8,6 +8,7 @@ import {
   parseLearningCanvasMetadata,
 } from '../schemas'
 import type { LearningCanvasContent } from '../types'
+import { getNoteText, noteDescription } from '../noteContent'
 import { mergeContent, sameBoard } from './mergeContent'
 
 export interface SaveMergedResult {
@@ -26,6 +27,11 @@ interface SaveMergedInput {
   base: LearningCanvasContent
   /** What this editor wants to save (already filtered to valid cards). */
   local: LearningCanvasContent
+  /**
+   * For a note opened in the whiteboard: refresh the canvas description (the preview shown in the
+   * Notes list and graph) from the saved note card. Only the owner may write the description.
+   */
+  syncNoteDescription?: boolean
 }
 
 /**
@@ -34,7 +40,7 @@ interface SaveMergedInput {
  * between, Firestore retries the transaction, so two people editing at once both keep their changes.
  */
 export async function saveCanvasMerged(
-  { classId, canvasId, base, local }: SaveMergedInput,
+  { classId, canvasId, base, local, syncNoteDescription = false }: SaveMergedInput,
   db: Firestore = firestore,
 ): Promise<SaveMergedResult> {
   const parentRef = learningCanvasRef(db, classId, canvasId)
@@ -64,6 +70,7 @@ export async function saveCanvasMerged(
       nodeCount: stats.nodeCount,
       edgeCount: stats.edgeCount,
       refs: computeRefs(content.nodes),
+      ...(syncNoteDescription ? { description: noteDescription(getNoteText(content)) } : {}),
       updatedAt: Timestamp.now(),
     })
     tx.set(contentRef, content)

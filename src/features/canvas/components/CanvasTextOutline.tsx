@@ -139,7 +139,7 @@ export function CanvasTextOutline({
 
   return (
     <div
-      className={`w-full lg:w-[360px] lg:min-w-[360px] bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm flex flex-col gap-3 h-full overflow-hidden ${className}`}
+      className={`canvas-side-panel w-full lg:w-[360px] lg:min-w-[360px] bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm flex flex-col gap-3 h-full overflow-hidden ${className}`}
       aria-label="Text outline panel"
     >
       <div className="flex items-center justify-between gap-2 border-b border-navy-900-12 pb-2">
@@ -149,7 +149,7 @@ export function CanvasTextOutline({
             type="button"
             variant="secondary"
             onClick={() => void handleCopyOutline()}
-            className="min-h-[36px] py-1 px-2.5 text-sm"
+            className="min-h-[44px] px-3 text-sm"
             aria-label="Copy board outline to clipboard"
           >
             {copied ? (
@@ -188,7 +188,7 @@ export function CanvasTextOutline({
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search cards and connections…"
           aria-label="Search cards and connections"
-          className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-navy-900-12 bg-navy-50 text-navy-900 placeholder:text-navy-800-72 focus:outline-none focus:ring-2 focus:ring-navy-800 focus:bg-white transition-all"
+          className="w-full min-h-[44px] pl-9 pr-3 py-2 text-sm rounded-xl border border-navy-900-12 bg-navy-50 text-navy-900 placeholder:text-navy-800-72 focus:outline-none focus:ring-2 focus:ring-navy-800 focus:bg-white transition-all"
         />
       </div>
 

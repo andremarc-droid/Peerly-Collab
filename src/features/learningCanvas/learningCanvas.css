@@ -24,6 +24,14 @@
   height: 100%;
 }
 
+/* Below lg the outline stacks under the board (see LearningCanvas), so the board may shrink to share
+   the container's height instead of forcing 480px and pushing the outline out of view. */
+@media (max-width: 1023px) {
+  .learning-canvas-wrapper {
+    min-height: 260px;
+  }
+}
+
 /* Card shells */
 .learning-card {
   box-sizing: border-box;

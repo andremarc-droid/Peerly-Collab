@@ -205,7 +205,13 @@ export function InstructorLearningCanvasPage() {
   ): Promise<LearningCanvasContent> => {
     if (!classId || !canvasId) throw new Error('Canvas is not ready to save.')
     const base = baseContentRef.current ?? updatedContent
-    const result = await saveCanvasMerged({ classId, canvasId, base, local: updatedContent })
+    const result = await saveCanvasMerged({
+      classId,
+      canvasId,
+      base,
+      local: updatedContent,
+      syncNoteDescription: canvasAccess.access === 'owner' && canvas?.sourceCanvasId === 'note',
+    })
     baseContentRef.current = result.content
     activityRecorder.recordEdit(base, updatedContent)
     return result.content

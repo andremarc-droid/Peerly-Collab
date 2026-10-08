@@ -13,6 +13,24 @@ import { resendVerificationEmail, signOutCurrentUser } from '../features/auth/au
 import { useAuth } from '../features/auth/useAuth'
 import { useUserProfile } from '../features/profile/useUserProfile'
 
+interface NavItem { to: string; label: string; end?: boolean }
+
+const NAV_ITEMS: Record<'Instructor' | 'Student', NavItem[]> = {
+  Instructor: [
+    { to: '/instructor', label: 'Classes', end: true },
+    { to: '/instructor/quizzes', label: 'Quizzes' },
+    { to: '/instructor/learning', label: 'Learning' },
+  ],
+  Student: [
+    { to: '/student', label: 'Classes', end: true },
+    { to: '/student/learning', label: 'Learning' },
+  ],
+}
+
+function navLinkClass({ isActive }: { isActive: boolean }) {
+  return `inline-flex min-h-11 items-center rounded-full px-3 py-2 text-sm font-semibold no-underline transition-colors sm:px-4 ${isActive ? 'bg-white text-navy-900' : 'text-white hover:bg-white-12'}`
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const { profile } = useUserProfile()
@@ -43,22 +61,16 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <header className="app-shell__header">
         <Logo />
-        <DropdownMenu label="Account menu" className="account-menu order-2 sm:order-3" trigger={<><span className="account-avatar" aria-hidden="true">{profile?.photoURL ? <img src={profile.photoURL} alt="" /> : initial}</span><span className="account-menu__identity"><strong>{displayName}</strong>{roleLabel && <Badge>{roleLabel}</Badge>}</span></>}>
+        <DropdownMenu label="Account menu" className="account-menu order-2 md:order-3" trigger={<><span className="account-avatar" aria-hidden="true">{profile?.photoURL ? <img src={profile.photoURL} alt="" /> : initial}</span><span className="account-menu__identity"><strong>{displayName}</strong>{roleLabel && <Badge>{roleLabel}</Badge>}</span></>}>
           <div className="account-menu__details"><strong>{displayName}</strong><span>{profile?.email || user?.email}</span>{roleLabel && <Badge>{roleLabel}</Badge>}</div>
           <Link to="/profile" role="menuitem"><UserRound size={17} aria-hidden="true" /> Profile</Link>
           <Button type="button" role="menuitem" variant="ghost" onClick={handleSignOut} disabled={signingOut}><LogOut size={17} aria-hidden="true" /> {signingOut ? 'Signing out…' : 'Sign out'}</Button>
         </DropdownMenu>
-        {roleLabel === 'Instructor' && (
-          <nav aria-label="Instructor navigation" className="order-3 flex basis-full items-center gap-2 sm:order-2 sm:basis-auto">
-            <NavLink to="/instructor" end className={({ isActive }) => `min-h-11 rounded-full px-3 py-2 text-sm font-semibold no-underline transition-colors sm:px-4 ${isActive ? 'bg-white text-navy-900' : 'text-white hover:bg-white-12'}`}>Classes</NavLink>
-            <NavLink to="/instructor/quizzes" className={({ isActive }) => `min-h-11 rounded-full px-3 py-2 text-sm font-semibold no-underline transition-colors sm:px-4 ${isActive ? 'bg-white text-navy-900' : 'text-white hover:bg-white-12'}`}>Quizzes</NavLink>
-            <NavLink to="/instructor/learning" className={({ isActive }) => `min-h-11 rounded-full px-3 py-2 text-sm font-semibold no-underline transition-colors sm:px-4 ${isActive ? 'bg-white text-navy-900' : 'text-white hover:bg-white-12'}`}>Learning</NavLink>
-          </nav>
-        )}
-        {roleLabel === 'Student' && (
-          <nav aria-label="Student navigation" className="order-3 flex basis-full items-center gap-2 sm:order-2 sm:basis-auto">
-            <NavLink to="/student" end className={({ isActive }) => `min-h-11 rounded-full px-3 py-2 text-sm font-semibold no-underline transition-colors sm:px-4 ${isActive ? 'bg-white text-navy-900' : 'text-white hover:bg-white-12'}`}>Classes</NavLink>
-            <NavLink to="/student/learning" className={({ isActive }) => `min-h-11 rounded-full px-3 py-2 text-sm font-semibold no-underline transition-colors sm:px-4 ${isActive ? 'bg-white text-navy-900' : 'text-white hover:bg-white-12'}`}>Learning</NavLink>
+        {roleLabel && (
+          <nav aria-label={`${roleLabel} navigation`} className="order-3 flex basis-full flex-wrap items-center gap-2 md:order-2 md:basis-auto">
+            {NAV_ITEMS[roleLabel].map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>{item.label}</NavLink>
+            ))}
           </nav>
         )}
       </header>

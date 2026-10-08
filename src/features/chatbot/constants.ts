@@ -16,6 +16,10 @@ export const IMAGE_MEMORY_MESSAGES = 4
 
 export const MAX_MESSAGE_CHARS = 3000
 
+/** Documents per message, and the most document text sent to the model with ANY single request (all documents together). */
+export const MAX_DOCUMENTS_PER_MESSAGE = 2
+export const MAX_CHAT_DOCUMENT_CHARS = 5000
+
 export const SUMMARY_MAX_TOKENS = 400
 export const SUMMARY_MAX_TRANSCRIPT_CHARS = 6000
 /** When compacting, keep this share of the history budget as verbatim recent messages. */

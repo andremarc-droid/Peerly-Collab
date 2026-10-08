@@ -13,11 +13,13 @@ import {
   sortThreads,
   threadsToPrune,
 } from './threadUtils'
-import type { ChatImage, ChatThread } from './types'
+import type { ChatDocument, ChatImage, ChatThread } from './types'
 
 export interface SendInput {
   text: string
   images: ChatImage[]
+  /** Left out (not an empty list) when the message has no documents. */
+  documents?: ChatDocument[]
 }
 
 interface UseChatbotOptions {
@@ -202,20 +204,25 @@ export function useChatbot({ uid, classLabel, storage, complete = createChatComp
   )
 
   const send = useCallback(
-    ({ text, images }: SendInput): boolean => {
+    ({ text, images, documents = [] }: SendInput): boolean => {
       const trimmed = text.trim()
-      if (!uidRef.current || (!trimmed && images.length === 0)) return false
+      if (!uidRef.current || (!trimmed && images.length === 0 && documents.length === 0)) return false
 
       const base =
         threadsRef.current.find((thread) => thread.id === activeIdRef.current) ?? createThread()
       if (base.sharedRole === 'viewer') return false
       if (controllers.current.has(base.id)) return false
+      if (documents.length > 0 && base.sharedRole !== undefined) {
+        // Shared conversations sync through a fixed set of fields, so documents would be dropped for everyone else.
+        setError(base.id, 'Documents cannot be added to shared conversations yet. Start a new chat to use a document.')
+        return false
+      }
       if (trimmed.length > MAX_MESSAGE_CHARS) {
         setError(base.id, `Messages can be up to ${MAX_MESSAGE_CHARS} characters.`)
         return false
       }
 
-      const next = appendMessage(base, createUserMessage({ text: trimmed, images }))
+      const next = appendMessage(base, createUserMessage({ text: trimmed, images, documents }))
       selectId(next.id)
       commit(next, true)
       void run(next.id)

@@ -386,7 +386,7 @@ export function BlankCanvasPlayPage({
             ]}
           />
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="dialog__actions">
             <Button type="button" variant="secondary" onClick={() => setShowConnectModal(false)}>
               Cancel
             </Button>
@@ -416,7 +416,7 @@ export function BlankCanvasPlayPage({
                       <Button
                         type="button"
                         variant="ghost"
-                        className="min-h-[36px] min-w-[36px] p-1 text-navy-700 hover:text-feedback-error"
+                        className="min-h-[44px] min-w-[44px] p-1 text-navy-700 hover:text-feedback-error"
                         onClick={() => handleDeleteConnection(connStr)}
                         aria-label={`Delete connection between ${fromLabel} and ${toLabel}`}
                       >

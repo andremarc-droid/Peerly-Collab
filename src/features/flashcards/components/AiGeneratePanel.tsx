@@ -7,11 +7,13 @@ import { Button } from '../../../shared/ui/Button'
 import { Checkbox } from '../../../shared/ui/Checkbox'
 import { Input } from '../../../shared/ui/Input'
 import { Textarea } from '../../../shared/ui/Textarea'
+import { DocumentChips, DocumentPicker, SUPPORTED_FORMATS_LABEL, useDocumentImport } from '../../documents'
 import {
   AI_COUNT_PRESETS,
   clampAiCount,
   DEFAULT_AI_CARDS,
   MAX_AI_CARDS,
+  MAX_AI_DOCUMENTS,
   MAX_EXTRA_NOTES_CHARS,
   MAX_SELECTED_MODULES,
   MIN_AI_CARDS,
@@ -39,12 +41,13 @@ export function AiGeneratePanel({ classId, role, filledCardCount, onAddCards }: 
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const upload = useDocumentImport(MAX_AI_DOCUMENTS)
 
   const configIssue = getGroqConfigIssue()
   const room = Math.max(0, MAX_DECK_CARDS - filledCardCount)
   const count = Math.min(clampAiCount(Number(countText)), Math.max(room, MIN_AI_CARDS))
   const validSelection = selected.filter((id) => modules.some((m) => m.id === id))
-  const hasInput = validSelection.length > 0 || notes.trim().length > 0
+  const hasInput = validSelection.length > 0 || notes.trim().length > 0 || upload.documents.length > 0
 
   const toggle = (id: string, checked: boolean) =>
     setSelected((current) => {
@@ -64,10 +67,14 @@ export function AiGeneratePanel({ classId, role, filledCardCount, onAddCards }: 
     setBusy(true)
     try {
       const chosen = modules.filter((m) => validSelection.includes(m.id))
-      const source = buildModuleSource(await loadModulesForAi(classId, chosen), notes)
+      const source = buildModuleSource(
+        await loadModulesForAi(classId, chosen),
+        notes,
+        upload.documents.map(({ name, text }) => ({ name, text })),
+      )
       if (!source.hasSubstance) {
         setError(
-          'These modules only contain files, videos or links the AI cannot read. Paste the key text into "Extra notes" and try again.',
+          'There is not enough readable text yet. Modules with only files, videos or links cannot be read: upload the document here or paste the key text into "Extra notes".',
         )
         return
       }
@@ -79,6 +86,12 @@ export function AiGeneratePanel({ classId, role, filledCardCount, onAddCards }: 
       ]
       if (result.cards.length < count) messages.push(`You asked for ${count}; the AI returned fewer usable cards.`)
       if (source.truncated) messages.push('Long modules were shortened to fit.')
+      if (source.documentsSampled) {
+        messages.push('Long documents were sampled across their whole length to fit, so some detail is left out.')
+      }
+      if (upload.documents.some((document) => document.truncated)) {
+        messages.push('Very long files were only read in part.')
+      }
       if (source.unreadableResources > 0) {
         messages.push(`${source.unreadableResources} attached file, video or link was used by title only.`)
       }
@@ -96,7 +109,7 @@ export function AiGeneratePanel({ classId, role, filledCardCount, onAddCards }: 
     <details className="rounded-2xl border border-navy-900-12 bg-white p-4">
       <summary className="cursor-pointer text-sm font-bold text-navy-900">
         <Sparkles size={16} className="mr-2 inline" aria-hidden="true" />
-        Generate cards with AI from your modules
+        Generate cards with AI from your modules or documents
       </summary>
 
       <div className="mt-3 grid gap-4">
@@ -137,6 +150,44 @@ export function AiGeneratePanel({ classId, role, filledCardCount, onAddCards }: 
                 />
               )
             })
+          )}
+        </fieldset>
+
+        <fieldset className="m-0 grid gap-2 border-0 p-0">
+          <legend className="mb-1 text-sm font-bold text-navy-900">
+            Upload a document (up to {MAX_AI_DOCUMENTS})
+          </legend>
+          <p className="m-0 text-sm text-navy-800">
+            {SUPPORTED_FORMATS_LABEL}, up to 10 MB. The text is read in your browser and the file is never saved. Scanned
+            pages (pictures of text) cannot be read. The text is sent to the AI service to write the cards.
+          </p>
+          <div>
+            <DocumentPicker
+              onFiles={(files) => void upload.addFiles(files)}
+              count={upload.documents.length}
+              max={MAX_AI_DOCUMENTS}
+              preparing={upload.preparing}
+              disabled={busy}
+            />
+          </div>
+          <DocumentChips
+            documents={upload.documents}
+            onRemove={upload.remove}
+            disabled={busy}
+            label="Documents to build cards from"
+          />
+          {upload.errors.length > 0 && (
+            <Alert
+              tone="warning"
+              label="Some files were not added"
+              action={
+                <Button type="button" variant="secondary" onClick={upload.dismissErrors}>
+                  Dismiss
+                </Button>
+              }
+            >
+              {upload.errors.join(' ')}
+            </Alert>
           )}
         </fieldset>
 
@@ -202,7 +253,7 @@ export function AiGeneratePanel({ classId, role, filledCardCount, onAddCards }: 
             </Button>
           )}
           {!hasInput && !busy && (
-            <span className="text-sm text-navy-800">Choose a module or add notes first.</span>
+            <span className="text-sm text-navy-800">Choose a module, upload a document or add notes first.</span>
           )}
         </div>
 

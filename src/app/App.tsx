@@ -30,6 +30,7 @@ const InstructorLearningCanvasPage = lazy(() => import('../features/learningCanv
 const StudentLearningCanvasPage = lazy(() => import('../features/learningCanvas/StudentLearningCanvasPage').then((module) => ({ default: module.StudentLearningCanvasPage })))
 const InstructorLearningHubPage = lazy(() => import('../features/learningCanvas/InstructorLearningHubPage').then((module) => ({ default: module.InstructorLearningHubPage })))
 const StudentLearningHubPage = lazy(() => import('../features/learningCanvas/StudentLearningHubPage').then((module) => ({ default: module.StudentLearningHubPage })))
+const NoteEditorPage = lazy(() => import('../features/learningCanvas/NoteEditorPage').then((module) => ({ default: module.NoteEditorPage })))
 const CanvasInvitePage = lazy(() => import('../features/learningCanvas/CanvasInvitePage').then((module) => ({ default: module.CanvasInvitePage })))
 const TutorInvitePage = lazy(() => import('../features/chatbot/TutorInvitePage').then((module) => ({ default: module.TutorInvitePage })))
 const GraphInvitePage = lazy(() => import('../features/learningCanvas/GraphInvitePage').then((module) => ({ default: module.GraphInvitePage })))
@@ -56,6 +57,7 @@ export function AppRoutes() {
         <Route path="classes/:classId" element={<ClassPage />} />
         <Route path="classes/:classId/modules/:moduleId" element={<ModuleWorkspacePage />} />
         <Route path="classes/:classId/learning/:canvasId" element={<InstructorLearningCanvasPage />} />
+        <Route path="classes/:classId/notes/:noteId" element={<NoteEditorPage role="instructor" />} />
         <Route path="learning" element={<InstructorLearningHubPage />} />
         <Route path="quizzes" element={<InstructorQuizzesPage />} />
         <Route path="quizzes/new" element={<QuizEditorPage />} />
@@ -68,6 +70,7 @@ export function AppRoutes() {
       <Route path="/student/classes/:classId/modules/:moduleId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentModulePage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId/learning/:canvasId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentLearningCanvasPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/learning" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentLearningHubPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
+      <Route path="/student/classes/:classId/notes/:noteId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><NoteEditorPage role="student" /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><QuizIntroPage /></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId/attempts/:attemptId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><QuizTakingPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId/attempts/:attemptId/result" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><QuizResultPage /></RoleRoute></ProtectedRoute>} />

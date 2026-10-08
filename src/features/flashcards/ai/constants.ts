@@ -8,6 +8,8 @@ export const AI_COUNT_PRESETS = [5, 10, 15, 20, 30] as const
 export const MAX_SOURCE_CHARS = 6000
 export const MAX_EXTRA_NOTES_CHARS = 2000
 export const MAX_SELECTED_MODULES = 5
+/** Uploaded files per generation. Each shares the same request size budget as the modules. */
+export const MAX_AI_DOCUMENTS = 3
 
 /** Cards are asked to be shorter than the stored limits so they never get cut off. */
 export const AI_FRONT_TARGET_CHARS = 160

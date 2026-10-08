@@ -17,6 +17,7 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../../shared/ui/EmptyState'
 import { Input } from '../../../shared/ui/Input'
 import { Textarea } from '../../../shared/ui/Textarea'
+import { NOTE_CONTENT_MAX, NOTE_TITLE_MAX } from '../noteContent'
 import type { LearningCanvasWithId } from '../types'
 
 interface NotesTabContentProps {
@@ -25,7 +26,6 @@ interface NotesTabContentProps {
   selectedClassId: string
   role: 'instructor' | 'student'
   onCreateNote: (input: { classId: string; title: string; content: string }) => Promise<string | undefined>
-  onUpdateNote: (noteId: string, classId: string, content: string, title?: string) => Promise<void>
   onDeleteNote: (note: LearningCanvasWithId) => Promise<void>
   onViewInGraph: (noteId: string) => void
   sharedError?: string | null
@@ -37,7 +37,6 @@ export function NotesTabContent({
   selectedClassId,
   role,
   onCreateNote,
-  onUpdateNote,
   onDeleteNote,
   onViewInGraph,
   sharedError,
@@ -48,12 +47,6 @@ export function NotesTabContent({
   const [newContent, setNewContent] = useState('')
   const [newClassId, setNewClassId] = useState('')
   const [creatingBusy, setCreatingBusy] = useState(false)
-
-  // Edit note dialog state
-  const [editingNote, setEditingNote] = useState<LearningCanvasWithId | null>(null)
-  const [editTitle, setEditTitle] = useState('')
-  const [editContent, setEditContent] = useState('')
-  const [editingBusy, setEditingBusy] = useState(false)
 
   // Delete confirm dialog state
   const [deleteTarget, setDeleteTarget] = useState<LearningCanvasWithId | null>(null)
@@ -100,25 +93,6 @@ export function NotesTabContent({
       setCreateDialogOpen(false)
     } finally {
       setCreatingBusy(false)
-    }
-  }
-
-  const handleOpenEdit = (note: LearningCanvasWithId) => {
-    setEditingNote(note)
-    setEditTitle(note.title)
-    setEditContent(note.description || '')
-  }
-
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!editingNote || !editTitle.trim()) return
-
-    setEditingBusy(true)
-    try {
-      await onUpdateNote(editingNote.id, editingNote.classId, editContent, editTitle.trim())
-      setEditingNote(null)
-    } finally {
-      setEditingBusy(false)
     }
   }
 
@@ -262,11 +236,10 @@ export function NotesTabContent({
                 <div className="flex flex-wrap items-center justify-between pt-3 border-t border-navy-900-08 gap-2">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {!note.shareRole && <Button
-                      type="button"
+                      to={`/${role}/classes/${encodeURIComponent(note.classId)}/notes/${encodeURIComponent(note.id)}`}
                       variant="secondary"
-                      onClick={() => handleOpenEdit(note)}
                       className="py-1 px-2.5 text-xs min-h-11 gap-1"
-                      title="Edit note text"
+                      title="Open note editor"
                     >
                       <Edit3 size={13} aria-hidden="true" />
                       <span>Edit</span>
@@ -357,6 +330,7 @@ export function NotesTabContent({
             id="create-note-title"
             label="Note title"
             value={newTitle}
+            maxLength={NOTE_TITLE_MAX}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="e.g. Newton's Third Law, Krebs Cycle Key Takeaways…"
             required
@@ -366,6 +340,8 @@ export function NotesTabContent({
             id="create-note-content"
             label="Content / details"
             value={newContent}
+            maxLength={NOTE_CONTENT_MAX}
+            hint={`${newContent.length}/${NOTE_CONTENT_MAX} characters`}
             onChange={(e) => setNewContent(e.target.value)}
             placeholder="Write your study notes, definitions, or bullet points here…"
             rows={5}
@@ -386,50 +362,6 @@ export function NotesTabContent({
               disabled={creatingBusy || !newTitle.trim()}
             >
               {creatingBusy ? 'Creating…' : 'Create note'}
-            </Button>
-          </div>
-        </form>
-      </Dialog>
-
-      {/* Edit Note Dialog */}
-      <Dialog
-        open={Boolean(editingNote)}
-        onClose={() => setEditingNote(null)}
-        title="Edit Concept Note"
-      >
-        <form onSubmit={handleEditSubmit} className="grid gap-4">
-          <Input
-            id="edit-note-title"
-            label="Note title"
-            value={editTitle}
-            onChange={(e) => setEditTitle(e.target.value)}
-            required
-          />
-
-          <Textarea
-            id="edit-note-content"
-            label="Content / details"
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            placeholder="Write your study notes here…"
-            rows={8}
-          />
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-navy-900-12">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setEditingNote(null)}
-              disabled={editingBusy}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={editingBusy || !editTitle.trim()}
-            >
-              {editingBusy ? 'Saving…' : 'Save changes'}
             </Button>
           </div>
         </form>

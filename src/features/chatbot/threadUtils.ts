@@ -1,4 +1,4 @@
-import type { ChatImage, ChatMessage, ChatThread } from './types'
+import type { ChatDocument, ChatImage, ChatMessage, ChatThread } from './types'
 
 export type IdFactory = () => string
 
@@ -8,18 +8,21 @@ export function createThread(now: number = Date.now(), makeId: IdFactory = defau
   return { id: makeId(), title: 'New chat', createdAt: now, updatedAt: now, messages: [], summary: '', summarizedCount: 0 }
 }
 
-export function deriveTitle(text: string, imageCount: number): string {
+export function deriveTitle(text: string, imageCount: number, documentName?: string): string {
   const clean = text.replace(/\s+/g, ' ').trim()
   if (clean) return clean.length > 48 ? `${clean.slice(0, 47).trimEnd()}…` : clean
+  if (documentName) return documentName.length > 48 ? `${documentName.slice(0, 47).trimEnd()}…` : documentName
   return imageCount > 0 ? 'Image question' : 'New chat'
 }
 
 export function createUserMessage(
-  input: { text: string; images: ChatImage[] },
+  input: { text: string; images: ChatImage[]; documents?: ChatDocument[] },
   now: number = Date.now(),
   makeId: IdFactory = defaultId,
 ): ChatMessage {
-  return { id: makeId(), role: 'user', text: input.text, images: input.images, createdAt: now }
+  const message: ChatMessage = { id: makeId(), role: 'user', text: input.text, images: input.images, createdAt: now }
+  if (input.documents && input.documents.length > 0) message.documents = input.documents
+  return message
 }
 
 export function createAssistantMessage(text: string, now: number = Date.now(), makeId: IdFactory = defaultId): ChatMessage {
@@ -31,7 +34,7 @@ export function appendMessage(thread: ChatThread, message: ChatMessage): ChatThr
   const namesThread = thread.messages.length === 0 && message.role === 'user'
   return {
     ...thread,
-    title: namesThread ? deriveTitle(message.text, message.images.length) : thread.title,
+    title: namesThread ? deriveTitle(message.text, message.images.length, message.documents?.[0]?.name) : thread.title,
     updatedAt: message.createdAt,
     messages: [...thread.messages, message],
   }

@@ -27,7 +27,7 @@ export function CardEditorPanel({
 
   return (
     <div
-      className={`w-full lg:w-[360px] lg:min-w-[360px] bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm flex flex-col gap-4 ${className}`}
+      className={`canvas-side-panel w-full lg:w-[360px] lg:min-w-[360px] bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm flex flex-col gap-4 ${className}`}
       aria-label={`${typeLabel} card editor`}
     >
       <div className="flex items-center justify-between border-b border-navy-900-12 pb-2">

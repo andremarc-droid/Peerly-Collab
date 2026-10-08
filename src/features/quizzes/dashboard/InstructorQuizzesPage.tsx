@@ -1,5 +1,6 @@
-import { Archive, BarChart3, Copy, Pencil, Plus, RotateCcw, Send, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Archive, BarChart3, Copy, MoreVertical, Pencil, Plus, RotateCcw, Send, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { Link } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
 import { Alert } from '../../../shared/ui/Alert'
@@ -7,6 +8,7 @@ import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { DataCard } from '../../../shared/ui/DataCard'
+import { DropdownMenu } from '../../../shared/ui/DropdownMenu'
 import { EmptyState } from '../../../shared/ui/EmptyState'
 import { PageHeader } from '../../../shared/ui/PageHeader'
 import { resolveListStatus } from '../../../shared/ui/listState'
@@ -23,6 +25,22 @@ import { quizModeLabel } from '../types'
 import { filterAndSortQuizzes, type QuizFilter, type QuizModeFilter, type QuizSort } from './quizList'
 
 interface DeleteSelection { quiz: QuizRecord; submissions: number }
+
+/** Phones and tablets. Desktop (1024px and up) keeps the full button row. */
+const COMPACT_QUERY = '(max-width: 1023px)'
+
+function useCompactViewport() {
+  return useSyncExternalStore(
+    (notify) => {
+      if (typeof window.matchMedia !== 'function') return () => {}
+      const media = window.matchMedia(COMPACT_QUERY)
+      media.addEventListener('change', notify)
+      return () => media.removeEventListener('change', notify)
+    },
+    () => typeof window.matchMedia === 'function' && window.matchMedia(COMPACT_QUERY).matches,
+    () => false,
+  )
+}
 
 function settingBadges(quiz: QuizRecord) {
   const { settings, mode } = quiz
@@ -144,9 +162,29 @@ function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRe
       : 'Add cards and connections'
     : `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}`
 
+  const compact = useCompactViewport()
+  const cannotPublish = quiz.status !== 'published' && (quiz.questionCount < 1 || !quiz.title.trim())
+  const publishHint = isCanvas ? 'Add a title and save your board before publishing.' : 'Add a title and at least one question before publishing.'
+  const publishLabel = cannotPublish ? (isCanvas ? 'Publish (add a title and save your board first)' : 'Publish (add a title and at least one question first)') : 'Publish'
+  const compactActions = <div className="quiz-card__actions quiz-card__actions--compact">
+    {cannotPublish && <span className="quiz-card__publish-hint">{publishHint}</span>}
+    <DropdownMenu label={`Actions for ${quiz.title || 'Untitled quiz'}`} iconOnly trigger={<MoreVertical size={20} aria-hidden="true" />}>
+      <Link role="menuitem" to={`/instructor/quizzes/${quiz.id}`}><Pencil size={16} aria-hidden="true" /> Edit</Link>
+      <Link role="menuitem" to={`/instructor/quizzes/${quiz.id}/results`}><BarChart3 size={16} aria-hidden="true" /> Results</Link>
+      <button type="button" role="menuitem" disabled={busy} onClick={() => onAction(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}><Copy size={16} aria-hidden="true" /> Duplicate</button>
+      {quiz.status === 'published'
+        ? <button type="button" role="menuitem" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas returned to draft.' : 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}><Send size={16} aria-hidden="true" /> Unpublish</button>
+        : <button type="button" role="menuitem" disabled={busy || cannotPublish} aria-label={publishLabel} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas published.' : 'Quiz published.', () => publishQuiz(quiz.id))}><Send size={16} aria-hidden="true" /> Publish</button>}
+      {quiz.status === 'archived'
+        ? <button type="button" role="menuitem" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}><RotateCcw size={16} aria-hidden="true" /> Restore</button>
+        : <button type="button" role="menuitem" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas archived.' : 'Quiz archived.', () => archiveQuiz(quiz.id))}><Archive size={16} aria-hidden="true" /> Archive</button>}
+      <button type="button" role="menuitem" className="is-danger" disabled={busy} onClick={onDelete}><Trash2 size={16} aria-hidden="true" /> Delete</button>
+    </DropdownMenu>
+  </div>
+
   return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${metaStatus} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><Badge>{quizModeLabel(quiz.mode)}</Badge>{isCanvas && <Badge>{quiz.boardKind === 'blank' ? 'You grade' : 'Auto-graded'}</Badge>}<Badge>{classLabel}</Badge></div>}>
     <div className="quiz-settings-badges">{settingBadges(quiz).map((label) => <span key={label}>{label}</span>)}</div>
-    <div className="quiz-card__actions">
+    {compact ? compactActions : <div className="quiz-card__actions">
       <Button to={`/instructor/quizzes/${quiz.id}`}><Pencil size={15} aria-hidden="true" /> Edit</Button>
       <Button to={`/instructor/quizzes/${quiz.id}/results`} variant="secondary"><BarChart3 size={15} aria-hidden="true" /> Results</Button>
       <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}><Copy size={15} aria-hidden="true" /> Duplicate</Button>
@@ -158,6 +196,6 @@ function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRe
         ? <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}><RotateCcw size={15} aria-hidden="true" /> Restore</Button>
         : <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas archived.' : 'Quiz archived.', () => archiveQuiz(quiz.id))}><Archive size={15} aria-hidden="true" /> Archive</Button>}
       <Button type="button" variant="secondary" disabled={busy} className="button--destructive" onClick={onDelete}><Trash2 size={15} aria-hidden="true" /> Delete</Button>
-    </div>
+    </div>}
   </DataCard>
 }

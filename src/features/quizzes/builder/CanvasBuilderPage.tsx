@@ -801,7 +801,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         title={quizTitle || 'Canvas board'}
         subtitle="Place cards and draw connections to define the student challenge and answer key."
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge>Auto-graded</Badge>
             <Button
               type="button"
@@ -1051,7 +1051,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
         ) : (
           <ExpandableCanvasContainer
             title="Prebuilt Canvas Board"
-            className="w-full h-[max(560px,calc(100dvh-220px))] min-h-[480px]"
+            className="w-full"
           >
             <div className="relative flex flex-col lg:flex-row gap-4 w-full h-full">
               {/* The Canvas Flow Board */}
@@ -1081,10 +1081,10 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                 />
               </div>
 
-              {/* Side/Bottom Panel for Card, Connection, or Board Settings (responsive: below board on mobile/tablet, side panel on desktop) */}
+              {/* Side panel for Card, Connection, or Board Settings: a bottom sheet over the board below lg, a 360px column on desktop (see .canvas-side-panel in canvas.css) */}
               {(selectedCard || selectedConnection || showSettingsPanel) && (
                 <div
-                  className="w-full lg:w-[360px] lg:min-w-[360px] lg:h-full max-h-[500px] lg:max-h-none bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm overflow-y-auto flex flex-col gap-4"
+                  className="canvas-side-panel w-full lg:w-[360px] lg:min-w-[360px] lg:h-full max-h-[500px] lg:max-h-none bg-white rounded-2xl border border-navy-900-12 p-4 shadow-sm overflow-y-auto flex flex-col gap-4"
                   aria-label="Editor side panel"
                 >
                 {/* Close Button with 44px touch target */}
@@ -1148,7 +1148,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                                   className="w-full h-full object-contain"
                                 />
                               ) : (
-                                <div className="flex items-center gap-1.5 text-xs text-navy-800-72">
+                                <div className="flex items-center gap-1.5 text-sm text-navy-800-72">
                                   <ImageIcon size={16} aria-hidden="true" />
                                   <span>Image not loaded</span>
                                 </div>
@@ -1158,7 +1158,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                               const meta = storedImages[selectedCard.imageId] || pendingImages.get(selectedCard.imageId)
                               if (!meta) return null
                               return (
-                                <span className="text-xs text-navy-800-72">
+                                <span className="text-sm text-navy-800-72">
                                   {meta.width} × {meta.height} px • {formatBytes(meta.bytes)}
                                 </span>
                               )
@@ -1219,7 +1219,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
                               <div className="text-sm font-medium text-navy-900">
                                 {isProcessingImage ? 'Optimizing image…' : 'Upload an image'}
                               </div>
-                              <div className="text-xs text-navy-800-72">
+                              <div className="text-sm text-navy-800-72">
                                 JPEG, PNG or WebP up to 10 MB
                               </div>
                               <Button

@@ -1,6 +1,7 @@
 import { RotateCcw, TriangleAlert } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
 import { toDataUrl } from '../../canvas/imageProcessing'
+import { DocumentChips } from '../../documents'
 import { SafeMarkdown } from '../../learningCanvas/components/SafeMarkdown'
 import type { ChatMessage } from '../types'
 import { plainMath } from '../plainMath'
@@ -18,8 +19,10 @@ export function MessageBubble({ message, canRetry, onRetry }: MessageBubbleProps
   return (
     <li className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`grid min-w-0 max-w-[min(100%,42rem)] gap-2 rounded-3xl px-4 py-3 ${
-          isUser ? 'bg-navy-900 text-white' : 'border border-navy-900-12 bg-white text-navy-900 shadow-sm'
+        className={`grid min-w-0 gap-2 rounded-3xl px-3 py-2.5 sm:px-4 sm:py-3 ${
+          isUser
+            ? 'max-w-[88%] bg-navy-900 text-white sm:max-w-[min(100%,42rem)]'
+            : 'w-full max-w-full border border-navy-900-12 bg-white text-navy-900 shadow-sm sm:w-auto sm:max-w-[min(100%,42rem)]'
         }`}
       >
         <span className="sr-only">{isUser ? 'You said:' : 'Tutor replied:'}</span>
@@ -39,6 +42,10 @@ export function MessageBubble({ message, canRetry, onRetry }: MessageBubbleProps
               </li>
             ))}
           </ul>
+        )}
+
+        {isUser && message.documents && message.documents.length > 0 && (
+          <DocumentChips documents={message.documents} label="Attached documents" onNavy />
         )}
 
         {message.text &&

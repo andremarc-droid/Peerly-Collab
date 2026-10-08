@@ -36,9 +36,9 @@ export function LearningInviteCodeInput() {
   }
 
   return (
-    <div className="grid gap-2">
+    <div className="invite-code grid gap-2">
       <form
-        className="flex flex-wrap items-center gap-2"
+        className="invite-code__form flex flex-wrap items-center gap-2"
         onSubmit={(event) => {
           event.preventDefault()
           void join()
@@ -52,11 +52,11 @@ export function LearningInviteCodeInput() {
           autoComplete="off"
           maxLength={10}
           placeholder="Invite code"
-          className="min-h-11 w-36 rounded-xl border border-navy-900-30 bg-white px-3 text-sm uppercase tracking-widest text-navy-900 placeholder:normal-case placeholder:tracking-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-800"
+          className="invite-code__input min-h-11 w-36 rounded-xl border border-navy-900-30 bg-white px-3 text-sm uppercase tracking-widest text-navy-900 placeholder:normal-case placeholder:tracking-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-800"
         />
         <Button type="submit" variant="secondary" disabled={busy || code.trim().length === 0}>
           <KeyRound size={16} aria-hidden="true" />
-          <span>{busy ? 'Checking…' : 'Join with code'}</span>
+          <span>{busy ? 'Checking…' : 'Join'}<span className="invite-code__suffix"> with code</span></span>
         </Button>
       </form>
       {error && <Alert tone="error" label="Invite code not accepted">{error}</Alert>}

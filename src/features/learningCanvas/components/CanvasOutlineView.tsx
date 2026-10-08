@@ -80,13 +80,13 @@ export function CanvasOutlineView({
   return (
     <aside
       aria-label="Canvas text outline"
-      className="w-full lg:w-96 bg-white border border-navy-900-12 rounded-2xl p-4 flex flex-col h-full shadow-md shrink-0"
+      className="w-full lg:w-96 bg-white border border-navy-900-12 rounded-2xl p-4 flex flex-col h-[45%] lg:h-full shadow-md shrink-0"
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2 border-b border-navy-900-12 pb-3 mb-3">
         <div>
           <h3 className="text-base font-bold text-navy-900 m-0">Text Outline</h3>
-          <span className="text-xs text-navy-800-72">
+          <span className="text-sm text-navy-800-72">
             {nodes.length} cards · {edges.length} connections
           </span>
         </div>
@@ -94,7 +94,7 @@ export function CanvasOutlineView({
           type="button"
           onClick={onClose}
           aria-label="Close outline view"
-          className="p-1.5 rounded-lg text-navy-900 hover:bg-navy-900-8 focus:outline-none focus:ring-2 focus:ring-navy-800"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-navy-900 hover:bg-navy-900-8 focus:outline-none focus:ring-2 focus:ring-navy-800"
         >
           <X size={18} aria-hidden="true" />
         </button>
@@ -109,14 +109,14 @@ export function CanvasOutlineView({
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter cards in outline…"
           aria-label="Filter outline cards"
-          className="w-full pl-8 pr-2.5 py-1.5 text-xs text-navy-900 bg-white border border-navy-900-20 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-800"
+          className="w-full min-h-11 pl-8 pr-2.5 py-1.5 text-sm text-navy-900 bg-white border border-navy-900-20 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-800"
         />
       </div>
 
       {/* Cards list */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1">
         {filteredNodes.length === 0 ? (
-          <div className="p-6 text-center text-xs text-navy-800-72">
+          <div className="p-6 text-center text-sm text-navy-800-72">
             No cards found.
           </div>
         ) : (
@@ -136,7 +136,7 @@ export function CanvasOutlineView({
                     <span className="p-1 rounded-md bg-navy-900-8 text-navy-900 shrink-0">
                       {getNodeIcon(node)}
                     </span>
-                    <span className="text-xs font-bold text-navy-900 truncate">
+                    <span className="text-sm font-bold text-navy-900 truncate">
                       {getNodeTitle(node)}
                     </span>
                   </div>
@@ -147,7 +147,7 @@ export function CanvasOutlineView({
                       type="button"
                       onClick={() => onJumpToNode(node.id)}
                       aria-label={`Jump to ${getNodeTitle(node)}`}
-                      className="p-1 rounded text-navy-900 hover:bg-navy-900-8 focus:outline-none focus:ring-2 focus:ring-navy-800"
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded text-navy-900 hover:bg-navy-900-8 focus:outline-none focus:ring-2 focus:ring-navy-800"
                       title="Jump to card"
                     >
                       <Crosshair size={13} aria-hidden="true" />
@@ -157,7 +157,7 @@ export function CanvasOutlineView({
                         type="button"
                         onClick={() => onConnectFromNode(node.id)}
                         aria-label={`Connect from ${getNodeTitle(node)}`}
-                        className="p-1 rounded text-navy-900 hover:bg-navy-900-8 focus:outline-none focus:ring-2 focus:ring-navy-800"
+                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded text-navy-900 hover:bg-navy-900-8 focus:outline-none focus:ring-2 focus:ring-navy-800"
                         title="Connect to another card"
                       >
                         <Link2 size={13} aria-hidden="true" />
@@ -168,7 +168,7 @@ export function CanvasOutlineView({
                         type="button"
                         onClick={() => onEditNode(node.id)}
                         aria-label={`Edit ${getNodeTitle(node)}`}
-                        className="p-1 rounded text-navy-900 hover:bg-navy-900-8 focus:outline-none focus:ring-2 focus:ring-navy-800"
+                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded text-navy-900 hover:bg-navy-900-8 focus:outline-none focus:ring-2 focus:ring-navy-800"
                         title="Edit card"
                       >
                         <Edit2 size={13} aria-hidden="true" />
@@ -179,7 +179,7 @@ export function CanvasOutlineView({
                         type="button"
                         onClick={() => onDeleteNode(node.id)}
                         aria-label={`Delete ${getNodeTitle(node)}`}
-                        className="p-1 rounded text-navy-900 hover:text-feedback-error hover:bg-feedback-error-bg focus:outline-none focus:ring-2 focus:ring-navy-800"
+                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded text-navy-900 hover:text-feedback-error hover:bg-feedback-error-bg focus:outline-none focus:ring-2 focus:ring-navy-800"
                         title="Delete card"
                       >
                         <Trash2 size={13} aria-hidden="true" />
@@ -190,7 +190,7 @@ export function CanvasOutlineView({
 
                 {/* Connections info */}
                 {(outgoingEdges.length > 0 || incomingEdges.length > 0) && (
-                  <div className="mt-2 pt-2 border-t border-navy-900-8 text-[11px] text-navy-800-72 space-y-1">
+                  <div className="mt-2 pt-2 border-t border-navy-900-8 text-sm text-navy-800-72 space-y-1 [&>div]:flex-wrap [&>div]:min-w-0">
                     {outgoingEdges.map((e) => {
                       const targetNode = nodes.find((n) => n.id === e.to)
                       return (

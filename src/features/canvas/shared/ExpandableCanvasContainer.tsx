@@ -87,10 +87,10 @@ export function ExpandableCanvasContainer({
   return (
     <div
       ref={containerRef}
-      className={`relative w-full ${
+      className={`w-full ${
         isExpanded
-          ? 'fixed inset-0 z-50 bg-white p-3 sm:p-5 flex flex-col h-screen w-screen overflow-hidden'
-          : `max-w-[1600px] mx-auto ${className}`
+          ? 'fixed inset-0 z-50 bg-white p-3 sm:p-5 flex flex-col h-dvh overflow-hidden'
+          : `relative max-w-[1600px] mx-auto ${className}`
       }`}
       data-testid="expandable-canvas-container"
       data-expanded={isExpanded ? 'true' : 'false'}
@@ -139,9 +139,9 @@ export function ExpandableCanvasContainer({
 
       {/* Main Content Area (Board + Side Drawer/Outline) */}
       <div
-        className={`w-full flex-1 min-h-0 flex flex-col lg:flex-row gap-4 items-stretch ${
+        className={`canvas-stage relative w-full flex-1 min-h-0 flex flex-col lg:flex-row gap-4 items-stretch ${
           isExpanded
-            ? 'h-[calc(100vh-80px)]'
+            ? 'h-[calc(100dvh-80px)]'
             : 'h-[max(70dvh,480px)] lg:h-[max(560px,calc(100dvh-220px))]'
         }`}
       >

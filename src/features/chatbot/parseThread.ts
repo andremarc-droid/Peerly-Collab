@@ -1,5 +1,7 @@
 import { HARD_CAP_BASE64_LENGTH } from '../canvas/imageProcessing'
-import type { ChatImage, ChatMessage, ChatThread } from './types'
+import { MAX_DOCUMENT_NAME_CHARS, MAX_DOCUMENT_TEXT_CHARS } from '../documents/constants'
+import { MAX_DOCUMENTS_PER_MESSAGE } from './constants'
+import type { ChatDocument, ChatImage, ChatMessage, ChatThread } from './types'
 
 const MIME_TYPES = new Set(['image/jpeg', 'image/webp'])
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
@@ -23,9 +25,17 @@ function parseImage(value: unknown): ChatImage | null {
   return { id, data, mimeType: mimeType as ChatImage['mimeType'], width, height, name }
 }
 
+function parseDocument(value: unknown): ChatDocument | null {
+  if (!isRecord(value)) return null
+  const { id, name, text, truncated } = value
+  if (typeof id !== 'string' || typeof name !== 'string' || typeof text !== 'string') return null
+  if (text.trim().length === 0 || text.length > MAX_DOCUMENT_TEXT_CHARS) return null
+  return { id, name: name.slice(0, MAX_DOCUMENT_NAME_CHARS) || 'document', text, truncated: truncated === true }
+}
+
 function parseMessage(value: unknown): ChatMessage | null {
   if (!isRecord(value)) return null
-  const { id, role, text, images, createdAt, failed } = value
+  const { id, role, text, images, documents, createdAt, failed } = value
   if (typeof id !== 'string' || typeof text !== 'string' || !isFiniteNumber(createdAt)) return null
   if (role !== 'user' && role !== 'assistant') return null
 
@@ -37,6 +47,14 @@ function parseMessage(value: unknown): ChatMessage | null {
     : []
 
   const message: ChatMessage = { id, role, text, images: role === 'user' ? parsedImages : [], createdAt }
+  const parsedDocuments =
+    role === 'user' && Array.isArray(documents)
+      ? documents
+          .slice(0, MAX_DOCUMENTS_PER_MESSAGE)
+          .map(parseDocument)
+          .filter((document): document is ChatDocument => document !== null)
+      : []
+  if (parsedDocuments.length > 0) message.documents = parsedDocuments
   if (failed === true) message.failed = true
   return message
 }

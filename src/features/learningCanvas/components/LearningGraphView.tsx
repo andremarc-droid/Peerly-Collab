@@ -3,6 +3,8 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Minimize2,
+  LocateFixed,
   Search,
   BookOpen,
   HelpCircle,
@@ -37,12 +39,14 @@ import {
   type GraphData,
 } from '../graph/graphModel'
 import { stepSimulation, type SimulationParams } from '../graph/simulation'
+import { NOTE_CONTENT_MAX, NOTE_TITLE_MAX, noteDescription } from '../noteContent'
 import { buildReferencePath, type CanvasViewerRole } from '../referenceRoutes'
 import type { LearningCanvasWithId } from '../types'
 import { createSharedGraph, logGraphActivity, saveSharedGraph, watchGraphRole, watchSharedGraph, type SharedGraphSnapshot } from '../graph/sharing'
 import { AddNodeDialog } from './AddNodeDialog'
 import { ImportExistingDialog } from './ImportExistingDialog'
-import { GraphSharingPanel } from '../graph/GraphSharingPanel'
+import { GraphCollabSidebar } from '../graph/GraphCollabSidebar'
+import { useGraphFullscreen } from '../graph/useGraphFullscreen'
 import { SharedGraphList } from '../graph/SharedGraphList'
 import { useSearchParams } from 'react-router-dom'
 import '../graph/graphView.css'
@@ -80,6 +84,9 @@ const TYPE_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; cla
 /** Saved/dragged node coordinates beyond this are treated as corrupt (graph units). */
 const MAX_NODE_COORD = 1500
 
+/** Every node type the graph shows. The per-type filter buttons were removed, so nothing is hidden by type. */
+const ALL_NODE_TYPES: Set<GraphNodeType> = new Set(['note', 'learning', 'module', 'quiz'])
+
 function sanitizePositions<T extends Record<string, { x: number; y: number; isFixed?: boolean }>>(
   positions: T,
 ): T {
@@ -108,7 +115,9 @@ interface LearningGraphViewProps {
   onSwitchToCanvases?: () => void
   onCreateNote?: (data: { classId: string; title: string; content: string }) => Promise<string | void>
   onCreateCanvas?: (data: { classId: string; title: string; description: string }) => Promise<string | void>
-  onUpdateNoteContent?: (canvasId: string, classId: string, content: string) => Promise<void>
+  onUpdateNote?: (canvasId: string, classId: string, input: { title: string; content: string }) => Promise<void>
+  /** Reads a note's full text. Graph nodes only carry a 300 character preview of it. */
+  onLoadNoteContent?: (canvasId: string, classId: string) => Promise<string>
   onConnectNodes?: (sourceId: string, targetId: string, classId: string) => Promise<void>
   onDisconnectNodes?: (sourceId: string, targetId: string, classId: string) => Promise<void>
 }
@@ -123,7 +132,8 @@ export function LearningGraphView({
   onSwitchToCanvases,
   onCreateNote,
   onCreateCanvas,
-  onUpdateNoteContent,
+  onUpdateNote,
+  onLoadNoteContent,
   onConnectNodes,
   onDisconnectNodes,
 }: LearningGraphViewProps) {
@@ -156,9 +166,7 @@ export function LearningGraphView({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
-  const [allowedTypes, setAllowedTypes] = useState<Set<GraphNodeType>>(
-    new Set(['note', 'learning', 'module', 'quiz']),
-  )
+  const allowedTypes = ALL_NODE_TYPES
 
   /* ── Storage & Included Nodes (Custom Graph View + Positions) ── */
   const storageKey = `peerly:graph_nodes_${role}_${selectedClassId || 'all'}`
@@ -386,7 +394,17 @@ export function LearningGraphView({
   /* ── Note inline edit ── */
   const [isEditingNote, setIsEditingNote] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
+  const [noteTitleDraft, setNoteTitleDraft] = useState('')
+  const [noteError, setNoteError] = useState<string | null>(null)
   const [savingNote, setSavingNote] = useState(false)
+  /** The selected note's full text (nodes only carry a 300 character preview). */
+  const [noteLoad, setNoteLoad] = useState<
+    { id: string; status: 'ready'; text: string } | { id: string; status: 'error' } | null
+  >(null)
+  const loadNoteRef = useRef(onLoadNoteContent)
+  useEffect(() => {
+    loadNoteRef.current = onLoadNoteContent
+  })
 
   /* ── Linking state ── */
   const [linkTargetId, setLinkTargetId] = useState('')
@@ -415,7 +433,14 @@ export function LearningGraphView({
   const dragStartRef = useRef({ x: 0, y: 0 })
   const dragMovedRef = useRef(false)
 
+  /* ── Touch: tracked pointers for two-finger pinch zoom ── */
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>())
+  const pinchRef = useRef<{ dist: number; zoom: number } | null>(null)
+
   /* ── Simulation ── */
+  // Ids whose on-screen position was restored (saved layout or pinned drags).
+  // These are treated as settled so returning to this tab doesn't re-run the physics.
+  const [restoredIds] = useState(() => new Set(Object.keys({ ...loadLayout(), ...currentPositions })))
   const [graphData, setGraphData] = useState<GraphData>(() =>
     buildLearningGraph({
       canvases,
@@ -455,10 +480,13 @@ export function LearningGraphView({
 
   const nodesRef = useRef<GraphNode[]>(graphData.nodes)
   const linksRef = useRef(graphData.links)
-  const alphaRef = useRef(1.0)
+  const alphaRef = useRef(0)
   const animFrameRef = useRef<number | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const { isExpanded: isFullscreen, toggle: toggleFullscreen } = useGraphFullscreen(rootRef)
   const isInitialMountRef = useRef(true)
 
   useEffect(() => {
@@ -508,12 +536,38 @@ export function LearningGraphView({
     }
   }, [])
 
-  // Sync draft text on selectedNode change
+  // Leave edit mode only when a different node is selected. A graph refresh replaces the node object
+  // but must not throw away a note the person is typing.
+  const selectedNodeId = selectedNode?.id ?? null
   useEffect(() => {
     setIsEditingNote(false)
-    setNoteDraft(selectedNode?.content || selectedNode?.description || '')
+    setNoteError(null)
     setLinkTargetId('')
-  }, [selectedNode])
+  }, [selectedNodeId])
+
+  // Load the full note text for the selected note, and again whenever its preview changes
+  // (for example after it is edited in the Notes tab or the whiteboard).
+  const noteRawId = selectedNode?.type === 'note' ? selectedNode.rawId : null
+  const noteClassId = selectedNode?.type === 'note' ? selectedNode.classId : null
+  const notePreview = selectedNode?.type === 'note' ? (selectedNode.description ?? '') : ''
+  useEffect(() => {
+    const load = loadNoteRef.current
+    if (!noteRawId || !noteClassId || !load) {
+      setNoteLoad(null)
+      return undefined
+    }
+    let cancelled = false
+    load(noteRawId, noteClassId)
+      .then((text) => {
+        if (!cancelled) setNoteLoad({ id: noteRawId, status: 'ready', text })
+      })
+      .catch(() => {
+        if (!cancelled) setNoteLoad({ id: noteRawId, status: 'error' })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [noteRawId, noteClassId, notePreview])
 
   /* ── Handlers for New Graph & Import ── */
   const handleNewGraphView = () => {
@@ -611,8 +665,12 @@ export function LearningGraphView({
     }
 
     const prevMap = new Map(nodesRef.current.map((n) => [n.id, n]))
+    let needsRelax = false
     fresh.nodes.forEach((n) => {
       const prev = prevMap.get(n.id)
+      // Only nodes that have never been placed need the layout to run.
+      const wasPlaced = Boolean(currentPositions[n.id]) || (isInitialMountRef.current ? restoredIds.has(n.id) : Boolean(prev))
+      if (!sharedGraphId && !wasPlaced) needsRelax = true
       if (prev) {
         if (prev.isFixed) {
           n.x = prev.x
@@ -633,7 +691,10 @@ export function LearningGraphView({
     setGraphData(fresh)
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false
-      alphaRef.current = 0.5
+      // Coming back to this tab with a saved layout must NOT re-run the physics.
+      alphaRef.current = needsRelax ? 0.5 : 0
+    } else if (needsRelax) {
+      alphaRef.current = Math.max(alphaRef.current, 0.5)
     }
 
     // Keep selectedNode reference fresh
@@ -650,6 +711,7 @@ export function LearningGraphView({
     searchQuery,
     includedNodeIds,
     currentPositions,
+    restoredIds,
   ])
 
   /* ── Simulation animation loop ── */
@@ -767,16 +829,44 @@ export function LearningGraphView({
   )
 
   /* ── Interaction handlers ── */
+  // Runs for every pointer (including ones that land on a node) so a second finger always starts a pinch.
+  const handlePointerDownCapture = (e: React.PointerEvent<SVGSVGElement>) => {
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pointersRef.current.size === 2) {
+      const [a, b] = Array.from(pointersRef.current.values())
+      pinchRef.current = { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom }
+      isPanningRef.current = false
+      draggedNodeRef.current = null
+      dragMovedRef.current = false
+    }
+  }
+
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.target !== e.currentTarget && (e.target as Element).tagName !== 'rect') {
       return
     }
+    if (pointersRef.current.size > 1) return
     isPanningRef.current = true
     panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }
     setSelectedNode(null)
+    // Keep receiving moves even if the finger slides off the svg.
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      // ignore
+    }
   }
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    }
+    if (pinchRef.current && pointersRef.current.size >= 2) {
+      const [a, b] = Array.from(pointersRef.current.values())
+      const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1
+      setZoom(Math.max(0.2, Math.min(3, pinchRef.current.zoom * (dist / pinchRef.current.dist))))
+      return
+    }
     if (draggedNodeRef.current) {
       if (!dragMovedRef.current) {
         const moved = Math.hypot(
@@ -838,7 +928,9 @@ export function LearningGraphView({
   }
 
   useEffect(() => {
-    const handleGlobalRelease = () => {
+    const handleGlobalRelease = (e: PointerEvent) => {
+      pointersRef.current.delete(e.pointerId)
+      if (pointersRef.current.size < 2) pinchRef.current = null
       isPanningRef.current = false
       if (draggedNodeRef.current && !dragMovedRef.current) {
         draggedNodeRef.current = null
@@ -886,27 +978,39 @@ export function LearningGraphView({
     alphaRef.current = 0.8
   }
 
-  const toggleType = (t: GraphNodeType) => {
-    setAllowedTypes((prev) => {
-      const next = new Set(prev)
-      if (next.has(t)) {
-        if (next.size > 1) next.delete(t)
-      } else {
-        next.add(t)
-      }
-      return next
-    })
+  /* ── Note inline edit (title and content are saved together) ── */
+  const loadedNote = selectedNode?.type === 'note' && noteLoad?.id === selectedNode.rawId ? noteLoad : null
+  // Editing is only allowed once the full text is loaded, so a truncated preview can never be saved back.
+  const noteReady = loadedNote?.status === 'ready'
+  const displayNoteText =
+    loadedNote?.status === 'ready' ? loadedNote.text : selectedNode?.content || selectedNode?.description || ''
+
+  const startEditingNote = () => {
+    if (!selectedNode || loadedNote?.status !== 'ready') return
+    setNoteTitleDraft(selectedNode.title)
+    setNoteDraft(loadedNote.text)
+    setNoteError(null)
+    setIsEditingNote(true)
   }
 
-  /* ── Save note inline edit ── */
   const handleSaveNote = async () => {
-    if (!selectedNode || !onUpdateNoteContent || sharedGraphId) return
+    if (!selectedNode || !onUpdateNote || sharedGraphId) return
+    const title = noteTitleDraft.trim()
+    if (!title) {
+      setNoteError('A note needs a title.')
+      return
+    }
     setSavingNote(true)
+    setNoteError(null)
     try {
-      await onUpdateNoteContent(selectedNode.rawId, selectedNode.classId, noteDraft)
+      await onUpdateNote(selectedNode.rawId, selectedNode.classId, { title, content: noteDraft })
       setIsEditingNote(false)
+      setNoteLoad({ id: selectedNode.rawId, status: 'ready', text: noteDraft })
+      selectedNode.title = title
       selectedNode.content = noteDraft
-      selectedNode.description = noteDraft.slice(0, 300)
+      selectedNode.description = noteDescription(noteDraft)
+    } catch (error) {
+      setNoteError(error instanceof Error ? error.message : 'The note could not be saved.')
     } finally {
       setSavingNote(false)
     }
@@ -990,7 +1094,7 @@ export function LearningGraphView({
   const [dimensions, setDimensions] = useState({ w: 800, h: 620 })
 
   useEffect(() => {
-    const el = svgRef.current || containerRef.current
+    const el = stageRef.current || svgRef.current || containerRef.current
     if (!el) return
     const update = () => {
       const rect = el.getBoundingClientRect()
@@ -1002,20 +1106,24 @@ export function LearningGraphView({
     return () => ro.disconnect()
   }, [])
 
-  /* ── Filter classes ── */
-  const filterActiveClass = (type: GraphNodeType) => {
-    if (!allowedTypes.has(type)) return 'graph-view__filter'
-    if (type === 'note') return 'graph-view__filter graph-view__filter--active-note'
-    if (type === 'learning') return 'graph-view__filter graph-view__filter--active'
-    if (type === 'module') return 'graph-view__filter graph-view__filter--active-module'
-    return 'graph-view__filter graph-view__filter--active-quiz'
-  }
-
   const hasAddCapabilities = Boolean(onCreateNote || onCreateCanvas) && canEditSharedGraph && !sharedGraphId
 
+  const hasSharedAccess = Boolean(sharedGraphId && sharedGraphReady && !sharedGraphError && (isSharedGraphOwner || sharedGraphRole))
+  const showCollabSidebar = hasSharedAccess && Boolean(user) && Boolean(sharedGraphId)
+
   return (
-    <div className="graph-view" ref={containerRef}>
+    <div
+      ref={rootRef}
+      className={isFullscreen ? 'fixed inset-0 z-50 grid content-start gap-4 overflow-auto bg-white p-4' : 'grid gap-4'}
+      data-fullscreen={isFullscreen ? 'true' : 'false'}
+    >
       {!sharedGraphId && user && <SharedGraphList uid={user.uid} selectedClassId={selectedClassId || 'all'} />}
+      {sharedGraphId && sharedGraphError && <Alert tone="error" label="Shared graph unavailable">{sharedGraphError}</Alert>}
+      {sharedGraphId && sharedGraphReady && !sharedGraphError && !isSharedGraphOwner && !sharedGraphRole && (
+        <Alert tone="error" label="No access to this graph">This graph is only available to its owner and invited active class members.</Alert>
+      )}
+      <div className={showCollabSidebar ? 'grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]' : 'grid gap-4'}>
+    <div className={`graph-view${isFullscreen ? ' graph-view--expanded' : ''}`} ref={containerRef}>
       {/* ── Toolbar ── */}
       <div className="graph-view__toolbar">
         {/* Search */}
@@ -1040,44 +1148,8 @@ export function LearningGraphView({
           )}
         </div>
 
-        {/* Type filters */}
-        <div className="flex items-center gap-1.5" role="toolbar" aria-label="Node type filters">
-          <button
-            type="button"
-            onClick={() => toggleType('note')}
-            className={filterActiveClass('note')}
-          >
-            <FileText size={13} />
-            Notes ({typeCounts.note})
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleType('learning')}
-            className={filterActiveClass('learning')}
-          >
-            <Layout size={13} />
-            Canvases ({typeCounts.learning})
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleType('module')}
-            className={filterActiveClass('module')}
-          >
-            <BookOpen size={13} />
-            Modules ({typeCounts.module})
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleType('quiz')}
-            className={filterActiveClass('quiz')}
-          >
-            <HelpCircle size={13} />
-            Quizzes ({typeCounts.quiz})
-          </button>
-        </div>
-
-        {/* View controls & Add Button */}
-        <div className="graph-view__zoom-controls flex items-center">
+        {/* Primary actions */}
+        <div className="graph-view__actions">
           {sharedGraphId && (
             <Button
               type="button"
@@ -1142,6 +1214,10 @@ export function LearningGraphView({
             </Button>
           )}
 
+        </div>
+
+        {/* View controls */}
+        <div className="graph-view__zoom-controls flex items-center">
           {/* Connect Mode toggle */}
           {canEditSharedGraph && !sharedGraphId && onConnectNodes && graphData.nodes.length >= 2 && (
             <button
@@ -1192,7 +1268,17 @@ export function LearningGraphView({
             aria-label="Reset view"
             title="Center and reset zoom"
           >
-            <Maximize2 size={16} />
+            <LocateFixed size={16} />
+          </button>
+          <button
+            type="button"
+            className="graph-view__zoom-btn"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+            aria-pressed={isFullscreen}
+            title={isFullscreen ? 'Exit full screen (Esc)' : 'Full screen'}
+          >
+            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
           <button
             type="button"
@@ -1207,28 +1293,12 @@ export function LearningGraphView({
         </div>
       </div>
 
-      {sharedGraphId && (
-        <>
-          {sharedGraphError && <Alert tone="error" label="Shared graph unavailable">{sharedGraphError}</Alert>}
-          {sharedGraphReady && !sharedGraphError && !isSharedGraphOwner && !sharedGraphRole && (
-            <Alert tone="error" label="No access to this graph">This graph is only available to its owner and invited active class members.</Alert>
-          )}
-          {sharedGraphReady && (isSharedGraphOwner || sharedGraphRole) && user && (
-            <GraphSharingPanel
-              classId={graphClassId}
-              graphId={sharedGraphId}
-              uid={user.uid}
-              name={user.displayName || user.email || 'Learner'}
-              ownerId={sharedGraphOwnerId || ''}
-              ownerName={sharedGraphOwnerName || 'Graph owner'}
-              owner={isSharedGraphOwner}
-            />
-          )}
-          {canEditSharedGraph && syncingSharedGraph && (
-            <p className="m-0 text-sm text-navy-800" role="status" aria-live="polite">Syncing graph changes…</p>
-          )}
-        </>
+      {canEditSharedGraph && syncingSharedGraph && (
+        <p className="m-0 px-4 pt-2 text-sm text-navy-800" role="status" aria-live="polite">Syncing graph changes…</p>
       )}
+
+      {/* Stage: the SVG plus every graph overlay. Collaboration UI never lives here. */}
+      <div className="graph-view__stage" ref={stageRef}>
 
       {/* ── Force controls panel ── */}
       {showForcePanel && (
@@ -1341,6 +1411,7 @@ export function LearningGraphView({
         <svg
           ref={svgRef}
           className={`graph-view__svg ${connectMode ? 'graph-view__svg--connect-mode' : ''}`}
+          onPointerDownCapture={handlePointerDownCapture}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -1462,7 +1533,7 @@ export function LearningGraphView({
                     }}
                     onPointerDown={(e) => {
                       e.stopPropagation()
-                      if (!connectMode && canEditSharedGraph) {
+                      if (!connectMode && canEditSharedGraph && pointersRef.current.size < 2) {
                         const liveNode = nodesRef.current.find((n) => n.id === node.id) || node
                         dragStartRef.current = { x: e.clientX, y: e.clientY }
                         dragMovedRef.current = false
@@ -1490,6 +1561,9 @@ export function LearningGraphView({
                       }
                     }}
                   >
+                    {/* Oversized invisible hit area so small nodes are easy to tap */}
+                    <circle r={Math.max(node.radius + 10, 26)} className="graph-view__node-hit" />
+
                     {/* Radial glow on hover/selected */}
                     <circle
                       r={node.radius + 10}
@@ -1702,11 +1776,12 @@ export function LearningGraphView({
                 <span className="text-[11px] font-bold text-navy-800-72 uppercase tracking-wider">
                   Note Content
                 </span>
-                {onUpdateNoteContent && !isEditingNote && !sharedGraphId && (
+                {onUpdateNote && !isEditingNote && !sharedGraphId && (
                   <button
                     type="button"
-                    onClick={() => setIsEditingNote(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-navy-900 hover:underline"
+                    onClick={startEditingNote}
+                    disabled={!noteReady}
+                    className="inline-flex min-h-11 items-center gap-1 px-1 text-sm font-semibold text-navy-900 hover:underline disabled:opacity-50 disabled:no-underline"
                   >
                     <Edit3 size={12} />
                     <span>Edit</span>
@@ -1716,13 +1791,35 @@ export function LearningGraphView({
 
               {isEditingNote ? (
                 <div className="grid gap-2">
-                  <textarea
-                    rows={4}
-                    value={noteDraft}
-                    onChange={(e) => setNoteDraft(e.target.value)}
-                    placeholder="Write markdown notes, definitions, concepts…"
-                    className="w-full p-2 text-xs text-navy-900 bg-navy-700-05 border border-navy-900-12 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-navy-800"
-                  />
+                  {noteError && (
+                    <p role="alert" className="m-0 text-sm font-semibold text-feedback-error">
+                      {noteError}
+                    </p>
+                  )}
+                  <label className="grid gap-1 text-sm font-semibold text-navy-900">
+                    Title
+                    <input
+                      type="text"
+                      value={noteTitleDraft}
+                      maxLength={NOTE_TITLE_MAX}
+                      onChange={(e) => setNoteTitleDraft(e.target.value)}
+                      className="w-full min-h-11 px-3 text-sm font-normal text-navy-900 bg-navy-700-05 border border-navy-900-12 rounded-xl focus:outline-none focus:ring-2 focus:ring-navy-800"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-navy-900">
+                    Content
+                    <textarea
+                      rows={6}
+                      value={noteDraft}
+                      maxLength={NOTE_CONTENT_MAX}
+                      onChange={(e) => setNoteDraft(e.target.value)}
+                      placeholder="Write markdown notes, definitions, concepts…"
+                      className="w-full p-2 text-sm font-normal text-navy-900 bg-navy-700-05 border border-navy-900-12 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-navy-800"
+                    />
+                    <span className="text-sm font-normal text-navy-800-72">
+                      {noteDraft.length}/{NOTE_CONTENT_MAX} characters
+                    </span>
+                  </label>
                   <div className="flex justify-end gap-1.5">
                     <button
                       type="button"
@@ -1734,7 +1831,7 @@ export function LearningGraphView({
                     <button
                       type="button"
                       onClick={() => void handleSaveNote()}
-                      disabled={savingNote}
+                      disabled={savingNote || !noteTitleDraft.trim()}
                       className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white bg-navy-900 rounded-lg hover:bg-navy-800 disabled:opacity-50"
                     >
                       <Save size={12} />
@@ -1743,8 +1840,13 @@ export function LearningGraphView({
                   </div>
                 </div>
               ) : (
-                <div className="p-2.5 rounded-xl bg-navy-700-05 text-xs text-navy-900 font-sans max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed">
-                  {selectedNode.content || selectedNode.description || 'No notes added yet. Click Edit to write concepts.'}
+                <div className="p-2.5 rounded-xl bg-navy-700-05 text-sm text-navy-900 font-sans max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                  {displayNoteText || 'No notes added yet. Click Edit to write concepts.'}
+                  {loadedNote?.status === 'error' && onLoadNoteContent && (
+                    <p className="m-0 mt-2 text-sm font-semibold text-navy-800">
+                      Could not load the full note, so editing is unavailable right now.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1863,6 +1965,21 @@ export function LearningGraphView({
           </div>
         </div>
       )}
+      </div>
+    </div>
+
+    {showCollabSidebar && user && sharedGraphId && (
+      <GraphCollabSidebar
+        classId={graphClassId}
+        graphId={sharedGraphId}
+        uid={user.uid}
+        name={user.displayName || user.email || 'Learner'}
+        ownerId={sharedGraphOwnerId || ''}
+        ownerName={sharedGraphOwnerName || 'Graph owner'}
+        owner={isSharedGraphOwner}
+      />
+    )}
+      </div>
 
       {/* Import Existing Dialog */}
       <ImportExistingDialog

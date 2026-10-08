@@ -1,0 +1,128 @@
+/*
+ * Responsive layer. Imported last so it can refine earlier component rules.
+ * Target widths (AGENTS.md): 360px phone, 768px tablet, 1280px desktop, 1920px wide.
+ * Tailwind breakpoints used in components: sm 640, md 768, lg 1024.
+ */
+
+/* iOS Safari inflates text after rotation unless this is set. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+/* `font: inherit` is only applied to button/input in tokens.css. Textareas and selects fell back to the
+   browser default (~13px), which looks inconsistent and makes iOS zoom the page when they are focused. */
+textarea, select { font: inherit; }
+
+/* iOS zooms into any focused field below 16px. Keep every text control at 16px on touch devices,
+   including the compact `text-xs` search boxes used in toolbars and panels. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea { font-size: max(16px, 1em); }
+}
+
+/* ── App shell ─────────────────────────────────────────────────────────────── */
+
+/* `overflow: hidden` turns the page wrapper into a scroll container, which stops `position: sticky`
+   descendants (for example the module publish bar) from sticking to the viewport. `clip` still stops
+   horizontal bleed without creating a scroll container. The first declaration is the fallback. */
+.app-shell__page { overflow-x: hidden; overflow-x: clip; overflow-y: visible; }
+
+/* Let the nav drop onto its own row on narrow screens instead of squeezing logo, nav and account menu
+   into one line (which overflowed at 360px). */
+.app-shell__header { flex-wrap: wrap; row-gap: 8px; }
+
+/* A two-row sticky header is too tall on a phone held sideways, so it scrolls away there. */
+@media (max-height: 520px) {
+  .app-shell__header { position: relative; }
+}
+
+/* ── Stat rows ─────────────────────────────────────────────────────────────── */
+
+/* Four columns are too tight on a portrait tablet. Two columns up to 899px, and an odd last tile
+   spans the row so 3-tile and 5-tile rows never leave an orphan gap. */
+@media (max-width: 899px) {
+  .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-row > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* ── Data cards ────────────────────────────────────────────────────────────── */
+
+/* The title column was squeezed to a sliver between 420px and 640px when several action buttons sat
+   beside it. Stack actions under the content on anything phone-sized. */
+@media (max-width: 640px) {
+  .data-card { align-items: stretch; flex-direction: column; }
+  .data-card__actions { width: 100%; }
+}
+
+/* ── Dialogs ───────────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .dialog-backdrop { padding: 12px; }
+  .dialog { border-radius: 20px; }
+  /* Full-width, thumb-friendly actions with the primary action on top. */
+  .dialog__actions { flex-direction: column-reverse; align-items: stretch; }
+  .dialog__actions .button { width: 100%; margin-right: 0; }
+}
+
+/* ── Toasts ────────────────────────────────────────────────────────────────── */
+
+/* A toast with an action button has five children. The old four-column phone grid pushed the dismiss
+   button onto a second row inside a 20px column. Place the pieces explicitly instead. */
+@media (max-width: 420px) {
+  .toast { grid-template-columns: 20px auto minmax(0, 1fr) 44px; }
+  .toast > button:last-child { grid-column: 4; grid-row: 1; }
+  .toast > .toast__action { grid-column: 2 / 4; grid-row: 2; justify-self: start; }
+}
+
+/* ── Learning hub (phone + tablet) ─────────────────────────────────────────────────── */
+
+/* Root cause of the sideways overflow: a grid with an automatic column grows to its widest child's content
+   (for example the nowrap tab strip). Pin the column to the container width and let children shrink. */
+.app-shell__content.grid { grid-template-columns: minmax(0, 1fr); }
+.app-shell__content > * { min-width: 0; }
+.learning-header-actions, .learning-header-actions > *, .invite-code, .invite-code__form { min-width: 0; }
+
+@media (max-width: 1023px) {
+  /* Header: copy on top, actions underneath, instead of squeezing both into one row. */
+  .page-header__inner:has(.learning-header-actions) { flex-direction: column; align-items: stretch; gap: 14px; }
+  .page-header__inner:has(.learning-header-actions) .page-header__action { width: 100%; }
+  .learning-header-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; width: 100%; }
+  .page-header__action .learning-header-actions > .button { flex: 0 0 auto; width: auto; }
+
+  /* Invite code: input and Join button share one row. */
+  .learning-header-actions > .invite-code { flex: 1 1 280px; width: auto; max-width: 440px; }
+  .invite-code { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; width: 100%; max-width: 100%; }
+  .invite-code__form { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; width: 100%; max-width: 100%; }
+  .invite-code__input { flex: 1 1 0; width: 0; min-width: 0; }
+  .page-header__action .invite-code__form .button { flex: 0 0 auto; width: auto; padding-inline: 18px; white-space: nowrap; }
+
+  /* View-mode tabs: one row, never wrapping into uneven lines. */
+  .segmented-control { display: flex; flex-wrap: nowrap; width: 100%; max-width: 100%; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .segmented-control::-webkit-scrollbar { display: none; }
+  .segmented-control button { flex: 1 0 auto; min-height: 44px; padding: 0 16px; white-space: nowrap; scroll-snap-align: center; }
+
+  /* Class filter: a proper 44px touch target. */
+  .learning-toolbar__class label { font-size: 14px; white-space: nowrap; }
+  .learning-toolbar__class select { flex: 1; min-width: 0; min-height: 44px; padding-inline: 14px; font-size: 14px; }
+}
+
+/* Tablet: tabs take the free space and the class filter sits beside them. */
+@media (min-width: 721px) and (max-width: 1023px) {
+  .learning-toolbar { flex-wrap: nowrap; }
+  .learning-toolbar .segmented-control { flex: 1 1 0; width: auto; min-width: 0; }
+  .learning-toolbar__class { flex: 0 0 auto; }
+  .learning-toolbar__class select { min-width: 190px; }
+}
+
+/* Phone: everything stacks full width. */
+@media (max-width: 720px) {
+  .learning-header-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .page-header__action .learning-header-actions > .button { width: 100%; }
+  .learning-header-actions > .invite-code { max-width: none; }
+  .learning-toolbar { flex-direction: column; align-items: stretch; gap: 12px; padding: 12px; border-radius: 20px; }
+  .learning-toolbar__class { width: 100%; }
+}
+
+/* Very narrow phones: keep the Join button compact. */
+@media (max-width: 359px) {
+  .invite-code__suffix { display: none; }
+}

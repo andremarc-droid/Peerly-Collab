@@ -1,0 +1,91 @@
+/* ==========================================================================
+   AI tutor: mobile-first chat controls (compact icon buttons that gain labels from 640px up)
+   Tailwind utilities are layered and lose to the unlayered `.button` rules, so these sit on `.button.*`.
+   ========================================================================== */
+
+/* Round 44px icon button: attach, document, send, stop, header actions. */
+.button.tutor-icon-btn {
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+  gap: 0;
+  padding: 0;
+  border-radius: 999px;
+}
+
+/* Same button, but it grows a text label on larger screens. */
+@media (min-width: 640px) {
+  .button.tutor-icon-btn--labelled {
+    width: auto;
+    gap: 0.625rem;
+    padding: 0 1.125rem;
+  }
+}
+
+/* Header icon buttons (chats, share, new chat). */
+.tutor-header-btn {
+  display: inline-flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  color: var(--color-navy-900);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+.tutor-header-btn:hover {
+  background: var(--color-navy-900-08);
+}
+.tutor-header-btn[aria-expanded="true"] {
+  background: var(--color-navy-900-08);
+}
+
+/* Suggestion chips on the empty state. */
+.tutor-chip {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  padding: 0 1rem;
+  border: 1px solid var(--color-navy-900-30);
+  border-radius: 999px;
+  color: var(--color-navy-900);
+  background: var(--color-white);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+.tutor-chip:hover:not(:disabled) {
+  border-color: var(--color-navy-900);
+  background: var(--color-navy-700-05);
+}
+.tutor-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Chat history drawer (phone and tablet): slides in over the conversation. */
+.tutor-drawer {
+  animation: tutor-drawer-in 180ms ease-out both;
+}
+@keyframes tutor-drawer-in {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Keep the message list from dragging the whole page along when it hits the top or bottom. */
+.tutor-log {
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutor-drawer { animation: none; }
+  .tutor-log { scroll-behavior: auto; }
+}

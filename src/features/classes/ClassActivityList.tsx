@@ -1,4 +1,4 @@
-import { Archive, BarChart3, Copy, RotateCcw, Send, Trash2 } from 'lucide-react'
+import { Archive, BarChart3, Copy, Ellipsis, RotateCcw, Send, Trash2 } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
@@ -7,6 +7,7 @@ import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { DataCard } from '../../shared/ui/DataCard'
 import { Dialog } from '../../shared/ui/Dialog'
+import { DropdownMenu } from '../../shared/ui/DropdownMenu'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { resolveListStatus } from '../../shared/ui/listState'
 import { Select } from '../../shared/ui/Select'
@@ -186,7 +187,50 @@ export function ClassActivityList({
                 </p>
               )}
 
-              <div className="flex flex-wrap gap-2">
+              {/* Phone and tablet: Edit stays visible, everything else lives in a three-dot menu. */}
+              <div className="flex w-full items-center justify-between gap-2 lg:hidden">
+                <Button to={`/instructor/quizzes/${quiz.id}`}>Edit</Button>
+                <DropdownMenu label={`More actions for ${quiz.title || 'Untitled quiz'}`} iconOnly trigger={<Ellipsis size={20} aria-hidden="true" />}>
+                  <Link role="menuitem" to={`/instructor/quizzes/${quiz.id}/results`}>
+                    <BarChart3 size={16} aria-hidden="true" /> Results
+                  </Link>
+                  <button type="button" role="menuitem" disabled={busyId === quiz.id || deleteBusy} onClick={() => void action(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}>
+                    <Copy size={16} aria-hidden="true" /> Duplicate
+                  </button>
+                  {targets.length ? (
+                    <button type="button" role="menuitem" disabled={busyId === quiz.id || deleteBusy} onClick={() => { setCopySelection(quiz); setTargetClass(targets[0].id) }}>
+                      <Copy size={16} aria-hidden="true" /> Copy to another class
+                    </button>
+                  ) : (
+                    <Link role="menuitem" to="/instructor">
+                      <Copy size={16} aria-hidden="true" /> Create a class to copy to
+                    </Link>
+                  )}
+                  {quiz.status === 'published' ? (
+                    <button type="button" role="menuitem" disabled={busyId === quiz.id} onClick={() => void action(quiz.id, isCanvas ? 'Canvas returned to draft.' : 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}>
+                      <Send size={16} aria-hidden="true" /> Unpublish
+                    </button>
+                  ) : (
+                    <button type="button" role="menuitem" disabled={busyId === quiz.id || classroom.status !== 'active' || quiz.questionCount < 1 || !quiz.title.trim()} onClick={() => void action(quiz.id, isCanvas ? 'Canvas published.' : 'Quiz published.', () => publishQuiz(quiz.id))}>
+                      <Send size={16} aria-hidden="true" /> Publish
+                    </button>
+                  )}
+                  {quiz.status === 'archived' ? (
+                    <button type="button" role="menuitem" disabled={busyId === quiz.id} onClick={() => void action(quiz.id, isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}>
+                      <RotateCcw size={16} aria-hidden="true" /> Restore
+                    </button>
+                  ) : (
+                    <button type="button" role="menuitem" disabled={busyId === quiz.id} onClick={() => void action(quiz.id, isCanvas ? 'Canvas archived.' : 'Quiz archived.', () => archiveQuiz(quiz.id))}>
+                      <Archive size={16} aria-hidden="true" /> Archive
+                    </button>
+                  )}
+                  <button type="button" role="menuitem" className="is-danger" disabled={deleteBusy || busyId === quiz.id} onClick={() => void startDelete(quiz)}>
+                    <Trash2 size={16} aria-hidden="true" /> Delete
+                  </button>
+                </DropdownMenu>
+              </div>
+
+              <div className="hidden flex-wrap gap-2 lg:flex">
                 <Button to={`/instructor/quizzes/${quiz.id}`}>Edit</Button>
                 <Button to={`/instructor/quizzes/${quiz.id}/results`} variant="secondary">
                   <BarChart3 size={15} aria-hidden="true" /> Results
@@ -293,6 +337,7 @@ export function ClassActivityList({
                 <Button
                   type="button"
                   variant="secondary"
+                  className="button--destructive"
                   disabled={deleteBusy || busyId === quiz.id}
                   onClick={() => void startDelete(quiz)}
                 >

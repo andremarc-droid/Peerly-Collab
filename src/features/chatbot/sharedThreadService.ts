@@ -150,6 +150,10 @@ export async function createSharedThread(
   const existing = await getDoc(tutorThreadRef(db, thread.id))
   if (existing.exists() && existing.data().ownerId !== uid) throw new Error('That conversation ID is already in use.')
   for (const message of thread.messages) {
+    if ((message.documents?.length ?? 0) > 0) {
+      // Shared messages sync through a fixed set of fields, so attached documents would be silently dropped.
+      throw new Error('This chat has attached documents, which cannot be shared yet. Start a new chat to share a conversation.')
+    }
     for (const image of message.images) {
       if (!validImage(image)) throw new Error(`Image "${image.name}" is too large to share. Remove it from the chat and try again.`)
     }

@@ -6,9 +6,11 @@ interface DropdownMenuProps {
   trigger: ReactNode
   children: ReactNode
   className?: string
+  /** Render the trigger as a plain icon button (e.g. a three-dot menu) with no pill or chevron. */
+  iconOnly?: boolean
 }
 
-export function DropdownMenu({ label, trigger, children, className = '' }: DropdownMenuProps) {
+export function DropdownMenu({ label, trigger, children, className = '', iconOnly = false }: DropdownMenuProps) {
   const [open, setOpen] = useState(false)
   const menuId = `menu-${useId()}`
   const rootRef = useRef<HTMLDivElement>(null)
@@ -50,8 +52,8 @@ export function DropdownMenu({ label, trigger, children, className = '' }: Dropd
 
   return (
     <div className={`dropdown-menu ${className}`.trim()} ref={rootRef} onKeyDown={handleKeyDown} onClick={handleClick}>
-      <button ref={triggerRef} className="dropdown-menu__trigger" type="button" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen((value) => !value)}>
-        {trigger}<ChevronDown size={17} aria-hidden="true" />
+      <button ref={triggerRef} className={`dropdown-menu__trigger${iconOnly ? ' dropdown-menu__trigger--icon' : ''}`} type="button" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen((value) => !value)}>
+        {trigger}{!iconOnly && <ChevronDown size={17} aria-hidden="true" />}
       </button>
       {open && <div id={menuId} className="dropdown-menu__panel" role="menu" aria-label={label}>{children}</div>}
     </div>

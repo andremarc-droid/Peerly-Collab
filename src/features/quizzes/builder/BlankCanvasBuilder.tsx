@@ -217,7 +217,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
         title={quiz.title || 'Blank canvas board'}
         subtitle="Students build their own boards. You check their work and provide a manual grade."
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge>You grade</Badge>
             <Button
               type="button"
@@ -285,7 +285,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
             </Button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span
               className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
                 saving ? 'text-navy-700' : isDirty ? 'text-feedback-warning' : 'text-feedback-success'

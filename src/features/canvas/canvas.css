@@ -352,6 +352,22 @@
   }
 }
 
+/* Side panels (card editor, builder settings) are siblings of the board inside a fixed-height stage.
+   Stacked under the board they squeezed it to a sliver on phones, so below lg they float over the
+   bottom of the board as a scrollable sheet instead. The board stays visible above the sheet. */
+@media (max-width: 1023px) {
+  .canvas-stage .canvas-side-panel {
+    position: absolute;
+    inset: auto 0.5rem 0.5rem;
+    z-index: 30;
+    width: auto;
+    max-height: 65%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-shadow: var(--shadow-lg);
+  }
+}
+
 /* Keep React Flow attribution visible per instructions */
 .react-flow__attribution {
   display: block !important;

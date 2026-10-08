@@ -8,11 +8,22 @@ export interface ChatImage {
   name: string
 }
 
+/** Text read from a file the learner attached. Plain text only; the original file is never stored. */
+export interface ChatDocument {
+  id: string
+  name: string
+  text: string
+  /** True when only part of the file was kept (page or length limit). */
+  truncated: boolean
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
   images: ChatImage[]
+  /** Documents attached to a learner message. Kept on this device only; shared conversations do not sync them. */
+  documents?: ChatDocument[]
   createdAt: number
   /** True when the AI request for this user message failed or was stopped. */
   failed?: boolean

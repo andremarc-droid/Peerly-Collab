@@ -262,13 +262,13 @@ export function CanvasPlayPage({
       </ExpandableCanvasContainer>
 
       {imagesError && (
-        <div className="flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
           <span>Some board images could not be loaded.</span>
           <button
             type="button"
             onClick={() => void loadImages()}
             disabled={imagesLoading}
-            className="underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
+            className="min-h-11 px-2 underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
           >
             {imagesLoading ? 'Retrying…' : 'Retry'}
           </button>

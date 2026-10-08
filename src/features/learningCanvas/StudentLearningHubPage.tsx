@@ -51,6 +51,8 @@ import { ChatbotTab } from '../chatbot'
 import { useSharedCanvases } from './collab/useSharedCanvases'
 import { SharedCanvasList } from './collab/SharedCanvasList'
 import { logActivity } from './collab/activityService'
+import { loadNoteContent, saveNote } from './noteService'
+import { NOTE_CONTENT_MAX, NOTE_NODE_ID, noteDescription } from './noteContent'
 import { LearningInviteCodeInput } from '../learningSharing/LearningInviteCodeInput'
 
 export function StudentLearningHubPage() {
@@ -65,8 +67,8 @@ export function StudentLearningHubPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [selectedClassId, setSelectedClassId] = useState<string>(searchParams.get('classId') || 'all')
-  const [viewMode, setViewMode] = useState<string>(searchParams.get('tab') === 'graph' || searchParams.has('graphId') ? 'graph' : 'canvases') // 'canvases' | 'graph'
+  const [selectedClassId] = useState<string>(searchParams.get('classId') || 'all')
+  const [viewMode, setViewMode] = useState<string>(searchParams.get('tab') === 'notes' ? 'notes' : searchParams.get('tab') === 'graph' || searchParams.has('graphId') ? 'graph' : 'canvases') // 'canvases' | 'graph'
 
   // Per-class canvases: classId -> LearningCanvasWithId[]
   const [instructorCanvasesMap, setInstructorCanvasesMap] = useState<Record<string, LearningCanvasWithId[]>>({})
@@ -250,20 +252,20 @@ export function StudentLearningHubPage() {
     if (!user) return undefined
     const initialNodes = [
       {
-        id: 'main-note',
+        id: NOTE_NODE_ID,
         type: 'text' as const,
         x: 0,
         y: 0,
         width: 380,
         height: 240,
         color: 'none' as const,
-        text: content,
+        text: content.slice(0, NOTE_CONTENT_MAX),
       },
     ]
     const newId = await createCanvas(targetClass, user.uid, {
       kind: 'personal',
       title,
-      description: content.slice(0, 300),
+      description: noteDescription(content),
       sourceCanvasId: 'note',
       initialContent: { nodes: initialNodes },
     })
@@ -295,80 +297,33 @@ export function StudentLearningHubPage() {
     return newId
   }
 
-  const handleUpdateNoteContent = async (
-    canvasId: string,
+  /** One save for title + content, shared by the Notes tab and the graph inspector. */
+  const handleUpdateNote = async (
+    noteId: string,
     targetClass: string,
-    content: string,
+    input: { title: string; content: string },
   ) => {
     if (!user) return
-    const [existingMeta, existingContent] = await Promise.all([
-      getCanvas(targetClass, canvasId),
-      getContent(targetClass, canvasId),
-    ])
-    if (!existingMeta || !existingContent) return
-
-    const textNode = existingContent.nodes.find((n) => n.type === 'text')
-    if (textNode && textNode.type === 'text') {
-      textNode.text = content
-    } else {
-      existingContent.nodes.push({
-        id: 'main-note',
-        type: 'text',
-        x: 0,
-        y: 0,
-        width: 380,
-        height: 240,
-        color: 'none',
-        text: content,
-      })
-    }
-
-    await saveCanvas(
-      targetClass,
-      canvasId,
-      existingContent,
-      existingMeta.updatedAt,
-      { description: content.slice(0, 300) },
-    )
-    showToast('success', 'Note content saved.')
+    const { titleChanged } = await saveNote(targetClass, noteId, input)
+    showToast('success', 'Note saved.')
     try {
-      await logActivity(targetClass, canvasId, {
+      await logActivity(targetClass, noteId, {
         uid: user.uid,
         name: user.displayName || user.email || 'Learner',
       }, {
         type: 'edit',
-        summary: `Updated note “${existingMeta.title}”`,
-        changes: ['Updated note content'],
+        summary: `Updated note “${input.title.trim()}”`,
+        changes: titleChanged
+          ? [`Title: ${input.title.trim()}`, 'Updated note content']
+          : ['Updated note content'],
       })
     } catch {
       showToast('error', 'The note was saved, but its activity could not be recorded.')
     }
   }
 
-  const handleUpdateNoteFromTab = async (
-    noteId: string,
-    targetClass: string,
-    content: string,
-    title?: string,
-  ) => {
-    if (!user) return
-    if (title) {
-      await rename(targetClass, noteId, title)
-      try {
-        await logActivity(targetClass, noteId, {
-          uid: user.uid,
-          name: user.displayName || user.email || 'Learner',
-        }, {
-          type: 'edit',
-          summary: `Renamed note to “${title.trim()}”`,
-          changes: [`Title: ${title.trim()}`],
-        })
-      } catch {
-        showToast('error', 'The note title changed, but its activity could not be recorded.')
-      }
-    }
-    await handleUpdateNoteContent(noteId, targetClass, content)
-  }
+  const handleLoadNote = (noteId: string, targetClass: string) =>
+    loadNoteContent(targetClass, noteId)
 
   const handleDeleteNoteFromTab = async (note: LearningCanvasWithId) => {
     await deleteCanvas(note.classId, note.id)
@@ -544,7 +499,7 @@ export function StudentLearningHubPage() {
         title="Learning"
         subtitle="Explore instructor concept boards and create your own visual study canvases."
         action={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="learning-header-actions flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="secondary"
@@ -569,7 +524,7 @@ export function StudentLearningHubPage() {
 
       <main className="app-shell__content grid gap-6">
         {/* Navigation & Filters bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white rounded-3xl border border-navy-900-15 shadow-xs">
+        <div className="learning-toolbar flex flex-wrap items-center justify-between gap-4 p-4 bg-white rounded-3xl border border-navy-900-15 shadow-xs">
           <SegmentedControl
             label="Learning view mode"
             value={viewMode}
@@ -582,28 +537,12 @@ export function StudentLearningHubPage() {
               { label: 'AI Tutor', value: 'tutor' },
             ]}
           />
-
-          {enrolledClasses.length > 0 && (
-            <div className="flex items-center gap-2">
-              <label htmlFor="student-class-filter" className="text-xs font-semibold text-navy-800-72">
-                Class:
-              </label>
-              <select
-                id="student-class-filter"
-                value={selectedClassId}
-                onChange={(e) => setSelectedClassId(e.target.value)}
-                className="py-1.5 px-3 text-xs font-semibold text-navy-900 bg-navy-900-05 border border-navy-900-15 rounded-xl focus:outline-none focus:ring-2 focus:ring-navy-800"
-              >
-                <option value="all">All enrolled classes</option>
-                {enrolledClasses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
+
+        <p className="learning-canvas-count m-0 text-sm font-semibold text-navy-800-72" role="status">
+          {displayInstructorCanvases.length + displayPersonalCanvases.length}{' '}
+          {displayInstructorCanvases.length + displayPersonalCanvases.length === 1 ? 'canvas' : 'canvases'} created
+        </p>
 
         {/* View mode 1: Graph View */}
         {viewMode === 'graph' && (
@@ -618,7 +557,8 @@ export function StudentLearningHubPage() {
               onSwitchToCanvases={() => setViewMode('canvases')}
               onCreateNote={handleCreatePersonalNote}
               onCreateCanvas={handleCreatePersonalCanvasInGraph}
-              onUpdateNoteContent={handleUpdateNoteContent}
+              onUpdateNote={handleUpdateNote}
+              onLoadNoteContent={handleLoadNote}
               onConnectNodes={handleConnectNodes}
               onDisconnectNodes={handleDisconnectNodes}
             />
@@ -653,7 +593,6 @@ export function StudentLearningHubPage() {
               selectedClassId={selectedClassId}
               role="student"
               onCreateNote={handleCreatePersonalNote}
-              onUpdateNote={handleUpdateNoteFromTab}
               onDeleteNote={handleDeleteNoteFromTab}
               onViewInGraph={(_noteId) => setViewMode('graph')}
             />
@@ -799,16 +738,9 @@ export function StudentLearningHubPage() {
                               <span>Share</span>
                             </Button>
                             <DropdownMenu
-                              label="Canvas options"
-                              trigger={
-                                <button
-                                  type="button"
-                                  className="p-2 text-navy-800 hover:text-navy-900 rounded-xl hover:bg-navy-900-08 min-h-11 min-w-11 inline-flex items-center justify-center"
-                                  aria-label={`Actions for ${canvas.title}`}
-                                >
-                                  <MoreVertical size={18} aria-hidden="true" />
-                                </button>
-                              }
+                              label={`Actions for ${canvas.title}`}
+                              iconOnly
+                              trigger={<MoreVertical size={20} aria-hidden="true" />}
                             >
                               <button
                                 type="button"

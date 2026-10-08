@@ -27,6 +27,8 @@ interface GraphSharingPanelProps {
   owner: boolean
 }
 
+const MAX_ACTIVITY_ENTRIES = 50
+
 function formatTime(value: number | null): string {
   return value === null
     ? 'Just now'
@@ -218,7 +220,7 @@ export function GraphSharingPanel({ classId, graphId, uid, name, ownerId, ownerN
               <Button variant="secondary" onClick={() => void copy(newInviteCode)}><Copy size={15} aria-hidden="true" /> Copy code</Button>
             </div>
           )}
-          {invites.filter((invite) => invite.active).map((invite) => {
+          {invites.filter((invite) => invite.active && invite.code !== newInviteCode).map((invite) => {
             return (
               <div key={invite.token} className="grid gap-2 rounded-xl border border-navy-900-12 p-3 text-sm text-navy-900">
                 <span>{invite.role === 'editor' ? 'Can edit' : 'View only'} invite · {invite.expiresAtMs ? `expires ${formatTime(invite.expiresAtMs)}` : 'no expiry'}</span>
@@ -241,8 +243,8 @@ export function GraphSharingPanel({ classId, graphId, uid, name, ownerId, ownerN
       <div className="grid gap-2 border-t border-navy-900-12 pt-4">
         <h3 className="m-0 flex items-center gap-2 font-bold text-navy-900"><Activity size={17} aria-hidden="true" /> Activity history</h3>
         {activity.length ? (
-          <ol className="m-0 grid list-none gap-2 p-0">
-            {activity.map((entry) => (
+          <ol className="m-0 grid max-h-72 list-none gap-2 overflow-y-auto p-0" aria-label="Recent activity">
+            {activity.slice(0, MAX_ACTIVITY_ENTRIES).map((entry) => (
               <li key={entry.id} className="rounded-xl bg-navy-900-05 px-3 py-2 text-sm text-navy-900">
                 <span className="font-semibold">{entry.actorName}</span> {entry.summary}
                 <span className="block text-sm text-navy-800">{formatTime(entry.createdAtMs)}</span>

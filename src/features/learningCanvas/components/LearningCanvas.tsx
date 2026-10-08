@@ -995,8 +995,8 @@ function LearningCanvasInternal({
         onCopyToMyCanvases={onCopyToMyCanvases}
       />
 
-      <div className="flex-1 min-h-0 flex gap-3 items-stretch relative">
-        <div className="learning-canvas-wrapper flex-1 min-w-0 h-full relative">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-3 items-stretch relative">
+        <div className="learning-canvas-wrapper flex-1 min-w-0 min-h-0 lg:h-full relative">
           <svg className="absolute w-0 h-0 pointer-events-none" aria-hidden="true">
             <defs>
               <marker
