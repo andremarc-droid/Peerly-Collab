@@ -1,16 +1,18 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
 import { AccountTypeHint, AuthCard, AuthShell, GoogleSignInButton, PasswordField, RoleChip } from './AuthChrome'
 import { AuthModeBadge } from './AuthModeBadge'
-import { mapFirebaseAuthError } from './authErrors'
+import { AccountNotRegisteredDialog } from './AccountNotRegisteredDialog'
+import { mapFirebaseAuthError, isAccountNotRegisteredError } from './authErrors'
 import { signInWithEmail, signInWithGoogle } from './authService'
 import { useAuth } from './useAuth'
 import { validateSignin, type AuthFieldErrors } from './validation'
-import { readRoleIntent, type UserRole } from './roleIntent'
+import { readRoleIntent, saveRoleIntent, type UserRole } from './roleIntent'
+import { clearAccountNotRegisteredMark, hasAccountNotRegisteredMark } from './notRegisteredMark'
 
 export function SigninPage() {
   const intent = readRoleIntent()
@@ -27,6 +29,15 @@ function SigninForm({ role }: { role: UserRole }) {
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const [showPassword, setShowPassword] = useState(false)
+  const navigate = useNavigate()
+  const [notRegistered, setNotRegistered] = useState(() => hasAccountNotRegisteredMark())
+
+  useEffect(() => { clearAccountNotRegisteredMark() }, [])
+
+  function handleSignUpInstead() {
+    saveRoleIntent({ role, mode: 'signup' })
+    navigate('/signup?mode=signup')
+  }
 
   async function handleSignin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -42,7 +53,8 @@ function SigninForm({ role }: { role: UserRole }) {
     try {
       await signInWithEmail(email.trim(), password)
     } catch (error) {
-      setRequestError(mapFirebaseAuthError(error))
+      if (isAccountNotRegisteredError(error)) setNotRegistered(true)
+      else setRequestError(mapFirebaseAuthError(error))
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -56,9 +68,10 @@ function SigninForm({ role }: { role: UserRole }) {
     setRequestError(null)
     clearAuthError()
     try {
-      await signInWithGoogle()
+      await signInWithGoogle({ requireExistingAccount: true })
     } catch (error) {
-      setRequestError(mapFirebaseAuthError(error))
+      if (isAccountNotRegisteredError(error)) setNotRegistered(true)
+      else setRequestError(mapFirebaseAuthError(error))
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -86,6 +99,7 @@ function SigninForm({ role }: { role: UserRole }) {
         </form>
         <p className="auth-card__footer">New to Peerly Collab? <Link to="/role?mode=signup">Get started</Link></p>
       </AuthCard>
+      <AccountNotRegisteredDialog open={notRegistered} onClose={() => setNotRegistered(false)} onSignUp={handleSignUpInstead} />
     </AuthShell>
   )
 }

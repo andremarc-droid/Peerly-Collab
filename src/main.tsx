@@ -6,6 +6,9 @@ import './index.css'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/outfit'
 import App from './App.tsx'
+import { installStaleBuildRecovery } from './app/staleBuildRecovery'
+
+installStaleBuildRecovery()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

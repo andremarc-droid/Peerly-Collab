@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import type { User } from 'firebase/auth'
 import { mapFirebaseAuthError } from './authErrors'
 import { completeGoogleRedirect, prepareLocalAuthPersistence, watchAuthState } from './authService'
+import { waitForSignInCheck } from './signInGate'
 import { AuthContext, type AuthStatus } from './AuthContext'
 import { clearRoleIntent, readRoleIntent } from './roleIntent'
 import type { UserRole } from './roleIntent'
@@ -79,7 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true
     let unsubscribeProfile: () => void = () => {}
     const intent = readRoleIntent()
-    void import('../profile/profileService').then(async (service) => {
+    void waitForSignInCheck().then(() => (active ? import('../profile/profileService') : null)).then(async (service) => {
+      if (!service || !active) return
       const nextProfile = await service.ensureUserProfile(user, intent?.role ?? null)
       if (!active) return
       clearRoleIntent()

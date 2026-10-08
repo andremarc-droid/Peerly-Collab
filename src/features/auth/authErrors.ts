@@ -2,9 +2,27 @@ interface FirebaseErrorLike {
   code?: unknown
 }
 
+export const ACCOUNT_NOT_REGISTERED_CODE = 'app/account-not-registered'
+
+/** Thrown when a sign-in attempt turns out to be for an account that was never registered. */
+export class AccountNotRegisteredError extends Error {
+  readonly code = ACCOUNT_NOT_REGISTERED_CODE
+
+  constructor() {
+    super('This account hasn’t been registered yet.')
+    this.name = 'AccountNotRegisteredError'
+  }
+}
+
+export function isAccountNotRegisteredError(error: unknown): boolean {
+  const code = (error as FirebaseErrorLike | null)?.code
+  return code === 'auth/user-not-found' || code === ACCOUNT_NOT_REGISTERED_CODE
+}
+
 const messages: Record<string, string> = {
   'auth/wrong-password': 'That password is incorrect. Try again or reset it.',
-  'auth/user-not-found': 'We couldn’t find an account with that email.',
+  'auth/user-not-found': 'This account hasn’t been registered yet. Create an account?',
+  'app/account-not-registered': 'This account hasn’t been registered yet. Create an account?',
   'auth/invalid-credential': 'That email and password combination doesn’t match an account.',
   'auth/email-already-in-use': 'An account already uses this email. Try signing in instead.',
   'auth/weak-password': 'Choose a stronger password with at least 8 characters.',
