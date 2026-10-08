@@ -113,6 +113,9 @@ export function ProfilePage() {
           <div className="profile-details">
             <Input label="Display name" name="display-name" autoComplete="name" maxLength={120} value={name} onChange={(event) => { setEditedName(event.target.value); setNameError(undefined); setNotice(null) }} error={nameError} disabled={busy} />
             <Input label="Email address" name="email" type="email" value={profile.email ?? user.email ?? ''} readOnly />
+            {profile.role === 'student' && (
+              <Input label="Age" name="age" value={typeof profile.age === 'number' ? String(profile.age) : 'Not provided'} readOnly />
+            )}
             <div className="profile-role" aria-label="Account role, read only"><span>Account role</span><strong>{profile.role === 'instructor' ? 'Instructor' : 'Student'}</strong><small>Role can’t be changed from profile settings.</small></div>
           </div>
           <div className="profile-actions"><Button type="submit" variant="primary" disabled={busy}><Save size={16} aria-hidden="true" /> {busy ? 'Saving…' : 'Save profile'}</Button></div>
