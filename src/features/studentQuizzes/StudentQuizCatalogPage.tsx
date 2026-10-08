@@ -5,7 +5,8 @@ import { listMyEnrollments } from '../classes/services/joinService'
 import { watchPublishedQuizzesForClass } from '../classes/services/quizService'
 import type { EnrollmentWithId } from '../classes/types'
 import { listUserAttempts } from '../quizzes/services/attemptService'
-import { quizModeLabel, type QuizAttempt } from '../quizzes/types'
+import type { QuizAttempt } from '../quizzes/types'
+import { QuizTypeBadge } from '../quizzes/QuizTypeBadge'
 import { Alert } from '../../shared/ui/Alert'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
@@ -93,7 +94,7 @@ function CatalogCard({ quiz }: { quiz: CatalogQuiz }) {
   const latest = quiz.attempts.find((item) => item.status === 'in_progress')
   const disabledGroup = quiz.settings.participation.type === 'group'
   const questionsLabel = quiz.mode === 'canvas' ? '1 canvas board' : `${quiz.questionCount} question${quiz.questionCount === 1 ? '' : 's'}`
-  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${questionsLabel}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} min` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><Badge>{quizModeLabel(quiz.mode)}</Badge>{quiz.mode === 'canvas' && quiz.boardKind === 'blank' && <Badge>Graded by instructor</Badge>}<Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={disabledGroup ? undefined : latest ? `/student/quizzes/${quiz.id}/attempts/${latest.id}` : `/student/quizzes/${quiz.id}`} disabled={disabledGroup || (remaining === 0 && !latest)} variant="secondary">{disabledGroup ? 'Group quizzes coming soon' : latest ? 'Resume' : 'View quiz'}</Button></DataCard>
+  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${questionsLabel}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} min` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><QuizTypeBadge mode={quiz.mode} />{quiz.mode === 'canvas' && quiz.boardKind === 'blank' && <Badge>Graded by instructor</Badge>}<Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={disabledGroup ? undefined : latest ? `/student/quizzes/${quiz.id}/attempts/${latest.id}` : `/student/quizzes/${quiz.id}`} disabled={disabledGroup || (remaining === 0 && !latest)} variant="secondary">{disabledGroup ? 'Group quizzes coming soon' : latest ? 'Resume' : 'View quiz'}</Button></DataCard>
 }
 
 function QuizCard({ quiz, attempt, action }: { quiz: CatalogQuiz; attempt: QuizAttempt & { id: string }; action: string }) {

@@ -22,7 +22,7 @@ import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
 import { archiveQuiz, duplicateQuiz, publishQuiz, restoreQuiz, unpublishQuiz, updateQuiz, watchOwnerQuizzes, type QuizRecord } from '../services'
 import { countQuizAttempts, deleteQuizCascade } from '../services/deleteQuizCascade'
-import { quizModeLabel } from '../types'
+import { QuizTypeBadge } from '../QuizTypeBadge'
 import { filterAndSortQuizzes, type QuizFilter, type QuizModeFilter, type QuizSort } from './quizList'
 
 interface DeleteSelection { quiz: QuizRecord; submissions: number }
@@ -254,7 +254,7 @@ function QuizCard({ quiz, classLabel, busy, onAction, onPublish, onDelete }: { q
     </DropdownMenu>
   </div>
 
-  return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${metaStatus} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><Badge>{quizModeLabel(quiz.mode)}</Badge>{isCanvas && <Badge>{quiz.boardKind === 'blank' ? 'You grade' : 'Auto-graded'}</Badge>}<Badge>{classLabel}</Badge></div>}>
+  return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${metaStatus} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><QuizTypeBadge mode={quiz.mode} />{isCanvas && <Badge>{quiz.boardKind === 'blank' ? 'You grade' : 'Auto-graded'}</Badge>}<Badge>{classLabel}</Badge></div>}>
     <div className="quiz-settings-badges">{settingBadges(quiz).map((label) => <span key={label}>{label}</span>)}</div>
     {compact ? compactActions : <div className="quiz-card__actions">
       <Button to={`/instructor/quizzes/${quiz.id}`}><Pencil size={15} aria-hidden="true" /> Edit</Button>

@@ -369,6 +369,14 @@ export const TOKEN_ONLY_CONTRAST_REGISTRY: TokenContrastEntry[] = [
   { name: 'Alert left accent bar: info', fgToken: '--color-navy-800', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Danger border on danger bg', fgToken: '--color-danger', bgToken: '--color-danger-bg', minRatio: 3.0 },
 
+  // Activity type badges (quiz / flashcards / canvas)
+  { name: 'Quiz type badge text on its tint', fgToken: '--color-kind-quiz-fg', bgToken: '--color-kind-quiz-bg', minRatio: 4.5 },
+  { name: 'Flashcards type badge text on its tint', fgToken: '--color-kind-flashcards-fg', bgToken: '--color-kind-flashcards-bg', minRatio: 4.5 },
+  { name: 'Canvas type badge text on its tint', fgToken: '--color-kind-canvas-fg', bgToken: '--color-kind-canvas-bg', minRatio: 4.5 },
+  { name: 'Quiz type badge border on white', fgToken: '--color-kind-quiz-border', bgToken: '--color-white', minRatio: 3.0 },
+  { name: 'Flashcards type badge border on white', fgToken: '--color-kind-flashcards-border', bgToken: '--color-white', minRatio: 3.0 },
+  { name: 'Canvas type badge border on white', fgToken: '--color-kind-canvas-border', bgToken: '--color-white', minRatio: 3.0 },
+
   // Canvas graph pairs
   { name: 'Canvas card title on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
   { name: 'Canvas note card body on white', fgToken: '--color-navy-900-88', bgToken: '--color-white', minRatio: 4.5 },

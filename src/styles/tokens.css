@@ -22,6 +22,16 @@
   --color-feedback-warning-bg: #f3eedf;
   --color-feedback-error: #743f46;
   --color-feedback-error-bg: #f2e6e7;
+  /* Activity type badges: quiz = amber, flashcards = teal, canvas = purple. Each stays distinct in hue, so types are easy to tell apart. */
+  --color-kind-quiz-fg: #634000;
+  --color-kind-quiz-bg: #fdf7eb;
+  --color-kind-quiz-border: #8a5a00;
+  --color-kind-flashcards-fg: #0a524c;
+  --color-kind-flashcards-bg: #edf8f6;
+  --color-kind-flashcards-border: #0f766e;
+  --color-kind-canvas-fg: #4d2182;
+  --color-kind-canvas-bg: #f6f0fd;
+  --color-kind-canvas-border: #6a2fb0;
   --color-danger: #dc2626;
   --color-danger-hover: #b91c1c;
   --color-danger-active: #991b1b;
