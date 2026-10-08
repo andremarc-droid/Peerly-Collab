@@ -6,7 +6,7 @@ import { ProtectedRoute, PublicRoute, RoleRoute } from './RouteGuards'
 import { rememberReturnTo } from './returnTo'
 
 const mocks = vi.hoisted(() => ({
-  auth: { status: 'signedOut' as 'loading' | 'signedOut' | 'signedIn', profileStatus: 'ready' as 'loading' | 'ready' | 'error', profileError: null as string | null, retryProfileSetup: vi.fn() },
+  auth: { status: 'signedOut' as 'loading' | 'signedOut' | 'signedIn', emailVerified: true, refreshEmailVerification: vi.fn(async () => true), profileStatus: 'ready' as 'loading' | 'ready' | 'error', profileError: null as string | null, retryProfileSetup: vi.fn() },
   profile: { profile: null as { uid: string; name: string; email: string | null; photoURL: string | null; role: 'student' | 'instructor' | null; createdAt: number; updatedAt: number } | null, loading: false, error: null as string | null },
 }))
 
@@ -44,6 +44,7 @@ beforeEach(() => {
   sessionStorage.clear()
   mocks.auth.status = 'signedOut'
   mocks.auth.profileStatus = 'ready'
+  mocks.auth.emailVerified = true
   mocks.auth.profileError = null
   mocks.profile.profile = null
   mocks.profile.loading = false
@@ -104,6 +105,24 @@ describe('application route guards', () => {
     mocks.profile.profile = { uid: 'user-1', name: 'Lee', email: 'lee@example.com', photoURL: null, role: 'instructor', createdAt: 1, updatedAt: 1 }
     renderRoutes('/instructor')
     expect(screen.getByRole('heading', { name: 'Instructor dashboard' })).toBeInTheDocument()
+  })
+
+  it('requires email verification before opening either role dashboard', async () => {
+    mocks.auth.status = 'signedIn'
+    mocks.auth.emailVerified = false
+    mocks.profile.profile = { uid: 'user-1', name: 'Lee', email: 'lee@example.com', photoURL: null, role: 'instructor', createdAt: 1, updatedAt: 1 }
+    renderRoutes('/instructor')
+    expect(await screen.findByRole('heading', { name: 'Verify your email' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Instructor dashboard' })).not.toBeInTheDocument()
+  })
+
+  it('requires email verification before opening the student dashboard', async () => {
+    mocks.auth.status = 'signedIn'
+    mocks.auth.emailVerified = false
+    mocks.profile.profile = { uid: 'user-1', name: 'Sam', email: 'sam@example.com', photoURL: null, role: 'student', createdAt: 1, updatedAt: 1 }
+    renderRoutes('/student')
+    expect(await screen.findByRole('heading', { name: 'Verify your email' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Student dashboard' })).not.toBeInTheDocument()
   })
 
   it('redirects instructors away from student class pages', async () => {

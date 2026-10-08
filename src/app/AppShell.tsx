@@ -9,7 +9,7 @@ import { Logo } from '../shared/ui/Logo'
 import { Skeleton } from '../shared/ui/Skeleton'
 import { clearReturnTo } from './returnTo'
 import { clearRoleIntent } from '../features/auth/roleIntent'
-import { resendVerificationEmail, signOutCurrentUser } from '../features/auth/authService'
+import { signOutCurrentUser } from '../features/auth/authService'
 import { useAuth } from '../features/auth/useAuth'
 import { useUserProfile } from '../features/profile/useUserProfile'
 
@@ -158,7 +158,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
         )}
       </header>
-      {user && !user.emailVerified && <EmailVerificationNotice />}
       {signOutError && <div className="app-shell__error"><Alert tone="error" label="Sign out failed">{signOutError}</Alert></div>}
       <div className="app-shell__page">{children}</div>
     </div>
@@ -172,35 +171,4 @@ export function AppShellLoading() {
       <div className="app-shell__page"><main className="app-shell__content app-shell__loading"><Skeleton className="app-shell__title-skeleton" /><Skeleton className="app-shell__card-skeleton" label="Loading dashboard" /></main></div>
     </div>
   )
-}
-
-function EmailVerificationNotice() {
-  const { user } = useAuth()
-  const [cooldown, setCooldown] = useState(user && !user.emailVerified ? 60 : 0)
-  const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
-  useEffect(() => {
-    if (cooldown <= 0) return undefined
-    const timer = window.setTimeout(() => setCooldown((remaining) => Math.max(0, remaining - 1)), 1000)
-    return () => window.clearTimeout(timer)
-  }, [cooldown])
-
-  if (!user || user.emailVerified) return null
-
-  async function resend() {
-    if (!user || cooldown > 0 || busy) return
-    setBusy(true)
-    setNotice(null)
-    try {
-      await resendVerificationEmail(user)
-      setNotice('A new verification email is on its way.')
-      setCooldown(60)
-    } catch {
-      setNotice('We couldn’t send the email right now. Try again shortly.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return <div className="app-shell__notice"><Alert tone="warning" label="Verify your email" action={<Button type="button" variant="ghost" onClick={resend} disabled={busy || cooldown > 0}>{busy ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend email'}</Button>}>{notice ?? 'Confirm your email address to finish setting up your account.'}</Alert></div>
 }

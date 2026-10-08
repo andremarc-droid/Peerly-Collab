@@ -7,6 +7,8 @@ export type AuthStatus = 'loading' | 'signedOut' | 'signedIn'
 
 export interface AuthContextValue {
   user: User | null
+  emailVerified: boolean
+  refreshEmailVerification: () => Promise<boolean>
   status: AuthStatus
   authError: string | null
   clearAuthError: () => void

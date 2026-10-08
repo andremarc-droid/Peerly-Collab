@@ -9,6 +9,7 @@ import {
   onAuthStateChanged,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
+  reload,
   sendEmailVerification,
   sendPasswordResetEmail,
   setPersistence,
@@ -114,6 +115,11 @@ export async function sendPasswordReset(email: string): Promise<void> {
 
 export async function resendVerificationEmail(user: User): Promise<void> {
   await sendEmailVerification(user)
+}
+
+export async function refreshEmailVerificationStatus(user: User): Promise<boolean> {
+  await reload(user)
+  return user.emailVerified
 }
 
 export async function signOutCurrentUser(): Promise<void> {

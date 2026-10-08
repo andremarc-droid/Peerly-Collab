@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { User } from 'firebase/auth'
 import { mapFirebaseAuthError } from './authErrors'
-import { completeGoogleRedirect, prepareLocalAuthPersistence, watchAuthState } from './authService'
+import { completeGoogleRedirect, prepareLocalAuthPersistence, refreshEmailVerificationStatus, watchAuthState } from './authService'
 import { waitForSignInCheck } from './signInGate'
 import { AuthContext, type AuthStatus } from './AuthContext'
 import { clearRoleIntent, readRoleIntent } from './roleIntent'
@@ -13,6 +13,7 @@ import type { UserProfile } from '../profile/profileTypes'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [emailVerified, setEmailVerified] = useState(false)
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [authError, setAuthError] = useState<string | null>(null)
   const [profileStatus, setProfileStatus] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -41,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!active) return
       unsubscribe = watchAuthState((nextUser) => {
         setUser(nextUser)
+        setEmailVerified(nextUser?.emailVerified ?? false)
         setStatus(nextUser ? 'signedIn' : 'signedOut')
         if (nextUser) {
           clearAccountDeleted()
@@ -57,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }, (error) => {
         setUser(null)
+        setEmailVerified(false)
         setStatus('signedOut')
         setAuthError(mapFirebaseAuthError(error))
         setProfileStatus('ready')
@@ -136,11 +139,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const clearAuthError = useCallback(() => setAuthError(null), [])
+  const refreshEmailVerification = useCallback(async () => {
+    if (!user) throw new Error('A signed-in account is required to check email verification.')
+    const verified = await refreshEmailVerificationStatus(user)
+    setEmailVerified(verified)
+    return verified
+  }, [user])
   const retryProfileSetup = useCallback(() => {
     setProfileStatus('loading')
     setProfileError(null)
     setProfileRetry((attempt) => attempt + 1)
   }, [])
-  const value = useMemo(() => ({ user, status, authError, clearAuthError, profileStatus, profileError, profile, roleMismatch, completeRoleSelection, continueWithAccountRole, retryProfileSetup }), [user, status, authError, clearAuthError, profileStatus, profileError, profile, roleMismatch, completeRoleSelection, continueWithAccountRole, retryProfileSetup])
+  const value = useMemo(() => ({ user, emailVerified, refreshEmailVerification, status, authError, clearAuthError, profileStatus, profileError, profile, roleMismatch, completeRoleSelection, continueWithAccountRole, retryProfileSetup }), [user, emailVerified, refreshEmailVerification, status, authError, clearAuthError, profileStatus, profileError, profile, roleMismatch, completeRoleSelection, continueWithAccountRole, retryProfileSetup])
   return <AuthContext.Provider value={value}>{children}<RoleMismatchDialog /></AuthContext.Provider>
 }

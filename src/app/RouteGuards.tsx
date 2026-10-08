@@ -8,6 +8,7 @@ import type { UserRole } from '../features/auth/roleIntent'
 import { dashboardPath, locationPath, readReturnTo, clearReturnTo } from './returnTo'
 import { AppShellLoading } from './AppShell'
 import { signedOutRedirectPath } from '../features/profile/accountDeletionState'
+import { EmailVerificationPage } from '../features/auth/EmailVerificationPage'
 
 export function PublicRoute({ children }: { children: ReactNode }) {
   const { status, profileStatus, profileError, retryProfileSetup } = useAuth()
@@ -38,7 +39,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 
 export function RoleRoute({ allowedRoles, children }: { allowedRoles: UserRole[]; children: ReactNode }) {
-  const { user, status, profileStatus, profileError, retryProfileSetup } = useAuth()
+  const { user, emailVerified, status, profileStatus, profileError, retryProfileSetup } = useAuth()
   const { profile, loading, error } = useUserProfile()
   const location = useLocation()
 
@@ -48,6 +49,7 @@ export function RoleRoute({ allowedRoles, children }: { allowedRoles: UserRole[]
   if (profileStatus === 'error' || error) return <ProfileRouteError message={profileError ?? error ?? 'We couldn’t load your profile.'} onRetry={retryProfileSetup} />
   if (!profile?.role) return <Navigate to="/role?mode=continue" replace state={{ from: locationPath(location) }} />
   if (!allowedRoles.includes(profile.role)) return <Navigate to={dashboardPath(profile.role)} replace />
+  if (!emailVerified) return <EmailVerificationPage role={profile.role} />
   return children
 }
 
