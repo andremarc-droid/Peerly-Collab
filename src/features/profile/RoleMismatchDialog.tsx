@@ -63,11 +63,11 @@ export function RoleMismatchDialog() {
         <Card>
           <span className="role-conflict-mark"><CircleAlert size={24} aria-hidden="true" /><span className="sr-only">Account role mismatch</span></span>
           <h2 id="role-conflict-title" ref={titleRef} tabIndex={-1}>This account has a different role</h2>
-          <p id="role-conflict-description">This account is registered as <strong>{roleMismatch === 'instructor' ? 'an Instructor' : 'a Student'}</strong>. Continue as that role?</p>
+          <p id="role-conflict-description">This account is registered as <strong>{roleMismatch === 'instructor' ? 'an Instructor' : 'a Student'}</strong>. Roles belong to the account and can’t be changed here. To use a different role, sign out and choose another account.</p>
           {error && <Alert tone="error" label="Sign out failed">{error}</Alert>}
           <div className="role-conflict-actions">
             <Button type="button" onClick={continueWithAccountRole}>Continue as {titleCase(roleMismatch)} <MoveRight size={17} aria-hidden="true" /></Button>
-            <Button type="button" variant="secondary" onClick={handleSignOut} disabled={busy}><LogOut size={16} aria-hidden="true" /> {busy ? 'Signing out…' : 'Sign out'}</Button>
+            <Button type="button" variant="secondary" onClick={handleSignOut} disabled={busy}><LogOut size={16} aria-hidden="true" /> {busy ? 'Signing out…' : 'Sign out and switch account'}</Button>
           </div>
         </Card>
       </div>

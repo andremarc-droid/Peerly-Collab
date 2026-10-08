@@ -91,6 +91,7 @@ interface GoogleSignInOptions {
 
 export async function signInWithGoogle({ requireExistingAccount = false }: GoogleSignInOptions = {}) {
   const provider = new GoogleAuthProvider()
+  provider.setCustomParameters({ prompt: 'select_account' })
   const endCheck = requireExistingAccount ? beginSignInCheck() : () => {}
   try {
     let result: UserCredential
