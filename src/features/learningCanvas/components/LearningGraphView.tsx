@@ -161,6 +161,7 @@ export function LearningGraphView({
   /** Notes added inside a shared graph by an invited editor. They live in the graph itself, not in a class. */
   const [graphNotes, setGraphNotes] = useState<Record<string, SharedGraphNode>>({})
   const [syncingSharedGraph, setSyncingSharedGraph] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
   const isSharedGraphOwner = Boolean(sharedGraphOwnerId && user?.uid === sharedGraphOwnerId)
   const canEditSharedGraph = !sharedGraphId || (sharedGraphReady && (isSharedGraphOwner || sharedGraphRole === 'editor'))
 
@@ -265,6 +266,12 @@ export function LearningGraphView({
     }
     return false
   }, [includedNodeIds, savedNodeIds, currentPositions, savedPositions])
+
+  // Lets the live listener know this person has edits that haven't reached the shared graph yet.
+  const dirtyRef = useRef(false)
+  useEffect(() => {
+    dirtyRef.current = isDirty
+  })
 
   // Auto-save the unsaved work as a draft; clear it once it matches the saved graph.
   useEffect(() => {
@@ -457,9 +464,23 @@ export function LearningGraphView({
     }),
   )
 
+  // A node can be on screen before the shared copy has its details (for example a note that was just
+  // created). That also counts as unsynced, so it is saved even when the node list itself didn't change.
+  const missingFromSnapshot = useMemo(() => {
+    if (!sharedGraphId || !sharedGraphContents || sharedGraphContents.id !== sharedGraphId) return false
+    const stored = new Set(sharedGraphContents.nodes.map((node) => node.id))
+    return graphData.nodes.some((node) => includedNodeIds.has(node.id) && !stored.has(node.id))
+  }, [graphData.nodes, includedNodeIds, sharedGraphContents, sharedGraphId])
+
+  const missingRetriesRef = useRef(0)
   useEffect(() => {
-    if (!sharedGraphId || !graphClassId || !user || !sharedGraphReady || !canEditSharedGraph || !isDirty) return
+    if (!missingFromSnapshot) missingRetriesRef.current = 0
+    if (!sharedGraphId || !graphClassId || !user || !sharedGraphReady || !canEditSharedGraph || (!isDirty && !missingFromSnapshot)) return
+    // A node that can't be stored (for example one far off the canvas) must not make this save forever.
+    const missingOnly = !isDirty
+    if (missingOnly && missingRetriesRef.current >= 2) return
     const timer = window.setTimeout(() => {
+      if (missingOnly) missingRetriesRef.current += 1
       setSyncingSharedGraph(true)
       void saveSharedGraph(graphClassId, sharedGraphId, {
         nodeIds: Array.from(includedNodeIds),
@@ -469,16 +490,20 @@ export function LearningGraphView({
       }).then(async () => {
         setSavedNodeIds(new Set(includedNodeIds))
         setSavedPositions({ ...currentPositions })
+        setSyncError(null)
         await logGraphActivity(graphClassId, sharedGraphId, {
           uid: user.uid,
           name: user.displayName || user.email || 'Learner',
         }, 'Updated the graph layout or included materials')
       }).catch((error: unknown) => {
-        showToast('error', error instanceof Error ? error.message : 'Could not sync this graph.')
+        console.error('Shared graph sync failed', error)
+        const message = error instanceof Error ? error.message : 'Could not sync this graph.'
+        setSyncError(message)
+        showToast('error', message)
       }).finally(() => setSyncingSharedGraph(false))
     }, 500)
     return () => window.clearTimeout(timer)
-  }, [canEditSharedGraph, currentPositions, graphClassId, graphData, includedNodeIds, isDirty, sharedGraphId, sharedGraphReady, showToast, user])
+  }, [canEditSharedGraph, currentPositions, graphClassId, graphData, includedNodeIds, isDirty, missingFromSnapshot, sharedGraphId, sharedGraphReady, showToast, user])
 
   const nodesRef = useRef<GraphNode[]>(graphData.nodes)
   const linksRef = useRef(graphData.links)
@@ -507,9 +532,16 @@ export function LearningGraphView({
       const ids = new Set(graph.nodeIds)
       const positions = sanitizePositions(graph.positions)
       setSavedNodeIds(ids)
-      setIncludedNodeIds(ids)
       setSavedPositions(positions)
-      setCurrentPositions(positions)
+      if (dirtyRef.current) {
+        // This person has edits that haven't synced yet: keep them and merge in what others changed,
+        // instead of letting the incoming copy wipe out a node they just added.
+        setIncludedNodeIds((previous) => new Set([...previous, ...ids]))
+        setCurrentPositions((previous) => ({ ...positions, ...previous }))
+      } else {
+        setIncludedNodeIds(ids)
+        setCurrentPositions(positions)
+      }
       setLoadedSharedGraph({ id: sharedGraphId, ownerId: graph.ownerId, ownerName: graph.ownerName })
     }, onError)
     const stopRole = watchGraphRole(graphClassId, sharedGraphId, uid, (role) => {
@@ -1155,7 +1187,7 @@ export function LearningGraphView({
       className={isFullscreen ? 'fixed inset-0 z-50 grid content-start gap-4 overflow-auto bg-white p-4' : 'grid gap-4'}
       data-fullscreen={isFullscreen ? 'true' : 'false'}
     >
-      {!sharedGraphId && user && <SharedGraphList uid={user.uid} selectedClassId={selectedClassId || 'all'} classIds={classes.map((item) => item.id)} />}
+      {user && <SharedGraphList uid={user.uid} selectedClassId={selectedClassId || 'all'} classIds={classes.map((item) => item.id)} activeGraphId={sharedGraphId} />}
       {sharedGraphId && sharedGraphError && <Alert tone="error" label="Shared graph unavailable">{sharedGraphError}</Alert>}
       {sharedGraphId && sharedGraphReady && !sharedGraphError && !isSharedGraphOwner && !sharedGraphRole && (
         <Alert tone="error" label="No access to this graph">This graph is only available to its owner and invited active class members.</Alert>
@@ -1333,6 +1365,9 @@ export function LearningGraphView({
 
       {canEditSharedGraph && syncingSharedGraph && (
         <p className="m-0 px-4 pt-2 text-sm text-navy-800" role="status" aria-live="polite">Syncing graph changes…</p>
+      )}
+      {canEditSharedGraph && syncError && (
+        <div className="px-4 pt-2"><Alert tone="error" label="Changes not synced">{syncError} Other people won’t see your latest changes until this is fixed.</Alert></div>
       )}
 
       {/* Stage: the SVG plus every graph overlay. Collaboration UI never lives here. */}

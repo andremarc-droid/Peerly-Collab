@@ -11,6 +11,8 @@ interface SharedGraphListProps {
   selectedClassId: string
   /** Classes this person can see, so graph views they saved themselves can be found. */
   classIds: string[]
+  /** The graph view that is open right now, so it can be marked and the rest stay one click away. */
+  activeGraphId?: string | null
 }
 
 function roleLabel(role: SharedGraphRef['role']): string {
@@ -18,7 +20,7 @@ function roleLabel(role: SharedGraphRef['role']): string {
   return role === 'editor' ? 'Can edit' : 'View only'
 }
 
-export function SharedGraphList({ uid, selectedClassId, classIds }: SharedGraphListProps) {
+export function SharedGraphList({ uid, selectedClassId, classIds, activeGraphId = null }: SharedGraphListProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const [sharedWithMe, setSharedWithMe] = useState<SharedGraphRef[]>([])
   const [ownedByMe, setOwnedByMe] = useState<SharedGraphRef[]>([])
@@ -45,6 +47,7 @@ export function SharedGraphList({ uid, selectedClassId, classIds }: SharedGraphL
   }, [ownedByMe, sharedWithMe, selectedClassId])
 
   if (error) return <Alert tone="error" label="Could not load saved graph views">{error}</Alert>
+  // Inside a graph view, the open graph's class decides which views are listed, so every view stays reachable.
   if (visible.length === 0) return null
 
   return (
@@ -53,16 +56,20 @@ export function SharedGraphList({ uid, selectedClassId, classIds }: SharedGraphL
         <span className="section-kicker">SAVED GRAPH VIEWS</span>
         <h2 id="shared-graph-views-heading" className="m-0 text-xl font-bold text-navy-900">Graph views</h2>
       </div>
-      {visible.map((graph) => (
+      {visible.map((graph) => {
+        const isActive = graph.id === activeGraphId
+        return (
         <DataCard
           key={`${graph.classId}/${graph.id}`}
           title={graph.title}
           meta={`${graph.nodeIds.length} included materials · ${graph.role === 'owner' ? 'Saved by you' : `Shared by ${graph.ownerName}`}`}
-          badge={<Badge>{roleLabel(graph.role)}</Badge>}
+          badge={<><Badge>{roleLabel(graph.role)}</Badge>{isActive && <Badge>Open now</Badge>}</>}
           actions={
             <Button
               type="button"
               variant="secondary"
+              disabled={isActive}
+              aria-current={isActive ? 'true' : undefined}
               onClick={() => {
                 const next = new URLSearchParams(searchParams)
                 next.set('tab', 'graph')
@@ -71,11 +78,12 @@ export function SharedGraphList({ uid, selectedClassId, classIds }: SharedGraphL
                 setSearchParams(next)
               }}
             >
-              Open graph
+              {isActive ? 'Viewing' : 'Open graph'}
             </Button>
           }
         />
-      ))}
+        )
+      })}
     </section>
   )
 }
