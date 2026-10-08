@@ -42,7 +42,7 @@ import { stepSimulation, type SimulationParams } from '../graph/simulation'
 import { NOTE_CONTENT_MAX, NOTE_TITLE_MAX, noteDescription } from '../noteContent'
 import { buildReferencePath, type CanvasViewerRole } from '../referenceRoutes'
 import type { LearningCanvasWithId } from '../types'
-import { createSharedGraph, logGraphActivity, saveSharedGraph, watchGraphRole, watchSharedGraph, type SharedGraphSnapshot } from '../graph/sharing'
+import { createSharedGraph, logGraphActivity, saveSharedGraph, watchGraphRole, watchSharedGraph, type SharedGraphNode, type SharedGraphSnapshot } from '../graph/sharing'
 import { AddNodeDialog } from './AddNodeDialog'
 import { ImportExistingDialog } from './ImportExistingDialog'
 import { GraphCollabSidebar } from '../graph/GraphCollabSidebar'
@@ -158,6 +158,8 @@ export function LearningGraphView({
     ? sharedGraphErrorRecord.message
     : invalidGraphLink ? 'This shared graph link is missing its class.' : null
   const [sharingBusy, setSharingBusy] = useState(false)
+  /** Notes added inside a shared graph by an invited editor. They live in the graph itself, not in a class. */
+  const [graphNotes, setGraphNotes] = useState<Record<string, SharedGraphNode>>({})
   const [syncingSharedGraph, setSyncingSharedGraph] = useState(false)
   const isSharedGraphOwner = Boolean(sharedGraphOwnerId && user?.uid === sharedGraphOwnerId)
   const canEditSharedGraph = !sharedGraphId || (sharedGraphReady && (isSharedGraphOwner || sharedGraphRole === 'editor'))
@@ -604,6 +606,35 @@ export function LearningGraphView({
     setIncludedNodeIds((prev) => new Set([...prev, `${type}:${id}`]))
   }
 
+  /**
+   * An invited editor can't create documents in someone else's class, so their note is stored only in the
+   * shared graph. Everyone with access sees it, and nothing in the class is touched.
+   */
+  const handleCreateGraphNote = async ({ title, content }: { classId: string; title: string; content: string }): Promise<string> => {
+    const rawId = `graph-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const id = `note:${rawId}`
+    const x = Math.round((Math.random() - 0.5) * 240)
+    const y = Math.round((Math.random() - 0.5) * 240)
+    setGraphNotes((prev) => ({
+      ...prev,
+      [id]: {
+        id,
+        rawId,
+        type: 'note',
+        title: title.slice(0, 500),
+        classId: graphClassId,
+        className: classes.find((item) => item.id === graphClassId)?.name ?? '',
+        description: noteDescription(content),
+        content: content.slice(0, 2000),
+        x,
+        y,
+        isFixed: true,
+      },
+    }))
+    setCurrentPositions((prev) => ({ ...prev, [id]: { x, y, isFixed: true } }))
+    return rawId
+  }
+
   const handleRemoveFromGraph = (nodeId: string) => {
     if (!canEditSharedGraph) return
     setIncludedNodeIds((prev) => {
@@ -655,6 +686,9 @@ export function LearningGraphView({
           && (!searchQuery || node.title.toLowerCase().includes(searchQuery.toLowerCase())),
         ),
         ...local.nodes.filter((node) => includedNodeIds.has(node.id) && !snapshotIds.has(node.id)),
+        ...Object.values(graphNotes)
+          .filter((note) => includedNodeIds.has(note.id) && !snapshotIds.has(note.id) && !localNodes.has(note.id))
+          .map((note) => ({ ...note, vx: 0, vy: 0, radius: 18, degree: 0 })),
       ]
       const visibleIds = new Set(nodes.map((node) => node.id))
       const links = new Map<string, GraphData['links'][number]>()
@@ -706,6 +740,7 @@ export function LearningGraphView({
     quizTitles,
     sharedGraphContents,
     sharedGraphId,
+    graphNotes,
     selectedClassId,
     allowedTypes,
     searchQuery,
@@ -1108,6 +1143,8 @@ export function LearningGraphView({
 
   // The owner and invited editors can add nodes inside a shared graph; viewers cannot (canEditSharedGraph).
   const hasAddCapabilities = Boolean(onCreateNote || onCreateCanvas) && canEditSharedGraph
+  // Invited editors (not the owner) add graph-only notes, because they may have no right to create class documents.
+  const usesGraphNotes = Boolean(sharedGraphId) && !isSharedGraphOwner
 
   const hasSharedAccess = Boolean(sharedGraphId && sharedGraphReady && !sharedGraphError && (isSharedGraphOwner || sharedGraphRole))
   const showCollabSidebar = hasSharedAccess && Boolean(user) && Boolean(sharedGraphId)
@@ -1843,7 +1880,7 @@ export function LearningGraphView({
               ) : (
                 <div className="p-2.5 rounded-xl bg-navy-700-05 text-sm text-navy-900 font-sans max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                   {displayNoteText || 'No notes added yet. Click Edit to write concepts.'}
-                  {loadedNote?.status === 'error' && onLoadNoteContent && (
+                  {loadedNote?.status === 'error' && onLoadNoteContent && !sharedGraphId && (
                     <p className="m-0 mt-2 text-sm font-semibold text-navy-800">
                       Could not load the full note, so editing is unavailable right now.
                     </p>
@@ -2008,9 +2045,11 @@ export function LearningGraphView({
       {/* Add Node Dialog */}
       {hasAddCapabilities && (
         <AddNodeDialog
+          key={sharedGraphId ?? 'my-graph'}
           open={addDialogOpen}
           onClose={() => setAddDialogOpen(false)}
-          onCreateNote={onCreateNote || (async () => {})}
+          noteOnly={usesGraphNotes}
+          onCreateNote={usesGraphNotes ? handleCreateGraphNote : onCreateNote || (async () => {})}
           onCreateCanvas={onCreateCanvas || (async () => {})}
           onCreated={handleNodeCreated}
           classes={classes}

@@ -14,6 +14,8 @@ interface AddNodeDialogProps {
   onCreated?: (type: 'note' | 'learning', id: string) => void
   classes: Array<{ id: string; name: string }>
   defaultClassId?: string
+  /** Only offer concept notes (used inside a shared graph, where canvas boards can't be created). */
+  noteOnly?: boolean
   moduleTitles?: Record<string, string>
   quizTitles?: Record<string, string>
 }
@@ -26,6 +28,7 @@ export function AddNodeDialog({
   onCreated,
   classes,
   defaultClassId,
+  noteOnly = false,
 }: AddNodeDialogProps) {
   const [nodeType, setNodeType] = useState<AddNodeType>('note')
   const [title, setTitle] = useState('')
@@ -53,7 +56,7 @@ export function AddNodeDialog({
     setLoading(true)
 
     try {
-      if (nodeType === 'note') {
+      if (nodeType === 'note' || noteOnly) {
         const res = await onCreateNote({
           classId: classToUse,
           title: trimmedTitle,
@@ -104,7 +107,7 @@ export function AddNodeDialog({
         )}
 
         {/* Node Type Selector */}
-        <div>
+        {!noteOnly && <div>
           <label className="block text-xs font-semibold text-navy-900 mb-1.5">
             Element Type
           </label>
@@ -136,10 +139,10 @@ export function AddNodeDialog({
               )
             })}
           </div>
-        </div>
+        </div>}
 
         {/* Class Selection */}
-        {classes.length > 1 && (
+        {!noteOnly && classes.length > 1 && (
           <div>
             <label htmlFor="graph-add-class" className="block text-xs font-semibold text-navy-900 mb-1">
               Class
