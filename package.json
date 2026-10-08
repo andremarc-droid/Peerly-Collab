@@ -9,7 +9,9 @@
     "typecheck": "tsc -b",
     "lint": "oxlint",
     "test": "cross-env XDG_CONFIG_HOME=node_modules/.cache/firebase-cli-config firebase emulators:exec --only auth,firestore --project demo-peerly-collab \"vitest run\"",
-    "emulators": "firebase emulators:start --project demo-peerly-collab",
+    "emulators": "firebase emulators:start --only auth,firestore,functions --project demo-peerly-collab",
+    "preemulators": "npm run build:functions",
+    "build:functions": "npm --prefix functions run build",
     "preview": "vite preview"
   },
   "dependencies": {

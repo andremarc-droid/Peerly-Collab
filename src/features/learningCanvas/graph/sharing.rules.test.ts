@@ -223,6 +223,13 @@ describe('Graph view sharing security rules', () => {
     await assertFails(getDoc(doc(member, graphPath)))
   })
 
+  it('lets only the graph owner delete a graph view', async () => {
+    const owner = environment.authenticatedContext('owner').firestore()
+    const { member } = await inviteAndJoin('editor', 'editor')
+    await assertFails(deleteDoc(doc(member, graphPath)))
+    await assertSucceeds(deleteDoc(doc(owner, graphPath)))
+  })
+
   it('allows anyone with the invite code to join without class membership', async () => {
     const owner = environment.authenticatedContext('owner').firestore()
     const outsider = environment.authenticatedContext('outsider').firestore()
