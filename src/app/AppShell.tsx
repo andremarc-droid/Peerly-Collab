@@ -18,7 +18,7 @@ interface NavItem { to: string; label: string; end?: boolean }
 const NAV_ITEMS: Record<'Instructor' | 'Student', NavItem[]> = {
   Instructor: [
     { to: '/instructor', label: 'Classes', end: true },
-    { to: '/instructor/quizzes', label: 'Quizzes' },
+    { to: '/instructor/quizzes', label: 'Activities & Quizzes' },
     { to: '/instructor/learning', label: 'Learning' },
   ],
   Student: [
