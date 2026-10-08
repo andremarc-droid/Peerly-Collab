@@ -8,7 +8,7 @@ import { clearRoleIntent, readRoleIntent } from './roleIntent'
 import type { UserRole } from './roleIntent'
 import { getRoleMismatch } from '../profile/profileTypes'
 import { RoleMismatchDialog } from '../profile/RoleMismatchDialog'
-import { isAccountDeletionInProgress } from '../profile/accountDeletionState'
+import { clearAccountDeleted, isAccountDeletionInProgress } from '../profile/accountDeletionState'
 import type { UserProfile } from '../profile/profileTypes'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -43,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(nextUser)
         setStatus(nextUser ? 'signedIn' : 'signedOut')
         if (nextUser) {
+          clearAccountDeleted()
           setProfileStatus('loading')
           setProfileError(null)
           setProfile(null)

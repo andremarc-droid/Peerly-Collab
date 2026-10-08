@@ -7,6 +7,7 @@ import { useUserProfile } from '../features/profile/useUserProfile'
 import type { UserRole } from '../features/auth/roleIntent'
 import { dashboardPath, locationPath, readReturnTo, clearReturnTo } from './returnTo'
 import { AppShellLoading } from './AppShell'
+import { signedOutRedirectPath } from '../features/profile/accountDeletionState'
 
 export function PublicRoute({ children }: { children: ReactNode }) {
   const { status, profileStatus, profileError, retryProfileSetup } = useAuth()
@@ -30,7 +31,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   const location = useLocation()
 
   if (status === 'loading' || (status === 'signedIn' && (profileStatus === 'loading' || loading))) return <AppShellLoading />
-  if (status === 'signedOut') return <Navigate to="/role?mode=signin" replace state={{ from: locationPath(location) }} />
+  if (status === 'signedOut') return <Navigate to={signedOutRedirectPath()} replace state={{ from: locationPath(location) }} />
   if (profileStatus === 'error' || error) return <ProfileRouteError message={profileError ?? error ?? 'We couldn’t load your profile.'} onRetry={retryProfileSetup} />
   if (!profile?.role) return <Navigate to="/role?mode=continue" replace state={{ from: locationPath(location) }} />
   return children
@@ -42,8 +43,8 @@ export function RoleRoute({ allowedRoles, children }: { allowedRoles: UserRole[]
   const location = useLocation()
 
   if (status === 'loading' || (status === 'signedIn' && (profileStatus === 'loading' || loading))) return <AppShellLoading />
-  if (status === 'signedOut') return <Navigate to="/role?mode=signin" replace state={{ from: locationPath(location) }} />
-  if (!user) return <Navigate to="/role?mode=signin" replace state={{ from: locationPath(location) }} />
+  if (status === 'signedOut') return <Navigate to={signedOutRedirectPath()} replace state={{ from: locationPath(location) }} />
+  if (!user) return <Navigate to={signedOutRedirectPath()} replace state={{ from: locationPath(location) }} />
   if (profileStatus === 'error' || error) return <ProfileRouteError message={profileError ?? error ?? 'We couldn’t load your profile.'} onRetry={retryProfileSetup} />
   if (!profile?.role) return <Navigate to="/role?mode=continue" replace state={{ from: locationPath(location) }} />
   if (!allowedRoles.includes(profile.role)) return <Navigate to={dashboardPath(profile.role)} replace />

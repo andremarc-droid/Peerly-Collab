@@ -35,6 +35,10 @@ const messages: Record<string, string> = {
   'auth/operation-not-allowed': 'This sign-in method is not enabled. Contact your instructor or support.',
   'auth/requires-recent-login': 'For your security, sign in again, then try deleting your account once more.',
   'auth/user-mismatch': 'That isn’t the account you’re signed in with. Choose the same account to continue.',
+  'auth/unauthorized-domain': 'This website address isn’t authorized for Google sign-in yet. Contact support.',
+  'permission-denied': 'Some of your data couldn’t be deleted because of a permissions problem. Please try again, and contact support if it keeps happening.',
+  'unavailable': 'We couldn’t reach the server. Check your internet connection and try again.',
+  'failed-precondition': 'Part of your data couldn’t be found or cleaned up. Please try again.',
 }
 
 export function mapFirebaseAuthError(error: unknown): string {

@@ -16,3 +16,27 @@ export function endAccountDeletion(): void {
 export function isAccountDeletionInProgress(): boolean {
   return deleting
 }
+
+/**
+ * Set just before the sign-in itself is deleted. When the person is signed out right after, the route
+ * guards send them to the landing page instead of the sign-in screen. It is cleared if the delete fails
+ * and whenever someone signs in again.
+ */
+let accountDeleted = false
+
+export function markAccountDeleted(): void {
+  accountDeleted = true
+}
+
+export function clearAccountDeleted(): void {
+  accountDeleted = false
+}
+
+export function wasAccountDeleted(): boolean {
+  return accountDeleted
+}
+
+/** Where a signed-out person on a private page should go. */
+export function signedOutRedirectPath(): string {
+  return accountDeleted ? '/' : '/role?mode=signin'
+}

@@ -13,7 +13,7 @@ import { useAuth } from '../auth/useAuth'
 import { mapFirebaseAuthError } from '../auth/authErrors'
 import { useUserProfile } from './useUserProfile'
 import { deleteAccount } from './accountDeletion'
-import { beginAccountDeletion, endAccountDeletion } from './accountDeletionState'
+import { beginAccountDeletion, endAccountDeletion, signedOutRedirectPath } from './accountDeletionState'
 import { DeleteAccountDialog } from './DeleteAccountDialog'
 import { AppShell, AppShellLoading } from '../../app/AppShell'
 import { clearReturnTo } from '../../app/returnTo'
@@ -34,7 +34,7 @@ export function ProfilePage() {
   const name = editedName ?? profile?.name ?? ''
 
   if (status === 'loading' || profileStatus === 'loading' || loading) return <AppShellLoading />
-  if (status === 'signedOut' || !user) return <Navigate to="/role?mode=signin" replace />
+  if (status === 'signedOut' || !user) return <Navigate to={signedOutRedirectPath()} replace />
   if (profileStatus === 'error') return <ProfileLoadError message={profileError ?? 'We couldn’t prepare your profile.'} onRetry={retryProfileSetup} />
   if (error) return <ProfileLoadError message={error} onRetry={retryProfileSetup} />
   if (!profile || !profile.role) return <Navigate to="/role?mode=continue" replace />
@@ -93,8 +93,9 @@ export function ProfilePage() {
       await deleteAccount({ user, role, password })
       clearRoleIntent()
       clearReturnTo()
-      // Once the sign-in is gone the page redirects to sign in on its own.
+      // Once the sign-in is gone the app sends the person to the landing page on its own.
     } catch (deleteFailure) {
+      console.error('Account deletion failed', deleteFailure)
       setDeleteError(mapFirebaseAuthError(deleteFailure))
     } finally {
       endAccountDeletion()

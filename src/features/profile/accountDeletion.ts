@@ -1,6 +1,7 @@
 import type { User } from 'firebase/auth'
 import { deleteAuthAccount, reauthenticateForSensitiveAction } from '../auth/authService'
 import type { UserRole } from '../auth/roleIntent'
+import { clearAccountDeleted, markAccountDeleted } from './accountDeletionState'
 
 interface DeleteAccountInput {
   user: User
@@ -20,5 +21,12 @@ export async function deleteAccount({ user, role, password }: DeleteAccountInput
   await reauthenticateForSensitiveAction(user, password)
   const { deleteAccountData } = await import('./accountData')
   await deleteAccountData(user.uid, role)
-  await deleteAuthAccount(user)
+  // Signing out follows right away, so flag it first: the app then sends the person to the landing page.
+  markAccountDeleted()
+  try {
+    await deleteAuthAccount(user)
+  } catch (error) {
+    clearAccountDeleted()
+    throw error
+  }
 }
