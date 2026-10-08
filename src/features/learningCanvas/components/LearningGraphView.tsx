@@ -37,12 +37,21 @@ import {
   type GraphNode,
   type GraphNodeType,
   type GraphData,
+  type GraphLink,
 } from '../graph/graphModel'
 import { stepSimulation, type SimulationParams } from '../graph/simulation'
 import { NOTE_CONTENT_MAX, NOTE_TITLE_MAX, noteDescription } from '../noteContent'
 import { buildReferencePath, type CanvasViewerRole } from '../referenceRoutes'
 import type { LearningCanvasWithId } from '../types'
 import { createSharedGraph, logGraphActivity, saveSharedGraph, watchGraphRole, watchSharedGraph, type SharedGraphNode, type SharedGraphSnapshot } from '../graph/sharing'
+import {
+  addGraphLink,
+  graphLinksEqual,
+  mergeGraphLinks,
+  mergeNodeIds,
+  mergePositions,
+  removeGraphLink,
+} from '../graph/sharedGraphMerge'
 import { AddNodeDialog } from './AddNodeDialog'
 import { ImportExistingDialog } from './ImportExistingDialog'
 import { GraphCollabSidebar } from '../graph/GraphCollabSidebar'
@@ -83,6 +92,8 @@ const TYPE_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; cla
 
 /** Saved/dragged node coordinates beyond this are treated as corrupt (graph units). */
 const MAX_NODE_COORD = 1500
+const EMPTY_GRAPH_DATA: GraphData = { nodes: [], links: [] }
+const EMPTY_GRAPH_LINKS: GraphLink[] = []
 
 /** Every node type the graph shows. The per-type filter buttons were removed, so nothing is hidden by type. */
 const ALL_NODE_TYPES: Set<GraphNodeType> = new Set(['note', 'learning', 'module', 'quiz'])
@@ -142,9 +153,13 @@ export function LearningGraphView({
   const uid = user?.uid
   const [searchParams, setSearchParams] = useSearchParams()
   const sharedGraphId = searchParams.get('graphId')
+  const localGraphId = searchParams.get('localGraphId')
+  const returnClassId = searchParams.get('returnClassId')
   const graphClassId = sharedGraphId
     ? searchParams.get('classId') || selectedClassId || ''
-    : selectedClassId && selectedClassId !== 'all' ? selectedClassId : classes[0]?.id || ''
+    : localGraphId
+      ? searchParams.get('classId') || (selectedClassId && selectedClassId !== 'all' ? selectedClassId : classes[0]?.id || '')
+      : selectedClassId && selectedClassId !== 'all' ? selectedClassId : classes[0]?.id || ''
   const [loadedSharedGraph, setLoadedSharedGraph] = useState<{ id: string; ownerId: string | null; ownerName: string | null } | null>(null)
   const [sharedGraphContents, setSharedGraphContents] = useState<SharedGraphSnapshot | null>(null)
   const [sharedGraphRoleRecord, setSharedGraphRoleRecord] = useState<{ graphId: string; role: 'viewer' | 'editor' | null } | null>(null)
@@ -160,6 +175,8 @@ export function LearningGraphView({
   const [sharingBusy, setSharingBusy] = useState(false)
   /** Notes added inside a shared graph by an invited editor. They live in the graph itself, not in a class. */
   const [graphNotes, setGraphNotes] = useState<Record<string, SharedGraphNode>>({})
+  const [sharedGraphLinksRecord, setSharedGraphLinksRecord] = useState<{ graphId: string; links: GraphLink[] } | null>(null)
+  const [savedSharedGraphLinksRecord, setSavedSharedGraphLinksRecord] = useState<{ graphId: string; links: GraphLink[] } | null>(null)
   const [syncingSharedGraph, setSyncingSharedGraph] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   const isSharedGraphOwner = Boolean(sharedGraphOwnerId && user?.uid === sharedGraphOwnerId)
@@ -172,13 +189,19 @@ export function LearningGraphView({
   const allowedTypes = ALL_NODE_TYPES
 
   /* ── Storage & Included Nodes (Custom Graph View + Positions) ── */
-  const storageKey = `peerly:graph_nodes_${role}_${selectedClassId || 'all'}`
+  const myGraphScopeClassId = localGraphId ? returnClassId || selectedClassId : selectedClassId
+  const myGraphStorageKey = `peerly:graph_nodes_${role}_${myGraphScopeClassId || 'all'}`
+  const storageKey = sharedGraphId
+    ? `peerly:graph_shared_${graphClassId}_${sharedGraphId}`
+    : localGraphId
+      ? `${myGraphStorageKey}:view:${localGraphId}`
+      : myGraphStorageKey
 
   type StoredPositions = Record<string, { x: number; y: number; isFixed?: boolean }>
 
-  const loadFromStorage = useCallback((): { ids: Set<string>; positions: StoredPositions } => {
+  const readFromStorage = useCallback((key: string): { ids: Set<string>; positions: StoredPositions } => {
     try {
-      const saved = localStorage.getItem(storageKey)
+      const saved = localStorage.getItem(key)
       if (saved) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed)) {
@@ -196,16 +219,25 @@ export function LearningGraphView({
       // ignore
     }
     return { ids: new Set<string>(), positions: {} }
-  }, [storageKey])
+  }, [])
+
+  const loadFromStorage = useCallback(
+    (key = storageKey): { ids: Set<string>; positions: StoredPositions } =>
+      sharedGraphId && key === storageKey
+        ? { ids: new Set<string>(), positions: {} }
+        : readFromStorage(key),
+    [readFromStorage, sharedGraphId, storageKey],
+  )
 
   /* ── Unsaved draft (auto-saved per browser session) ──
      Survives switching tabs / refreshing; "Save graph" commits it to localStorage,
      "Discard" drops it. */
   const storageKeyRef = useRef(storageKey)
 
-  const loadDraft = useCallback((): { ids: Set<string>; positions: StoredPositions } | null => {
+  const loadDraft = useCallback((key = storageKey): { ids: Set<string>; positions: StoredPositions } | null => {
+    if (sharedGraphId && key === storageKey) return null
     try {
-      const raw = sessionStorage.getItem(`${storageKey}:draft`)
+      const raw = sessionStorage.getItem(`${key}:draft`)
       if (!raw) return null
       const parsed = JSON.parse(raw)
       if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.nodeIds)) return null
@@ -216,19 +248,20 @@ export function LearningGraphView({
     } catch {
       return null
     }
-  }, [storageKey])
+  }, [sharedGraphId, storageKey])
 
   /** Last on-screen positions of every node (pinned or not), so a remount doesn't re-run the layout from scratch. */
-  const loadLayout = useCallback((): StoredPositions => {
+  const loadLayout = useCallback((key = storageKey): StoredPositions => {
+    if (sharedGraphId && key === storageKey) return {}
     try {
-      const raw = sessionStorage.getItem(`${storageKey}:layout`)
+      const raw = sessionStorage.getItem(`${key}:layout`)
       if (!raw) return {}
       const parsed = JSON.parse(raw)
       return parsed && typeof parsed === 'object' ? sanitizePositions(parsed as StoredPositions) : {}
     } catch {
       return {}
     }
-  }, [storageKey])
+  }, [sharedGraphId, storageKey])
 
   const [savedNodeIds, setSavedNodeIds] = useState<Set<string>>(() => loadFromStorage().ids)
   const [includedNodeIds, setIncludedNodeIds] = useState<Set<string>>(
@@ -238,6 +271,29 @@ export function LearningGraphView({
   const [currentPositions, setCurrentPositions] = useState<StoredPositions>(
     () => (loadDraft() ?? loadFromStorage()).positions,
   )
+  const currentSharedLinks = useMemo(
+    () => sharedGraphLinksRecord?.graphId === sharedGraphId
+      ? sharedGraphLinksRecord.links.filter(
+          (link) => includedNodeIds.has(link.source) && includedNodeIds.has(link.target),
+        )
+      : EMPTY_GRAPH_LINKS,
+    [sharedGraphLinksRecord, sharedGraphId, includedNodeIds],
+  )
+  const savedSharedLinks = useMemo(
+    () => savedSharedGraphLinksRecord?.graphId === sharedGraphId
+      ? savedSharedGraphLinksRecord.links
+      : EMPTY_GRAPH_LINKS,
+    [savedSharedGraphLinksRecord, sharedGraphId],
+  )
+  const includedNodeIdsRef = useRef(includedNodeIds)
+  const currentPositionsRef = useRef(currentPositions)
+  const sharedGraphLinksRef = useRef(sharedGraphLinksRecord)
+  const sharedGraphBaselineRef = useRef<{
+    graphId: string
+    nodeIds: string[]
+    positions: StoredPositions
+    links: GraphLink[]
+  } | null>(null)
 
   // Sync on class/role switch
   useEffect(() => {
@@ -262,16 +318,20 @@ export function LearningGraphView({
     for (const k of currKeys) {
       const cp = currentPositions[k]
       const sp = savedPositions[k]
-      if (!sp || cp.x !== sp.x || cp.y !== sp.y) return true
+      if (!sp || cp.x !== sp.x || cp.y !== sp.y || (cp.isFixed === true) !== (sp.isFixed === true)) return true
     }
+    if (sharedGraphId && !graphLinksEqual(currentSharedLinks, savedSharedLinks)) return true
     return false
-  }, [includedNodeIds, savedNodeIds, currentPositions, savedPositions])
+  }, [includedNodeIds, savedNodeIds, currentPositions, savedPositions, sharedGraphId, currentSharedLinks, savedSharedLinks])
 
   // Lets the live listener know this person has edits that haven't reached the shared graph yet.
-  const dirtyRef = useRef(false)
+  const dirtyRef = useRef<{ graphId: string | null; dirty: boolean }>({ graphId: sharedGraphId, dirty: false })
   useEffect(() => {
-    dirtyRef.current = isDirty
-  })
+    includedNodeIdsRef.current = includedNodeIds
+    currentPositionsRef.current = currentPositions
+    sharedGraphLinksRef.current = sharedGraphLinksRecord
+    dirtyRef.current = { graphId: sharedGraphId, dirty: isDirty }
+  }, [includedNodeIds, currentPositions, sharedGraphLinksRecord, isDirty, sharedGraphId])
 
   // Auto-save the unsaved work as a draft; clear it once it matches the saved graph.
   useEffect(() => {
@@ -318,9 +378,11 @@ export function LearningGraphView({
     try {
       const id = await createSharedGraph(graphClassId, user.uid, user.displayName || user.email || 'Graph owner', {
         nodeIds: Array.from(includedNodeIds),
-        positions: currentPositions,
-        nodes: graphData.nodes,
-        links: graphData.links,
+        positions: Object.fromEntries(
+          Object.entries(currentPositions).filter(([nodeId]) => includedNodeIds.has(nodeId)).slice(0, 80),
+        ),
+        nodes: allGraphData.nodes,
+        links: allGraphData.links,
       })
       await logGraphActivity(graphClassId, id, {
         uid: user.uid,
@@ -342,8 +404,10 @@ export function LearningGraphView({
   }
 
   const handleReturnToMyGraph = () => {
-    const loaded = loadFromStorage()
-    const working = loadDraft() ?? loaded
+    const targetClassId = localGraphId ? returnClassId || selectedClassId || 'all' : selectedClassId || 'all'
+    const targetStorageKey = `peerly:graph_nodes_${role}_${targetClassId}`
+    const loaded = loadFromStorage(targetStorageKey)
+    const working = loadDraft(targetStorageKey) ?? loaded
     setSavedNodeIds(loaded.ids)
     setIncludedNodeIds(working.ids)
     setSavedPositions(loaded.positions)
@@ -351,7 +415,9 @@ export function LearningGraphView({
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous)
       next.delete('graphId')
-      next.set('classId', selectedClassId || 'all')
+      next.delete('localGraphId')
+      next.delete('returnClassId')
+      next.set('classId', targetClassId)
       return next
     })
   }
@@ -360,6 +426,9 @@ export function LearningGraphView({
     if (!canEditSharedGraph) return
     setIncludedNodeIds(new Set(savedNodeIds))
     setCurrentPositions({ ...savedPositions })
+    if (sharedGraphId) {
+      setSharedGraphLinksRecord({ graphId: sharedGraphId, links: [...savedSharedLinks] })
+    }
     // Re-apply saved positions to nodes
     nodesRef.current.forEach((n) => {
       const savedPos = savedPositions[n.id]
@@ -450,8 +519,9 @@ export function LearningGraphView({
   // Ids whose on-screen position was restored (saved layout or pinned drags).
   // These are treated as settled so returning to this tab doesn't re-run the physics.
   const [restoredIds] = useState(() => new Set(Object.keys({ ...loadLayout(), ...currentPositions })))
-  const [graphData, setGraphData] = useState<GraphData>(() =>
-    buildLearningGraph({
+  const [graphData, setGraphData] = useState<GraphData>(() => sharedGraphId
+    ? EMPTY_GRAPH_DATA
+    : buildLearningGraph({
       canvases,
       classes,
       moduleTitles,
@@ -461,16 +531,83 @@ export function LearningGraphView({
       searchQuery: '',
       includedNodeIds,
       customPositions: { ...loadLayout(), ...currentPositions },
-    }),
-  )
+    }))
+
+  const unfilteredLocalGraph = useMemo(() => buildLearningGraph({
+    canvases,
+    classes,
+    moduleTitles,
+    quizTitles,
+    selectedClassId: sharedGraphId || localGraphId ? graphClassId : selectedClassId,
+    allowedTypes,
+    searchQuery: '',
+    includedNodeIds,
+    customPositions: currentPositions,
+  }), [
+    canvases,
+    classes,
+    moduleTitles,
+    quizTitles,
+    sharedGraphId,
+    localGraphId,
+    graphClassId,
+    selectedClassId,
+    allowedTypes,
+    includedNodeIds,
+    currentPositions,
+  ])
+
+  const allGraphData = useMemo<GraphData>(() => {
+    if (!sharedGraphId) return unfilteredLocalGraph
+    if (sharedGraphError || !sharedGraphContents || sharedGraphContents.id !== sharedGraphId) return EMPTY_GRAPH_DATA
+
+    const snapshotIds = new Set<string>()
+    const snapshotNodes = sharedGraphContents.nodes.flatMap((snapshot) => {
+      if (!includedNodeIds.has(snapshot.id) || snapshotIds.has(snapshot.id)) return []
+      snapshotIds.add(snapshot.id)
+      const position = currentPositions[snapshot.id] ?? sharedGraphContents.positions[snapshot.id]
+      return [{
+        ...snapshot,
+        x: position?.x ?? snapshot.x,
+        y: position?.y ?? snapshot.y,
+        vx: 0,
+        vy: 0,
+        radius: snapshot.type === 'learning' || snapshot.type === 'note' ? 18 : 16,
+        degree: 0,
+        isFixed: position?.isFixed ?? snapshot.isFixed,
+        ...(position?.isFixed ? { fx: position.x, fy: position.y } : {}),
+      }]
+    })
+    const localNodes = unfilteredLocalGraph.nodes.filter(
+      (node) => includedNodeIds.has(node.id) && !snapshotIds.has(node.id),
+    )
+    const noteNodes = Object.values(graphNotes)
+      .filter((note) => includedNodeIds.has(note.id) && !snapshotIds.has(note.id))
+      .map((note) => ({ ...note, vx: 0, vy: 0, radius: 18, degree: 0 }))
+    const nodes = [...snapshotNodes, ...localNodes, ...noteNodes]
+    const includedIds = new Set(nodes.map((node) => node.id))
+    const links = currentSharedLinks.filter(
+      (link) => includedIds.has(link.source) && includedIds.has(link.target),
+    )
+    return { nodes, links }
+  }, [
+    sharedGraphId,
+    sharedGraphError,
+    sharedGraphContents,
+    includedNodeIds,
+    currentPositions,
+    unfilteredLocalGraph,
+    graphNotes,
+    currentSharedLinks,
+  ])
 
   // A node can be on screen before the shared copy has its details (for example a note that was just
   // created). That also counts as unsynced, so it is saved even when the node list itself didn't change.
   const missingFromSnapshot = useMemo(() => {
     if (!sharedGraphId || !sharedGraphContents || sharedGraphContents.id !== sharedGraphId) return false
     const stored = new Set(sharedGraphContents.nodes.map((node) => node.id))
-    return graphData.nodes.some((node) => includedNodeIds.has(node.id) && !stored.has(node.id))
-  }, [graphData.nodes, includedNodeIds, sharedGraphContents, sharedGraphId])
+    return allGraphData.nodes.some((node) => includedNodeIds.has(node.id) && !stored.has(node.id))
+  }, [allGraphData.nodes, includedNodeIds, sharedGraphContents, sharedGraphId])
 
   const missingRetriesRef = useRef(0)
   useEffect(() => {
@@ -484,12 +621,18 @@ export function LearningGraphView({
       setSyncingSharedGraph(true)
       void saveSharedGraph(graphClassId, sharedGraphId, {
         nodeIds: Array.from(includedNodeIds),
-        positions: currentPositions,
-        nodes: graphData.nodes,
-        links: graphData.links,
+        positions: Object.fromEntries(
+          Object.entries(currentPositions).filter(([nodeId]) => includedNodeIds.has(nodeId)).slice(0, 80),
+        ),
+        nodes: allGraphData.nodes,
+        links: currentSharedLinks,
       }).then(async () => {
         setSavedNodeIds(new Set(includedNodeIds))
-        setSavedPositions({ ...currentPositions })
+        const positions = Object.fromEntries(
+          Object.entries(currentPositions).filter(([nodeId]) => includedNodeIds.has(nodeId)).slice(0, 80),
+        )
+        setSavedPositions(positions)
+        setSavedSharedGraphLinksRecord({ graphId: sharedGraphId, links: [...currentSharedLinks] })
         setSyncError(null)
         await logGraphActivity(graphClassId, sharedGraphId, {
           uid: user.uid,
@@ -503,7 +646,7 @@ export function LearningGraphView({
       }).finally(() => setSyncingSharedGraph(false))
     }, 500)
     return () => window.clearTimeout(timer)
-  }, [canEditSharedGraph, currentPositions, graphClassId, graphData, includedNodeIds, isDirty, missingFromSnapshot, sharedGraphId, sharedGraphReady, showToast, user])
+  }, [canEditSharedGraph, currentPositions, currentSharedLinks, graphClassId, allGraphData, includedNodeIds, isDirty, missingFromSnapshot, sharedGraphId, sharedGraphReady, showToast, user])
 
   const nodesRef = useRef<GraphNode[]>(graphData.nodes)
   const linksRef = useRef(graphData.links)
@@ -523,25 +666,47 @@ export function LearningGraphView({
     }
     const stopGraph = watchSharedGraph(graphClassId, sharedGraphId, (graph) => {
       if (!graph) {
-      setSharedGraphContents(null)
-      setLoadedSharedGraph({ id: sharedGraphId, ownerId: null, ownerName: null })
-      return
-    }
-    setGraphData({ nodes: [], links: [] })
-    setSharedGraphContents(graph)
+        sharedGraphBaselineRef.current = null
+        setSharedGraphContents(null)
+        setLoadedSharedGraph({ id: sharedGraphId, ownerId: null, ownerName: null })
+        return
+      }
+
+      const baseline = sharedGraphBaselineRef.current?.graphId === sharedGraphId
+        ? sharedGraphBaselineRef.current
+        : null
+      const hasLocalEdits = dirtyRef.current.graphId === sharedGraphId && dirtyRef.current.dirty
       const ids = new Set(graph.nodeIds)
-      const positions = sanitizePositions(graph.positions)
+      const positions = Object.fromEntries(
+        Object.entries(sanitizePositions(graph.positions)).filter(([nodeId]) => ids.has(nodeId)),
+      )
+      const previousLinks = sharedGraphLinksRef.current?.graphId === sharedGraphId
+        ? sharedGraphLinksRef.current.links
+        : graph.links
+      const mergedIds = baseline && hasLocalEdits
+        ? new Set(mergeNodeIds([...includedNodeIdsRef.current], baseline.nodeIds, graph.nodeIds))
+        : ids
+      const mergedPositions = baseline && hasLocalEdits
+        ? mergePositions(currentPositionsRef.current, baseline.positions, positions)
+        : positions
+      const mergedLinks = baseline && hasLocalEdits
+        ? mergeGraphLinks(previousLinks, baseline.links, graph.links, mergedIds)
+        : graph.links.filter((link) => mergedIds.has(link.source) && mergedIds.has(link.target))
+
+      sharedGraphBaselineRef.current = {
+        graphId: sharedGraphId,
+        nodeIds: graph.nodeIds,
+        positions,
+        links: graph.links,
+      }
+      setGraphData(EMPTY_GRAPH_DATA)
+      setSharedGraphLinksRecord({ graphId: sharedGraphId, links: mergedLinks })
+      setSavedSharedGraphLinksRecord({ graphId: sharedGraphId, links: graph.links })
+      setSharedGraphContents(graph)
       setSavedNodeIds(ids)
       setSavedPositions(positions)
-      if (dirtyRef.current) {
-        // This person has edits that haven't synced yet: keep them and merge in what others changed,
-        // instead of letting the incoming copy wipe out a node they just added.
-        setIncludedNodeIds((previous) => new Set([...previous, ...ids]))
-        setCurrentPositions((previous) => ({ ...positions, ...previous }))
-      } else {
-        setIncludedNodeIds(ids)
-        setCurrentPositions(positions)
-      }
+      setIncludedNodeIds(mergedIds)
+      setCurrentPositions(mergedPositions)
       setLoadedSharedGraph({ id: sharedGraphId, ownerId: graph.ownerId, ownerName: graph.ownerName })
     }, onError)
     const stopRole = watchGraphRole(graphClassId, sharedGraphId, uid, (role) => {
@@ -552,6 +717,13 @@ export function LearningGraphView({
       stopRole()
     }
   }, [graphClassId, sharedGraphId, uid])
+
+  useEffect(() => {
+    setGraphNotes({})
+    setSelectedNode(null)
+    setConnectSourceId(null)
+    setConnectMode(false)
+  }, [sharedGraphId])
 
   // On leaving the graph view, remember where every node ended up.
   useEffect(() => {
@@ -606,30 +778,65 @@ export function LearningGraphView({
   /* ── Handlers for New Graph & Import ── */
   const handleNewGraphView = () => {
     if (!canEditSharedGraph) return
-    if (includedNodeIds.size > 0 || graphData.nodes.length > 0) {
+    if (sharedGraphId || includedNodeIds.size > 0 || graphData.nodes.length > 0) {
       setConfirmNewGraphOpen(true)
     } else {
-      setAddDialogOpen(true)
+      handleConfirmNewGraph()
     }
   }
 
   const handleConfirmNewGraph = () => {
     if (!canEditSharedGraph) return
-    setIncludedNodeIds(new Set())
+    const newLocalGraphId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.delete('graphId')
+      next.set('localGraphId', newLocalGraphId)
+      next.set('classId', graphClassId || selectedClassId || 'all')
+      next.set('returnClassId', localGraphId ? returnClassId || selectedClassId || 'all' : selectedClassId || 'all')
+      next.set('tab', 'graph')
+      return next
+    })
     setZoom(1)
     setPan({ x: 0, y: 0 })
     setSelectedNode(null)
+    setSearchQuery('')
+    setConnectMode(false)
+    setConnectSourceId(null)
     setConfirmNewGraphOpen(false)
-    showToast('success', 'Created fresh knowledge graph view.')
+    showToast('success', 'Created a separate blank graph view.')
   }
 
   const handleImportItems = (newIds: string[]) => {
-    if (!canEditSharedGraph) return
+    if (!canEditSharedGraph || (sharedGraphId && !isSharedGraphOwner)) return
+    const nextIds = new Set(includedNodeIds)
+    newIds.forEach((id) => nextIds.add(id))
+    const importedGraph = buildLearningGraph({
+      canvases,
+      classes,
+      moduleTitles,
+      quizTitles,
+      selectedClassId: sharedGraphId || localGraphId ? graphClassId : selectedClassId,
+      allowedTypes,
+      searchQuery: '',
+      includedNodeIds: nextIds,
+      customPositions: currentPositions,
+    })
     setIncludedNodeIds((prev) => {
       const next = new Set(prev)
       newIds.forEach((id) => next.add(id))
       return next
     })
+    if (sharedGraphId) {
+      setSharedGraphLinksRecord((previous) => {
+        const existing = previous?.graphId === sharedGraphId ? previous.links : currentSharedLinks
+        const importedLinks = importedGraph.links.filter(
+          (link) => newIds.includes(link.source) || newIds.includes(link.target),
+        )
+        const links = [...new Map([...existing, ...importedLinks].map((link) => [link.id, link])).values()]
+        return { graphId: sharedGraphId, links: links.slice(0, 120) }
+      })
+    }
     showToast('success', `Imported ${newIds.length} materials into knowledge graph.`)
   }
 
@@ -643,6 +850,7 @@ export function LearningGraphView({
    * shared graph. Everyone with access sees it, and nothing in the class is touched.
    */
   const handleCreateGraphNote = async ({ title, content }: { classId: string; title: string; content: string }): Promise<string> => {
+    if (!sharedGraphId || !canEditSharedGraph) throw new Error('You cannot add notes to this graph.')
     const rawId = `graph-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     const id = `note:${rawId}`
     const x = Math.round((Math.random() - 0.5) * 240)
@@ -669,65 +877,65 @@ export function LearningGraphView({
 
   const handleRemoveFromGraph = (nodeId: string) => {
     if (!canEditSharedGraph) return
+    setCurrentPositions((previous) => {
+      const next = { ...previous }
+      delete next[nodeId]
+      return next
+    })
     setIncludedNodeIds((prev) => {
       const next = new Set(prev)
       next.delete(nodeId)
       return next
     })
+    if (sharedGraphId) {
+      setSharedGraphLinksRecord((previous) => ({
+        graphId: sharedGraphId,
+        links: (previous?.graphId === sharedGraphId ? previous.links : currentSharedLinks)
+          .filter((link) => link.source !== nodeId && link.target !== nodeId),
+      }))
+    }
     setSelectedNode(null)
     showToast('success', 'Removed from graph view.')
   }
 
   /* ── Rebuild graph on data changes ── */
   useEffect(() => {
-    const local = buildLearningGraph({
-      canvases,
-      classes,
-      moduleTitles,
-      quizTitles,
-      selectedClassId,
-      allowedTypes,
-      searchQuery,
-      includedNodeIds,
-      customPositions: currentPositions,
-    })
-    let fresh = local
-    if (sharedGraphId && sharedGraphContents?.id === sharedGraphId) {
-      const localNodes = new Map(local.nodes.map((node) => [node.id, node]))
-      const sharedNodes = sharedGraphContents.nodes.map((snapshot) => {
-        const localNode = localNodes.get(snapshot.id)
-        const position = currentPositions[snapshot.id] ?? sharedGraphContents.positions[snapshot.id]
-        return {
-          ...(localNode ?? {
-            ...snapshot,
-            vx: 0,
-            vy: 0,
-            radius: snapshot.type === 'learning' || snapshot.type === 'note' ? 18 : 16,
-            degree: 0,
-          }),
-          x: position?.x ?? snapshot.x,
-          y: position?.y ?? snapshot.y,
-          isFixed: position?.isFixed ?? snapshot.isFixed,
-        }
-      })
-      const snapshotIds = new Set(sharedNodes.map((node) => node.id))
-      const nodes = [
-        ...sharedNodes.filter((node) =>
-          includedNodeIds.has(node.id)
-          && allowedTypes.has(node.type)
-          && (!searchQuery || node.title.toLowerCase().includes(searchQuery.toLowerCase())),
-        ),
-        ...local.nodes.filter((node) => includedNodeIds.has(node.id) && !snapshotIds.has(node.id)),
-        ...Object.values(graphNotes)
-          .filter((note) => includedNodeIds.has(note.id) && !snapshotIds.has(note.id) && !localNodes.has(note.id))
-          .map((note) => ({ ...note, vx: 0, vy: 0, radius: 18, degree: 0 })),
-      ]
+    let fresh: GraphData
+    if (sharedGraphId) {
+      const query = searchQuery.trim().toLowerCase()
+      const nodes = allGraphData.nodes.filter(
+        (node) => allowedTypes.has(node.type) && (!query || node.title.toLowerCase().includes(query)),
+      )
       const visibleIds = new Set(nodes.map((node) => node.id))
-      const links = new Map<string, GraphData['links'][number]>()
-      for (const link of [...sharedGraphContents.links, ...local.links]) {
-        if (visibleIds.has(link.source) && visibleIds.has(link.target)) links.set(link.id, link)
+      const links = allGraphData.links.filter(
+        (link) => visibleIds.has(link.source) && visibleIds.has(link.target),
+      )
+      const degrees = new Map<string, number>()
+      for (const link of links) {
+        degrees.set(link.source, (degrees.get(link.source) || 0) + 1)
+        degrees.set(link.target, (degrees.get(link.target) || 0) + 1)
       }
-      fresh = { nodes, links: [...links.values()] }
+      fresh = {
+        nodes: nodes.map((node) => ({
+          ...node,
+          degree: degrees.get(node.id) || 0,
+          radius: Math.min(32, (node.type === 'learning' || node.type === 'note' ? 18 : 14) + (degrees.get(node.id) || 0) * 2),
+          isHighlighted: !query || node.title.toLowerCase().includes(query),
+        })),
+        links,
+      }
+    } else {
+      fresh = buildLearningGraph({
+        canvases,
+        classes,
+        moduleTitles,
+        quizTitles,
+        selectedClassId,
+        allowedTypes,
+        searchQuery,
+        includedNodeIds,
+        customPositions: currentPositions,
+      })
     }
 
     const prevMap = new Map(nodesRef.current.map((n) => [n.id, n]))
@@ -737,7 +945,7 @@ export function LearningGraphView({
       // Only nodes that have never been placed need the layout to run.
       const wasPlaced = Boolean(currentPositions[n.id]) || (isInitialMountRef.current ? restoredIds.has(n.id) : Boolean(prev))
       if (!sharedGraphId && !wasPlaced) needsRelax = true
-      if (prev) {
+      if (prev && !sharedGraphId) {
         if (prev.isFixed) {
           n.x = prev.x
           n.y = prev.y
@@ -766,6 +974,7 @@ export function LearningGraphView({
     // Keep selectedNode reference fresh
     setSelectedNode((prev) => (prev ? fresh.nodes.find((n) => n.id === prev.id) || null : null))
   }, [
+    allGraphData,
     canvases,
     classes,
     moduleTitles,
@@ -1085,11 +1294,24 @@ export function LearningGraphView({
 
   /* ── Connect node (from inspector dropdown) ── */
   const handleConnect = async () => {
-    if (!selectedNode || !linkTargetId || !onConnectNodes || sharedGraphId) return
+    if (!selectedNode || !linkTargetId || !canEditSharedGraph) return
     setLinkingBusy(true)
     try {
-      await onConnectNodes(selectedNode.id, linkTargetId, selectedNode.classId)
+      if (sharedGraphId) {
+        const next = addGraphLink(currentSharedLinks, selectedNode.id, linkTargetId, includedNodeIds)
+        if (next === currentSharedLinks) {
+          showToast('error', 'Choose two different nodes in this graph view; it can contain up to 120 links.')
+          return
+        }
+        setSharedGraphLinksRecord({ graphId: sharedGraphId, links: next })
+      } else if (onConnectNodes) {
+        await onConnectNodes(selectedNode.id, linkTargetId, selectedNode.classId)
+      } else {
+        return
+      }
       setLinkTargetId('')
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : 'Could not create the connection.')
     } finally {
       setLinkingBusy(false)
     }
@@ -1097,7 +1319,7 @@ export function LearningGraphView({
 
   /* ── Click-to-connect in connect mode ── */
   const handleConnectModeClick = async (node: GraphNode) => {
-    if (!onConnectNodes || sharedGraphId || !canEditSharedGraph) return
+    if (!canEditSharedGraph || (!sharedGraphId && !onConnectNodes)) return
     if (!connectSourceId) {
       setConnectSourceId(node.id)
       setSelectedNode(node)
@@ -1114,11 +1336,21 @@ export function LearningGraphView({
     const classId = sourceNode?.classId || node.classId
     setLinkingBusy(true)
     try {
-      await onConnectNodes(connectSourceId, node.id, classId)
-      showToast('success', `Connected "${sourceNode?.title || 'Node'}" → "${node.title}".`)
+      if (sharedGraphId) {
+        const next = addGraphLink(currentSharedLinks, connectSourceId, node.id, includedNodeIds)
+        if (next === currentSharedLinks) {
+          showToast('error', 'Choose two different nodes in this graph view; it can contain up to 120 links.')
+        } else {
+          setSharedGraphLinksRecord({ graphId: sharedGraphId, links: next })
+          showToast('success', `Connected "${sourceNode?.title || 'Node'}" → "${node.title}".`)
+        }
+      } else if (onConnectNodes) {
+        await onConnectNodes(connectSourceId, node.id, classId)
+        showToast('success', `Connected "${sourceNode?.title || 'Node'}" → "${node.title}".`)
+      }
       setConnectSourceId(null)
-    } catch {
-      showToast('error', 'Failed to create connection.')
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : 'Failed to create connection.')
     } finally {
       setLinkingBusy(false)
     }
@@ -1126,10 +1358,19 @@ export function LearningGraphView({
 
   /* ── Disconnect node ── */
   const handleDisconnect = async (neighborId: string) => {
-    if (!selectedNode || !onDisconnectNodes || sharedGraphId) return
+    if (!selectedNode || !canEditSharedGraph) return
     setLinkingBusy(true)
     try {
-      await onDisconnectNodes(selectedNode.id, neighborId, selectedNode.classId)
+      if (sharedGraphId) {
+        const next = removeGraphLink(currentSharedLinks, selectedNode.id, neighborId)
+        if (next.length !== currentSharedLinks.length) {
+          setSharedGraphLinksRecord({ graphId: sharedGraphId, links: next })
+        }
+      } else if (onDisconnectNodes) {
+        await onDisconnectNodes(selectedNode.id, neighborId, selectedNode.classId)
+      }
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : 'Could not remove the connection.')
     } finally {
       setLinkingBusy(false)
     }
@@ -1220,7 +1461,7 @@ export function LearningGraphView({
 
         {/* Primary actions */}
         <div className="graph-view__actions">
-          {sharedGraphId && (
+          {(sharedGraphId || localGraphId) && (
             <Button
               type="button"
               variant="secondary"
@@ -1258,7 +1499,7 @@ export function LearningGraphView({
           </Button>
           )}
 
-          {canEditSharedGraph && (
+          {canEditSharedGraph && (!sharedGraphId || isSharedGraphOwner) && (
           <Button
             type="button"
             variant="secondary"
@@ -1289,7 +1530,7 @@ export function LearningGraphView({
         {/* View controls */}
         <div className="graph-view__zoom-controls flex items-center">
           {/* Connect Mode toggle */}
-          {canEditSharedGraph && !sharedGraphId && onConnectNodes && graphData.nodes.length >= 2 && (
+          {canEditSharedGraph && (sharedGraphId || onConnectNodes) && graphData.nodes.length >= 2 && (
             <button
               type="button"
               className={`graph-view__zoom-btn ${connectMode ? 'graph-view__zoom-btn--active' : ''}`}
@@ -1432,7 +1673,7 @@ export function LearningGraphView({
       )}
 
       {/* ── SVG Canvas ── */}
-      {sharedGraphId && (!sharedGraphReady || (!isSharedGraphOwner && !sharedGraphRole)) ? (
+      {sharedGraphId && (sharedGraphError || !sharedGraphReady || (!isSharedGraphOwner && !sharedGraphRole)) ? (
         sharedGraphReady ? null : <p className="m-0 text-sm text-navy-900" role="status">Loading this graph view…</p>
       ) : graphData.nodes.length === 0 ? (
         <div className="graph-view__empty">
@@ -1458,14 +1699,16 @@ export function LearningGraphView({
                   <Plus size={16} aria-hidden="true" />
                   <span>Create new graph view</span>
                 </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setImportDialogOpen(true)}
-                >
-                  <FolderInput size={16} aria-hidden="true" />
-                  <span>Import existing modules and canvases</span>
-                </Button>
+                {(!sharedGraphId || isSharedGraphOwner) && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setImportDialogOpen(true)}
+                  >
+                    <FolderInput size={16} aria-hidden="true" />
+                    <span>Import existing modules and canvases</span>
+                  </Button>
+                )}
               </>
             )}
             {onSwitchToCanvases && (
@@ -1954,7 +2197,7 @@ export function LearningGraphView({
                         <NeighborIcon size={13} className="shrink-0 text-navy-800" />
                         <span className="truncate font-medium">{neighbor.title}</span>
                       </button>
-                      {onDisconnectNodes && !sharedGraphId && (selectedNode.type === 'note' || selectedNode.type === 'learning') && (
+                      {canEditSharedGraph && (sharedGraphId || (onDisconnectNodes && (selectedNode.type === 'note' || selectedNode.type === 'learning'))) && (
                         <button
                           type="button"
                           onClick={() => void handleDisconnect(neighbor.id)}
@@ -1975,7 +2218,9 @@ export function LearningGraphView({
             )}
 
             {/* In-Graph Link Creator */}
-            {!sharedGraphId && onConnectNodes && (selectedNode.type === 'note' || selectedNode.type === 'learning') && unlinkedCandidates.length > 0 && (
+            {canEditSharedGraph
+              && (sharedGraphId || (onConnectNodes && (selectedNode.type === 'note' || selectedNode.type === 'learning')))
+              && unlinkedCandidates.length > 0 && (
               <div className="mt-2 pt-2 border-t border-navy-900-08 flex items-center gap-1.5">
                 <select
                   value={linkTargetId}
@@ -2056,13 +2301,13 @@ export function LearningGraphView({
 
       {/* Import Existing Dialog */}
       <ImportExistingDialog
-        open={importDialogOpen}
+        open={importDialogOpen && (!sharedGraphId || isSharedGraphOwner)}
         onClose={() => setImportDialogOpen(false)}
         canvases={canvases}
         moduleTitles={moduleTitles}
         quizTitles={quizTitles}
         classes={classes}
-        selectedClassId={selectedClassId}
+        selectedClassId={sharedGraphId ? graphClassId : selectedClassId}
         alreadyIncludedIds={includedNodeIds}
         onImport={handleImportItems}
       />
@@ -2073,14 +2318,14 @@ export function LearningGraphView({
         onClose={() => setConfirmNewGraphOpen(false)}
         onConfirm={handleConfirmNewGraph}
         title="Create new graph view?"
-        description="Starting a new graph view will reset your canvas to a blank slate so you can build fresh knowledge connections. Your notes, canvases, and class materials remain safely stored."
-        confirmLabel="Start fresh graph"
+        description="A separate blank graph view will be created. This graph, your other saved views, and your notes and canvases will remain unchanged."
+        confirmLabel="Create separate view"
       />
 
       {/* Add Node Dialog */}
       {hasAddCapabilities && (
         <AddNodeDialog
-          key={sharedGraphId ?? 'my-graph'}
+          key={sharedGraphId ?? localGraphId ?? 'my-graph'}
           open={addDialogOpen}
           onClose={() => setAddDialogOpen(false)}
           noteOnly={usesGraphNotes}

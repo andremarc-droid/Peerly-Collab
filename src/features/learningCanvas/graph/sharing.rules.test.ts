@@ -120,6 +120,10 @@ describe('Graph view sharing security rules', () => {
     await assertSucceeds(getDoc(doc(member, graphPath)))
     await assertSucceeds(getDocs(collection(member, `${graphPath}/members`)))
     await assertFails(getDoc(doc(member, otherGraphPath)))
+    await assertFails(getDocs(query(
+      collection(member, 'classes/class-a/graphViews'),
+      where('ownerId', '==', 'owner'),
+    )))
     await assertFails(setDoc(doc(member, `${graphPath}/activity/joined`), {
       actorId: 'viewer',
       actorName: 'Viewer',
@@ -130,6 +134,7 @@ describe('Graph view sharing security rules', () => {
     }))
     await assertFails(updateDoc(doc(member, graphPath), {
       nodeIds: ['note:changed'],
+      links: [{ id: 'note:one->note:changed', source: 'note:one', target: 'note:changed' }],
       updatedAt: serverTimestamp(),
     }))
     await assertFails(setDoc(doc(member, `${graphPath}/activity/forged-edit`), {
@@ -145,8 +150,31 @@ describe('Graph view sharing security rules', () => {
   it('allows an invited editor to sync graph configuration and append activity', async () => {
     const { member } = await inviteAndJoin('editor', 'editor')
     await assertSucceeds(updateDoc(doc(member, graphPath), {
-      nodeIds: ['note:changed'],
-      positions: { 'note:changed': { x: 40, y: 50, isFixed: true } },
+      nodeIds: ['note:one', 'note:two'],
+      positions: { 'note:two': { x: 40, y: 50, isFixed: true } },
+      nodes: [
+        {
+          id: 'note:one',
+          rawId: 'one',
+          type: 'note',
+          title: 'First note',
+          classId: 'class-a',
+          className: 'Class A',
+          x: 10,
+          y: 20,
+        },
+        {
+          id: 'note:two',
+          rawId: 'two',
+          type: 'note',
+          title: 'Second note',
+          classId: 'class-a',
+          className: 'Class A',
+          x: 40,
+          y: 50,
+        },
+      ],
+      links: [{ id: 'note:one->note:two', source: 'note:one', target: 'note:two' }],
       updatedAt: serverTimestamp(),
     }))
     await assertSucceeds(setDoc(doc(member, `${graphPath}/activity/change-1`), {
@@ -156,6 +184,15 @@ describe('Graph view sharing security rules', () => {
       summary: 'Updated the graph layout',
       changes: [],
       createdAt: serverTimestamp(),
+    }))
+    const overLimitLinks = Array.from({ length: 121 }, (_, index) => ({
+      id: `note:${index}->note:${index + 1}`,
+      source: `note:${index}`,
+      target: `note:${index + 1}`,
+    }))
+    await assertFails(updateDoc(doc(member, graphPath), {
+      links: overLimitLinks,
+      updatedAt: serverTimestamp(),
     }))
     await assertFails(updateDoc(doc(member, `${graphPath}/members/editor`), {
       role: 'editor',

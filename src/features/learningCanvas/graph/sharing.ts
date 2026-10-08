@@ -158,11 +158,22 @@ function storedNodes(nodes: SharedGraphNode[]): SharedGraphNode[] {
 }
 
 function storedLinks(links: SharedGraphLink[]): SharedGraphLink[] {
-  return links.slice(0, 120).map((link) => ({
-    id: link.id.slice(0, 650),
-    source: link.source.slice(0, 300),
-    target: link.target.slice(0, 300),
-  }))
+  const seen = new Set<string>()
+  const stored: SharedGraphLink[] = []
+  for (const link of links) {
+    if (
+      link.source.length > 300
+      || link.target.length > 300
+      || link.id.length > 650
+      || link.source === link.target
+      || link.id !== `${link.source}->${link.target}`
+      || seen.has(link.id)
+    ) continue
+    seen.add(link.id)
+    stored.push({ id: link.id, source: link.source, target: link.target })
+    if (stored.length === 120) break
+  }
+  return stored
 }
 
 export function watchGraphPresence(
@@ -404,15 +415,24 @@ function parseSharedNodes(value: unknown): SharedGraphNode[] {
 
 function parseSharedLinks(value: unknown): SharedGraphLink[] {
   if (!Array.isArray(value)) return []
-  return value.slice(0, 120).flatMap((candidate) => {
-    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return []
+  const seen = new Set<string>()
+  const links: SharedGraphLink[] = []
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
     const item = candidate as Record<string, unknown>
-    return typeof item.id === 'string' && item.id.length <= 650
-      && typeof item.source === 'string' && item.source.length <= 300
-      && typeof item.target === 'string' && item.target.length <= 300
-      ? [{ id: item.id, source: item.source, target: item.target }]
-      : []
-  })
+    if (
+      typeof item.id !== 'string' || item.id.length > 650
+      || typeof item.source !== 'string' || item.source.length > 300
+      || typeof item.target !== 'string' || item.target.length > 300
+      || item.source === item.target
+      || item.id !== `${item.source}->${item.target}`
+      || seen.has(item.id)
+    ) continue
+    seen.add(item.id)
+    links.push({ id: item.id, source: item.source, target: item.target })
+    if (links.length === 120) break
+  }
+  return links
 }
 
 export async function createGraphInvite(
