@@ -1,5 +1,5 @@
 import { assertFails, initializeTestEnvironment } from '@firebase/rules-unit-testing'
-import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore'
+import { deleteField, doc, setDoc, getDoc, Timestamp } from 'firebase/firestore'
 import type { Firestore } from 'firebase/firestore'
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -61,6 +61,24 @@ describe('quiz Firestore services', () => {
     await deleteQuizCascade(quizId, db)
     expect(await getQuiz(quizId, db)).toBeNull()
     await assertFails(getDoc(doc(db, 'quizzes', quizId, 'questions', questionId)))
+  })
+
+  it('preserves quiz assignment when a settings form submits a blank class', async () => {
+    await users()
+    const db = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+    const quizId = await createQuiz('teacher', 'Teacher', quizInput('Assigned'), db)
+    await updateQuiz(quizId, { classId: '', description: 'Still editable' }, db)
+
+    const quiz = await getQuiz(quizId, db)
+    expect(quiz?.classId).toBe('class1')
+    expect(quiz?.description).toBe('Still editable')
+
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(`quizzes/${quizId}`).update({ classId: deleteField() })
+    })
+    await updateQuiz(quizId, { classId: '', title: 'Still editable without a class' }, db)
+    expect((await getQuiz(quizId, db))?.classId).toBeNull()
+    expect((await getQuiz(quizId, db))?.title).toBe('Still editable without a class')
   })
 
   it('starts one attempt, autosaves, submits with a separate visible result, then enforces attempt limits', async () => {

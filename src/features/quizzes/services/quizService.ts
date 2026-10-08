@@ -41,14 +41,19 @@ export async function updateQuiz(quizId: string, patch: QuizPatch, db: Firestore
     if (!snapshot.exists()) throw new Error('Quiz not found')
     const existing = parseQuiz(snapshot.data())
     const settings = cleanFlashcardSettings(existing.mode, patch.settings ?? existing.settings)
-    const classId = patch.classId ?? existing.classId
-    if (classId !== existing.classId) {
+    const existingClassId = existing.classId?.trim() || null
+    const requestedClassId = patch.classId?.trim() || null
+    const classId = requestedClassId || existingClassId
+    if (classId !== existingClassId) {
       if (existing.status !== 'draft' || !classId) throw new Error('A quiz can only be assigned to an active class while it is a draft.')
       const classSnapshot = await transaction.get(doc(db, 'classes', classId))
       if (!classSnapshot.exists() || classSnapshot.data().ownerId !== existing.ownerId || classSnapshot.data().status !== 'active') throw new Error('Choose an active class that you own.')
     }
-    const next = parseQuiz({ ...existing, ...patch, ...(classId ? { classId } : {}), settings, updatedAt: Timestamp.now() })
-    transaction.set(ref, { ...patch, ...(classId ? { classId } : {}), settings, updatedAt: next.updatedAt }, { merge: true })
+    const update: Partial<Quiz> = { ...patch, settings, updatedAt: Timestamp.now() }
+    if (classId) update.classId = classId
+    else delete update.classId
+    const next = parseQuiz({ ...existing, ...update })
+    transaction.set(ref, { ...update, updatedAt: next.updatedAt }, { merge: true })
   })
 }
 

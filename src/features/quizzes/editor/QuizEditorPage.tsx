@@ -93,16 +93,21 @@ export function QuizEditorPage() {
     const submitIntent = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value')
     const addQuestionsAfterSave = submitIntent === 'save-and-add-questions'
     const validation = validateQuizForm(form)
-    if (form.classId && classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active')) validation.classId = 'Choose an active class before saving this quiz.'
+    const classAssignmentChanged = Boolean(form.classId && form.classId !== saved.classId)
+    if (quizId && !classAssignmentChanged) delete validation.classId
+    if (classAssignmentChanged && classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active')) validation.classId = 'Choose an active class before saving this quiz.'
     setErrors(validation)
     if (Object.keys(validation).length) return
     if (!user) return
     setSaving(true); setSaveError(null)
-    const input = { classId: form.classId, title: form.title.trim(), description: form.description.trim(), tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean), settings: form.settings }
+    const input = { ...(!quizId || classAssignmentChanged ? { classId: form.classId } : {}), title: form.title.trim(), description: form.description.trim(), tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean), settings: form.settings }
     try {
       if (quizId) {
         await updateQuiz(quizId, input)
-        setSaved(form); showToast('success', 'Quiz settings saved.')
+        const savedForm = { ...form, classId: form.classId || saved.classId }
+        setForm(savedForm)
+        setSaved(savedForm)
+        showToast('success', 'Quiz settings saved.')
       } else {
         const created = await createQuiz(user.uid, profile?.name || user.displayName || 'Instructor', { ...input, mode: form.mode })
         setSaved(form); showToast('success', 'Draft quiz created.')

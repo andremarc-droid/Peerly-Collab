@@ -95,6 +95,24 @@ describe('quick create and quiz deletion confirmation', () => {
     expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.objectContaining({ title: 'Updated Title' }))
   })
 
+  it('allows editing settings for an unassigned quiz without trying to reassign it', async () => {
+    mocks.getQuiz.mockResolvedValueOnce({ ...savedQuiz, classId: null })
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-1?tab=settings']}>
+        <Routes>
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByDisplayValue('Practice')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Quiz title'), { target: { value: 'Edited without assignment' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+
+    expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.objectContaining({ title: 'Edited without assignment' }))
+    expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.not.objectContaining({ classId: expect.anything() }))
+  })
+
   it('allows selecting Canvas type in QuickCreateQuiz with one-line description and creates canvas draft', async () => {
     render(
       <MemoryRouter initialEntries={['/instructor/quizzes/new?classId=class-1']}>
@@ -178,5 +196,4 @@ describe('quick create and quiz deletion confirmation', () => {
     expect(event.defaultPrevented).toBe(true)
   })
 })
-
 
