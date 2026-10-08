@@ -98,4 +98,15 @@ describe('Firestore security rules', () => {
     await assertSucceeds(setDoc(reference, { name: 'Alex', photoURL: null, updatedAt: 1 }))
     await assertFails(updateDoc(reference, { role: 'student' }))
   })
+
+  it('lets a user delete only their own profile document', async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'users/alex'), userData('alex', 'student'))
+      await setDoc(doc(context.firestore(), 'users/sam'), userData('sam', 'student'))
+    })
+    const alex = testEnvironment.authenticatedContext('alex').firestore()
+    await assertFails(deleteDoc(doc(alex, 'users/sam')))
+    await assertFails(deleteDoc(doc(testEnvironment.unauthenticatedContext().firestore(), 'users/alex')))
+    await assertSucceeds(deleteDoc(doc(alex, 'users/alex')))
+  })
 })

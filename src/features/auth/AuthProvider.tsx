@@ -8,6 +8,7 @@ import { clearRoleIntent, readRoleIntent } from './roleIntent'
 import type { UserRole } from './roleIntent'
 import { getRoleMismatch } from '../profile/profileTypes'
 import { RoleMismatchDialog } from '../profile/RoleMismatchDialog'
+import { isAccountDeletionInProgress } from '../profile/accountDeletionState'
 import type { UserProfile } from '../profile/profileTypes'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -88,9 +89,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(nextProfile)
       setRoleMismatch(getRoleMismatch(intent?.role ?? null, nextProfile.role))
       unsubscribeProfile = service.watchUserProfile(user.uid, (currentProfile) => {
+        if (!active || isAccountDeletionInProgress()) return
         setProfile(currentProfile)
         setProfileStatus('ready')
       }, () => {
+        if (!active || isAccountDeletionInProgress()) return
         setProfileError('We couldn’t load your profile. Check your connection and try again.')
         setProfileStatus('error')
       })

@@ -2,10 +2,13 @@ import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
   deleteUser,
+  EmailAuthProvider,
   getAdditionalUserInfo,
   getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   sendEmailVerification,
   sendPasswordResetEmail,
   setPersistence,
@@ -115,4 +118,26 @@ export async function resendVerificationEmail(user: User): Promise<void> {
 
 export async function signOutCurrentUser(): Promise<void> {
   await signOut(auth)
+}
+
+/** True when the account signs in with an email and password, so deleting it needs the password. */
+export function hasPasswordProvider(user: User): boolean {
+  return user.providerData.some((provider) => provider.providerId === 'password')
+}
+
+/**
+ * Firebase only lets a recently signed-in person delete their account. Password accounts confirm
+ * with their password; Google accounts confirm in a Google popup.
+ */
+export async function reauthenticateForSensitiveAction(user: User, password: string): Promise<void> {
+  if (!hasPasswordProvider(user)) {
+    await reauthenticateWithPopup(user, new GoogleAuthProvider())
+    return
+  }
+  if (!user.email) throw Object.assign(new Error('This account has no email address.'), { code: 'auth/invalid-email' })
+  await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password))
+}
+
+export async function deleteAuthAccount(user: User): Promise<void> {
+  await deleteUser(user)
 }

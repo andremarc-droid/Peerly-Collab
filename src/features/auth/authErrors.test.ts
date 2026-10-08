@@ -11,6 +11,8 @@ describe('mapFirebaseAuthError', () => {
     ['auth/too-many-requests', 'Too many attempts. Wait a little while, then try again.'],
     ['auth/network-request-failed', 'We couldn’t connect. Check your internet connection and try again.'],
     ['auth/popup-closed-by-user', 'The Google sign-in window was closed before sign-in finished.'],
+    ['auth/requires-recent-login', 'For your security, sign in again, then try deleting your account once more.'],
+    ['auth/user-mismatch', 'That isn’t the account you’re signed in with. Choose the same account to continue.'],
   ])('maps %s to a specific, friendly message', (code, message) => {
     expect(mapFirebaseAuthError({ code })).toBe(message)
   })

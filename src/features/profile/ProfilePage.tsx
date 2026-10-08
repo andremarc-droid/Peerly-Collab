@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { LogOut, Save } from 'lucide-react'
+import { LogOut, Save, Trash2 } from 'lucide-react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
@@ -8,10 +8,13 @@ import { PageHeader } from '../../shared/ui/PageHeader'
 import { SectionCard } from '../../shared/ui/SectionCard'
 import { updateProfile } from 'firebase/auth'
 import { clearRoleIntent } from '../auth/roleIntent'
-import { signOutCurrentUser } from '../auth/authService'
+import { hasPasswordProvider, signOutCurrentUser } from '../auth/authService'
 import { useAuth } from '../auth/useAuth'
 import { mapFirebaseAuthError } from '../auth/authErrors'
 import { useUserProfile } from './useUserProfile'
+import { deleteAccount } from './accountDeletion'
+import { beginAccountDeletion, endAccountDeletion } from './accountDeletionState'
+import { DeleteAccountDialog } from './DeleteAccountDialog'
 import { AppShell, AppShellLoading } from '../../app/AppShell'
 import { clearReturnTo } from '../../app/returnTo'
 
@@ -24,6 +27,9 @@ export function ProfilePage() {
   const [requestError, setRequestError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const name = editedName ?? profile?.name ?? ''
 
@@ -76,6 +82,26 @@ export function ProfilePage() {
     }
   }
 
+  async function handleDeleteAccount(password: string) {
+    const role = profile?.role
+    if (!user || !role) return
+    setDeleteBusy(true)
+    setDeleteError(null)
+    beginAccountDeletion()
+    try {
+      // Removes the data in Firestore first, then the Firebase Authentication account.
+      await deleteAccount({ user, role, password })
+      clearRoleIntent()
+      clearReturnTo()
+      // Once the sign-in is gone the page redirects to sign in on its own.
+    } catch (deleteFailure) {
+      setDeleteError(mapFirebaseAuthError(deleteFailure))
+    } finally {
+      endAccountDeletion()
+      setDeleteBusy(false)
+    }
+  }
+
   return <AppShell>
     <PageHeader eyebrow="PROFILE & ACCOUNT" title="Profile settings" subtitle="Keep your learning identity up to date." />
     <main className="app-shell__content profile-page" id="main-content">
@@ -94,7 +120,26 @@ export function ProfilePage() {
       <SectionCard title="Account access" description="Sign out when you’re finished on this device." className="profile-access-card">
         <div className="profile-actions"><Button type="button" variant="secondary" onClick={handleSignOut} disabled={busy}><LogOut size={16} aria-hidden="true" /> Sign out</Button></div>
       </SectionCard>
+      <SectionCard title="Danger zone" description="Permanent actions that can’t be undone." icon={<Trash2 size={20} />} className="profile-access-card profile-danger-card">
+        <div className="profile-danger">
+          <div className="profile-danger__copy">
+            <strong>Delete account</strong>
+            <p>Permanently deletes your account, your data and your sign-in.</p>
+          </div>
+          <Button type="button" variant="secondary" className="button--destructive profile-danger__button" onClick={() => { setDeleteError(null); setDeleteOpen(true) }} disabled={busy || deleteBusy}><Trash2 size={16} aria-hidden="true" /> Delete account</Button>
+        </div>
+      </SectionCard>
     </main>
+    <DeleteAccountDialog
+      open={deleteOpen}
+      onClose={() => { setDeleteOpen(false); setDeleteError(null) }}
+      onConfirm={handleDeleteAccount}
+      email={profile.email ?? user.email ?? ''}
+      role={profile.role}
+      needsPassword={hasPasswordProvider(user)}
+      busy={deleteBusy}
+      error={deleteError}
+    />
   </AppShell>
 }
 

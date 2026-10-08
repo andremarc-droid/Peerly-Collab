@@ -94,7 +94,32 @@
 .dashboard-empty__note { display: inline-flex; min-height: 44px; align-items: center; gap: 8px; color: var(--color-navy-800); font-size: 14px; font-weight: 650; }
 .site-nav__account-skeleton { width: 150px; height: 44px; border-radius: 999px; }
 .profile-page { display: grid; justify-items: center; }
-.profile-page > .profile-card, .profile-page > .profile-error-card { width: min(100%, 600px); }
+.profile-page > .profile-card, .profile-page > .profile-error-card, .profile-page > .profile-danger-card { width: min(100%, 600px); }
+
+/* Danger zone and delete-account dialog */
+.profile-page { gap: 24px; }
+.profile-danger-card { border-color: var(--color-danger-border); }
+.profile-danger-card .section-card__icon { color: var(--color-white); background: var(--color-danger); }
+.profile-danger-card .section-card__copy h2 { color: var(--color-danger-text); }
+.profile-danger { display: flex; align-items: center; justify-content: space-between; gap: 16px 24px; padding: 16px; border: 1px solid var(--color-danger-border); border-radius: 16px; background: var(--color-danger-bg); }
+.profile-danger__copy { min-width: 0; }
+.profile-danger__copy strong { display: block; color: var(--color-danger-text); font-size: 16px; }
+.profile-danger__copy p { margin: 2px 0 0; color: var(--color-danger-text); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.button.button--destructive { border-color: var(--color-danger); color: var(--color-white); background: var(--color-danger); box-shadow: 0 6px 16px var(--color-danger-shadow); }
+.button.button--destructive:hover:not(:disabled) { border-color: var(--color-danger-hover); background: var(--color-danger-hover); box-shadow: 0 8px 20px var(--color-danger-shadow-hover); }
+.button.button--destructive:active:not(:disabled) { border-color: var(--color-danger-active); background: var(--color-danger-active); }
+.button.button--destructive:focus-visible { outline-color: var(--color-danger); }
+.button.button--destructive:disabled { opacity: .5; box-shadow: none; cursor: not-allowed; }
+.profile-danger__button { flex: 0 0 auto; }
+.delete-account-dialog { width: min(100%, 520px); }
+.delete-account-form { gap: 14px; }
+.delete-account-note { margin: 0; color: var(--color-navy-800-72); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.delete-account-form .field__hint { overflow-wrap: anywhere; }
+
+@media (max-width: 600px) {
+  .profile-danger { flex-direction: column; align-items: stretch; }
+  .profile-danger__button { width: 100%; min-height: 48px; }
+}
 
 @media (min-width: 560px) {
   .role-conflict-actions { grid-template-columns: 1fr 1fr; }

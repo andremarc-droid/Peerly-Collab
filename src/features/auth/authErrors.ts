@@ -33,6 +33,8 @@ const messages: Record<string, string> = {
   'auth/cancelled-popup-request': 'A Google sign-in window is already open. Finish that one first.',
   'auth/invalid-email': 'Enter a valid email address.',
   'auth/operation-not-allowed': 'This sign-in method is not enabled. Contact your instructor or support.',
+  'auth/requires-recent-login': 'For your security, sign in again, then try deleting your account once more.',
+  'auth/user-mismatch': 'That isn’t the account you’re signed in with. Choose the same account to continue.',
 }
 
 export function mapFirebaseAuthError(error: unknown): string {
