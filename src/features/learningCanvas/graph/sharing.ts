@@ -14,6 +14,7 @@ import {
   Timestamp,
   updateDoc,
   where,
+  type DocumentData,
   type Firestore,
 } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
@@ -73,7 +74,71 @@ export interface GraphPresence {
 }
 
 export interface SharedGraphRef extends SharedGraphSnapshot {
-  role: CollabRole
+  /** 'owner' is a graph view you saved yourself; owners never have a member record. */
+  role: CollabRole | 'owner'
+}
+
+function parseGraphDocument(id: string, classId: string, data: DocumentData): SharedGraphSnapshot | null {
+  if (
+    typeof data.ownerId !== 'string'
+    || typeof data.ownerName !== 'string'
+    || data.classId !== classId
+    || !Array.isArray(data.nodeIds)
+    || !data.nodeIds.every((nodeId: unknown) => typeof nodeId === 'string')
+    || (data.nodes !== undefined && !Array.isArray(data.nodes))
+    || (data.links !== undefined && !Array.isArray(data.links))
+    || typeof data.positions !== 'object'
+    || data.positions === null
+    || Array.isArray(data.positions)
+  ) return null
+  const positions: SharedGraphSnapshot['positions'] = {}
+  for (const [nodeId, value] of Object.entries(data.positions).slice(0, 80)) {
+    if (value && typeof value === 'object'
+      && Number.isFinite((value as { x?: number }).x)
+      && Number.isFinite((value as { y?: number }).y)) {
+      const position = value as { x: number; y: number; isFixed?: boolean }
+      positions[nodeId] = { x: position.x, y: position.y, isFixed: position.isFixed === true }
+    }
+  }
+  return {
+    id,
+    classId,
+    ownerId: data.ownerId,
+    ownerName: data.ownerName.slice(0, 80),
+    title: typeof data.title === 'string' ? data.title : 'Shared graph view',
+    nodeIds: data.nodeIds.filter((nodeId: string) => nodeId.length <= 300).slice(0, 80),
+    positions,
+    nodes: parseSharedNodes(data.nodes),
+    links: parseSharedLinks(data.links),
+  }
+}
+
+/**
+ * Graph views this person saved themselves. A person who owns a graph view has no member record, so
+ * `watchSharedGraphs` can never find it; each class is queried for views whose ownerId is this person.
+ */
+export function watchOwnedGraphs(
+  uid: string,
+  classIds: string[],
+  onChange: (graphs: SharedGraphRef[]) => void,
+  onError: (error: Error) => void,
+  db: Firestore = firestore,
+) {
+  const perClass = new Map<string, SharedGraphRef[]>()
+  const emit = () => onChange([...perClass.values()].flat())
+  if (classIds.length === 0) onChange([])
+  const stops = classIds.map((classId) => onSnapshot(
+    query(collection(db, ...graphViewsPath(classId)), where('ownerId', '==', uid)),
+    (snap) => {
+      perClass.set(classId, snap.docs.flatMap((item) => {
+        const graph = parseGraphDocument(item.id, classId, item.data())
+        return graph && graph.ownerId === uid ? [{ ...graph, role: 'owner' as const }] : []
+      }))
+      emit()
+    },
+    onError,
+  ))
+  return () => stops.forEach((stop) => stop())
 }
 
 function storedNodes(nodes: SharedGraphNode[]): SharedGraphNode[] {

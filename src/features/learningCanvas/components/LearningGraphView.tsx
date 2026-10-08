@@ -1106,7 +1106,8 @@ export function LearningGraphView({
     return () => ro.disconnect()
   }, [])
 
-  const hasAddCapabilities = Boolean(onCreateNote || onCreateCanvas) && canEditSharedGraph && !sharedGraphId
+  // The owner and invited editors can add nodes inside a shared graph; viewers cannot (canEditSharedGraph).
+  const hasAddCapabilities = Boolean(onCreateNote || onCreateCanvas) && canEditSharedGraph
 
   const hasSharedAccess = Boolean(sharedGraphId && sharedGraphReady && !sharedGraphError && (isSharedGraphOwner || sharedGraphRole))
   const showCollabSidebar = hasSharedAccess && Boolean(user) && Boolean(sharedGraphId)
@@ -1117,7 +1118,7 @@ export function LearningGraphView({
       className={isFullscreen ? 'fixed inset-0 z-50 grid content-start gap-4 overflow-auto bg-white p-4' : 'grid gap-4'}
       data-fullscreen={isFullscreen ? 'true' : 'false'}
     >
-      {!sharedGraphId && user && <SharedGraphList uid={user.uid} selectedClassId={selectedClassId || 'all'} />}
+      {!sharedGraphId && user && <SharedGraphList uid={user.uid} selectedClassId={selectedClassId || 'all'} classIds={classes.map((item) => item.id)} />}
       {sharedGraphId && sharedGraphError && <Alert tone="error" label="Shared graph unavailable">{sharedGraphError}</Alert>}
       {sharedGraphId && sharedGraphReady && !sharedGraphError && !isSharedGraphOwner && !sharedGraphRole && (
         <Alert tone="error" label="No access to this graph">This graph is only available to its owner and invited active class members.</Alert>
@@ -2013,7 +2014,7 @@ export function LearningGraphView({
           onCreateCanvas={onCreateCanvas || (async () => {})}
           onCreated={handleNodeCreated}
           classes={classes}
-          defaultClassId={selectedClassId !== 'all' ? selectedClassId : classes[0]?.id}
+          defaultClassId={sharedGraphId && graphClassId ? graphClassId : selectedClassId !== 'all' ? selectedClassId : classes[0]?.id}
           moduleTitles={moduleTitles}
           quizTitles={quizTitles}
         />

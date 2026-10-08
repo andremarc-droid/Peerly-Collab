@@ -691,7 +691,8 @@ service cloud.firestore {
       }
 
       allow get: if signedIn() && (resource == null || graphOwner() || graphMember());
-      allow list: if graphOwner();
+      // Owners list their own graph views by querying where ownerId == their uid.
+      allow list: if signedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if signedIn()
         && validGraphConfig(request.resource.data)
         && request.resource.data.ownerId == request.auth.uid
