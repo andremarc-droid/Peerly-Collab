@@ -2,14 +2,14 @@ import { doc, onSnapshot, runTransaction } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 import { firestore } from '../../lib/firebase/firestore'
 import type { PublicProfile, UserProfile } from './profileTypes'
-import { resolveProfileRole } from './profileTypes'
+import { resolveProfileAge, resolveProfileRole } from './profileTypes'
 import type { UserRole } from '../auth/roleIntent'
 
 function safeName(user: User, existingName?: string): string {
   return user.displayName?.trim() || existingName?.trim() || user.email?.split('@')[0] || 'User'
 }
 
-export async function ensureUserProfile(user: User, chosenRole: UserRole | null): Promise<UserProfile> {
+export async function ensureUserProfile(user: User, chosenRole: UserRole | null, chosenAge: number | null = null): Promise<UserProfile> {
   const userRef = doc(firestore, 'users', user.uid)
   const publicRef = doc(firestore, 'publicProfiles', user.uid)
   const now = Date.now()
@@ -24,12 +24,14 @@ export async function ensureUserProfile(user: User, chosenRole: UserRole | null)
     const photoURL = user.photoURL ?? existing?.photoURL ?? null
     const role = resolveProfileRole(existing?.role as UserRole | null | undefined, chosenRole)
     const createdAt = typeof existing?.createdAt === 'number' ? existing.createdAt : now
+    const age = resolveProfileAge(role, existing?.age, chosenAge)
     const profile: UserProfile = {
       uid: existing?.uid ?? user.uid,
       name,
       email: existing?.email ?? user.email,
       photoURL,
       role,
+      ...(age !== null ? { age } : {}),
       createdAt,
       updatedAt: now,
     }
@@ -40,6 +42,7 @@ export async function ensureUserProfile(user: User, chosenRole: UserRole | null)
         photoURL,
         updatedAt: now,
         ...(existing?.role == null && chosenRole ? { role: chosenRole } : {}),
+        ...(age !== null && existing?.age !== age ? { age } : {}),
       }, { merge: true })
     } else {
       transaction.set(userRef, profile)

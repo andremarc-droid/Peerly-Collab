@@ -9,20 +9,21 @@ import { AuthModeBadge } from './AuthModeBadge'
 import { mapFirebaseAuthError } from './authErrors'
 import { createEmailAccount, signInWithGoogle } from './authService'
 import { useAuth } from './useAuth'
-import { getPasswordStrength, validateSignup, type AuthFieldErrors, type SignupValues } from './validation'
-import type { UserRole } from './roleIntent'
-import { readRoleIntent } from './roleIntent'
+import { getPasswordStrength, validateAge, validateSignup, MAX_STUDENT_AGE, MIN_STUDENT_AGE, type AuthFieldErrors, type SignupValues } from './validation'
+import type { RoleIntent, UserRole } from './roleIntent'
+import { readRoleIntent, saveRoleIntent } from './roleIntent'
 
-const initialValues: SignupValues = { name: '', email: '', password: '', confirmPassword: '' }
+const initialValues: SignupValues = { name: '', email: '', password: '', confirmPassword: '', age: '' }
 const strengthHint = { empty: 'Use at least 8 characters.', weak: 'Weak · add more characters.', fair: 'Getting stronger · add a number or symbol.', strong: 'Strong password.' }
 
 export function SignupPage() {
   const intent = readRoleIntent()
   if (!intent || intent.mode !== 'signup') return <Navigate to="/role?mode=signup" replace />
-  return <SignupForm role={intent.role} />
+  return <SignupForm intent={intent} role={intent.role} />
 }
 
-function SignupForm({ role }: { role: UserRole }) {
+function SignupForm({ intent, role }: { intent: RoleIntent; role: UserRole }) {
+  const isStudent = role === 'student'
   const { authError, clearAuthError } = useAuth()
   const [values, setValues] = useState(initialValues)
   const [errors, setErrors] = useState<AuthFieldErrors>({})
@@ -41,7 +42,7 @@ function SignupForm({ role }: { role: UserRole }) {
   async function handleSignup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (busyRef.current) return
-    const validationErrors = validateSignup(values)
+    const validationErrors = validateSignup(values, { requireAge: isStudent })
     setErrors(validationErrors)
     if (Object.keys(validationErrors).length) return
 
@@ -50,6 +51,8 @@ function SignupForm({ role }: { role: UserRole }) {
     setRequestError(null)
     clearAuthError()
     try {
+      // The profile is created right after sign-up, so the age travels with the role intent.
+      if (isStudent) saveRoleIntent({ ...intent, age: Number(values.age) })
       await createEmailAccount(values.name, values.email.trim(), values.password)
     } catch (error) {
       setRequestError(mapFirebaseAuthError(error))
@@ -61,11 +64,20 @@ function SignupForm({ role }: { role: UserRole }) {
 
   async function handleGoogle() {
     if (busyRef.current) return
+    if (isStudent) {
+      // Google sign-up skips this form, so the age must be valid before the popup opens.
+      const ageError = validateAge(values.age)
+      if (ageError) {
+        setErrors((previous) => ({ ...previous, age: ageError }))
+        return
+      }
+    }
     busyRef.current = true
     setBusy(true)
     setRequestError(null)
     clearAuthError()
     try {
+      if (isStudent) saveRoleIntent({ ...intent, age: Number(values.age) })
       await signInWithGoogle()
     } catch (error) {
       setRequestError(mapFirebaseAuthError(error))
@@ -87,6 +99,22 @@ function SignupForm({ role }: { role: UserRole }) {
           <p>Make a little room for better practice.</p>
         </div>
         {(requestError || authError) && <Alert tone="error" label="We couldn’t create your account">{requestError ?? authError}</Alert>}
+        {isStudent && (
+          <Input
+            label="Age"
+            name="age"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="Your age"
+            maxLength={3}
+            value={values.age ?? ''}
+            onChange={(event) => update('age', event.target.value.replace(/\D/g, ''))}
+            error={errors.age}
+            hint={`Required for student accounts, including Google sign-up (${MIN_STUDENT_AGE}–${MAX_STUDENT_AGE}).`}
+            disabled={busy}
+          />
+        )}
         <GoogleSignInButton onClick={handleGoogle} disabled={busy} />
         <div className="auth-divider"><span />or continue with email<span /></div>
         <form className="auth-form" noValidate onSubmit={handleSignup}>

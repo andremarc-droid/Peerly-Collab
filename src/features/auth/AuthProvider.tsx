@@ -87,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const intent = readRoleIntent()
     void waitForSignInCheck().then(() => (active ? import('../profile/profileService') : null)).then(async (service) => {
       if (!service || !active) return
-      const nextProfile = await service.ensureUserProfile(user, intent?.role ?? null)
+      const nextProfile = await service.ensureUserProfile(user, intent?.role ?? null, intent?.age ?? null)
       if (!active) return
       clearRoleIntent()
       setProfile(nextProfile)

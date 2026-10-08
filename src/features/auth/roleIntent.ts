@@ -4,6 +4,8 @@ export type RoleIntentMode = 'signup' | 'signin' | 'continue'
 export interface RoleIntent {
   role: UserRole
   mode: RoleIntentMode
+  /** Student age collected on the sign-up form; saved to the profile when the account is created. */
+  age?: number
 }
 
 export const ROLE_INTENT_STORAGE_KEY = 'peerly:roleIntent'
@@ -38,4 +40,5 @@ function isRoleIntent(value: unknown): value is RoleIntent {
   const intent = value as Record<string, unknown>
   return (intent.role === 'student' || intent.role === 'instructor')
     && (intent.mode === 'signup' || intent.mode === 'signin' || intent.mode === 'continue')
+    && (intent.age === undefined || (typeof intent.age === 'number' && Number.isInteger(intent.age)))
 }

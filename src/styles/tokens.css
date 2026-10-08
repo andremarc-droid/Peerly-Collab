@@ -49,6 +49,8 @@
 }
 
 :root {
+  /* Light only: the app has one theme and must not adapt to a browser/OS dark mode. */
+  color-scheme: only light;
   font-family: var(--font-sans);
   color: var(--color-navy-900);
   background: var(--color-white);
