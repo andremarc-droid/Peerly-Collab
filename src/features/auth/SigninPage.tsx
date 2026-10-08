@@ -5,6 +5,7 @@ import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
 import { AccountTypeHint, AuthCard, AuthShell, GoogleSignInButton, PasswordField, RoleChip } from './AuthChrome'
+import { AuthModeBadge } from './AuthModeBadge'
 import { mapFirebaseAuthError } from './authErrors'
 import { signInWithEmail, signInWithGoogle } from './authService'
 import { useAuth } from './useAuth'
@@ -68,6 +69,7 @@ function SigninForm({ role }: { role: UserRole }) {
     <AuthShell>
       <AuthCard>
         <div className="auth-card__heading">
+          <AuthModeBadge mode="signin" step={2} totalSteps={2} />
           <RoleChip role={role} mode="signin" />
           <AccountTypeHint role={role} />
           <h1>Welcome back.</h1>

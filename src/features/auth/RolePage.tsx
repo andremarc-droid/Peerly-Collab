@@ -8,6 +8,7 @@ import { Alert } from '../../shared/ui/Alert'
 import { Logo } from '../../shared/ui/Logo'
 import { StripeBackground } from '../../shared/ui/StripeBackground'
 import { Spinner } from '../../shared/ui/Spinner'
+import { AuthModeBadge } from './AuthModeBadge'
 import { useAuth } from './useAuth'
 import { mapFirebaseAuthError } from './authErrors'
 import { consumeReturnTo, rememberReturnTo, returnPathFromState } from '../../app/returnTo'
@@ -78,6 +79,7 @@ export function RolePage() {
       <StripeBackground variant="fade" />
       <div className="role-topbar"><Logo /><Button to="/" variant="ghost" className="role-back"><ArrowLeft size={16} aria-hidden="true" /> Back to home</Button></div>
       <section className="role-panel" aria-labelledby="role-heading">
+        <AuthModeBadge mode={destinationMode} />
         <span className="role-step">A GOOD PLACE TO START <span /> 01 / 02</span>
         <h1 id="role-heading" aria-label="Are you an instructor or a student?">Are you an instructor<br />or a student?</h1>
         <p className="role-subheading">{heading}</p>

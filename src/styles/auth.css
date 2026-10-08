@@ -7,6 +7,9 @@
 .auth-screen__footer { position: relative; z-index: 1; margin: 0; padding-top: 12px; color: var(--color-white-55); font-size: 14px; font-weight: 700; letter-spacing: .14em; text-align: center; }
 .auth-card { width: min(100%, 520px); padding: clamp(25px, 4vw, 42px); border-radius: 24px; }
 .auth-card__heading { margin-bottom: 24px; }
+.auth-mode { display: flex; width: fit-content; max-width: 100%; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 16px; }
+.auth-mode__pill { display: inline-flex; min-height: 32px; align-items: center; gap: 7px; padding: 4px 13px 4px 11px; border-radius: 999px; color: var(--color-white); background: var(--color-navy-800); font-size: 14px; font-weight: 700; letter-spacing: .04em; }
+.auth-mode__step { color: var(--color-navy-800-72); font-size: 14px; font-weight: 750; letter-spacing: .13em; }
 .auth-role-line { display: flex; align-items: center; gap: 12px; }
 .auth-role-line a { min-height: 44px; display: inline-flex; align-items: center; color: var(--color-navy-800); font-size: 14px; font-weight: 650; text-underline-offset: 3px; }
 .auth-role-line .badge { min-height: 27px; font-size: 14px; letter-spacing: .07em; }

@@ -5,6 +5,7 @@ import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
 import { AuthCard, AuthShell } from './AuthChrome'
+import { AuthModeBadge } from './AuthModeBadge'
 import { mapFirebaseAuthError } from './authErrors'
 import { sendPasswordReset } from './authService'
 import { useAuth } from './useAuth'
@@ -45,6 +46,7 @@ export function ForgotPasswordPage() {
     <AuthShell>
       <AuthCard>
         <div className="auth-card__heading">
+          <AuthModeBadge mode="signin" detail="Password reset" />
           <span className="auth-symbol"><MailCheck size={23} aria-hidden="true" /></span>
           <h1>Reset your password</h1>
           <p>Enter your email and we’ll send a link to get you back in.</p>

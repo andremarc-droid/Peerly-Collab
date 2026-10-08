@@ -5,6 +5,7 @@ import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Input } from '../../shared/ui/Input'
 import { AccountTypeHint, AuthCard, AuthShell, GoogleSignInButton, PasswordField, RoleChip } from './AuthChrome'
+import { AuthModeBadge } from './AuthModeBadge'
 import { mapFirebaseAuthError } from './authErrors'
 import { createEmailAccount, signInWithGoogle } from './authService'
 import { useAuth } from './useAuth'
@@ -79,6 +80,7 @@ function SignupForm({ role }: { role: UserRole }) {
     <AuthShell>
       <AuthCard>
         <div className="auth-card__heading">
+          <AuthModeBadge mode="signup" step={2} totalSteps={2} />
           <RoleChip role={role} mode="signup" />
           <AccountTypeHint role={role} />
           <h1>Create your account</h1>

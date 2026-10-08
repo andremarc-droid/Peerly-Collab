@@ -29,6 +29,16 @@ afterEach(() => {
 })
 
 describe('role choice screen', () => {
+  it('shows a Sign up indicator in signup mode', () => {
+    renderRolePage('signup')
+    expect(screen.getByText('Sign up')).toBeInTheDocument()
+  })
+
+  it('shows a Sign in indicator in signin mode', () => {
+    renderRolePage('signin')
+    expect(screen.getByText('Sign in')).toBeInTheDocument()
+  })
+
   it('keeps Continue disabled until a role is chosen', () => {
     renderRolePage('signup')
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
