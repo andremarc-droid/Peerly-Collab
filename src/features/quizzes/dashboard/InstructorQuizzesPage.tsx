@@ -8,6 +8,7 @@ import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { DataCard } from '../../../shared/ui/DataCard'
+import { Dialog } from '../../../shared/ui/Dialog'
 import { DropdownMenu } from '../../../shared/ui/DropdownMenu'
 import { EmptyState } from '../../../shared/ui/EmptyState'
 import { PageHeader } from '../../../shared/ui/PageHeader'
@@ -19,12 +20,13 @@ import { Toolbar } from '../../../shared/ui/Toolbar'
 import { useToast } from '../../../shared/ui/useToast'
 import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
-import { archiveQuiz, duplicateQuiz, publishQuiz, restoreQuiz, unpublishQuiz, watchOwnerQuizzes, type QuizRecord } from '../services'
+import { archiveQuiz, duplicateQuiz, publishQuiz, restoreQuiz, unpublishQuiz, updateQuiz, watchOwnerQuizzes, type QuizRecord } from '../services'
 import { countQuizAttempts, deleteQuizCascade } from '../services/deleteQuizCascade'
 import { quizModeLabel } from '../types'
 import { filterAndSortQuizzes, type QuizFilter, type QuizModeFilter, type QuizSort } from './quizList'
 
 interface DeleteSelection { quiz: QuizRecord; submissions: number }
+interface PublishSelection { quiz: QuizRecord; classId: string }
 
 /** Phones and tablets. Desktop (1024px and up) keeps the full button row. */
 const COMPACT_QUERY = '(max-width: 1023px)'
@@ -76,6 +78,7 @@ export function InstructorQuizzesPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [deleteSelection, setDeleteSelection] = useState<DeleteSelection | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [publishSelection, setPublishSelection] = useState<PublishSelection | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -106,6 +109,46 @@ export function InstructorQuizzesPage() {
     try { setDeleteSelection({ quiz, submissions: await countQuizAttempts(quiz.id) }) }
     catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Could not check quiz submissions.') }
     finally { setDeleteLoading(false) }
+  }
+
+  function beginPublish(quiz: QuizRecord) {
+    const assignedClass = classes.find((item) => item.id === quiz.classId && item.status === 'active')
+    if (assignedClass) {
+      void runAction(quiz.id, quiz.mode === 'canvas' ? 'Canvas published.' : 'Quiz published.', () => publishQuiz(quiz.id))
+      return
+    }
+
+    if (quiz.status !== 'draft') {
+      showToast('error', 'Restore this quiz to drafts before assigning it to an active class.')
+      return
+    }
+
+    const activeClasses = classes.filter((item) => item.status === 'active')
+    if (activeClasses.length === 0) {
+      showToast('error', 'Create an active class before publishing this quiz.')
+      return
+    }
+
+    setPublishSelection({ quiz, classId: activeClasses[0].id })
+  }
+
+  async function assignAndPublish() {
+    if (!publishSelection) return
+    const { quiz, classId } = publishSelection
+    const targetClass = classes.find((item) => item.id === classId && item.status === 'active')
+    if (!targetClass) {
+      showToast('error', 'Choose an active class before publishing this quiz.')
+      return
+    }
+    setPublishSelection(null)
+    await runAction(
+      quiz.id,
+      quiz.mode === 'canvas' ? 'Canvas assigned and published.' : 'Quiz assigned and published.',
+      async () => {
+        await updateQuiz(quiz.id, { classId })
+        await publishQuiz(quiz.id)
+      },
+    )
   }
 
   async function removeQuiz() {
@@ -140,15 +183,44 @@ export function InstructorQuizzesPage() {
           if (listStatus === 'empty') {
             return <EmptyState title="Your quiz library is ready" description={classes.some((item) => item.status === 'active') ? 'Create your first quiz and begin planning a thoughtful practice session.' : 'Create a class first, then make quizzes for its students.'} action={classes.some((item) => item.status === 'active') ? <Button to="/instructor/quizzes/new"><Plus size={17} aria-hidden="true" /> Create your first quiz</Button> : <Button to="/instructor"><Plus size={17} aria-hidden="true" /> Create your first class</Button>} />
           }
-          return visible.length === 0 ? <p className="quiz-empty-filter" role="status">No quizzes match these filters.</p> : <div className="quiz-list">{visible.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} classLabel={quiz.classId ? classes.find((item) => item.id === quiz.classId)?.name ?? 'Assigned class' : 'Unassigned legacy'} busy={busyId === quiz.id || deleteLoading} onAction={runAction} onDelete={() => void beginDelete(quiz)} />)}</div>
+          return visible.length === 0 ? <p className="quiz-empty-filter" role="status">No quizzes match these filters.</p> : <div className="quiz-list">{visible.map((quiz) => <QuizCard key={quiz.id} quiz={quiz} classLabel={quiz.classId ? classes.find((item) => item.id === quiz.classId)?.name ?? 'Assigned class' : 'Unassigned legacy'} busy={busyId === quiz.id || deleteLoading} onAction={runAction} onPublish={beginPublish} onDelete={() => void beginDelete(quiz)} />)}</div>
         })()}
       </section>
     </main>
+    <Dialog
+      open={Boolean(publishSelection)}
+      onClose={() => setPublishSelection(null)}
+      title="Assign and publish quiz"
+      description={`Choose an active class for “${publishSelection?.quiz.title ?? ''}”. It will be assigned to that class and published.`}
+    >
+      {publishSelection && (
+        <div className="grid gap-4">
+          <Select
+            label="Active class"
+            name="publish-quiz-class"
+            value={publishSelection.classId}
+            onChange={(event) => setPublishSelection({ ...publishSelection, classId: event.target.value })}
+            options={[
+              { label: 'Choose an active class', value: '' },
+              ...classes.filter((item) => item.status === 'active').map((item) => ({ label: item.name, value: item.id })),
+            ]}
+            hint="This quiz will be visible to students enrolled in the selected class."
+            required
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setPublishSelection(null)}>Cancel</Button>
+            <Button type="button" disabled={!publishSelection.classId || busyId === publishSelection.quiz.id} onClick={() => void assignAndPublish()}>
+              <Send size={16} aria-hidden="true" /> Assign &amp; publish
+            </Button>
+          </div>
+        </div>
+      )}
+    </Dialog>
     <ConfirmDialog open={Boolean(deleteSelection)} onClose={() => setDeleteSelection(null)} onConfirm={() => void removeQuiz()} title={deleteSelection?.quiz.mode === 'canvas' ? 'Delete this canvas?' : 'Delete this quiz?'} description={deleteSelection ? `Deleting “${deleteSelection.quiz.title}” will permanently erase ${deleteSelection.submissions} student ${deleteSelection.submissions === 1 ? 'submission' : 'submissions'} and all ${deleteSelection.quiz.mode === 'canvas' ? 'canvas' : 'quiz'} content. Archive it instead if you may want it later.` : ''} requiredName={deleteSelection?.quiz.title} confirmLabel={deleteSelection?.quiz.mode === 'canvas' ? 'Delete canvas' : 'Delete quiz'} />
   </AppShell>
 }
 
-function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRecord; classLabel: string; busy: boolean; onAction: (id: string, label: string, action: () => Promise<unknown>) => void; onDelete: () => void }) {
+function QuizCard({ quiz, classLabel, busy, onAction, onPublish, onDelete }: { quiz: QuizRecord; classLabel: string; busy: boolean; onAction: (id: string, label: string, action: () => Promise<unknown>) => void; onPublish: (quiz: QuizRecord) => void; onDelete: () => void }) {
   const statusLabel = quiz.status[0].toUpperCase() + quiz.status.slice(1)
   const isCanvas = quiz.mode === 'canvas'
   const updated = quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })
@@ -174,7 +246,7 @@ function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRe
       <button type="button" role="menuitem" disabled={busy} onClick={() => onAction(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}><Copy size={16} aria-hidden="true" /> Duplicate</button>
       {quiz.status === 'published'
         ? <button type="button" role="menuitem" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas returned to draft.' : 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}><Send size={16} aria-hidden="true" /> Unpublish</button>
-        : <button type="button" role="menuitem" disabled={busy || cannotPublish} aria-label={publishLabel} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas published.' : 'Quiz published.', () => publishQuiz(quiz.id))}><Send size={16} aria-hidden="true" /> Publish</button>}
+        : <button type="button" role="menuitem" disabled={busy || cannotPublish} aria-label={publishLabel} onClick={() => onPublish(quiz)}><Send size={16} aria-hidden="true" /> Publish</button>}
       {quiz.status === 'archived'
         ? <button type="button" role="menuitem" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}><RotateCcw size={16} aria-hidden="true" /> Restore</button>
         : <button type="button" role="menuitem" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas archived.' : 'Quiz archived.', () => archiveQuiz(quiz.id))}><Archive size={16} aria-hidden="true" /> Archive</button>}
@@ -190,7 +262,7 @@ function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRe
       <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}><Copy size={15} aria-hidden="true" /> Duplicate</Button>
       {quiz.status === 'published'
         ? <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas returned to draft.' : 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}><Send size={15} aria-hidden="true" /> Unpublish</Button>
-        : <Button type="button" variant="secondary" disabled={busy || quiz.questionCount < 1 || !quiz.title.trim()} aria-label={quiz.questionCount < 1 || !quiz.title.trim() ? (isCanvas ? 'Publish (add a title and save your board first)' : 'Publish (add a title and at least one question first)') : 'Publish'} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas published.' : 'Quiz published.', () => publishQuiz(quiz.id))}><Send size={15} aria-hidden="true" /> Publish</Button>}
+        : <Button type="button" variant="secondary" disabled={busy || quiz.questionCount < 1 || !quiz.title.trim()} aria-label={quiz.questionCount < 1 || !quiz.title.trim() ? (isCanvas ? 'Publish (add a title and save your board first)' : 'Publish (add a title and at least one question first)') : 'Publish'} onClick={() => onPublish(quiz)}><Send size={15} aria-hidden="true" /> Publish</Button>}
       {quiz.status !== 'published' && (quiz.questionCount < 1 || !quiz.title.trim()) && <span className="quiz-card__publish-hint">{isCanvas ? 'Add a title and save your board before publishing.' : 'Add a title and at least one question before publishing.'}</span>}
       {quiz.status === 'archived'
         ? <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}><RotateCcw size={15} aria-hidden="true" /> Restore</Button>
