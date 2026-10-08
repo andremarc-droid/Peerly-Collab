@@ -2,6 +2,8 @@ import { useContext, useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
+import { watchPublicProfile } from '../profile/profileService'
+import type { PublicProfile } from '../profile/profileTypes'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -26,10 +28,12 @@ export function StudentClassesPage() {
   const showToast = toastContext?.showToast ?? (() => undefined)
   const [enrollments, setEnrollments] = useState<EnrollmentWithId[]>([])
   const [details, setDetails] = useState<Record<string, ClassDetails>>({})
+  const [instructorProfiles, setInstructorProfiles] = useState<Record<string, PublicProfile | null>>({})
   const [leaveEnrollment, setLeaveEnrollment] = useState<EnrollmentWithId | null>(null)
   const [leaving, setLeaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [profileError, setProfileError] = useState('')
   const [retry, setRetry] = useState(0)
 
   useEffect(() => {
@@ -41,7 +45,17 @@ export function StudentClassesPage() {
     if (!uid || !enrollments.length) return undefined
     let active = true
     const subscriptions: Array<() => void> = []
+    const watchedInstructorIds = new Set<string>()
     for (const enrollment of enrollments) {
+      if (!watchedInstructorIds.has(enrollment.ownerId)) {
+        watchedInstructorIds.add(enrollment.ownerId)
+        subscriptions.push(watchPublicProfile(enrollment.ownerId, (profile) => {
+          if (active) {
+            setInstructorProfiles((current) => ({ ...current, [enrollment.ownerId]: profile }))
+            setProfileError('')
+          }
+        }, (reason) => { if (active) setProfileError(reason.message) }))
+      }
       if (enrollment.status === 'active') {
         subscriptions.push(watchClass(enrollment.classId, (classroom) => {
           if (active) setDetails((current) => ({ ...current, [enrollment.id]: { ...current[enrollment.id], classroom } }))
@@ -76,6 +90,7 @@ export function StudentClassesPage() {
   return <AppShell>
     <PageHeader eyebrow="STUDENT SPACE" title="My classes." subtitle="Your classes and the practice shared by each instructor." action={<Button to="/join"><Plus size={18} aria-hidden="true" /> Join class</Button>} />
     <main className="app-shell__content grid gap-6" id="main-content">
+      {profileError && <Alert tone="error" label="Instructor profiles unavailable">{profileError} Class names and saved instructor names are still shown.</Alert>}
       {(() => {
         const listStatus = resolveListStatus({ loading, error, count: enrollments.length })
         if (listStatus === 'error') {
@@ -91,7 +106,8 @@ export function StudentClassesPage() {
           const detail = details[enrollment.id]
           const classroom = detail?.classroom
           const title = classroom?.name ?? enrollment.className
-          const instructor = classroom?.ownerName ?? detail?.preview?.ownerName
+          const publicProfile = instructorProfiles[enrollment.ownerId]
+          const instructor = publicProfile?.name ?? classroom?.ownerName ?? detail?.preview?.ownerName
           return <ClassTile
             role="student"
             key={enrollment.id}
@@ -102,6 +118,7 @@ export function StudentClassesPage() {
             color={classroom?.color}
             accent={classroom?.accent}
             instructorName={instructor}
+            instructorPhotoURL={publicProfile?.photoURL ?? null}
             availableQuizzesCount={detail?.quizzes?.length ?? 0}
             enrollmentStatus={enrollment.status}
             onLeaveClass={() => setLeaveEnrollment(enrollment)}

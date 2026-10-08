@@ -83,3 +83,24 @@ export function watchUserProfile(
     onProfile({ ...snapshot.data(), uid: snapshot.id } as UserProfile)
   }, onError)
 }
+
+export function watchPublicProfile(
+  uid: string,
+  onProfile: (profile: PublicProfile | null) => void,
+  onError: (error: Error) => void,
+): () => void {
+  return onSnapshot(publicRef(uid), (snapshot) => {
+    if (!snapshot.exists()) {
+      onProfile(null)
+      return
+    }
+    const data = snapshot.data()
+    const name = typeof data.name === 'string' ? data.name.trim() : ''
+    const photoURL = data.photoURL === null || typeof data.photoURL === 'string' ? data.photoURL : null
+    onProfile(name ? { name, photoURL, updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0 } : null)
+  }, onError)
+}
+
+function publicRef(uid: string) {
+  return doc(firestore, 'publicProfiles', uid)
+}

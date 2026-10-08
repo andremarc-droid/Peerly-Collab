@@ -8,13 +8,14 @@ import { StudentClassesPage } from './StudentClassesPage'
 import type { ClassCodeRecord, ClassWithId, EnrollmentWithId } from './types'
 
 const mocks = vi.hoisted(() => ({
-  list: vi.fn(), watchClass: vi.fn(), watchQuizzes: vi.fn(), preview: vi.fn(),
+  list: vi.fn(), watchClass: vi.fn(), watchQuizzes: vi.fn(), watchPublicProfile: vi.fn(), preview: vi.fn(),
 }))
 vi.mock('../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'student-1', displayName: 'Sam' } }) }))
 vi.mock('../../app/AppShell', () => ({ AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
 vi.mock('./services/joinService', () => ({ listMyEnrollments: mocks.list, getClassCodePreview: mocks.preview }))
 vi.mock('./services/classService', () => ({ watchClass: mocks.watchClass }))
 vi.mock('./services/quizService', () => ({ watchPublishedQuizzesForClass: mocks.watchQuizzes }))
+vi.mock('../profile/profileService', () => ({ watchPublicProfile: mocks.watchPublicProfile }))
 
 const now = Timestamp.fromMillis(1_700_000_000_000)
 const activeClass: ClassWithId = {
@@ -34,15 +35,23 @@ beforeEach(() => {
   mocks.list.mockImplementation((_uid: string, onChange: (items: EnrollmentWithId[]) => void) => { onChange([activeEnrollment, pendingEnrollment]); return () => undefined })
   mocks.watchClass.mockImplementation((_id: string, onChange: (value: ClassWithId) => void) => { onChange(activeClass); return () => undefined })
   mocks.watchQuizzes.mockImplementation((_id: string, onChange: (items: never[]) => void) => { onChange([]); return () => undefined })
+  mocks.watchPublicProfile.mockImplementation((_uid: string, onChange: (profile: { name: string; photoURL: string | null; updatedAt: number }) => void) => {
+    onChange({ name: 'Dr. Current Name', photoURL: 'https://example.test/instructor.png', updatedAt: 1 })
+    return () => undefined
+  })
   mocks.preview.mockResolvedValue(preview)
 })
 afterEach(cleanup)
 
 describe('student classes dashboard', () => {
   it('shows active class details, quiz count, pending status, and a working join link', async () => {
-    render(<MemoryRouter><StudentClassesPage /></MemoryRouter>)
+    const { container } = render(<MemoryRouter><StudentClassesPage /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: 'Biology' })).toBeInTheDocument()
-    expect(screen.getByText(/Instructor Morgan/)).toBeInTheDocument()
+    expect(screen.getAllByText('Instructor · Dr. Current Name')).toHaveLength(2)
+    const instructorImages = Array.from(container.querySelectorAll('img'))
+    expect(instructorImages).toHaveLength(2)
+    expect(instructorImages.every((image) => image.src === 'https://example.test/instructor.png')).toBe(true)
+    expect(mocks.watchPublicProfile).toHaveBeenCalledTimes(1)
     expect(screen.getByText('0 published quizzes')).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Chemistry' })).toBeInTheDocument()
     expect(screen.getByText('Waiting for approval')).toBeInTheDocument()

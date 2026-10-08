@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
+import { useUserProfile } from '../profile/useUserProfile'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
@@ -28,6 +29,7 @@ interface Counts { students: number; pending: number; quizzes: number }
 
 export function ClassesPage() {
   const { user } = useAuth()
+  const { profile } = useUserProfile()
   const ownerId = user?.uid
   const navigate = useNavigate()
   const { showToast } = useToast()
@@ -138,6 +140,8 @@ export function ClassesPage() {
             name={item.name}
             section={item.section}
             subject={item.subject}
+            instructorName={profile?.name ?? item.ownerName}
+            instructorPhotoURL={profile?.photoURL ?? null}
             color={item.color}
             accent={item.accent}
             status={item.status}
@@ -153,7 +157,7 @@ export function ClassesPage() {
         })()}
       </section>
     </main>
-    <CreateClassDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={create} ownerId={ownerId ?? ''} ownerName={user?.displayName ?? 'Instructor'} busy={creating} />
+    <CreateClassDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={create} ownerId={ownerId ?? ''} ownerName={profile?.name ?? user?.displayName ?? 'Instructor'} busy={creating} />
     {editingClass && (
       <EditAppearanceDialog
         open={Boolean(editingClass)}

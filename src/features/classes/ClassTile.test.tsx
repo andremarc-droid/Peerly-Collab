@@ -10,7 +10,7 @@ afterEach(() => {
 
 describe('ClassTile', () => {
   it('renders instructor variant with student count, quiz count, code, and link to class', () => {
-    render(
+    const { container } = render(
       <MemoryRouter>
         <ClassTile
           role="instructor"
@@ -18,6 +18,8 @@ describe('ClassTile', () => {
           name="Math 101"
           section="Sec A"
           subject="Calculus"
+          instructorName="Ms. Nguyen"
+          instructorPhotoURL="https://example.test/instructor.jpg"
           color="ocean"
           accent="pinstripe"
           joinCode="8VYRTY"
@@ -34,6 +36,8 @@ describe('ClassTile', () => {
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('2 pending')).toBeInTheDocument()
     expect(screen.getByText('8VYRTY')).toBeInTheDocument()
+    expect(screen.getByText('Instructor · Ms. Nguyen')).toBeInTheDocument()
+    expect(container.querySelector('img')).toHaveAttribute('src', 'https://example.test/instructor.jpg')
 
     const link = screen.getByRole('link', { name: 'Open class Math 101' })
     expect(link).toHaveAttribute('href', '/instructor/classes/c1')
@@ -57,7 +61,7 @@ describe('ClassTile', () => {
     )
 
     expect(screen.getByText('Biology')).toBeInTheDocument()
-    expect(screen.getByText('Instructor Dr. Watson')).toBeInTheDocument()
+    expect(screen.getByText('Instructor · Dr. Watson')).toBeInTheDocument()
     expect(screen.getByText('4 published quizzes')).toBeInTheDocument()
     const link = screen.getByRole('link', { name: 'Open class Biology' })
     expect(link).toHaveAttribute('href', '/student/classes/c2')

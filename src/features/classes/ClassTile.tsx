@@ -1,4 +1,4 @@
-import { Archive, BookOpen, Copy, Ellipsis, LogOut, Palette, RotateCcw, User, Users } from 'lucide-react'
+import { Archive, BookOpen, Copy, Ellipsis, LogOut, Palette, RotateCcw, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Badge } from '../../shared/ui/Badge'
 import { DropdownMenu } from '../../shared/ui/DropdownMenu'
@@ -25,6 +25,7 @@ export interface ClassTileProps {
   busy?: boolean
   // Student specific
   instructorName?: string
+  instructorPhotoURL?: string | null
   availableQuizzesCount?: number
   enrollmentStatus?: EnrollmentStatus
   onLeaveClass?: () => void
@@ -48,6 +49,7 @@ export function ClassTile({
   onToggleArchive,
   busy = false,
   instructorName,
+  instructorPhotoURL = null,
   availableQuizzesCount = 0,
   enrollmentStatus = 'active',
   onLeaveClass,
@@ -59,7 +61,8 @@ export function ClassTile({
   const isClickable = !isPending && !isBlocked
 
   const targetUrl = role === 'instructor' ? `/instructor/classes/${id}` : `/student/classes/${id}`
-  const subtitle = [section, subject].filter(Boolean).join(' · ') || (role === 'student' && instructorName ? `Instructor ${instructorName}` : 'No section details')
+  const subtitle = [section, subject].filter(Boolean).join(' · ') || 'No section details'
+  const displayedInstructorName = instructorName?.replace(/^Instructor\s+/i, '').trim() || 'Instructor'
 
   return (
     <article
@@ -164,6 +167,7 @@ export function ClassTile({
                 <Badge>{pendingCount} pending</Badge>
               )}
             </div>
+            <InstructorIdentity name={displayedInstructorName} photoURL={instructorPhotoURL} />
 
             {joinCode && (
               <div className="flex items-center justify-between text-sm text-navy-800-72 pt-2 border-t border-navy-900-08">
@@ -177,12 +181,6 @@ export function ClassTile({
         ) : (
           <>
             <div className="class-tile__meta">
-              {instructorName && (
-                <span className="class-tile__meta-item" title={`Instructor: ${instructorName}`}>
-                  <User size={16} className="text-navy-900" aria-hidden="true" />
-                  <span>{instructorName.startsWith('Instructor ') ? instructorName : `Instructor ${instructorName}`}</span>
-                </span>
-              )}
               {!isPending && !isBlocked && (
                 <span className="class-tile__meta-item" title={`${availableQuizzesCount} published quizzes`}>
                   <BookOpen size={16} className="text-navy-900" aria-hidden="true" />
@@ -190,6 +188,7 @@ export function ClassTile({
                 </span>
               )}
             </div>
+            <InstructorIdentity name={displayedInstructorName} photoURL={instructorPhotoURL} />
 
             {isPending && (
               <div className="rounded-xl bg-navy-900-08 p-2.5 text-sm text-navy-800-72 font-medium">
@@ -215,5 +214,16 @@ export function ClassTile({
         />
       )}
     </article>
+  )
+}
+
+function InstructorIdentity({ name, photoURL }: { name: string; photoURL: string | null }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5" aria-label={`Instructor: ${name}`}>
+      {photoURL
+        ? <img src={photoURL} alt="" className="size-9 shrink-0 rounded-full border border-navy-900-12 object-cover" />
+        : <span className="grid size-9 shrink-0 place-items-center rounded-full border border-navy-900-12 bg-navy-900-08 text-sm font-bold text-navy-900" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>}
+      <span className="min-w-0 truncate text-sm font-semibold text-navy-900">Instructor · {name}</span>
+    </div>
   )
 }
