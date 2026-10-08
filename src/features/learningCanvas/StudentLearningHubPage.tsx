@@ -47,7 +47,7 @@ import { LossyImportDialog } from './components/LossyImportDialog'
 import { LearningGraphView } from './components/LearningGraphView'
 import { NotesTabContent } from './components/NotesTabContent'
 import { FlashcardsTab, useFlashcardDecks } from '../flashcards'
-import { ChatbotTab } from '../chatbot'
+import { ChatbotTab, TutorDock } from '../chatbot'
 import { useSharedCanvases } from './collab/useSharedCanvases'
 import { SharedCanvasList } from './collab/SharedCanvasList'
 import { logActivity } from './collab/activityService'
@@ -534,7 +534,6 @@ export function StudentLearningHubPage() {
               { label: 'Notes', value: 'notes' },
               { label: 'Flashcards', value: 'flashcards' },
               { label: 'Graph view', value: 'graph' },
-              { label: 'AI Tutor', value: 'tutor' },
             ]}
           />
         </div>
@@ -565,10 +564,11 @@ export function StudentLearningHubPage() {
           </section>
         )}
 
-        {/* View mode: AI Tutor. Always mounted (just hidden) so a reply in progress survives switching tabs. */}
-        <section aria-label="AI tutor" hidden={viewMode !== 'tutor'}>
-          <ChatbotTab classLabel={selectedClassName} />
-        </section>
+        {/* AI Tutor: floating button on every tab. Always mounted so a reply in progress survives tab switches. */}
+        {/* Shared-conversation links (?tab=tutor&thread=…) open it straight away. */}
+        <TutorDock defaultOpen={searchParams.get('tab') === 'tutor' || searchParams.has('thread')}>
+          <ChatbotTab classLabel={selectedClassName} compact />
+        </TutorDock>
 
         {/* View mode: Flashcards */}
         {viewMode === 'flashcards' && (
@@ -780,6 +780,8 @@ export function StudentLearningHubPage() {
         )}
           </div>
         )}
+        {/* Keeps the last items clear of the floating AI Tutor button. */}
+        <div className="h-14" aria-hidden="true" />
       </main>
 
       {/* Dialogs */}

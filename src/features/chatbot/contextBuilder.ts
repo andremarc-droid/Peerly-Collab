@@ -1,5 +1,6 @@
 import type { GroqContentPart, GroqMessage } from '../../lib/groq/client'
 import { toDataUrl } from '../canvas/imageProcessing'
+import { wantsAppGuide } from './appGuide'
 import {
   COMPACT_KEEP_RATIO,
   IMAGE_MEMORY_MESSAGES,
@@ -113,7 +114,13 @@ function prepare({ thread, classLabel, limits }: ContextInput): Prepared {
 
   const latestImages = latest.message.images.slice(0, resolved.maxImagesPerRequest)
   const documents = selectPromptDocuments(slots.map(({ message }) => message))
-  const systemText = buildSystemPrompt({ classLabel, summary: thread.summary, documents })
+  const learnerTexts = slots.filter(({ message }) => message.role === 'user').map(({ message }) => message.text)
+  const systemText = buildSystemPrompt({
+    classLabel,
+    summary: thread.summary,
+    documents,
+    includeAppGuide: wantsAppGuide(learnerTexts),
+  })
   const fixed =
     estimateTokens(systemText) + tokenCost(latest.message, latestImages.length > 0, resolved, latestImages.length)
 

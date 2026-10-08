@@ -17,9 +17,9 @@ export function MessageBubble({ message, canRetry, onRetry }: MessageBubbleProps
   const isUser = message.role === 'user'
 
   return (
-    <li className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <li className={`flex min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`grid min-w-0 gap-2 rounded-3xl px-3 py-2.5 sm:px-4 sm:py-3 ${
+        className={`grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-3xl px-3 py-2.5 sm:px-4 sm:py-3 ${
           isUser
             ? 'max-w-[88%] bg-navy-900 text-white sm:max-w-[min(100%,42rem)]'
             : 'w-full max-w-full border border-navy-900-12 bg-white text-navy-900 shadow-sm sm:w-auto sm:max-w-[min(100%,42rem)]'
@@ -52,7 +52,10 @@ export function MessageBubble({ message, canRetry, onRetry }: MessageBubbleProps
           (isUser ? (
             <p className="m-0 whitespace-pre-wrap break-words">{message.text}</p>
           ) : (
-            <SafeMarkdown content={plainMath(message.text)} className="break-words" />
+            <SafeMarkdown
+              content={plainMath(message.text)}
+              className="min-w-0 break-words [&_img]:max-w-full [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
+            />
           ))}
 
         {message.failed && (

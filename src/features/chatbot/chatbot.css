@@ -85,6 +85,20 @@
   scroll-behavior: smooth;
 }
 
+/* Tutor replies must never be wider than the chat: long words wrap, code blocks and tables scroll on their own. */
+.tutor-log .learning-canvas-markdown {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.tutor-log .learning-canvas-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.tutor-log .learning-canvas-markdown pre code {
+  overflow-wrap: normal;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tutor-drawer { animation: none; }
   .tutor-log { scroll-behavior: auto; }
