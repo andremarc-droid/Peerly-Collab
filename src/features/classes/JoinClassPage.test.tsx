@@ -11,14 +11,14 @@ const mocks = vi.hoisted(() => ({
   auth: { status: 'signedOut' as 'loading' | 'signedOut' | 'signedIn', user: null as { uid: string; displayName: string } | null, profileStatus: 'ready' as 'loading' | 'ready' | 'error' },
   profile: { profile: null as { name: string; photoURL: string | null; role: 'student' | 'instructor' | null } | null, loading: false, error: null as string | null },
   showToast: vi.fn(), lookup: vi.fn(async () => ({ classId: 'class-1', ownerId: 'teacher', className: 'Biology', ownerName: 'Morgan', joinEnabled: true, requireApproval: false, archived: false })),
-  getPreview: vi.fn(), join: vi.fn(),
+  getPreview: vi.fn(), join: vi.fn(), listEnrollments: vi.fn(),
 }))
 
 vi.mock('../auth/useAuth', () => ({ useAuth: () => mocks.auth }))
 vi.mock('../profile/useUserProfile', () => ({ useUserProfile: () => mocks.profile }))
 vi.mock('../../shared/ui/useToast', () => ({ useToast: () => ({ showToast: mocks.showToast }) }))
 vi.mock('../../app/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }))
-vi.mock('./services/joinService', () => ({ lookupClassByCode: mocks.lookup, getClassCodePreview: mocks.getPreview, joinClass: mocks.join }))
+vi.mock('./services/joinService', () => ({ lookupClassByCode: mocks.lookup, getClassCodePreview: mocks.getPreview, joinClass: mocks.join, listMyEnrollments: mocks.listEnrollments }))
 
 function SigninRoundTrip() {
   const navigate = useNavigate()
@@ -49,6 +49,7 @@ beforeEach(() => {
   mocks.profile.error = null
   mocks.lookup.mockClear()
   mocks.join.mockReset()
+  mocks.listEnrollments.mockImplementation(() => () => undefined)
   mocks.lookup.mockResolvedValue({ classId: 'class-1', ownerId: 'teacher', className: 'Biology', ownerName: 'Morgan', joinEnabled: true, requireApproval: false, archived: false })
 })
 afterEach(cleanup)

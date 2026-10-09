@@ -29,7 +29,7 @@ export function CreateClassDialog({ open, onClose, onCreate, ownerId, ownerName,
       <Input label="Class name" name="class-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} error={error} required maxLength={100} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Input label="Section" name="class-section" value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value })} />
-        <Input label="Subject" name="class-subject" value={form.subject} onChange={(event) => setForm({ ...form, subject: event.target.value })} />
+        <Input label="Subject area" name="class-subject" value={form.subject} onChange={(event) => setForm({ ...form, subject: event.target.value })} placeholder="e.g., Computer Science" />
       </div>
       <Textarea label="Description" name="class-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} />
       <ClassColorPicker

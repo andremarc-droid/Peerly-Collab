@@ -1,6 +1,6 @@
 import { ArrowLeft, ClipboardList, Send } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
@@ -13,6 +13,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { watchClass } from '../classes/services/classService'
 import type { ClassWithId } from '../classes/types'
 import { AttachmentsSection } from './AttachmentsSection'
+import { DueDateTimeField } from './DueDateTimeField'
 import { fromLocalInputValue, parsePoints, toLocalInputValue } from './format'
 import { getPublishIssue } from './schemas'
 import { publishAssignment, subscribeToAssignment, unpublishAssignment, updateAssignment } from './services'
@@ -27,6 +28,7 @@ type SaveState = 'saved' | 'saving' | 'error'
 
 export function AssignmentEditorPage() {
   const { classId = '', assignmentId = '' } = useParams()
+  const navigate = useNavigate()
   const { showToast } = useToast()
   const drive = useGoogleDrive()
   const [classroom, setClassroom] = useState<ClassWithId | null>(null)
@@ -81,7 +83,11 @@ export function AssignmentEditorPage() {
     if (!assignment) return
     try {
       if (assignment.status === 'published') { await unpublishAssignment(classId, assignmentId); showToast('success', 'Assignment unpublished.') }
-      else { await publishAssignment(classId, assignmentId); showToast('success', 'Assignment published.') }
+      else {
+        await publishAssignment(classId, assignmentId)
+        showToast('success', 'Assignment published.')
+        navigate(backTo, { replace: true })
+      }
     } catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'The assignment could not be updated.') }
   }
 
@@ -99,13 +105,13 @@ export function AssignmentEditorPage() {
           <Input label="Title" name="assignment-title" value={title} maxLength={MAX_TITLE_LENGTH} onChange={(event) => edit(setTitle, event.target.value)} error={!title.trim() ? 'A title is required.' : undefined} />
           <Textarea label="Instructions" name="assignment-instructions" value={instructions} maxLength={MAX_INSTRUCTIONS_LENGTH} rows={6} onChange={(event) => edit(setInstructions, event.target.value)} hint={`Optional · up to ${MAX_INSTRUCTIONS_LENGTH} characters`} />
           <div className="assignment-fields assignment-fields--two">
-            <Input label="Due date" name="assignment-due" type="datetime-local" value={due} onChange={(event) => edit(setDue, event.target.value)} hint="Optional · shown in each person’s own time zone" />
+            <DueDateTimeField value={due} onChange={(value) => edit(setDue, value)} />
             <Input label="Points" name="assignment-points" inputMode="numeric" value={points} onChange={(event) => edit(setPoints, event.target.value)} error={pointsError} hint={pointsError ? undefined : 'Optional · leave blank for ungraded'} />
           </div>
         </div>
       </SectionCard>
       <AttachmentsSection files={assignment.attachments} drive={drive} onChange={(attachments) => patch({ attachments })} />
-      <TurnInSettings assignment={assignment} drive={drive} onChange={patch} />
+      <TurnInSettings assignment={assignment} onChange={patch} />
       {assignment.acceptsTurnIn && <TurnInsPanel assignment={assignment} />}
       <section className="module-publish-bar" aria-label="Publish assignment">
         <div><strong>{published ? 'Published assignment' : 'Ready to publish?'}</strong><ul><li>{title.trim() ? '✓' : '○'} Title</li><li>{assignment.instructions.trim() || assignment.attachments.length > 0 ? '✓' : '○'} Instructions or a file</li>{assignment.acceptsTurnIn && <li>{assignment.collectorEmail ? '✓' : '○'} Account that receives student work</li>}</ul></div>

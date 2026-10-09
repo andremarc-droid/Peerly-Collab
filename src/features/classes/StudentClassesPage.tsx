@@ -1,4 +1,5 @@
-import { useContext, useEffect, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
@@ -23,6 +24,7 @@ interface ClassDetails { classroom?: ClassWithId | null; preview?: ClassCodeReco
 
 export function StudentClassesPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const uid = user?.uid
   const toastContext = useContext(ToastContext)
   const showToast = toastContext?.showToast ?? (() => undefined)
@@ -35,11 +37,18 @@ export function StudentClassesPage() {
   const [error, setError] = useState('')
   const [profileError, setProfileError] = useState('')
   const [retry, setRetry] = useState(0)
+  const enrollmentStatuses = useRef<Record<string, EnrollmentWithId['status']>>({})
 
   useEffect(() => {
     if (!uid) return undefined
-    return listMyEnrollments(uid, (items) => { setEnrollments(items); setLoading(false); setError('') }, (reason) => { setError(reason.message); setLoading(false) })
-  }, [uid, retry])
+    enrollmentStatuses.current = {}
+    return listMyEnrollments(uid, (items) => {
+      const newlyApproved = items.find((item) => item.status === 'active' && enrollmentStatuses.current[item.id] === 'pending')
+      enrollmentStatuses.current = Object.fromEntries(items.map((item) => [item.id, item.status]))
+      setEnrollments(items); setLoading(false); setError('')
+      if (newlyApproved) navigate(`/student/classes/${newlyApproved.classId}`, { replace: true })
+    }, (reason) => { setError(reason.message); setLoading(false) })
+  }, [uid, retry, navigate])
 
   useEffect(() => {
     if (!uid || !enrollments.length) return undefined

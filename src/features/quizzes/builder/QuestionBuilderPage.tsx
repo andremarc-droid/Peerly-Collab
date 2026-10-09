@@ -133,7 +133,11 @@ export function QuestionBuilderPage() {
   async function publish() {
     if (!canPublish || !quiz) return
     setPublishBusy(true)
-    try { await publishQuiz(quizId); showToast('success', 'Quiz published and ready for students.'); navigate(quiz.classId ? `/instructor/classes/${quiz.classId}` : '/instructor/quizzes') }
+    try {
+      await publishQuiz(quizId)
+      showToast('success', 'Quiz published and ready for students.')
+      navigate(quiz.classId ? `/instructor/classes/${quiz.classId}?tab=${quiz.mode === 'canvas' ? 'canvas' : 'quizzes'}` : '/instructor/quizzes')
+    }
     catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Quiz could not be published.') }
     finally { setPublishBusy(false) }
   }

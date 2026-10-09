@@ -1,6 +1,6 @@
 import { Archive, BarChart3, Copy, MoreVertical, Pencil, Plus, RotateCcw, Send, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
 import { Alert } from '../../../shared/ui/Alert'
@@ -64,6 +64,7 @@ function settingBadges(quiz: QuizRecord) {
 
 export function InstructorQuizzesPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const { showToast } = useToast()
   const [quizzes, setQuizzes] = useState<QuizRecord[]>([])
   const [classes, setClasses] = useState<ClassWithId[]>([])
@@ -97,9 +98,9 @@ export function InstructorQuizzesPage() {
   const published = quizzes.filter((quiz) => quiz.status === 'published').length
   const drafts = quizzes.filter((quiz) => quiz.status === 'draft').length
 
-  async function runAction(id: string, label: string, action: () => Promise<unknown>) {
+  async function runAction(id: string, label: string, action: () => Promise<unknown>, afterSuccess?: () => void) {
     setBusyId(id)
-    try { await action(); showToast('success', label) }
+    try { await action(); showToast('success', label); afterSuccess?.() }
     catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'The action could not be completed.') }
     finally { setBusyId(null) }
   }
@@ -114,7 +115,7 @@ export function InstructorQuizzesPage() {
   function beginPublish(quiz: QuizRecord) {
     const assignedClass = classes.find((item) => item.id === quiz.classId && item.status === 'active')
     if (assignedClass) {
-      void runAction(quiz.id, quiz.mode === 'canvas' ? 'Canvas published.' : 'Quiz published.', () => publishQuiz(quiz.id))
+      void runAction(quiz.id, quiz.mode === 'canvas' ? 'Canvas published.' : 'Quiz published.', () => publishQuiz(quiz.id), () => navigate(`/instructor/classes/${assignedClass.id}?tab=${quiz.mode === 'canvas' ? 'canvas' : 'quizzes'}`, { replace: true }))
       return
     }
 
@@ -148,6 +149,7 @@ export function InstructorQuizzesPage() {
         await updateQuiz(quiz.id, { classId })
         await publishQuiz(quiz.id)
       },
+      () => navigate(`/instructor/classes/${classId}?tab=${quiz.mode === 'canvas' ? 'canvas' : 'quizzes'}`, { replace: true }),
     )
   }
 

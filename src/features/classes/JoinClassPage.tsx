@@ -14,7 +14,7 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { isValidJoinCode, normalizeJoinCode } from './joinCode'
 import { joinLookupErrorMessage, joinOutcomeMessage, type JoinFeedback } from './joinMessages'
-import { getClassCodePreview, joinClass, lookupClassByCode } from './services/joinService'
+import { getClassCodePreview, joinClass, listMyEnrollments, lookupClassByCode } from './services/joinService'
 import type { ClassCodeRecord } from './types'
 
 export function JoinClassPage() {
@@ -70,6 +70,21 @@ function JoinClassFlow({ inviteCode }: { inviteCode?: string }) {
     })
     return () => { active = false }
   }, [inviteCode, status, profileLoading, profile?.role, user])
+
+  // Keep the invitation page live while approval is pending. This also redirects after a refresh
+  // when the enrollment was approved before the student reopened the page.
+  useEffect(() => {
+    if (status !== 'signedIn' || profile?.role !== 'student' || !user || !preview?.classId) return undefined
+    const classId = preview.classId
+    return listMyEnrollments(user.uid, (enrollments) => {
+      const enrollment = enrollments.find((item) => item.classId === classId)
+      if (enrollment?.status === 'active') {
+        navigate(`/student/classes/${classId}`, { replace: true })
+      }
+    }, (error) => {
+      setFeedback(joinLookupErrorMessage(error))
+    })
+  }, [status, profile?.role, user, preview?.classId, navigate])
 
   useEffect(() => {
     if (status === 'signedOut' && inviteCode) beginAuth(path)
