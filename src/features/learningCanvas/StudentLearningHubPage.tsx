@@ -127,7 +127,8 @@ export function StudentLearningHubPage() {
       if (isPersonalWorkspace) {
         unsubs.push(watchMyCanvases(classId, user.uid, (items) => {
           setPersonalCanvasesMap((prev) => ({ ...prev, [classId]: items }))
-        }, () => {}))
+          setError(null)
+        }, (cause) => setError(cause.message)))
         return
       }
 
@@ -150,7 +151,7 @@ export function StudentLearningHubPage() {
           (items) => {
             setInstructorCanvasesMap((prev) => ({ ...prev, [classId]: items }))
           },
-          () => {},
+          (cause) => setError(cause.message),
         ),
       )
 
@@ -162,7 +163,7 @@ export function StudentLearningHubPage() {
           (items) => {
             setPersonalCanvasesMap((prev) => ({ ...prev, [classId]: items }))
           },
-          () => {},
+          (cause) => setError(cause.message),
         ),
       )
 
