@@ -13,16 +13,16 @@ export interface ClassModuleOption {
 }
 
 /** Live list of modules the signed-in role may read in a class (students only see published ones). */
-export function useClassModules(classId: string, role: 'instructor' | 'student') {
+export function useClassModules(classId: string, role: 'instructor' | 'student', enabled = true) {
   const [state, setState] = useState<{ key: string; modules: ClassModuleOption[]; error: string | null }>({
     key: '',
     modules: [],
     error: null,
   })
-  const key = `${role}:${classId}`
+  const key = `${role}:${classId}:${enabled}`
 
   useEffect(() => {
-    if (!classId) return undefined
+    if (!classId || !enabled) return undefined
     return subscribeToModules(
       classId,
       role,
@@ -34,10 +34,10 @@ export function useClassModules(classId: string, role: 'instructor' | 'student')
         }),
       (error) => setState({ key, modules: [], error: error.message }),
     )
-  }, [classId, role, key])
+  }, [classId, role, enabled, key])
 
   const current = state.key === key ? state : { modules: [], error: null }
-  return { modules: current.modules, error: current.error, loading: Boolean(classId) && state.key !== key }
+  return { modules: current.modules, error: current.error, loading: Boolean(classId && enabled) && state.key !== key }
 }
 
 /** Reads the chosen modules once, with their resources, in the shape the prompt builder expects. */

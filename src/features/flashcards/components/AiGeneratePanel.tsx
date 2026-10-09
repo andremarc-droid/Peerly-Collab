@@ -27,13 +27,14 @@ import type { Flashcard } from '../types'
 interface AiGeneratePanelProps {
   classId: string
   role: 'instructor' | 'student'
+  canLoadClassModules?: boolean
   /** Cards already in the editor that have content; they count toward the deck limit. */
   filledCardCount: number
   onAddCards: (cards: Flashcard[]) => void
 }
 
-export function AiGeneratePanel({ classId, role, filledCardCount, onAddCards }: AiGeneratePanelProps) {
-  const { modules, error: modulesError, loading } = useClassModules(classId, role)
+export function AiGeneratePanel({ classId, role, canLoadClassModules = true, filledCardCount, onAddCards }: AiGeneratePanelProps) {
+  const { modules, error: modulesError, loading } = useClassModules(classId, role, canLoadClassModules)
   const [selected, setSelected] = useState<string[]>([])
   const [notes, setNotes] = useState('')
   const [countText, setCountText] = useState(String(DEFAULT_AI_CARDS))
@@ -130,6 +131,10 @@ export function AiGeneratePanel({ classId, role, filledCardCount, onAddCards }: 
           </legend>
           {loading ? (
             <p className="m-0 text-sm text-navy-800">Loading modules…</p>
+          ) : !canLoadClassModules ? (
+            <p className="m-0 text-sm text-navy-800">
+              This is your personal workspace, so there are no class modules to import. You can still paste notes or add documents below.
+            </p>
           ) : modules.length === 0 ? (
             <p className="m-0 text-sm text-navy-800">
               {role === 'instructor'

@@ -212,7 +212,7 @@ export function StudentLearningHubPage() {
     .filter((c): c is ClassWithId => Boolean(c))
 
   const classOptions = [
-    ...(user ? [{ id: user.uid, name: 'Personal workspace' }] : []),
+    ...(user ? [{ id: user.uid, name: 'Personal workspace', isPersonalWorkspace: true }] : []),
     ...enrolledClasses.map((c) => ({ id: c.id, name: c.name })),
   ]
   const activeTargetClassId =

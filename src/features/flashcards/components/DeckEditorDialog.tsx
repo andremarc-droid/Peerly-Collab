@@ -23,7 +23,7 @@ export interface DeckEditorValues extends FlashcardDeckInput {
 
 interface DeckEditorDialogProps {
   role: 'instructor' | 'student'
-  classes: Array<{ id: string; name: string }>
+  classes: Array<{ id: string; name: string; isPersonalWorkspace?: boolean }>
   defaultClassId: string
   deck: FlashcardDeckWithId | null
   onSave: (values: DeckEditorValues) => Promise<void>
@@ -53,6 +53,7 @@ export function DeckEditorDialog({
   const [busy, setBusy] = useState(false)
 
   const isEditing = deck !== null
+  const canLoadClassModules = classes.find((item) => item.id === classId)?.isPersonalWorkspace !== true
   const atLimit = rows.length >= MAX_DECK_CARDS
 
   const updateRow = (id: string, patch: Partial<Flashcard>) =>
@@ -231,6 +232,7 @@ export function DeckEditorDialog({
           <AiGeneratePanel
             classId={classId}
             role={role}
+            canLoadClassModules={canLoadClassModules}
             filledCardCount={filledCount}
             onAddCards={addAiCards}
           />

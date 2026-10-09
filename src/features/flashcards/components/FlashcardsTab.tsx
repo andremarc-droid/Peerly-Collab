@@ -17,7 +17,7 @@ import { DeckShareDialog } from './DeckShareDialog'
 
 interface FlashcardsTabProps {
   decks: FlashcardDeckWithId[]
-  classes: Array<{ id: string; name: string }>
+  classes: Array<{ id: string; name: string; isPersonalWorkspace?: boolean }>
   selectedClassId: string
   role: 'instructor' | 'student'
   error?: string | null
