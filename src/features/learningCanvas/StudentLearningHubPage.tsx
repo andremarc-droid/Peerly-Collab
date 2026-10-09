@@ -68,6 +68,12 @@ export function StudentLearningHubPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [selectedClassId] = useState<string>(searchParams.get('classId') || 'all')
+  const personalWorkspaceId = user?.uid
+  const workspaceClassIds = [...new Set([
+    ...enrollments.map((enrollment) => enrollment.classId),
+    ...(personalWorkspaceId ? [personalWorkspaceId] : []),
+  ])]
+  const workspaceClassKey = workspaceClassIds.join('|')
   const [viewMode, setViewMode] = useState<string>(searchParams.get('tab') === 'notes' ? 'notes' : searchParams.get('tab') === 'graph' || searchParams.has('graphId') ? 'graph' : 'canvases') // 'canvases' | 'graph'
 
   // Per-class canvases: classId -> LearningCanvasWithId[]
@@ -87,7 +93,7 @@ export function StudentLearningHubPage() {
   const { decks: flashcardDecks, error: flashcardError } = useFlashcardDecks({
     role: 'student',
     uid: user?.uid,
-    classIds: enrollments.map((e) => e.classId),
+    classIds: workspaceClassIds,
   })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -112,11 +118,18 @@ export function StudentLearningHubPage() {
 
   // 2. Watch classes, published canvases, personal canvases, modules & quizzes
   useEffect(() => {
-    if (!user || !enrollments.length) return
+    if (!user || !workspaceClassKey) return
     const unsubs: Array<() => void> = []
 
-    enrollments.forEach((e) => {
-      const classId = e.classId
+    workspaceClassKey.split('|').forEach((classId) => {
+      const isPersonalWorkspace = classId === user.uid && !enrollments.some((e) => e.classId === classId)
+
+      if (isPersonalWorkspace) {
+        unsubs.push(watchMyCanvases(classId, user.uid, (items) => {
+          setPersonalCanvasesMap((prev) => ({ ...prev, [classId]: items }))
+        }, () => {}))
+        return
+      }
 
       // Class info
       unsubs.push(
@@ -190,7 +203,7 @@ export function StudentLearningHubPage() {
     })
 
     return () => unsubs.forEach((u) => u())
-  }, [user, enrollments])
+  }, [user, enrollments, workspaceClassKey])
 
   // Aggregate canvases
   const allInstructorCanvases = Object.values(instructorCanvasesMap).flat()
@@ -220,24 +233,28 @@ export function StudentLearningHubPage() {
     .map((e) => classesMap[e.classId])
     .filter((c): c is ClassWithId => Boolean(c))
 
-  const classOptions = enrolledClasses.map((c) => ({ id: c.id, name: c.name }))
+  const classOptions = [
+    ...(user ? [{ id: user.uid, name: 'Personal workspace' }] : []),
+    ...enrolledClasses.map((c) => ({ id: c.id, name: c.name })),
+  ]
   const activeTargetClassId =
     selectedClassId !== 'all' ? selectedClassId : enrolledClasses[0]?.id
 
   const handleCreate = async (title: string, description: string, targetClassId?: string) => {
     if (!user) return
     const classToUse = targetClassId || activeTargetClassId
-    if (!classToUse) {
-      showToast('error', 'You must be enrolled in a class to create a study canvas.')
+    const destination = classToUse || user.uid
+    if (!destination) {
+      showToast('error', 'Sign in to create a study canvas.')
       return
     }
-    const newId = await createCanvas(classToUse, user.uid, {
+    const newId = await createCanvas(destination, user.uid, {
       kind: 'personal',
       title,
       description,
     })
     showToast('success', 'Personal study canvas created.')
-    navigate(`/student/classes/${classToUse}/learning/${newId}`)
+    navigate(`/student/classes/${destination}/learning/${newId}`)
   }
 
   const handleCreatePersonalNote = async ({
@@ -283,9 +300,9 @@ export function StudentLearningHubPage() {
     description: string
   }): Promise<string | undefined> => {
     if (!user) return undefined
-    const classToUse = targetClass || activeTargetClassId
+    const classToUse = targetClass || activeTargetClassId || user.uid
     if (!classToUse) {
-      showToast('error', 'You must be enrolled in a class to create a study canvas.')
+      showToast('error', 'Sign in to create a study canvas.')
       return undefined
     }
     const newId = await createCanvas(classToUse, user.uid, {
@@ -473,9 +490,10 @@ export function StudentLearningHubPage() {
   }
 
   const handleConfirmImport = async () => {
-    if (!importResult || !user || !activeTargetClassId) return
+    if (!importResult || !user) return
+    const destination = activeTargetClassId || user.uid
     try {
-      const newId = await createCanvas(activeTargetClassId, user.uid, {
+      const newId = await createCanvas(destination, user.uid, {
         kind: 'personal',
         title: importedTitle,
         description: 'Imported from JSON Canvas',
@@ -483,13 +501,14 @@ export function StudentLearningHubPage() {
       })
       setImportResult(null)
       showToast('success', 'Study board imported successfully.')
-      navigate(`/student/classes/${activeTargetClassId}/learning/${newId}`)
+      navigate(`/student/classes/${destination}/learning/${newId}`)
     } catch (err) {
       showToast('error', err instanceof Error ? err.message : 'Import failed.')
     }
   }
 
-  const getClassName = (classId: string) => classesMap[classId]?.name || 'Class'
+  const getClassName = (classId: string) =>
+    classId === user?.uid ? 'Personal workspace' : classesMap[classId]?.name || 'Class'
   const selectedClassName = selectedClassId === 'all' ? undefined : classesMap[selectedClassId]?.name
 
   return (
@@ -497,14 +516,14 @@ export function StudentLearningHubPage() {
       <PageHeader
         eyebrow="STUDY & KNOWLEDGE"
         title="Learning"
-        subtitle="Explore instructor concept boards and create your own visual study canvases."
+        subtitle="Explore learning resources and create your own visual study canvases."
         action={
           <div className="learning-header-actions flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="secondary"
             onClick={() => fileInputRef.current?.click()}
-            disabled={enrolledClasses.length === 0}
+            disabled={!user}
           >
             <Upload size={16} aria-hidden="true" />
             <span>Import .canvas</span>
@@ -695,7 +714,7 @@ export function StudentLearningHubPage() {
                     type="button"
                     variant="primary"
                     onClick={() => setCreateOpen(true)}
-                    disabled={enrolledClasses.length === 0}
+                    disabled={!user}
                   >
                     <Plus size={16} aria-hidden="true" />
                     <span>New Canvas</span>
@@ -708,7 +727,7 @@ export function StudentLearningHubPage() {
                   title="No personal study canvases"
                   description="Create your own concept maps, study notes, and link cards."
                   action={
-                    enrolledClasses.length > 0 ? (
+                    user ? (
                       <Button type="button" variant="primary" onClick={() => setCreateOpen(true)}>
                         <Plus size={16} aria-hidden="true" />
                         <span>Create first study canvas</span>

@@ -80,7 +80,7 @@ export function StudentLearningCanvasPage() {
   // Watch classroom study materials for references. Each source replaces its
   // own list on every snapshot, so repeated snapshots never duplicate entries.
   useEffect(() => {
-    if (!classId || !user) return
+    if (!classId || !user || classId === user.uid) return
 
     const unsubModules = subscribeToModules(
       classId,
@@ -119,7 +119,8 @@ export function StudentLearningCanvasPage() {
   useEffect(() => {
     if (!classId || !canvasId || !user) return
 
-    const unsubClass = watchClassCanvases(
+    const personalWorkspace = classId === user.uid
+    const unsubClass = personalWorkspace ? () => {} : watchClassCanvases(
       classId,
       'student',
       (items) => {

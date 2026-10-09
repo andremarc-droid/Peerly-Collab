@@ -47,6 +47,13 @@ export function useFlashcardDecks({ role, uid, classIds }: UseFlashcardDecksOpti
     const unsubs: Array<() => void> = []
     unsubs.push(watchSharedDecks(uid, (items) => update('shared', items), (err) => fail(err.message)))
     for (const classId of classKey ? classKey.split('|') : []) {
+      const personalWorkspace = role === 'student' && classId === uid
+      if (personalWorkspace) {
+        unsubs.push(
+          watchMyDecks(classId, uid, (items) => update(`mine:${classId}`, items), (err) => fail(err.message)),
+        )
+        continue
+      }
       unsubs.push(
         watchClassDecks(
           classId,

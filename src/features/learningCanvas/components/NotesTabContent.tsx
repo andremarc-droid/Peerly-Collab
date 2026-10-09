@@ -155,7 +155,6 @@ export function NotesTabContent({
             type="button"
             variant="primary"
             onClick={handleOpenCreate}
-            disabled={classes.length === 0}
             className="gap-1.5"
           >
             <Plus size={16} aria-hidden="true" />
@@ -177,7 +176,7 @@ export function NotesTabContent({
                 : 'Create concept notes to capture insights, summaries, and lecture takeaways. You can visually connect notes directly in the Graph View.'
             }
             action={
-              !searchQuery && classes.length > 0 ? (
+              !searchQuery ? (
                 <Button type="button" variant="primary" onClick={handleOpenCreate}>
                   <Plus size={16} aria-hidden="true" />
                   <span>Create first note</span>

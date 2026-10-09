@@ -582,12 +582,13 @@ service cloud.firestore {
           || (resource.data.get('kind', '') == 'personal' && resource.data.get('ownerId', '') == request.auth.uid)
         );
 
+        // A student's uid is also the private workspace partition when they have no class.
         allow create: if signedIn()
           && validLearningCanvas(request.resource.data)
           && request.resource.data.ownerId == request.auth.uid
           && (
             (request.resource.data.kind == 'class' && isClassOwner(classId))
-            || (request.resource.data.kind == 'personal' && isActiveMember(classId))
+            || (request.resource.data.kind == 'personal' && (isActiveMember(classId) || classId == request.auth.uid))
           );
 
         allow update: if signedIn()
@@ -980,12 +981,13 @@ service cloud.firestore {
         || isDeckMember()
       );
 
+      // Keep independent students' personal decks in their uid-scoped workspace partition.
       allow create: if signedIn()
         && validFlashcardDeck(request.resource.data)
         && request.resource.data.ownerId == request.auth.uid
         && (
           (request.resource.data.kind == 'class' && isClassOwner(classId))
-          || (request.resource.data.kind == 'personal' && isActiveMember(classId))
+          || (request.resource.data.kind == 'personal' && (isActiveMember(classId) || classId == request.auth.uid))
         );
 
       allow update: if signedIn()
