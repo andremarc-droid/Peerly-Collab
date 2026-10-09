@@ -9,6 +9,13 @@ const config: CapacitorConfig = {
     // Keeps the in-app origin on https so Firebase and secure-context APIs work.
     allowMixedContent: false,
   },
+  plugins: {
+    FirebaseAuthentication: {
+      // Keep the Firebase JS SDK as the source of truth for React auth state.
+      skipNativeAuth: true,
+      providers: ['google.com'],
+    },
+  },
 }
 
 export default config

@@ -14,6 +14,7 @@ import {
   sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
+  signInWithCredential,
   signInWithPopup,
   signInWithRedirect,
   signOut,
@@ -22,13 +23,15 @@ import {
   type UserCredential,
   type Unsubscribe,
 } from 'firebase/auth'
+import { Capacitor } from '@capacitor/core'
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
 import { auth } from '../../lib/firebase/auth'
 import { AccountNotRegisteredError } from './authErrors'
 import { beginSignInCheck } from './signInGate'
 import { isGoogleSigninOnly, markAccountNotRegistered, setGoogleSigninOnly } from './notRegisteredMark'
 
 export async function prepareLocalAuthPersistence(): Promise<void> {
-  await setPersistence(auth, browserLocalPersistence)
+  if (!Capacitor.isNativePlatform()) await setPersistence(auth, browserLocalPersistence)
 }
 
 export function watchAuthState(callback: (user: User | null) => void, onError: (error: unknown) => void): Unsubscribe {
@@ -56,6 +59,7 @@ async function rejectIfNewAccount(result: UserCredential): Promise<void> {
 
 /** Finishes a redirect-based Google sign-in. Returns true when it was rejected as unregistered. */
 export async function completeGoogleRedirect(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) return false
   const signinOnly = isGoogleSigninOnly()
   try {
     const result = await getRedirectResult(auth)
@@ -94,6 +98,15 @@ export async function signInWithGoogle({ requireExistingAccount = false }: Googl
   provider.setCustomParameters({ prompt: 'select_account' })
   const endCheck = requireExistingAccount ? beginSignInCheck() : () => {}
   try {
+    if (Capacitor.isNativePlatform()) {
+      const nativeResult = await FirebaseAuthentication.signInWithGoogle()
+      const idToken = nativeResult.credential?.idToken
+      if (!idToken) throw new Error('Google sign-in did not return an ID token. Check the Android Firebase configuration.')
+      const result = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken))
+      if (requireExistingAccount) await rejectIfNewAccount(result)
+      return result
+    }
+
     let result: UserCredential
     try {
       result = await signInWithPopup(auth, provider)
