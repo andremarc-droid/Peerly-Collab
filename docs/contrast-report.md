@@ -51,6 +51,15 @@ Stripes are strictly restricted to the right 40% of the `PageHeader` band, maske
 | Alert accent bar: warning | `--color-feedback-warning` / `--color-white` | 6.23:1 | AA (UI component) |
 | Alert accent bar: info | `--color-navy-800` / `--color-white` | 16.52:1 | AAA (UI component) |
 | Danger border | `--color-danger` / `--color-danger-bg` | 4.54:1 | AA (UI component) |
+| Phone field outline | `--color-navy-800-72` / `--color-white` | 7.36:1 | AAA (UI component) |
+| Phone field focus outline | `--color-navy-900` / `--color-white` | 17.23:1 | AAA (UI component) |
+| Phone field error outline | `--color-feedback-error` / `--color-white` | 6.79:1 | AA (UI component) |
+| Phone field placeholder | `--color-navy-800-72` / `--color-white` | 7.36:1 | AAA |
+| Phone field error message | `--color-feedback-error` / `--color-white` | 6.79:1 | AA |
+| Phone dashboard title | `--color-navy-900` / `--color-white` | 17.23:1 | AAA |
+| Phone nav unselected label | `--color-navy-800-72` / `--color-white` | 7.36:1 | AAA |
+| Phone nav selected label | `--color-navy-900` / `--color-navy-700-07` | 15.59:1 | AAA |
+| Phone class card title | `--color-navy-900` / `--color-white` | 17.23:1 | AAA |
 | Canvas card title | `--color-navy-900` / `--color-white` | 17.23:1 | AAA |
 | Canvas note card body | `--color-navy-900-88` / `--color-white` | 11.45:1 | AAA |
 | Canvas link host | `--color-navy-800` / `--color-white` | 16.52:1 | AAA |

@@ -77,7 +77,8 @@
 body { min-width: 320px; min-height: 100vh; margin: 0; font-size: 16px; line-height: 1.6; }
 button, input { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
-a { color: inherit; }
+/* In the base layer so Tailwind color utilities (for example `text-white` on a link-styled button) can override it. */
+@layer base { a { color: inherit; } }
 h1, h2, h3, p { margin-top: 0; }
 h1, h2, h3 { font-family: var(--font-heading); }
 ::selection { color: var(--color-white); background: var(--color-navy-700); }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toSavableContent } from './savableContent'
+import { persistableBoardDiffers, toSavableContent } from './savableContent'
 import { parseLearningCanvasContent } from './schemas'
 import type { LearningCanvasContent, LearningCanvasNode } from './types'
 
@@ -60,5 +60,17 @@ describe('toSavableContent', () => {
   it('leaves valid content unchanged', () => {
     const board = content([text, goodLink], [{ id: 'e1', from: 't1', to: 'l2', arrow: 'to' }])
     expect(toSavableContent(board)).toEqual(board)
+  })
+
+  it('does not treat unfinished cards as unsaved work after the rest of the board is persisted', () => {
+    const local = content([text, emptyLink])
+    const remote = content([text])
+    expect(persistableBoardDiffers(local, remote)).toBe(false)
+  })
+
+  it('does treat a real persistable edit as unsaved', () => {
+    const local = content([{ ...text, text: 'updated' }])
+    const remote = content([text])
+    expect(persistableBoardDiffers(local, remote)).toBe(true)
   })
 })

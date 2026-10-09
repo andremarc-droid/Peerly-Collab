@@ -18,6 +18,7 @@ import {
   RefreshCw,
   AlertCircle,
   Image as ImageIcon,
+  Save,
 } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
 import type { LearningCanvasNodeType } from '../types'
@@ -51,6 +52,8 @@ interface LearningCanvasToolbarProps {
   onOpenHelp: () => void
   onToggleStatus?: () => void
   onRetrySave?: () => void
+  /** Saves right now instead of waiting for the autosave timer. */
+  onSaveNow?: () => void
   onCopyToMyCanvases?: () => void
 }
 
@@ -81,6 +84,7 @@ export function LearningCanvasToolbar({
   onOpenHelp,
   onToggleStatus,
   onRetrySave,
+  onSaveNow,
   onCopyToMyCanvases,
 }: LearningCanvasToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -326,6 +330,21 @@ export function LearningCanvasToolbar({
               </span>
             )}
           </div>
+        )}
+
+        {/* Save now: autosave still runs, this just removes the wait and the guesswork. */}
+        {!readOnly && onSaveNow && (
+          <button
+            type="button"
+            onClick={onSaveNow}
+            disabled={autosaveStatus === 'saved'}
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-navy-900 px-3 py-2 text-xs font-bold text-white hover:bg-navy-800 disabled:opacity-50 disabled:hover:bg-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-800"
+            title="Save now (Ctrl+S)"
+            aria-label="Save canvas"
+          >
+            <Save size={16} aria-hidden="true" />
+            <span>Save</span>
+          </button>
         )}
 
         {/* Draft / Published button (Instructor) */}

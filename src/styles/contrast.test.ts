@@ -325,6 +325,16 @@ export const BOUND_CONTRAST_REGISTRY: BoundContrastEntry[] = [
   { name: 'Page-header button primary', selector: '.page-header__action .button--primary', minRatio: 4.5 },
   { name: 'Page-header button secondary', selector: '.page-header__action .button--secondary', containerSelector: '.page-header', minRatio: 4.5 },
 
+  // Phone signed-in chrome (m3.css): light canvas, navy text, no navy band
+  { name: 'Phone dashboard header title', selector: '.page-header--m3 h1', containerSelector: '.page-header--m3', minRatio: 4.5 },
+  { name: 'Phone dashboard header subtitle', selector: '.page-header--m3 p', containerSelector: '.page-header--m3', minRatio: 4.5 },
+  { name: 'Phone dashboard header chip', selector: '.page-header--m3 .page-header__badge', minRatio: 4.5 },
+  { name: 'Phone dashboard header primary button', selector: '.page-header--m3 .page-header__action .button--primary', minRatio: 4.5 },
+  { name: 'Phone dashboard header secondary button', selector: '.page-header--m3 .page-header__action .button--secondary', containerSelector: '.page-header--m3', minRatio: 4.5 },
+  { name: 'Phone dashboard tab selected', selector: '.app-shell--m3 .tabs__list button[aria-selected="true"]', containerSelector: '.app-shell--m3', minRatio: 4.5 },
+  { name: 'Phone dashboard tab inactive', selector: '.app-shell--m3 .tabs__list button:not([aria-selected="true"])', containerSelector: '.app-shell--m3', minRatio: 4.5 },
+  { name: 'Phone dashboard nav bar', selector: '.app-shell--m3 .m3-nav', minRatio: 4.5 },
+
   // Dialog and Toast
   { name: 'Dialog', selector: '.dialog', minRatio: 4.5 },
   { name: 'Toast title', selector: '.toast > strong', containerSelector: '.toast', minRatio: 4.5 },
@@ -368,6 +378,17 @@ export const TOKEN_ONLY_CONTRAST_REGISTRY: TokenContrastEntry[] = [
   { name: 'Alert left accent bar: warning', fgToken: '--color-feedback-warning', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Alert left accent bar: info', fgToken: '--color-navy-800', bgToken: '--color-white', minRatio: 3.0 },
   { name: 'Danger border on danger bg', fgToken: '--color-danger', bgToken: '--color-danger-bg', minRatio: 3.0 },
+
+  // Phone text fields (m3.css `.m3-field`): outline, focus outline, error outline, placeholder, error message
+  { name: 'Phone field outline on white', fgToken: '--color-navy-800-72', bgToken: '--color-white', minRatio: 3.0 },
+  { name: 'Phone field focus outline on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 3.0 },
+  { name: 'Phone field error outline on white', fgToken: '--color-feedback-error', bgToken: '--color-white', minRatio: 3.0 },
+  { name: 'Phone field placeholder on white', fgToken: '--color-navy-800-72', bgToken: '--color-white', minRatio: 4.5 },
+  { name: 'Phone field error message on white', fgToken: '--color-feedback-error', bgToken: '--color-white', minRatio: 4.5 },
+  { name: 'Phone dashboard title on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
+  { name: 'Phone nav unselected label on white', fgToken: '--color-navy-800-72', bgToken: '--color-white', minRatio: 4.5 },
+  { name: 'Phone nav selected label on tint', fgToken: '--color-navy-900', bgToken: '--color-navy-700-07', minRatio: 4.5 },
+  { name: 'Phone class card title on white', fgToken: '--color-navy-900', bgToken: '--color-white', minRatio: 4.5 },
 
   // Activity type badges (quiz / flashcards / canvas)
   { name: 'Quiz type badge text on its tint', fgToken: '--color-kind-quiz-fg', bgToken: '--color-kind-quiz-bg', minRatio: 4.5 },

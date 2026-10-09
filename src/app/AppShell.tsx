@@ -12,6 +12,8 @@ import { clearRoleIntent } from '../features/auth/roleIntent'
 import { signOutCurrentUser } from '../features/auth/authService'
 import { useAuth } from '../features/auth/useAuth'
 import { useUserProfile } from '../features/profile/useUserProfile'
+import { useIsMobileView } from '../lib/platform/isMobileView'
+import { MobileAppShell, MobileAppShellLoading } from '../features/mobile/MobileAppShell'
 
 interface NavItem { to: string; label: string; end?: boolean }
 
@@ -115,6 +117,11 @@ function MobileMenu({ roleLabel, displayName, email, photoURL, initial, signingO
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  if (useIsMobileView()) return <MobileAppShell>{children}</MobileAppShell>
+  return <DesktopAppShell>{children}</DesktopAppShell>
+}
+
+function DesktopAppShell({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const { profile } = useUserProfile()
   const navigate = useNavigate()
@@ -165,6 +172,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 export function AppShellLoading() {
+  if (useIsMobileView()) return <MobileAppShellLoading />
   return (
     <div className="app-shell" aria-busy="true">
       <header className="app-shell__header"><Skeleton className="app-shell__logo-skeleton" label="Loading Peerly Collab" /><Skeleton className="app-shell__account-skeleton" label="Loading account" /></header>

@@ -149,6 +149,7 @@ export function ClassPage() {
       }
       subtitle={subtitle}
       action={<Button to="/instructor" variant="secondary">Back to My classes</Button>}
+      mobileAction={null}
       classColor={classroom.color ?? 'navy'}
       accent={classroom.accent}
     />

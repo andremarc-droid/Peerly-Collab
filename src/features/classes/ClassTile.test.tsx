@@ -4,7 +4,11 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ClassTile } from './ClassTile'
 
+const view = vi.hoisted(() => ({ mobile: false }))
+vi.mock('../../lib/platform/isMobileView', () => ({ useIsMobileView: () => view.mobile }))
+
 afterEach(() => {
+  view.mobile = false
   cleanup()
 })
 
@@ -185,5 +189,31 @@ describe('ClassTile', () => {
     const leaveBtn = screen.getByRole('menuitem', { name: /Leave class/i })
     fireEvent.click(leaveBtn)
     expect(onLeave).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders a list-style card on phones instead of the colored header band', () => {
+    view.mobile = true
+    const { container } = render(
+      <MemoryRouter>
+        <ClassTile
+          role="instructor"
+          id="c1"
+          name="Math 101"
+          section="Sec A"
+          subject="Calculus"
+          joinCode="8VYRTY"
+          studentsCount={15}
+          quizzesCount={3}
+          onCopyCode={() => undefined}
+        />
+      </MemoryRouter>,
+    )
+    expect(container.querySelector('.class-tile--m3')).toBeInTheDocument()
+    expect(container.querySelector('.class-tile__header')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open class Math 101' })).toHaveAttribute('href', '/instructor/classes/c1')
+    expect(screen.getByText(/15 students · 3 quizzes · Code 8VYRTY/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Class actions for Math 101/i }))
+    expect(screen.getByRole('menuitem', { name: /Copy code/i })).toBeInTheDocument()
   })
 })

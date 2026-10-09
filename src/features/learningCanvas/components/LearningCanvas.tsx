@@ -14,7 +14,7 @@ import {
   useReactFlow,
   useNodesState,
   useEdgesState,
-  addEdge,
+  ConnectionMode,
   type Connection,
   type Edge,
   type Node,
@@ -22,6 +22,7 @@ import {
   type OnNodeDrag,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import '../../canvas/canvas.css' // defines .canvas-handle (44px hit area) used by CardHandles
 import '../learningCanvas.css'
 
 import { TextCard } from './TextCard'
@@ -33,6 +34,7 @@ import { LearningCanvasEdge } from './LearningCanvasEdge'
 import { LearningCanvasToolbar } from './LearningCanvasToolbar'
 import { CanvasOutlineView } from './CanvasOutlineView'
 import { QuickAddMenu } from './QuickAddMenu'
+import { ConnectionNotice } from './ConnectionNotice'
 import { ConnectCardsDialog } from './ConnectCardsDialog'
 import { ReferencePickerDialog } from './ReferencePickerDialog'
 import { ShortcutsHelpDialog } from './ShortcutsHelpDialog'
@@ -46,6 +48,7 @@ import {
   CANVAS_MAX_ZOOM,
 } from '../../canvas/shared'
 import { processImageFile } from '../../canvas/imageProcessing'
+import { getOptimalHandles } from '../../canvas/mapping'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 
 import type {
@@ -61,7 +64,7 @@ import type {
 
 import { toJsonCanvas, fromJsonCanvas, type FromJsonCanvasResult } from '../jsonCanvas'
 import { newNodePlacement, clampNode } from '../schemas'
-import { toSavableContent } from '../savableContent'
+import { persistableBoardDiffers, toSavableContent } from '../savableContent'
 import { CanvasConflictError } from '../errors'
 import { useUndoRedo } from '../hooks/useUndoRedo'
 import { useAutosave } from '../hooks/useAutosave'
@@ -142,6 +145,20 @@ function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
   return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
+/**
+ * The id of the (non-group) card under a screen point, or null for empty board space.
+ * Groups count as empty space so dropping inside a group still opens the quick-add menu.
+ * React Flow only reports a drop target when it lands on a handle, so a drop on a card's
+ * body has to be found from the DOM.
+ */
+function cardIdAtPoint(x: number, y: number): string | null {
+  if (typeof document.elementFromPoint !== 'function') return null
+  const el = document.elementFromPoint(x, y)
+  const nodeEl = el?.closest('.react-flow__node')
+  if (!nodeEl || nodeEl.classList.contains('react-flow__node-group')) return null
+  return nodeEl.getAttribute('data-id')
 }
 
 function domainToFlowNode(n: LearningCanvasNode, readOnly: boolean, cb: FlowCallbacks): Node {
@@ -288,6 +305,10 @@ function LearningCanvasInternal({
     sourceNodeId?: string
   } | null>(null)
 
+  // Visible message when a drag-connection is rejected (self, duplicate, limit)
+  const [connectNotice, setConnectNotice] = useState<{ message: string; key: number } | null>(null)
+  const dismissConnectNotice = useCallback(() => setConnectNotice(null), [])
+
   // Dialogs
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false)
   const [connectDialogSourceId, setConnectDialogSourceId] = useState<string | undefined>()
@@ -362,11 +383,13 @@ function LearningCanvasInternal({
       remoteBaseRef.current = saved
       onRemoteContentApplied?.(saved)
       const latestLocal = readContent()
-      const reconciled = mergeContent(content, latestLocal, saved).content
-      if (!sameBoard(latestLocal, reconciled)) {
-        applySnapshot({ nodes: reconciled.nodes, edges: reconciled.edges })
+      // `content` is the persistable snapshot we just wrote. Merge against the live board so
+      // half-finished cards stay on screen, then only resave if persistable work still differs.
+      const liveMerged = mergeContent(content, latestLocal, saved).content
+      if (!sameBoard(latestLocal, liveMerged)) {
+        applySnapshot({ nodes: liveMerged.nodes, edges: liveMerged.edges })
       }
-      if (!sameBoard(reconciled, saved)) markDirty()
+      if (persistableBoardDiffers(liveMerged, saved)) markDirty()
     },
     onError: (error) => {
       if (error instanceof CanvasConflictError) setIsConflictDialogOpen(true)
@@ -375,6 +398,13 @@ function LearningCanvasInternal({
   const { markDirty } = autosave
   useUnsavedChangesGuard(autosave.isDirty)
 
+  // Manual save: skips the autosave wait and reports the outcome to screen readers.
+  const saveNow = () => {
+    if (readOnly || !onSave) return
+    void autosave.flush().then((saved) => {
+      announce(saved ? 'Canvas saved' : 'The canvas could not be saved. Try again.')
+    })
+  }
   const applySnapshot = useCallback((snap: Snapshot) => {
     setNodes(snap.nodes.map((n) => domainToFlowNode(n, readOnly, callbacks)))
     setEdges(snap.edges.map((e) => domainToFlowEdge(e, readOnly, callbacks)))
@@ -391,8 +421,8 @@ function LearningCanvasInternal({
     remoteBaseRef.current = remoteContent
     if (!sameBoard(local, merged)) {
       applySnapshot({ nodes: merged.nodes, edges: merged.edges })
-      if (!sameBoard(merged, remoteContent)) markDirty()
     }
+    if (persistableBoardDiffers(merged, remoteContent)) markDirty()
     onRemoteContentApplied?.(remoteContent)
   }, [remoteContent, applySnapshot, markDirty, onRemoteContentApplied])
 
@@ -554,10 +584,31 @@ function LearningCanvasInternal({
 
   // ---- Connections ---------------------------------------------------------
 
-  const onConnect = (params: Connection) => {
-    if (readOnly || params.source === params.target) return
-    if (stateRef.current.edges.length >= MAX_LEARNING_CANVAS_EDGES) {
-      announce(`A canvas can have at most ${MAX_LEARNING_CANVAS_EDGES} connections.`)
+  const rejectConnection = (message: string) => {
+    announce(message)
+    setConnectNotice({ message, key: Date.now() })
+  }
+
+  const addConnection = (params: Pick<Connection, 'source' | 'target'> & Partial<Connection>) => {
+    if (readOnly) return
+    if (params.source === params.target) {
+      rejectConnection('A card cannot be connected to itself.')
+      return
+    }
+    const current = stateRef.current.edges
+    const isDuplicate = current.some(
+      (e) =>
+        e.source === params.source &&
+        e.target === params.target &&
+        (e.sourceHandle ?? null) === (params.sourceHandle ?? null) &&
+        (e.targetHandle ?? null) === (params.targetHandle ?? null),
+    )
+    if (isDuplicate) {
+      rejectConnection('Those cards are already connected.')
+      return
+    }
+    if (current.length >= MAX_LEARNING_CANVAS_EDGES) {
+      rejectConnection(`A canvas can have at most ${MAX_LEARNING_CANVAS_EDGES} connections.`)
       return
     }
     recordHistory()
@@ -575,15 +626,43 @@ function LearningCanvasInternal({
         onDeleteEdge: callbacks.onDeleteEdge,
       },
     }
-    setEdges((eds) => addEdge(newEdge, eds))
+    setEdges((eds) => [...eds, newEdge])
     announce('Cards connected')
     markDirty()
   }
 
+  const onConnect = (params: Connection) => addConnection(params)
+
+  // Dropped on a card's body rather than a handle: connect to that card, picking the sides
+  // that face each other.
+  const connectToCardBody = (fromId: string, toId: string, fromHandleId: string | null) => {
+    const { nodes: current } = stateRef.current
+    const from = current.find((n) => n.id === fromId)
+    const to = current.find((n) => n.id === toId)
+    if (!from || !to) return
+    const sides = getOptimalHandles(from.position, to.position)
+    addConnection({
+      source: fromId,
+      target: toId,
+      sourceHandle: fromHandleId ?? sides.sourceHandle,
+      targetHandle: sides.targetHandle,
+    })
+  }
+
   const onConnectEnd: OnConnectEnd = (event, connectionState) => {
     if (readOnly || connectionState.isValid || !connectionState.fromNode) return
+    // Released on a handle that React Flow rejected: never offer to create a new card there.
+    if (connectionState.toNode || connectionState.toHandle) return
     const clientX = 'clientX' in event ? event.clientX : (event.changedTouches[0]?.clientX ?? 0)
     const clientY = 'clientY' in event ? event.clientY : (event.changedTouches[0]?.clientY ?? 0)
+    const overCardId = cardIdAtPoint(clientX, clientY)
+    if (overCardId) {
+      // Released back on the card it started from: nothing to do.
+      if (overCardId !== connectionState.fromNode.id) {
+        connectToCardBody(connectionState.fromNode.id, overCardId, connectionState.fromHandle?.id ?? null)
+      }
+      return
+    }
     setQuickAddState({
       screenPos: { x: clientX, y: clientY },
       flowPos: screenToFlowPosition({ x: clientX, y: clientY }),
@@ -750,6 +829,10 @@ function LearningCanvasInternal({
         setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), ...copies])
         announce('Selected cards duplicated')
         markDirty()
+      } else if (key === 's') {
+        // Only while the board (not a card's text box) has focus, so typing is never hijacked.
+        consume()
+        saveNow()
       } else if (key === 'a') {
         consume()
         setNodes((nds) => nds.map((n) => ({ ...n, selected: true })))
@@ -992,6 +1075,7 @@ function LearningCanvasInternal({
         onRetrySave={() => {
           void autosave.flush()
         }}
+        onSaveNow={onSave ? saveNow : undefined}
         onCopyToMyCanvases={onCopyToMyCanvases}
       />
 
@@ -1047,6 +1131,7 @@ function LearningCanvasInternal({
               onNodeDragStop={onNodeDragStop}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
+              connectionMode={ConnectionMode.Loose}
               snapToGrid={snapToGrid}
               snapGrid={[20, 20]}
               minZoom={CANVAS_MIN_ZOOM}
@@ -1082,6 +1167,14 @@ function LearningCanvasInternal({
               </svg>
             </ViewportPortal>
           </div>
+
+          {connectNotice && (
+            <ConnectionNotice
+              key={connectNotice.key}
+              message={connectNotice.message}
+              onDismiss={dismissConnectNotice}
+            />
+          )}
 
           {quickAddState && (
             <QuickAddMenu

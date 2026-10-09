@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
-import { LandingPage } from '../features/landing/LandingPage'
+import { LandingRoute, StartRoute } from '../features/mobile/MobileRoutes'
 import { RolePage } from '../features/auth/RolePage'
 import { SignupPage } from '../features/auth/SignupPage'
 import { SigninPage } from '../features/auth/SigninPage'
@@ -42,7 +42,8 @@ export function AppRoutes() {
   return (
     <Suspense fallback={<AppShellLoading />}>
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<LandingRoute />} />
+      <Route path="/start" element={<PublicRoute><StartRoute /></PublicRoute>} />
       <Route path="/role" element={<PublicRoute><RolePage /></PublicRoute>} />
       <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
       <Route path="/signin" element={<PublicRoute><SigninPage /></PublicRoute>} />

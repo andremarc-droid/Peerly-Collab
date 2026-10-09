@@ -100,6 +100,14 @@
   box-shadow: 0 0 0 1px var(--color-white-20);
 }
 
+.class-initial-badge--lg {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  font-size: 20px;
+  box-shadow: none;
+}
+
 /* Class Tile Component */
 .class-tile {
   position: relative;

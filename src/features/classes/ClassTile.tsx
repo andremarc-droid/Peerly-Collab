@@ -2,6 +2,8 @@ import { Archive, BookOpen, Copy, Ellipsis, LogOut, Palette, RotateCcw, Users } 
 import { Link } from 'react-router-dom'
 import { Badge } from '../../shared/ui/Badge'
 import { DropdownMenu } from '../../shared/ui/DropdownMenu'
+import { useIsMobileView } from '../../lib/platform/isMobileView'
+import { MobileClassTile } from '../mobile/MobileClassTile'
 import { ClassInitialBadge } from './ClassInitialBadge'
 import { resolveClassColor, type ClassAccent, type ClassColor, type ClassStatus, type EnrollmentStatus } from './types'
 
@@ -31,29 +33,33 @@ export interface ClassTileProps {
   onLeaveClass?: () => void
 }
 
-export function ClassTile({
-  role,
-  id,
-  name,
-  section = '',
-  subject = '',
-  color,
-  accent = 'pinstripe',
-  status = 'active',
-  joinCode,
-  studentsCount = 0,
-  quizzesCount = 0,
-  pendingCount = 0,
-  onCopyCode,
-  onEditAppearance,
-  onToggleArchive,
-  busy = false,
-  instructorName,
-  instructorPhotoURL = null,
-  availableQuizzesCount = 0,
-  enrollmentStatus = 'active',
-  onLeaveClass,
-}: ClassTileProps) {
+export function ClassTile(props: ClassTileProps) {
+  if (useIsMobileView()) return <MobileClassTile {...props} />
+
+  const {
+    role,
+    id,
+    name,
+    section = '',
+    subject = '',
+    color,
+    accent = 'pinstripe',
+    status = 'active',
+    joinCode,
+    studentsCount = 0,
+    quizzesCount = 0,
+    pendingCount = 0,
+    onCopyCode,
+    onEditAppearance,
+    onToggleArchive,
+    busy = false,
+    instructorName,
+    instructorPhotoURL = null,
+    availableQuizzesCount = 0,
+    enrollmentStatus = 'active',
+    onLeaveClass,
+  } = props
+
   const classColor = resolveClassColor(color)
   const isArchived = status === 'archived'
   const isPending = role === 'student' && enrollmentStatus === 'pending'

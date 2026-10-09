@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { LogOut, Save, Trash2 } from 'lucide-react'
+import { LogOut, Save, Settings, Trash2 } from 'lucide-react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
@@ -103,6 +103,16 @@ export function ProfilePage() {
     }
   }
 
+  const dangerZone = (
+    <div className="profile-danger">
+      <div className="profile-danger__copy">
+        <strong>Danger zone</strong>
+        <p>Permanently deletes your account, your data and your sign-in.</p>
+      </div>
+      <Button type="button" variant="secondary" className="button--destructive profile-danger__button" onClick={() => { setDeleteError(null); setDeleteOpen(true) }} disabled={busy || deleteBusy}><Trash2 size={16} aria-hidden="true" /> Delete account</Button>
+    </div>
+  )
+
   return <AppShell>
     <PageHeader eyebrow="PROFILE & ACCOUNT" title="Profile settings" subtitle="Keep your learning identity up to date." />
     <main className="app-shell__content profile-page" id="main-content">
@@ -124,14 +134,8 @@ export function ProfilePage() {
       <SectionCard title="Account access" description="Sign out when you’re finished on this device." className="profile-access-card">
         <div className="profile-actions"><Button type="button" variant="secondary" onClick={handleSignOut} disabled={busy}><LogOut size={16} aria-hidden="true" /> Sign out</Button></div>
       </SectionCard>
-      <SectionCard title="Danger zone" description="Permanent actions that can’t be undone." icon={<Trash2 size={20} />} className="profile-access-card profile-danger-card">
-        <div className="profile-danger">
-          <div className="profile-danger__copy">
-            <strong>Delete account</strong>
-            <p>Permanently deletes your account, your data and your sign-in.</p>
-          </div>
-          <Button type="button" variant="secondary" className="button--destructive profile-danger__button" onClick={() => { setDeleteError(null); setDeleteOpen(true) }} disabled={busy || deleteBusy}><Trash2 size={16} aria-hidden="true" /> Delete account</Button>
-        </div>
+      <SectionCard title="Settings" description="Permanent account actions live here so they stay out of everyday profile edits." icon={<Settings size={20} />} className="profile-access-card profile-settings-card">
+        {dangerZone}
       </SectionCard>
     </main>
     <DeleteAccountDialog

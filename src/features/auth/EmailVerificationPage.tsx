@@ -1,63 +1,22 @@
-import { useEffect, useState } from 'react'
 import { MailCheck, RefreshCw } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
-import { dashboardPath } from '../../app/returnTo'
-import { mapFirebaseAuthError } from './authErrors'
-import { resendVerificationEmail } from './authService'
+import { useIsMobileView } from '../../lib/platform/isMobileView'
+import { VerifyEmailScreen } from '../mobile/VerifyEmailScreen'
 import { AuthCard, AuthShell } from './AuthChrome'
-import { useAuth } from './useAuth'
 import type { UserRole } from './roleIntent'
+import { useEmailVerification, verificationLabel } from './useEmailVerification'
 
 interface EmailVerificationPageProps {
   role: UserRole
 }
 
 export function EmailVerificationPage({ role }: EmailVerificationPageProps) {
-  const { user, refreshEmailVerification } = useAuth()
-  const navigate = useNavigate()
-  const [cooldown, setCooldown] = useState(0)
-  const [busyAction, setBusyAction] = useState<'resend' | 'check' | null>(null)
-  const [message, setMessage] = useState<{ tone: 'success' | 'info' | 'error'; text: string } | null>(null)
+  const verification = useEmailVerification(role)
+  const isMobile = useIsMobileView()
+  if (isMobile) return <VerifyEmailScreen verification={verification} />
 
-  useEffect(() => {
-    if (cooldown <= 0) return undefined
-    const timer = window.setTimeout(() => setCooldown((remaining) => Math.max(0, remaining - 1)), 1000)
-    return () => window.clearTimeout(timer)
-  }, [cooldown])
-
-  async function resend() {
-    if (!user || cooldown > 0 || busyAction) return
-    setBusyAction('resend')
-    setMessage(null)
-    try {
-      await resendVerificationEmail(user)
-      setMessage({ tone: 'success', text: 'A new verification email is on its way.' })
-      setCooldown(60)
-    } catch (error) {
-      setMessage({ tone: 'error', text: mapFirebaseAuthError(error) })
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  async function checkVerification() {
-    if (busyAction) return
-    setBusyAction('check')
-    setMessage(null)
-    try {
-      if (await refreshEmailVerification()) {
-        navigate(dashboardPath(role), { replace: true })
-      } else {
-        setMessage({ tone: 'info', text: 'Your email is not verified yet. Check your inbox, then try again.' })
-      }
-    } catch (error) {
-      setMessage({ tone: 'error', text: mapFirebaseAuthError(error) })
-    } finally {
-      setBusyAction(null)
-    }
-  }
+  const { user, cooldown, busyAction, message, resend, checkVerification } = verification
 
   return (
     <AuthShell>
@@ -73,7 +32,7 @@ export function EmailVerificationPage({ role }: EmailVerificationPageProps) {
             </p>
           </div>
         </div>
-        {message && <Alert tone={message.tone} label={message.tone === 'error' ? 'Email verification failed' : message.tone === 'success' ? 'Email sent' : 'Not verified yet'}>{message.text}</Alert>}
+        {message && <Alert tone={message.tone} label={verificationLabel(message.tone)}>{message.text}</Alert>}
         <div className="grid gap-3">
           <Button type="button" variant="secondary" onClick={() => void resend()} disabled={!user || busyAction !== null || cooldown > 0}>
             {busyAction === 'resend' ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend verification email'}

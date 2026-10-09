@@ -91,8 +91,8 @@ textarea, select { font: inherit; }
   /* Invite code: input and Join button share one row. */
   .learning-header-actions > .invite-code { flex: 1 1 280px; width: auto; max-width: 440px; }
   .invite-code { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; width: 100%; max-width: 100%; }
-  .invite-code__form { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; width: 100%; max-width: 100%; }
-  .invite-code__input { flex: 1 1 0; width: 0; min-width: 0; }
+  .invite-code__form:not(.invite-code__form--stack) { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; width: 100%; max-width: 100%; }
+  .invite-code__form:not(.invite-code__form--stack) .invite-code__input { flex: 1 1 0; width: 0; min-width: 0; }
   .page-header__action .invite-code__form .button { flex: 0 0 auto; width: auto; padding-inline: 18px; white-space: nowrap; }
 
   /* View-mode tabs: one row, never wrapping into uneven lines. */

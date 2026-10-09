@@ -1681,24 +1681,37 @@ export function LearningGraphView({
             <Orbit size={24} />
           </div>
           <h3 className="text-base font-bold text-navy-900 m-0 mb-1">
-            {sharedGraphId ? 'This graph is empty' : 'Start Your Knowledge Graph'}
+            {sharedGraphId ? 'This graph is empty' : localGraphId ? 'New blank graph view' : 'Start Your Knowledge Graph'}
           </h3>
           <p className="text-sm text-navy-800-72 max-w-md m-0 mb-5">
             {sharedGraphId
               ? 'No materials have been added to this shared graph yet.'
-              : 'Your graph view begins as a clean canvas. Create fresh concept notes to map out ideas, or import existing modules and whiteboard canvases from your class.'}
+              : localGraphId
+                ? 'Your new graph view is ready, and it starts blank on purpose. Add a node or import materials to fill it. Use “My graph” to go back to your other graph.'
+                : 'Your graph view begins as a clean canvas. Create fresh concept notes to map out ideas, or import existing modules and whiteboard canvases from your class.'}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2.5">
             {canEditSharedGraph && (
               <>
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={handleNewGraphView}
-                >
-                  <Plus size={16} aria-hidden="true" />
-                  <span>Create new graph view</span>
-                </Button>
+                {hasAddCapabilities ? (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => setAddDialogOpen(true)}
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    <span>Add your first node</span>
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={handleNewGraphView}
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    <span>Create new graph view</span>
+                  </Button>
+                )}
                 {(!sharedGraphId || isSharedGraphOwner) && (
                   <Button
                     type="button"

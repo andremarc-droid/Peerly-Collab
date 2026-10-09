@@ -1,3 +1,4 @@
+import { sameBoard } from './collab/mergeContent'
 import { validateLearningCanvasNode } from './schemas'
 import type { LearningCanvasContent, LearningCanvasEdge, LearningCanvasNode } from './types'
 
@@ -36,4 +37,12 @@ export function toSavableContent(content: LearningCanvasContent): LearningCanvas
   }
 
   return { ...content, nodes, edges }
+}
+
+/**
+ * True when another save is needed. Half-finished cards stay on the board but are not written,
+ * so they must not keep the canvas marked dirty after a successful save.
+ */
+export function persistableBoardDiffers(local: LearningCanvasContent, remote: LearningCanvasContent): boolean {
+  return !sameBoard(toSavableContent(local), toSavableContent(remote))
 }

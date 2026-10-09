@@ -221,6 +221,7 @@ function StudentClassDetail({ classId }: { classId: string }) {
           <Button type="button" variant="secondary" onClick={() => setLeaveOpen(true)}><DoorOpen size={17} aria-hidden="true" /> Leave class</Button>
         </div>
       }
+      mobileAction={<Button type="button" variant="secondary" onClick={() => setLeaveOpen(true)}><DoorOpen size={17} aria-hidden="true" /> Leave class</Button>}
       classColor={classroom?.color ?? 'navy'}
       accent={classroom?.accent}
     />

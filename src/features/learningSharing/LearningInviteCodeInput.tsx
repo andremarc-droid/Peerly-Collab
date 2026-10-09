@@ -3,6 +3,9 @@ import { KeyRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
+import { M3Button } from '../../shared/ui/m3/M3Button'
+import { M3TextField } from '../../shared/ui/m3/M3TextField'
+import { useIsMobileView } from '../../lib/platform/isMobileView'
 import { findLearningInviteCode } from './inviteCodes'
 
 function invitePath(target: Awaited<ReturnType<typeof findLearningInviteCode>>): string {
@@ -18,6 +21,7 @@ function invitePath(target: Awaited<ReturnType<typeof findLearningInviteCode>>):
 
 export function LearningInviteCodeInput() {
   const navigate = useNavigate()
+  const mobile = useIsMobileView()
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -33,6 +37,38 @@ export function LearningInviteCodeInput() {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (mobile) {
+    return (
+      <div className="invite-code invite-code--stack w-full min-w-0">
+        <form
+          className="invite-code__form invite-code__form--stack w-full min-w-0"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void join()
+          }}
+        >
+          <M3TextField
+            id="learning-invite-code"
+            label="Invite code"
+            value={code}
+            onChange={(event) => setCode(event.target.value.toUpperCase())}
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            maxLength={10}
+            placeholder="ABC234XY"
+            className="invite-code__input uppercase tracking-widest"
+            error={error ?? undefined}
+          />
+          <M3Button type="submit" variant="outlined" disabled={busy || code.trim().length === 0} className="w-full">
+            <KeyRound size={20} aria-hidden="true" />
+            {busy ? 'Checking…' : 'Join with code'}
+          </M3Button>
+        </form>
+      </div>
+    )
   }
 
   return (

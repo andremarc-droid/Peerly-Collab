@@ -1,78 +1,36 @@
-import { ArrowLeft, ArrowRight, GraduationCap, UserRound, Check } from 'lucide-react'
-import { useRef, useState, type KeyboardEvent } from 'react'
-import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import type { RoleIntentMode, UserRole } from './roleIntent'
-import { readRoleIntent, saveRoleIntent } from './roleIntent'
+import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
+import { Navigate, useLocation } from 'react-router-dom'
+import type { UserRole } from './roleIntent'
 import { Button } from '../../shared/ui/Button'
 import { Alert } from '../../shared/ui/Alert'
 import { Logo } from '../../shared/ui/Logo'
 import { StripeBackground } from '../../shared/ui/StripeBackground'
 import { Spinner } from '../../shared/ui/Spinner'
+import { useIsMobileView } from '../../lib/platform/isMobileView'
+import { roleChoices } from '../landing/roleChoices'
+import { RoleScreen } from '../mobile/RoleScreen'
 import { AuthModeBadge } from './AuthModeBadge'
-import { useAuth } from './useAuth'
-import { mapFirebaseAuthError } from './authErrors'
-import { consumeReturnTo, rememberReturnTo, returnPathFromState } from '../../app/returnTo'
+import { useRoleSelection } from './useRoleSelection'
 
-const roleOptions: { role: UserRole; title: string; description: string; Icon: typeof UserRound }[] = [
-  { role: 'student', title: 'Student', description: 'I answer quizzes, practice and learn with others', Icon: UserRound },
-  { role: 'instructor', title: 'Instructor', description: 'I create quizzes and guide my learners', Icon: GraduationCap },
-]
+// Same roles and order as the phone screen (`roleChoices`); only the wording is first person on desktop.
+const desktopDescriptions: Record<UserRole, string> = {
+  student: 'I answer quizzes, practice and learn with others',
+  instructor: 'I create quizzes and guide my learners',
+}
+const roleOptions = roleChoices.map((choice) => ({ ...choice, description: desktopDescriptions[choice.role] }))
+const roles = roleOptions.map((option) => option.role)
 
 export function RolePage() {
-  const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
   const location = useLocation()
-  const { status, completeRoleSelection } = useAuth()
-  const requestedMode = searchParams.get('mode')
-  const previousIntent = readRoleIntent()
-  const destinationMode: RoleIntentMode = requestedMode === 'signup'
-    ? 'signup'
-    : requestedMode === 'continue'
-      ? 'continue'
-    : requestedMode === 'signin'
-      ? 'signin'
-      : previousIntent?.mode ?? 'signin'
-  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null)
-  const [continuing, setContinuing] = useState(false)
-  const [continueError, setContinueError] = useState<string | null>(null)
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
-
-  function handleRadioKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    let nextIndex: number | null = null
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % roleOptions.length
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (index + roleOptions.length - 1) % roleOptions.length
-    if (nextIndex !== null) {
-      event.preventDefault()
-      const nextOption = roleOptions[nextIndex]
-      setSelectedRole(nextOption.role)
-      optionRefs.current[nextIndex]?.focus()
-    }
-  }
-
-  async function handleContinue() {
-    if (!selectedRole) return
-    saveRoleIntent({ role: selectedRole, mode: destinationMode })
-    if (destinationMode === 'continue') {
-      setContinuing(true)
-      setContinueError(null)
-      try {
-        await completeRoleSelection(selectedRole)
-        navigate(consumeReturnTo(location.state, selectedRole), { replace: true })
-      } catch (error) {
-        setContinueError(mapFirebaseAuthError(error))
-      } finally {
-        setContinuing(false)
-      }
-      return
-    }
-    rememberReturnTo(returnPathFromState(location.state))
-    navigate(`/${destinationMode}?mode=${destinationMode}`, { state: location.state })
-  }
+  const isMobile = useIsMobileView()
+  const selection = useRoleSelection(roles)
+  const { requestedMode, destinationMode, status, selectedRole, setSelectedRole, continuing, continueError, optionRefs, handleRadioKeyDown, handleContinue } = selection
 
   const heading = requestedMode === 'signup' ? 'Let’s set up your account.' : requestedMode === 'continue' ? 'Let’s keep learning.' : 'Welcome back.'
 
   if (requestedMode === 'continue' && status === 'loading') return <main className="auth-wait"><Spinner label="Checking your account" /></main>
   if (requestedMode === 'continue' && status === 'signedOut') return <Navigate to="/role?mode=signin" replace state={location.state} />
+  if (isMobile) return <RoleScreen selection={selection} />
 
   return (
     <main className="role-screen" id="main-content">
