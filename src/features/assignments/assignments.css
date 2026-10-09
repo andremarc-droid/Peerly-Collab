@@ -1,0 +1,29 @@
+.file-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.file-list__item { display: flex; min-width: 0; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--color-navy-900-12); border-radius: 16px; background: var(--color-white); box-shadow: var(--shadow-sm); }
+.file-list__icon { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; border-radius: 12px; color: var(--color-white); background: var(--color-navy-800); }
+.file-list__copy { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.file-list__copy strong { overflow-wrap: anywhere; font-size: 16px; line-height: 1.4; }
+.file-list__copy small, .file-list__blocked { color: var(--color-navy-800-72); font-size: 14px; }
+.file-list__item .button { min-height: 44px; padding-inline: 12px; }
+@media (max-width: 520px) {
+  .file-list__item { flex-wrap: wrap; }
+  .file-list__copy { flex-basis: calc(100% - 56px); }
+}
+
+.assignment-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; color: var(--color-navy-800-72); font-size: 14px; }
+.assignment-instructions { margin: 0; color: var(--color-navy-900); font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+.assignment-fields { display: grid; gap: 16px; }
+@media (min-width: 768px) {
+  .assignment-fields--two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+.assignment-block { display: grid; gap: 12px; }
+.assignment-block h3 { margin: 0; font-size: 17px; }
+.assignment-block > p { margin: 0; color: var(--color-navy-800-72); font-size: 14px; line-height: 1.55; }
+.assignment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.assignment-actions .button { min-height: 44px; }
+
+.turn-in-list { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.turn-in-card { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--color-navy-900-12); border-radius: 18px; background: var(--color-white); box-shadow: var(--shadow-sm); }
+.turn-in-card__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.turn-in-card__head h3 { overflow-wrap: anywhere; margin: 0; font-size: 17px; }
+.turn-in-card__time { margin: 0; color: var(--color-navy-800-72); font-size: 14px; }

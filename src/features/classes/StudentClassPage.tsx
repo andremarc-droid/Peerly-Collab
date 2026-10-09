@@ -24,6 +24,7 @@ import { listUserAttempts } from '../quizzes/services/attemptService'
 import type { QuizAttempt } from '../quizzes/types'
 
 import { subscribeToModules } from '../modules/services'
+import { StudentAssignmentsSection } from '../assignments/StudentAssignmentsSection'
 import type { ModuleWithId } from '../modules/types'
 import '../modules/modules.css'
 
@@ -280,6 +281,7 @@ function StudentClassDetail({ classId }: { classId: string }) {
           )
         })()}
       </section>
+      <StudentAssignmentsSection classId={classId} studentId={enrollment.uid} />
       <section className="grid gap-4" aria-labelledby="published-quizzes-heading">
         <header><span className="section-kicker">CLASS PRACTICE</span><h2 id="published-quizzes-heading" className="m-0 font-heading text-2xl">Published quizzes</h2></header>
         {(() => {

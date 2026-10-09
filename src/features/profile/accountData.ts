@@ -7,6 +7,7 @@ import { deleteClassCascade } from '../classes/services/deleteClassCascade'
 import { enrollmentsRef } from '../classes/services/paths'
 import { deleteCanvasSubcollections } from '../learningCanvas/collab/cleanup'
 import { deleteQuizCascade } from '../quizzes/services/deleteQuizCascade'
+import { deleteMyTurnIns } from '../assignments/services/turnInService'
 
 const PAGE = 100
 const DECK_SUBCOLLECTIONS = ['members', 'invites', 'activity', 'presence'] as const
@@ -71,6 +72,8 @@ async function deletePersonalDecks(classId: string, uid: string, db: Firestore):
 
 /** Students leave every class and take their private canvases and flashcard decks with them. */
 async function leaveClasses(uid: string, db: Firestore): Promise<void> {
+  // Turn-ins are only references to the student's own Drive files, which are never touched.
+  await deleteMyTurnIns(uid, db)
   const enrollments = await getDocs(query(enrollmentsRef(db), where('uid', '==', uid)))
   for (const enrollment of enrollments.docs) {
     const { classId, status } = enrollment.data() as { classId?: unknown; status?: unknown }

@@ -23,6 +23,7 @@ import { ClassCanvasTab } from './ClassCanvasTab'
 import { countActivitiesByMode } from './classActivities'
 import { ClassSettingsTab } from './ClassSettingsTab'
 import { ModulesTab } from '../modules/ModulesTab'
+import { AssignmentsTab } from '../assignments/AssignmentsTab'
 
 interface ClassCounts { students: number; pending: number; enrollments: number }
 const emptyCounts: ClassCounts = { students: 0, pending: 0, enrollments: 0 }
@@ -127,12 +128,13 @@ export function ClassPage() {
 
   const tabs = [
     { label: 'Modules', content: <ModulesTab key={classroom.id} classroom={classroom} /> },
+    { label: 'Assignments', content: <AssignmentsTab key={classroom.id} classroom={classroom} /> },
     { label: 'Quizzes', count: quizCount, content: <ClassQuizzesTab key={classroom.id} classroom={classroom} classes={classes} feed={activityFeed} /> },
     { label: 'Canvas', count: canvasCount, content: <ClassCanvasTab key={classroom.id} classroom={classroom} classes={classes} feed={activityFeed} /> },
     { label: 'People', count: counts.students + counts.pending, content: <ClassPeopleTab key={classroom.id} classroom={classroom} enrollments={enrollments} counts={counts} /> },
     { label: 'Settings', content: <ClassSettingsTab key={classroom.id} classroom={classroom} counts={{ students: counts.enrollments, quizzes: totalActivities }} /> },
   ]
-  const tabNames = ['modules', 'quizzes', 'canvas', 'people', 'settings']
+  const tabNames = ['modules', 'assignments', 'quizzes', 'canvas', 'people', 'settings']
   const selectedTab = tabNames.indexOf(searchParams.get('tab') ?? 'modules')
   const defaultTab = selectedTab < 0 ? 0 : selectedTab
 

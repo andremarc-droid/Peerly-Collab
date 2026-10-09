@@ -406,6 +406,103 @@ service cloud.firestore {
         }
       }
 
+      // Assignments: instructor-authored work with Google Drive attachments. Students turn in Drive file
+      // references (never file contents). Class owners write; active members read published work only.
+      match /assignments/{assignmentId} {
+        function assignmentPath() {
+          return /databases/$(database)/documents/classes/$(classId)/assignments/$(assignmentId);
+        }
+
+        function validDriveFile(file) {
+          return file is map
+            && file.keys().hasOnly(['fileId', 'name', 'mimeType', 'kind', 'url'])
+            && file.keys().hasAll(['fileId', 'name', 'mimeType', 'kind', 'url'])
+            && file.fileId is string && file.fileId.matches('^[A-Za-z0-9_-]{10,200}$')
+            && file.name is string && file.name.size() >= 1 && file.name.size() <= 200
+            && file.mimeType is string && file.mimeType.size() <= 150
+            && file.kind in ['file', 'doc', 'sheet', 'slides']
+            && file.url is string && file.url.size() <= 500
+            && file.url.matches('^https://(drive|docs)\\.google\\.com/[^ ]+$');
+        }
+
+        // Rules have no loops, so the first ten entries are checked one by one. The app never allows more than 10.
+        function validDriveFiles(files, max) {
+          return files is list && files.size() <= max && files.size() <= 10
+            && (files.size() < 1 || validDriveFile(files[0]))
+            && (files.size() < 2 || validDriveFile(files[1]))
+            && (files.size() < 3 || validDriveFile(files[2]))
+            && (files.size() < 4 || validDriveFile(files[3]))
+            && (files.size() < 5 || validDriveFile(files[4]))
+            && (files.size() < 6 || validDriveFile(files[5]))
+            && (files.size() < 7 || validDriveFile(files[6]))
+            && (files.size() < 8 || validDriveFile(files[7]))
+            && (files.size() < 9 || validDriveFile(files[8]))
+            && (files.size() < 10 || validDriveFile(files[9]));
+        }
+
+        function validAssignment(data) {
+          return data.keys().hasOnly(['ownerId', 'title', 'instructions', 'status', 'dueAt', 'points', 'acceptsTurnIn', 'collectorEmail', 'attachments', 'createdAt', 'updatedAt', 'publishedAt'])
+            && data.keys().hasAll(['ownerId', 'title', 'instructions', 'status', 'dueAt', 'points', 'acceptsTurnIn', 'collectorEmail', 'attachments', 'createdAt', 'updatedAt', 'publishedAt'])
+            && data.ownerId is string
+            && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+            && data.instructions is string && data.instructions.size() <= 5000
+            && data.status in ['draft', 'published']
+            && (data.dueAt == null || data.dueAt is timestamp)
+            && (data.points == null || (data.points is int && data.points >= 0 && data.points <= 1000))
+            && data.acceptsTurnIn is bool
+            && (data.collectorEmail == null
+              || (data.collectorEmail is string && data.collectorEmail.size() <= 254
+                && data.collectorEmail.matches('^[^@ ]+@[^@ ]+\\.[^@ ]+$')))
+            && (data.status != 'published' || !data.acceptsTurnIn || data.collectorEmail != null)
+            && validDriveFiles(data.attachments, 10)
+            && data.createdAt is timestamp && data.updatedAt is timestamp
+            && (data.publishedAt == null || data.publishedAt is timestamp);
+        }
+
+        allow get, list: if isClassOwner(classId) || (isActiveMember(classId) && resource.data.status == 'published');
+        allow create: if isClassOwner(classId)
+          && request.resource.data.ownerId == request.auth.uid
+          && validAssignment(request.resource.data);
+        allow update: if isClassOwner(classId)
+          && request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.createdAt == resource.data.createdAt
+          && validAssignment(request.resource.data);
+        allow delete: if isClassOwner(classId);
+
+        // One document per student, keyed by their uid. Only that student and the class owner can read it.
+        match /turnIns/{studentId} {
+          function assignmentAcceptsTurnIns() {
+            return exists(assignmentPath())
+              && get(assignmentPath()).data.status == 'published'
+              && get(assignmentPath()).data.acceptsTurnIn == true;
+          }
+
+          function validTurnIn(data) {
+            return data.keys().hasOnly(['studentId', 'studentName', 'classId', 'files', 'turnedInAt'])
+              && data.keys().hasAll(['studentId', 'studentName', 'classId', 'files', 'turnedInAt'])
+              && data.studentId == request.auth.uid
+              && data.classId == classId
+              && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 120
+              && validDriveFiles(data.files, 5) && data.files.size() >= 1
+              && data.turnedInAt == request.time;
+          }
+
+          allow get: if signedIn() && (studentId == request.auth.uid || isClassOwner(classId));
+          allow list: if isClassOwner(classId);
+          allow create: if signedIn() && studentId == request.auth.uid
+            && isActiveMember(classId)
+            && assignmentAcceptsTurnIns()
+            && validTurnIn(request.resource.data);
+          allow update: if signedIn() && studentId == request.auth.uid
+            && resource.data.studentId == request.auth.uid
+            && isActiveMember(classId)
+            && assignmentAcceptsTurnIns()
+            && validTurnIn(request.resource.data);
+          // Students can always withdraw their own record (also used when they delete their account).
+          allow delete: if isClassOwner(classId) || (signedIn() && resource.data.studentId == request.auth.uid);
+        }
+      }
+
       match /learningCanvases/{canvasId} {
         function validLearningCanvas(data) {
           return data.keys().hasOnly(['ownerId', 'classId', 'kind', 'title', 'description', 'status', 'nodeCount', 'edgeCount', 'refs', 'sourceCanvasId', 'createdAt', 'updatedAt'])
@@ -979,6 +1076,12 @@ service cloud.firestore {
           && (isDeckOwner() || isDeckMember());
         allow delete: if signedIn() && uid == request.auth.uid;
       }
+    }
+
+    // A student lists their own turn-ins across classes (and clears them on account deletion) by querying studentId.
+    // The nested rule above only covers per-assignment queries; collection-group queries need this recursive match.
+    match /{path=**}/turnIns/{studentId} {
+      allow list: if signedIn() && resource.data.studentId == request.auth.uid;
     }
 
     // "Shared with me": a person finds the canvases they were invited to by querying their own member records.

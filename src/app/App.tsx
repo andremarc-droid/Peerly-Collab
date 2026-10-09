@@ -21,6 +21,8 @@ const QuizResultsPage = lazy(() => import('../features/quizzes/results/QuizResul
 function LegacyQuestionsRedirect() { const { quizId } = useParams(); return <Navigate replace to={`/instructor/quizzes/${quizId}?tab=questions`} /> }
 const StudentClassPage = lazy(() => import('../features/classes/StudentClassPage').then((module) => ({ default: module.StudentClassPage })))
 const StudentModulePage = lazy(() => import('../features/modules/StudentModulePage').then((module) => ({ default: module.StudentModulePage })))
+const AssignmentEditorPage = lazy(() => import('../features/assignments/AssignmentEditorPage').then((module) => ({ default: module.AssignmentEditorPage })))
+const StudentAssignmentPage = lazy(() => import('../features/assignments/StudentAssignmentPage').then((module) => ({ default: module.StudentAssignmentPage })))
 const JoinClassPage = lazy(() => import('../features/classes/JoinClassPage').then((module) => ({ default: module.JoinClassPage })))
 const StudentClassesPage = lazy(() => import('../features/classes/StudentClassesPage').then((module) => ({ default: module.StudentClassesPage })))
 const QuizIntroPage = lazy(() => import('../features/studentQuizzes/QuizIntroPage').then((module) => ({ default: module.QuizIntroPage })))
@@ -56,6 +58,7 @@ export function AppRoutes() {
         <Route index element={<ClassesPage />} />
         <Route path="classes/:classId" element={<ClassPage />} />
         <Route path="classes/:classId/modules/:moduleId" element={<ModuleWorkspacePage />} />
+        <Route path="classes/:classId/assignments/:assignmentId" element={<AssignmentEditorPage />} />
         <Route path="classes/:classId/learning/:canvasId" element={<InstructorLearningCanvasPage />} />
         <Route path="classes/:classId/notes/:noteId" element={<NoteEditorPage role="instructor" />} />
         <Route path="learning" element={<InstructorLearningHubPage />} />
@@ -68,6 +71,7 @@ export function AppRoutes() {
       <Route path="/student" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentClassesPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentClassPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId/modules/:moduleId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentModulePage /></ToastProvider></RoleRoute></ProtectedRoute>} />
+      <Route path="/student/classes/:classId/assignments/:assignmentId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentAssignmentPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId/learning/:canvasId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentLearningCanvasPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/learning" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentLearningHubPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId/notes/:noteId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><NoteEditorPage role="student" /></ToastProvider></RoleRoute></ProtectedRoute>} />
