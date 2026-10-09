@@ -14,6 +14,7 @@ import { SectionCard } from '../../shared/ui/SectionCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { Textarea } from '../../shared/ui/Textarea'
 import { useToast } from '../../shared/ui/useToast'
+import { useGoogleDrive } from '../assignments/useGoogleDrive'
 import { AttachedQuizzesSection } from './AttachedQuizzesSection'
 import { ResourceEditorDialog, type ResourceInput } from './ResourceEditorDialog'
 import { addResource, deleteResource, publishModule, reorderResources, subscribeToModules, subscribeToResources, unpublishModule, updateModule, updateResource } from './services'
@@ -27,6 +28,7 @@ const resourceTypeLabel: Record<ResourceType, string> = { drive: 'Google Drive f
 export function ModuleWorkspacePage() {
   const { classId = '', moduleId = '' } = useParams()
   const { showToast } = useToast()
+  const drive = useGoogleDrive()
   const [searchParams] = useSearchParams()
   const [classroom, setClassroom] = useState<ClassWithId | null>(null)
   const [module, setModule] = useState<ModuleWithId | null>(null)
@@ -193,7 +195,7 @@ export function ModuleWorkspacePage() {
         </div>
       </section>
     </main>
-    <ResourceEditorDialog open={resourceDialog.open} initial={resourceDialog.initial} onClose={() => setResourceDialog({ open: false })} onSave={saveResource} />
+    <ResourceEditorDialog open={resourceDialog.open} initial={resourceDialog.initial} drive={drive} onClose={() => setResourceDialog({ open: false })} onSave={saveResource} />
   </AppShell>
 }
 

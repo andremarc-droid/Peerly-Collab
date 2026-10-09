@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CirclePlay, FileText, Link2 } from 'lucide-react'
+import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Dialog } from '../../shared/ui/Dialog'
 import { Input } from '../../shared/ui/Input'
@@ -7,23 +8,28 @@ import { Textarea } from '../../shared/ui/Textarea'
 import { buildDriveEmbedUrl, buildDriveOpenUrl, buildYouTubeEmbedUrl, normalizeGenericUrl, parseDriveUrl, parseYouTubeUrl } from './links'
 import { ResourceEmbed } from './ResourceEmbed'
 import type { DriveKind, ModuleResource, ResourceType } from './types'
+import { AddFileButtons } from '../assignments/AddFileButtons'
+import type { DriveFile } from '../assignments/types'
+import type { GoogleDriveApi } from '../assignments/useGoogleDrive'
 
 export type ResourceInput = Omit<ModuleResource, 'order' | 'createdAt' | 'updatedAt'>
-interface ResourceEditorDialogProps { open: boolean; initial?: ModuleResource; onClose: () => void; onSave: (value: ResourceInput) => Promise<void> }
+interface ResourceEditorDialogProps { open: boolean; initial?: ModuleResource; drive?: GoogleDriveApi; onClose: () => void; onSave: (value: ResourceInput) => Promise<void> }
 const kindName: Record<DriveKind, string> = { file: 'Drive file', doc: 'Google Doc', sheet: 'Google Sheet', slides: 'Google Slides' }
 
-export function ResourceEditorDialog({ open, initial, onClose, onSave }: ResourceEditorDialogProps) {
+export function ResourceEditorDialog({ open, initial, drive, onClose, onSave }: ResourceEditorDialogProps) {
   if (!open) return null
-  return <ResourceEditorDialogForm key={`${initial?.type ?? 'new'}-${initial?.title ?? ''}-${initial?.url ?? ''}`} initial={initial} onClose={onClose} onSave={onSave} />
+  return <ResourceEditorDialogForm key={`${initial?.type ?? 'new'}-${initial?.title ?? ''}-${initial?.url ?? ''}`} initial={initial} drive={drive} onClose={onClose} onSave={onSave} />
 }
 
-function ResourceEditorDialogForm({ initial, onClose, onSave }: Omit<ResourceEditorDialogProps, 'open'>) {
+function ResourceEditorDialogForm({ initial, drive, onClose, onSave }: Omit<ResourceEditorDialogProps, 'open'>) {
   const [type, setType] = useState<ResourceType>(initial?.type ?? 'drive')
   const [title, setTitle] = useState(initial?.title ?? '')
   const [url, setUrl] = useState(initial?.url ?? '')
   const [body, setBody] = useState(initial?.body ?? '')
   const [busy, setBusy] = useState(false)
   const [submittedError, setSubmittedError] = useState('')
+  const [uploaded, setUploaded] = useState<DriveFile | null>(null)
+  const [driveWarning, setDriveWarning] = useState('')
   const manualTitle = useRef(false)
   const parsedDrive = useMemo(() => { if (type !== 'drive' || !url.trim()) return null; try { return { value: parseDriveUrl(url), error: '' } } catch (reason) { return { value: null, error: reason instanceof Error ? reason.message : 'Enter a valid Google Drive link.' } } }, [type, url])
   const parsedYoutube = useMemo(() => { if (type !== 'youtube' || !url.trim()) return null; try { return { id: parseYouTubeUrl(url), error: '' } } catch (reason) { return { id: '', error: reason instanceof Error ? reason.message : 'Enter a valid YouTube link.' } } }, [type, url])
@@ -39,6 +45,19 @@ function ResourceEditorDialogForm({ initial, onClose, onSave }: Omit<ResourceEdi
 
   function onUrlChange(value: string) { setUrl(value); if (!manualTitle.current) setTitle('') }
   function onTitleChange(value: string) { manualTitle.current = true; setTitle(value) }
+  async function fileAdded(files: DriveFile[]) {
+    const file = files[0]
+    if (!file) return
+    if (drive) {
+      const failures = await drive.shareWithAnyone([file])
+      if (failures.length) setDriveWarning(`${failures[0].error.message} Students may need access granted in Google Drive.`)
+      else setDriveWarning('')
+    }
+    setUploaded(file)
+    setUrl(buildDriveOpenUrl(file.kind, file.fileId))
+    if (!manualTitle.current) setTitle(file.name)
+    setSubmittedError('')
+  }
   async function save() {
     setSubmittedError('')
     if (!title.trim()) { setSubmittedError('A title is required.'); return }
@@ -72,12 +91,13 @@ function ResourceEditorDialogForm({ initial, onClose, onSave }: Omit<ResourceEdi
     <div className="resource-type-switch" aria-label="Resource type">
       {([['drive', 'Google Drive file', <FileText key="drive" size={16} aria-hidden="true" />], ['youtube', 'YouTube video', <CirclePlay key="youtube" size={16} aria-hidden="true" />], ['link', 'Link', <Link2 key="link" size={16} aria-hidden="true" />], ['text', 'Note', <FileText key="text" size={16} aria-hidden="true" />]] as const).map(([value, label, icon]) => <button type="button" key={value} aria-pressed={type === value} onClick={() => { setType(value); setSubmittedError('') }}>{icon}{label}</button>)}
     </div>
-    {(type === 'drive' || type === 'youtube' || type === 'link') && <Input label={type === 'drive' ? 'Google Drive link' : type === 'youtube' ? 'YouTube link' : 'Secure link'} name="resource-url" type="url" value={url} onChange={(event) => onUrlChange(event.target.value)} hint={type === 'link' ? 'This link opens in a new tab.' : 'Paste a share link.'} error={error || undefined} />}
+    {type === 'drive' && drive && <div className="grid gap-2"><p className="m-0 text-base">Upload a file from your device or choose one already in Google Drive. The file stays in your Drive.</p>{drive.configIssue && <Alert tone="warning" label="Google Drive is not set up">{drive.configIssue}</Alert>}<AddFileButtons remaining={uploaded ? 0 : 1} drive={drive} onAdded={fileAdded} onError={setSubmittedError} /><p className="m-0 text-sm text-navy-800-72" role="status">{uploaded ? `Selected: ${uploaded.name}` : ''}</p>{driveWarning && <p className="m-0 text-sm text-navy-900" role="alert">{driveWarning}</p>}</div>}
+    {(type === 'drive' && !uploaded || type === 'youtube' || type === 'link') && <Input label={type === 'drive' ? 'Google Drive link' : type === 'youtube' ? 'YouTube link' : 'Secure link'} name="resource-url" type="url" value={url} onChange={(event) => { setUploaded(null); onUrlChange(event.target.value) }} hint={type === 'link' ? 'This link opens in a new tab.' : 'Paste a share link.'} error={error || undefined} />}
     <Input label="Title" name="resource-title" value={title} maxLength={120} onChange={(event) => onTitleChange(event.target.value)} error={!title.trim() && submittedError ? 'A title is required.' : undefined} />
     {type === 'drive' && <>
       {parsedDrive?.value && <p className="resource-detected-kind">Detected: <strong>{kindName[parsedDrive.value.kind]}</strong></p>}
-      <p className="resource-help">In Google Drive, press Share, and set General access to 'Anyone with the link' (Viewer). Set sharing to Anyone with the link: Viewer so students can open it.</p>
-      {drivePreview ? <section className="resource-preview" aria-label="Live Drive preview"><h3>Test preview</h3><ResourceEmbed src={drivePreview} fallbackUrl={driveOpen} title={`${title || 'Google Drive file'} preview`} fallbackLabel="Open in Drive" /><p>School Google accounts can limit this. If the preview below stays blank or says you need access, either your school restricts public sharing or the file is still private. Try uploading the file from a personal Google account.</p><p>A blank preview can also come from a browser that blocks third-party cookies.</p></section> : <p className="resource-preview__empty">Paste a supported Drive file link to test the preview.</p>}
+      <p className="resource-help">Students need viewer access to the file. Uploaded files are shared as view-only; for pasted links, set General access to “Anyone with the link” (Viewer) in Drive.</p>
+      {drivePreview ? <section className="resource-preview" aria-label="Live Drive preview"><h3>Test preview</h3><ResourceEmbed src={drivePreview} fallbackUrl={driveOpen} title={`${title || 'Google Drive file'} preview`} fallbackLabel="Open in Drive" /><p>School Google accounts can limit this. If the preview below stays blank or says you need access, either your school restricts public sharing or the file is still private. Try uploading the file from a personal Google account.</p><p>A blank preview can also come from a browser that blocks third-party cookies.</p></section> : <p className="resource-preview__empty">Paste a supported Drive file link or upload a file to test the preview.</p>}
     </>}
     {type === 'youtube' && youtubePreview && <section className="resource-preview" aria-label="Live YouTube preview"><h3>Test preview</h3><ResourceEmbed src={youtubePreview} fallbackUrl={youtubeOpen} title={`${title || 'YouTube video'} preview`} fallbackLabel="Open on YouTube" /></section>}
     {type === 'text' && <Textarea label="Note text" name="resource-body" value={body} onChange={(event) => setBody(event.target.value)} maxLength={5000} hint="Plain text only, no HTML." error={submittedError || undefined} />}
