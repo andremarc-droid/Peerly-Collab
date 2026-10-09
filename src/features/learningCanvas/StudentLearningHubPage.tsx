@@ -4,7 +4,6 @@ import {
   Plus,
   Upload,
   Download,
-  Copy,
   Trash2,
   Edit2,
   MoreVertical,
@@ -30,11 +29,9 @@ import { watchPublishedQuizzesForClass } from '../classes/services/quizService'
 import type { ClassWithId, EnrollmentWithId } from '../classes/types'
 import type { LearningCanvasWithId } from './types'
 import {
-  watchClassCanvases,
   watchMyCanvases,
   createCanvas,
   deleteCanvas,
-  copyToMyCanvases,
   rename,
   getContent,
   getCanvas,
@@ -77,7 +74,6 @@ export function StudentLearningHubPage() {
   const [viewMode, setViewMode] = useState<string>(searchParams.get('tab') === 'notes' ? 'notes' : searchParams.get('tab') === 'graph' || searchParams.has('graphId') ? 'graph' : 'canvases') // 'canvases' | 'graph'
 
   // Per-class canvases: classId -> LearningCanvasWithId[]
-  const [instructorCanvasesMap, setInstructorCanvasesMap] = useState<Record<string, LearningCanvasWithId[]>>({})
   const [personalCanvasesMap, setPersonalCanvasesMap] = useState<Record<string, LearningCanvasWithId[]>>({})
   const [moduleTitles, setModuleTitles] = useState<Record<string, string>>({})
   const [quizTitles, setQuizTitles] = useState<Record<string, string>>({})
@@ -143,18 +139,6 @@ export function StudentLearningHubPage() {
         ),
       )
 
-      // Instructor's published canvases
-      unsubs.push(
-        watchClassCanvases(
-          classId,
-          'student',
-          (items) => {
-            setInstructorCanvasesMap((prev) => ({ ...prev, [classId]: items }))
-          },
-          (cause) => setError(cause.message),
-        ),
-      )
-
       // My personal study canvases
       unsubs.push(
         watchMyCanvases(
@@ -207,21 +191,14 @@ export function StudentLearningHubPage() {
   }, [user, enrollments, workspaceClassKey])
 
   // Aggregate canvases
-  const allInstructorCanvases = Object.values(instructorCanvasesMap).flat()
   const allPersonalCanvases = Object.values(personalCanvasesMap).flat()
-  const combinedCanvases = [...allInstructorCanvases, ...allPersonalCanvases, ...sharedCanvases.items]
-
-  const instructorList =
-    selectedClassId === 'all'
-      ? allInstructorCanvases
-      : instructorCanvasesMap[selectedClassId] || []
+  const combinedCanvases = [...allPersonalCanvases, ...sharedCanvases.items]
 
   const personalList =
     selectedClassId === 'all'
       ? allPersonalCanvases
       : personalCanvasesMap[selectedClassId] || []
 
-  const displayInstructorCanvases = instructorList.filter((c) => c.sourceCanvasId !== 'note')
   const displayPersonalCanvases = personalList.filter((c) => c.sourceCanvasId !== 'note')
   const displayPersonalNotes = [
     ...personalList.filter((c) => c.sourceCanvasId === 'note'),
@@ -422,17 +399,6 @@ export function StudentLearningHubPage() {
     }
   }
 
-  const handleCopy = async (canvas: LearningCanvasWithId) => {
-    if (!user) return
-    try {
-      const copyId = await copyToMyCanvases(canvas.classId, canvas.id, user.uid)
-      showToast('success', 'Board copied to your personal study canvases.')
-      navigate(`/student/classes/${canvas.classId}/learning/${copyId}`)
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Copy failed.')
-    }
-  }
-
   const handleRename = async (title: string) => {
     if (!renameTarget) return
     await rename(renameTarget.classId, renameTarget.id, title)
@@ -559,8 +525,8 @@ export function StudentLearningHubPage() {
         </div>
 
         <p className="learning-canvas-count m-0 text-sm font-semibold text-navy-800-72" role="status">
-          {displayInstructorCanvases.length + displayPersonalCanvases.length}{' '}
-          {displayInstructorCanvases.length + displayPersonalCanvases.length === 1 ? 'canvas' : 'canvases'} created
+          {displayPersonalCanvases.length}{' '}
+          {displayPersonalCanvases.length === 1 ? 'canvas' : 'canvases'} created
         </p>
 
         {/* View mode 1: Graph View */}
@@ -643,62 +609,7 @@ export function StudentLearningHubPage() {
                   role="student"
                   selectedClassId={selectedClassId}
                 />
-                {/* 1. Instructor Published Canvases */}
-                <section aria-labelledby="instructor-canvases-heading" className="grid gap-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="section-kicker">CLASS MATERIALS</span>
-                  <h2 id="instructor-canvases-heading" className="text-xl font-bold text-navy-900 m-0">
-                    From your instructors
-                  </h2>
-                </div>
-                <span className="text-xs text-navy-800-72">
-                  {displayInstructorCanvases.length} {displayInstructorCanvases.length === 1 ? 'board' : 'boards'}
-                </span>
-              </div>
-
-              {displayInstructorCanvases.length === 0 ? (
-                <EmptyState
-                  title="No class canvases yet"
-                  description="When your instructors publish visual concept canvases, they will show up here."
-                />
-              ) : (
-                <div className="grid gap-3" role="list" aria-label="Instructor canvases list">
-                  {displayInstructorCanvases.map((canvas) => {
-                    const className = getClassName(canvas.classId)
-                    const metaText = `${className} · ${canvas.nodeCount} cards · ${canvas.edgeCount} connections · ${canvas.description || 'No description provided.'}`
-                    return (
-                      <DataCard
-                        key={canvas.id}
-                        title={canvas.title}
-                        meta={metaText}
-                        badge={<Badge>{className}</Badge>}
-                        actions={
-                          <div className="flex items-center gap-2">
-                            <Button
-                              to={`/student/classes/${canvas.classId}/learning/${canvas.id}`}
-                              variant="secondary"
-                            >
-                              View board
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              onClick={() => void handleCopy(canvas)}
-                            >
-                              <Copy size={16} aria-hidden="true" />
-                              <span>Save copy</span>
-                            </Button>
-                          </div>
-                        }
-                      />
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-
-            {/* 2. My Study Canvases */}
+            {/* Personal study canvases */}
             <section aria-labelledby="my-canvases-heading" className="grid gap-3">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-navy-900-12 bg-white p-4 shadow-sm">
                 <div>
