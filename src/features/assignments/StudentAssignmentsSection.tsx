@@ -6,7 +6,7 @@ import { DataCard } from '../../shared/ui/DataCard'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { resolveListStatus } from '../../shared/ui/listState'
-import { formatDue, formatPoints, turnInState, turnInStateLabel } from './format'
+import { formatDue, formatGrade, formatPoints, turnInState, turnInStateLabel } from './format'
 import { subscribeToAssignments, subscribeToMyTurnIns } from './services'
 import type { AssignmentWithId, TurnInWithId } from './types'
 import '../modules/modules.css'
@@ -17,14 +17,15 @@ export function StudentAssignmentsSection({ classId, studentId }: { classId: str
   const [turnIns, setTurnIns] = useState<TurnInWithId[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [statusError, setStatusError] = useState('')
   const [retry, setRetry] = useState(0)
 
   useEffect(() => subscribeToAssignments(classId, 'student',
     (next) => { setItems(next); setLoading(false); setError('') },
     (reason) => { setError(reason.message); setLoading(false) }), [classId, retry])
 
-  // A status badge is a nice-to-have: if this lookup fails the assignments still show, just without it.
-  useEffect(() => subscribeToMyTurnIns(studentId, setTurnIns, () => setTurnIns([])), [studentId, retry])
+  // The status badges depend on this lookup. If it fails the assignments still show, with a visible warning.
+  useEffect(() => subscribeToMyTurnIns(studentId, (next) => { setTurnIns(next); setStatusError('') }, (reason) => { setTurnIns([]); setStatusError(reason.message) }), [studentId, retry])
 
   const mine = useMemo(() => new Map(turnIns.filter((item) => item.classId === classId).map((item) => [item.assignmentId, item])), [turnIns, classId])
   const status = resolveListStatus({ loading, error, count: items.length })
@@ -34,13 +35,16 @@ export function StudentAssignmentsSection({ classId, studentId }: { classId: str
     {status === 'error' && <Alert tone="error" label="Assignments unavailable" action={<Button type="button" variant="secondary" onClick={() => { setLoading(true); setError(''); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert>}
     {status === 'loading' && <div className="grid gap-3">{[0, 1].map((index) => <Skeleton key={index} className="h-28 rounded-3xl" label="Loading assignments" />)}</div>}
     {status === 'empty' && <EmptyState title="No assignments yet" description="When your instructor publishes an assignment for this class, it will appear here." />}
+    {status === 'ready' && statusError && <Alert tone="warning" label="Turn-in status unavailable">Your turn-in and grade status could not be loaded, so the badges below may be out of date. Open an assignment to see its latest status. ({statusError})</Alert>}
     {status === 'ready' && <ul className="module-list" aria-label="Published assignments">{items.map((item) => {
       const state = turnInState(item, mine.get(item.id) ?? null)
+      const grade = mine.get(item.id)?.grade ?? null
+      const label = state === 'graded' && grade !== null ? `Graded · ${formatGrade(grade, item.points)}` : turnInStateLabel[state]
       return <li key={item.id} className="module-list__item">
         <DataCard
           title={item.title}
           meta={`${formatDue(item.dueAt)} · ${formatPoints(item.points)}${item.attachments.length ? ` · ${item.attachments.length} ${item.attachments.length === 1 ? 'file' : 'files'}` : ''}`}
-          badge={<Badge>{turnInStateLabel[state]}</Badge>}
+          badge={<Badge>{label}</Badge>}
           actions={<Button to={`/student/classes/${classId}/assignments/${item.id}`} variant="secondary">{state === 'assigned' || state === 'missing' ? 'Open and turn in' : 'Open'}<span className="sr-only"> {item.title}</span></Button>}
         >
           {item.instructions ? <p className="m-0 text-sm text-navy-800-72 line-clamp-2">{item.instructions}</p> : null}

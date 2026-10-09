@@ -6,6 +6,7 @@ export const MAX_TURN_IN_FILES = 5
 export const MAX_TITLE_LENGTH = 120
 export const MAX_INSTRUCTIONS_LENGTH = 5000
 export const MAX_POINTS = 1000
+export const MAX_FEEDBACK_LENGTH = 2000
 
 export type AssignmentStatus = 'draft' | 'published'
 
@@ -54,10 +55,18 @@ export interface TurnInRecord {
   classId: string
   files: DriveFile[]
   turnedInAt: Timestamp
+  /** Whole points given by the instructor. Null until graded, or when only feedback was given. */
+  grade: number | null
+  /** Written by the instructor and visible to the student. Empty when there is none. */
+  feedback: string
+  /** When the instructor last saved a grade or feedback. Null means not graded yet. */
+  gradedAt: Timestamp | null
 }
 
 export interface TurnInWithId extends TurnInRecord {
   assignmentId: string
+  /** True while a change made on this device has not yet been confirmed by the server. */
+  pendingWrite?: boolean
 }
 
-export type TurnInState = 'not_required' | 'assigned' | 'missing' | 'turned_in' | 'turned_in_late'
+export type TurnInState = 'not_required' | 'assigned' | 'missing' | 'turned_in' | 'turned_in_late' | 'graded'

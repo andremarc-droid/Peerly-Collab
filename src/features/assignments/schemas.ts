@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase/firestore'
 import {
-  MAX_ATTACHMENTS, MAX_INSTRUCTIONS_LENGTH, MAX_POINTS, MAX_TITLE_LENGTH, MAX_TURN_IN_FILES,
+  MAX_ATTACHMENTS, MAX_FEEDBACK_LENGTH, MAX_INSTRUCTIONS_LENGTH, MAX_POINTS, MAX_TITLE_LENGTH, MAX_TURN_IN_FILES,
   type AssignmentRecord, type DriveFile, type TurnInRecord,
 } from './types'
 
@@ -81,5 +81,31 @@ export function parseTurnIn(value: unknown): TurnInRecord {
   const files = parseDriveFiles(v.files, MAX_TURN_IN_FILES)
   if (files.length < 1) throw new Error('A turn-in needs at least one file.')
   if (!isTimestamp(v.turnedInAt)) throw new Error('Invalid turn-in time.')
-  return { studentId: v.studentId, studentName: v.studentName, classId: v.classId, files, turnedInAt: v.turnedInAt }
+  // Grading fields are absent until the instructor grades the work, so missing means "not graded".
+  const grade = v.grade ?? null
+  if (grade !== null && (typeof grade !== 'number' || !Number.isInteger(grade) || grade < 0 || grade > MAX_POINTS)) throw new Error('Invalid grade.')
+  const feedback = v.feedback ?? ''
+  if (typeof feedback !== 'string' || feedback.length > MAX_FEEDBACK_LENGTH) throw new Error('Invalid feedback.')
+  const gradedAt = v.gradedAt ?? null
+  if (gradedAt !== null && !isTimestamp(gradedAt)) throw new Error('Invalid grading time.')
+  return { studentId: v.studentId, studentName: v.studentName, classId: v.classId, files, turnedInAt: v.turnedInAt, grade, feedback, gradedAt }
+}
+
+export interface GradeInput {
+  grade: number | null
+  feedback: string
+}
+
+/**
+ * Checks what an instructor typed before it is saved. A grade is a whole number from 0 up to the assignment's points,
+ * and only assignments that have points can be given a grade (feedback alone is always fine).
+ */
+export function parseGradeInput(grade: unknown, feedback: unknown, points: number | null): GradeInput {
+  const text = typeof feedback === 'string' ? feedback.trim() : ''
+  if (text.length > MAX_FEEDBACK_LENGTH) throw new Error(`Feedback can be at most ${MAX_FEEDBACK_LENGTH} characters.`)
+  if (grade === null || grade === undefined) return { grade: null, feedback: text }
+  if (points === null) throw new Error('This assignment has no points. Add points to the assignment before giving a grade.')
+  if (typeof grade !== 'number' || !Number.isInteger(grade) || grade < 0) throw new Error('Enter a whole number of points, 0 or more.')
+  if (grade > points) throw new Error(`The grade can be at most ${points}, the points for this assignment.`)
+  return { grade, feedback: text }
 }

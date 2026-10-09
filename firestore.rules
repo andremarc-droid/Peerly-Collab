@@ -487,17 +487,37 @@ service cloud.firestore {
               && data.turnedInAt == request.time;
           }
 
+          // Only the class owner may add, change or remove the grading fields, and nothing else in the record.
+          // A grade is a whole number from 0 up to the assignment's points; feedback alone is allowed on any assignment.
+          function validGradeUpdate(newData, oldData) {
+            let points = get(assignmentPath()).data.points;
+            return newData.diff(oldData).affectedKeys().hasOnly(['grade', 'feedback', 'gradedAt', 'gradedBy'])
+              && (('gradedAt' in newData)
+                ? newData.gradedAt == request.time
+                  && newData.gradedBy == request.auth.uid
+                  && (('grade' in newData) || ('feedback' in newData))
+                  && (!('grade' in newData)
+                    || (points != null && newData.grade is int && newData.grade >= 0 && newData.grade <= points))
+                  && (!('feedback' in newData)
+                    || (newData.feedback is string && newData.feedback.size() >= 1 && newData.feedback.size() <= 2000))
+                : !('grade' in newData) && !('feedback' in newData) && !('gradedBy' in newData));
+          }
+
           allow get: if signedIn() && (studentId == request.auth.uid || isClassOwner(classId));
           allow list: if isClassOwner(classId);
           allow create: if signedIn() && studentId == request.auth.uid
             && isActiveMember(classId)
             && assignmentAcceptsTurnIns()
             && validTurnIn(request.resource.data);
+          // Once the instructor has graded the work it is locked for the student. The instructor can clear the grade
+          // to let them change it again.
           allow update: if signedIn() && studentId == request.auth.uid
             && resource.data.studentId == request.auth.uid
+            && !('gradedAt' in resource.data)
             && isActiveMember(classId)
             && assignmentAcceptsTurnIns()
             && validTurnIn(request.resource.data);
+          allow update: if isClassOwner(classId) && validGradeUpdate(request.resource.data, resource.data);
           // Students can always withdraw their own record (also used when they delete their account).
           allow delete: if isClassOwner(classId) || (signedIn() && resource.data.studentId == request.auth.uid);
         }
@@ -1087,6 +1107,11 @@ service cloud.firestore {
     // "Shared with me": a person finds the canvases they were invited to by querying their own member records.
     match /{path=**}/members/{memberUid} {
       allow list: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // A student finds their own assignment turn-ins across classes (query must filter on studentId == their uid).
+    match /{path=**}/turnIns/{turnInId} {
+      allow list: if signedIn() && resource.data.studentId == request.auth.uid;
     }
 
     match /classCodes/{code} {

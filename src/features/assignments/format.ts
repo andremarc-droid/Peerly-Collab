@@ -45,10 +45,11 @@ export function isLate(dueAt: Timestamp | null, turnedInAt: Timestamp): boolean 
 
 export function turnInState(
   assignment: Pick<AssignmentRecord, 'dueAt' | 'acceptsTurnIn'>,
-  turnIn: Pick<TurnInRecord, 'turnedInAt'> | null,
+  turnIn: (Pick<TurnInRecord, 'turnedInAt'> & Partial<Pick<TurnInRecord, 'gradedAt'>>) | null,
   now: number = Date.now(),
 ): TurnInState {
   if (!assignment.acceptsTurnIn) return 'not_required'
+  if (turnIn?.gradedAt) return 'graded'
   if (turnIn) return isLate(assignment.dueAt, turnIn.turnedInAt) ? 'turned_in_late' : 'turned_in'
   if (assignment.dueAt && now > assignment.dueAt.toMillis()) return 'missing'
   return 'assigned'
@@ -60,6 +61,12 @@ export const turnInStateLabel: Record<TurnInState, string> = {
   missing: 'Missing',
   turned_in: 'Turned in',
   turned_in_late: 'Turned in late',
+  graded: 'Graded',
+}
+
+/** "85 / 100" when the assignment has points, otherwise just the number. */
+export function formatGrade(grade: number, points: number | null): string {
+  return points === null ? String(grade) : `${grade} / ${points}`
 }
 
 /** Due soonest first, then undated work, newest first. */

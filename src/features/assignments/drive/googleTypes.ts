@@ -12,6 +12,8 @@ export interface TokenResponse {
 export interface TokenClientConfig {
   client_id: string
   scope: string
+  /** Email of the Google account that should authorize, so Google skips the account chooser. */
+  hint?: string
   callback: (response: TokenResponse) => void
   error_callback?: (error: { type?: string; message?: string }) => void
 }

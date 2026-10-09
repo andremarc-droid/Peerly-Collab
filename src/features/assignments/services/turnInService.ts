@@ -1,9 +1,9 @@
 import {
-  collectionGroup, deleteDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, where, writeBatch,
+  collectionGroup, deleteDoc, deleteField, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
   type DocumentSnapshot, type Firestore, type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
-import { parseDriveFiles, parseTurnIn } from '../schemas'
+import { parseDriveFiles, parseGradeInput, parseTurnIn } from '../schemas'
 import { MAX_TURN_IN_FILES, type DriveFile, type TurnInWithId } from '../types'
 import { TURN_INS, turnInRef, turnInsRef } from './paths'
 
@@ -12,7 +12,7 @@ const toError = (reason: unknown) => (reason instanceof Error ? reason : new Err
 
 /** `estimate` keeps our own just-written turn-in readable before the server has stamped its time. */
 function asTurnIn(snapshot: DocumentSnapshot | QueryDocumentSnapshot): TurnInWithId {
-  return { ...parseTurnIn(snapshot.data({ serverTimestamps: 'estimate' })), assignmentId: snapshot.ref.parent.parent?.id ?? '' }
+  return { ...parseTurnIn(snapshot.data({ serverTimestamps: 'estimate' })), assignmentId: snapshot.ref.parent.parent?.id ?? '', pendingWrite: snapshot.metadata.hasPendingWrites }
 }
 
 export interface TurnInInput {
@@ -58,7 +58,8 @@ export function subscribeToTurnIns(
   onError: (error: Error) => void,
   db: Firestore = firestore,
 ) {
-  return onSnapshot(query(turnInsRef(db, classId, assignmentId), orderBy('turnedInAt', 'desc')), (snapshot) => {
+  // Metadata changes are included so the screen can tell a saved grade from one still waiting to reach the server.
+  return onSnapshot(query(turnInsRef(db, classId, assignmentId), orderBy('turnedInAt', 'desc')), { includeMetadataChanges: true }, (snapshot) => {
     try { onChange(snapshot.docs.map(asTurnIn)) }
     catch (reason) { onError(toError(reason)) }
   }, onError)
@@ -91,4 +92,38 @@ export async function deleteMyTurnIns(studentId: string, db: Firestore = firesto
 
 export async function withdrawTurnIn(classId: string, assignmentId: string, studentId: string, db: Firestore = firestore): Promise<void> {
   await deleteDoc(turnInRef(db, classId, assignmentId, studentId))
+}
+
+export interface GradeTurnInInput {
+  classId: string
+  assignmentId: string
+  studentId: string
+  /** The instructor giving the grade. Stored so it is clear who graded the work. */
+  graderId: string
+  /** The assignment's points, used to keep the grade in range. */
+  points: number | null
+  grade: number | null
+  feedback: string
+}
+
+/**
+ * Saves the instructor's grade and/or feedback on one student's turn-in. Leaving both empty removes the grade,
+ * which also lets the student change their work again.
+ */
+export async function gradeTurnIn(input: GradeTurnInInput, db: Firestore = firestore): Promise<void> {
+  const { grade, feedback } = parseGradeInput(input.grade, input.feedback, input.points)
+  if (grade === null && !feedback) { await clearTurnInGrade(input.classId, input.assignmentId, input.studentId, db); return }
+  await updateDoc(turnInRef(db, input.classId, input.assignmentId, input.studentId), {
+    grade: grade ?? deleteField(),
+    feedback: feedback || deleteField(),
+    gradedAt: serverTimestamp(),
+    gradedBy: input.graderId,
+  })
+}
+
+/** Removes the grade and feedback. The turn-in itself and the student's files are untouched. */
+export async function clearTurnInGrade(classId: string, assignmentId: string, studentId: string, db: Firestore = firestore): Promise<void> {
+  await updateDoc(turnInRef(db, classId, assignmentId, studentId), {
+    grade: deleteField(), feedback: deleteField(), gradedAt: deleteField(), gradedBy: deleteField(),
+  })
 }

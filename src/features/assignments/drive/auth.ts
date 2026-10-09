@@ -14,6 +14,18 @@ const FALLBACK_LIFETIME_SECONDS = 3000
 /** Held in memory only. It is never written to localStorage, Firestore or any cookie. */
 let session: { token: string; expiresAt: number } | null = null
 
+/**
+ * Which Google account to authorize. The email the person signed in to this app with is used by default, so Google
+ * does not ask them to pick an account. If they deliberately choose another account, that choice wins until they
+ * disconnect. Both live in memory only.
+ */
+let appAccountHint: string | null = null
+let chosenAccount: string | null = null
+
+export function setAppAccountHint(email: string | null | undefined): void { appAccountHint = email?.trim() || null }
+export function rememberChosenAccount(email: string): void { chosenAccount = email.trim() || null }
+export function getAccountHint(): string | null { return chosenAccount ?? appAccountHint }
+
 export function getCachedToken(now: number = Date.now()): string | null {
   if (!session || session.expiresAt - EXPIRY_MARGIN_MS <= now) return null
   return session.token
@@ -28,6 +40,7 @@ export function forgetDriveToken(): void { session = null }
 export function disconnectDrive(): void {
   const token = session?.token
   session = null
+  chosenAccount = null
   if (token) window.google?.accounts?.oauth2?.revoke(token)
 }
 
@@ -39,10 +52,12 @@ export async function requestDriveToken(config: DriveConfig, options: { selectAc
   await loadGoogleIdentity()
   const oauth2 = window.google?.accounts?.oauth2
   if (!oauth2) throw new DriveError('script')
+  const hint = options.selectAccount ? null : getAccountHint()
   return new Promise<string>((resolve, reject) => {
     const client = oauth2.initTokenClient({
       client_id: config.clientId,
       scope: DRIVE_SCOPE,
+      ...(hint ? { hint } : {}),
       callback: (response) => {
         if (response.error || !response.access_token) {
           reject(new DriveError(response.error === 'access_denied' ? 'cancelled' : 'auth', response.error_description))

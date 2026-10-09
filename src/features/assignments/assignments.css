@@ -27,3 +27,25 @@
 .turn-in-card__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .turn-in-card__head h3 { overflow-wrap: anywhere; margin: 0; font-size: 17px; }
 .turn-in-card__time { margin: 0; color: var(--color-navy-800-72); font-size: 14px; }
+
+.grade-form { display: grid; gap: 12px; padding-top: 14px; border-top: 1px solid var(--color-navy-900-12); }
+.grade-form__fields { display: grid; gap: 14px; }
+@media (min-width: 768px) {
+  .grade-form__fields { grid-template-columns: minmax(120px, 180px) minmax(0, 1fr); align-items: start; }
+}
+
+.grade-card { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--color-navy-900-12); border-radius: 18px; background: var(--color-white); box-shadow: var(--shadow-sm); }
+.grade-card h3, .grade-card h4 { margin: 0; font-size: 17px; }
+.grade-card h4 { font-size: 15px; }
+.grade-card__score { margin: 0; color: var(--color-navy-900); font-size: 32px; font-weight: 700; line-height: 1.2; }
+
+/*
+ * Google's file picker positions its dialog relative to the top of the page, so it opens out of sight when the person
+ * has scrolled down. Pin it to the middle of the visible window instead. The picker sets inline top/left values,
+ * so these need !important to win.
+ */
+.picker-dialog-bg { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2000 !important; }
+.picker-dialog {
+  position: fixed !important; top: 50% !important; left: 50% !important; z-index: 2001 !important;
+  max-width: 96vw; max-height: 94vh; transform: translate(-50%, -50%);
+}
