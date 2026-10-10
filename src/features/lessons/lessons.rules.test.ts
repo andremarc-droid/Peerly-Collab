@@ -72,7 +72,9 @@ describe('lesson plan security rules', () => {
     await assertFails(setDoc(lessonRef, { ...lesson, flashcards: [{ id: 'x', front: 'front', back: 'b'.repeat(601) }, ...lesson.flashcards.slice(1)] }))
     await assertFails(setDoc(lessonRef, { ...lesson, keyPoints: ['k'.repeat(201)] }))
     const multipleChoice = { id: 'q0', kind: 'multiple-choice', prompt: 'Pick one', answer: 'A', options: ['A', 'B'], correctIndex: 0, explanation: '' }
-    await assertFails(setDoc(lessonRef, { ...lesson, quiz: [multipleChoice, ...lesson.quiz.slice(1)], updatedAt: now }))
+    await assertSucceeds(setDoc(lessonRef, { ...lesson, quiz: [multipleChoice, ...lesson.quiz.slice(1)], updatedAt: now }))
+    // correctIndex points at "B" while the answer is "A".
+    await assertFails(setDoc(lessonRef, { ...lesson, quiz: [{ ...multipleChoice, correctIndex: 1 }, ...lesson.quiz.slice(1)], updatedAt: now }))
     await assertFails(setDoc(lessonRef, { ...lesson, quiz: [{ ...multipleChoice, options: ['A'.repeat(301), 'B'] }, ...lesson.quiz.slice(1)] }))
     await assertFails(setDoc(lessonRef, { ...lesson, quiz: [{ ...multipleChoice, options: ['A', 'B', 'C', 'D', 'E'] }, ...lesson.quiz.slice(1)] }))
   })
@@ -97,6 +99,27 @@ describe('lesson plan security rules', () => {
     await assertFails(deleteDoc(doc(stranger, path)))
     await assertFails(getDoc(doc(signedOut, path)))
     await assertSucceeds(deleteDoc(doc(owner, path)))
+  })
+
+  const choiceQuestion = (index: number) => ({ id: `q-${index + 1}`, kind: 'multiple-choice', prompt: 'Which statement about this topic is correct? '.repeat(3), answer: 'Option A is the correct answer here', options: ['Option A is the correct answer here', 'Option B is a plausible wrong answer', 'Option C is a plausible wrong answer', 'Option D is a plausible wrong answer'], correctIndex: 0, explanation: 'Option A is correct because of the idea explained in the lesson. '.repeat(3) })
+  const cardsOf = (count: number) => Array.from({ length: count }, (_, index) => ({ id: `card-${index + 1}`, front: 'What does this term mean in practice?', back: 'It means the thing described in the lesson, explained in a sentence or two.' }))
+  const pointsOf = (count: number) => Array.from({ length: count }, (_, index) => `Key point ${index + 1} stated in a full sentence for the learner.`)
+
+  it('accepts the largest lesson the app writes (5 key points, 6 flashcards, 4 multiple-choice questions)', async () => {
+    const db = environment.authenticatedContext('student').firestore()
+    const planRef = doc(db, 'users/student/lessonPlans/plan-a')
+    await assertSucceeds(setDoc(planRef, plan()))
+    await assertSucceeds(setDoc(doc(planRef, 'lessons/one'), { ...lesson, content: 'x'.repeat(1500), keyPoints: pointsOf(5), flashcards: cardsOf(6), quiz: Array.from({ length: 4 }, (_, index) => choiceQuestion(index)) }))
+  })
+
+  it('rejects lessons with more key points, flashcards or questions than the app writes', async () => {
+    const db = environment.authenticatedContext('student').firestore()
+    const planRef = doc(db, 'users/student/lessonPlans/plan-a')
+    await assertSucceeds(setDoc(planRef, plan()))
+    const lessonRef = doc(planRef, 'lessons/one')
+    await assertFails(setDoc(lessonRef, { ...lesson, keyPoints: pointsOf(6) }))
+    await assertFails(setDoc(lessonRef, { ...lesson, flashcards: cardsOf(7) }))
+    await assertFails(setDoc(lessonRef, { ...lesson, quiz: Array.from({ length: 5 }, (_, index) => choiceQuestion(index)) }))
   })
 
   it('accepts a new plan, its lessons and its source in one batch', async () => {

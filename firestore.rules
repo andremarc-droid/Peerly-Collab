@@ -362,68 +362,49 @@ service cloud.firestore {
         }
 
         match /lessons/{lessonId} {
+          // Firestore stops evaluating a rule after 1000 expressions and rules have no loops, so every list item is
+          // checked by hand. These checks are deliberately small so the largest lesson the app writes (5 key points,
+          // 6 flashcards, 4 quiz questions) stays well under that limit; lessons.rules.test.ts covers that size. A
+          // missing field makes the expression error, which denies the write. The app checks the exact shape, types
+          // and option text with parseLesson() before it writes.
           function validLessonFlashcard(card) {
-            return card is map
-              && card.keys().hasOnly(['id', 'front', 'back'])
-              && card.keys().hasAll(['id', 'front', 'back'])
-              && card.id is string && card.id.size() >= 1 && card.id.size() <= 128
-              && card.front is string && card.front.size() >= 1 && card.front.size() <= 300
-              && card.back is string && card.back.size() >= 1 && card.back.size() <= 600;
-          }
-          function validLessonOption(option) {
-            return option is string && option.size() >= 1 && option.size() <= 300;
+            return card.id.size() <= 128
+              && card.front.size() >= 1 && card.front.size() <= 300
+              && card.back.size() >= 1 && card.back.size() <= 600;
           }
           function validLessonQuestion(question) {
-            return question is map && question.kind in ['multiple-choice', 'written']
-              && (question.kind == 'multiple-choice'
-                ? question.keys().hasOnly(['id', 'cardId', 'kind', 'prompt', 'answer', 'options', 'correctIndex', 'explanation'])
-                  && question.keys().hasAll(['id', 'kind', 'prompt', 'answer', 'options', 'correctIndex', 'explanation'])
-                  && question.options is list && question.options.size() >= 2 && question.options.size() <= 4
-                  && validLessonOption(question.options[0])
-                  && (question.options.size() < 3 || validLessonOption(question.options[2]))
-                  && (question.options.size() < 4 || validLessonOption(question.options[3]))
-                  && (question.options.size() < 2 || validLessonOption(question.options[1]))
-                  && question.correctIndex is int && question.correctIndex >= 0 && question.correctIndex < question.options.size()
-                  && question.options[question.correctIndex] == question.answer
-                : question.keys().hasOnly(['id', 'cardId', 'kind', 'prompt', 'answer', 'explanation'])
-                  && question.keys().hasAll(['id', 'kind', 'prompt', 'answer', 'explanation']))
-              && question.id is string && question.id.size() >= 1 && question.id.size() <= 128
-              && (!('cardId' in question) || (question.cardId is string && question.cardId.size() >= 1 && question.cardId.size() <= 128))
-              && question.prompt is string && question.prompt.size() >= 1 && question.prompt.size() <= 500
-              && question.answer is string && question.answer.size() >= 1 && question.answer.size() <= 600
-              && question.explanation is string && question.explanation.size() <= 500;
+            return question.kind in ['multiple-choice', 'written']
+              && question.id.size() <= 128
+              && question.prompt.size() <= 500
+              && question.answer.size() >= 1 && question.answer.size() <= 600
+              && question.explanation.size() <= 500
+              && (question.kind == 'written'
+                || (question.options.size() >= 2 && question.options.size() <= 4
+                  && question.options[question.correctIndex] == question.answer));
           }
           function validLesson(data) {
             return data.keys().hasOnly(['title', 'objective', 'content', 'keyPoints', 'flashcards', 'quiz', 'updatedAt'])
-              && data.keys().hasAll(['title', 'objective', 'content', 'keyPoints', 'flashcards', 'quiz', 'updatedAt'])
               && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
               && data.objective is string && data.objective.size() >= 1 && data.objective.size() <= 300
               && data.content is string && data.content.size() >= 1 && data.content.size() <= 2000
-              && data.keyPoints is list && data.keyPoints.size() >= 1 && data.keyPoints.size() <= 6
-              && data.keyPoints[0] is string && data.keyPoints[0].size() >= 1 && data.keyPoints[0].size() <= 200
-              && (data.keyPoints.size() < 2 || (data.keyPoints[1] is string && data.keyPoints[1].size() >= 1 && data.keyPoints[1].size() <= 200))
-              && (data.keyPoints.size() < 3 || (data.keyPoints[2] is string && data.keyPoints[2].size() >= 1 && data.keyPoints[2].size() <= 200))
-              && (data.keyPoints.size() < 4 || (data.keyPoints[3] is string && data.keyPoints[3].size() >= 1 && data.keyPoints[3].size() <= 200))
-              && (data.keyPoints.size() < 5 || (data.keyPoints[4] is string && data.keyPoints[4].size() >= 1 && data.keyPoints[4].size() <= 200))
-              && (data.keyPoints.size() < 6 || (data.keyPoints[5] is string && data.keyPoints[5].size() >= 1 && data.keyPoints[5].size() <= 200))
-              && data.flashcards is list && data.flashcards.size() >= 5 && data.flashcards.size() <= 10
-              && data.flashcards[0] is map && validLessonFlashcard(data.flashcards[0])
-              && (data.flashcards.size() < 2 || validLessonFlashcard(data.flashcards[1]))
-              && (data.flashcards.size() < 3 || validLessonFlashcard(data.flashcards[2]))
-              && (data.flashcards.size() < 4 || validLessonFlashcard(data.flashcards[3]))
-              && (data.flashcards.size() < 5 || validLessonFlashcard(data.flashcards[4]))
+              && data.keyPoints is list && data.keyPoints.size() >= 1 && data.keyPoints.size() <= 5
+              && data.keyPoints[0].size() <= 200
+              && (data.keyPoints.size() < 2 || data.keyPoints[1].size() <= 200)
+              && (data.keyPoints.size() < 3 || data.keyPoints[2].size() <= 200)
+              && (data.keyPoints.size() < 4 || data.keyPoints[3].size() <= 200)
+              && (data.keyPoints.size() < 5 || data.keyPoints[4].size() <= 200)
+              && data.flashcards is list && data.flashcards.size() >= 5 && data.flashcards.size() <= 6
+              && validLessonFlashcard(data.flashcards[0])
+              && validLessonFlashcard(data.flashcards[1])
+              && validLessonFlashcard(data.flashcards[2])
+              && validLessonFlashcard(data.flashcards[3])
+              && validLessonFlashcard(data.flashcards[4])
               && (data.flashcards.size() < 6 || validLessonFlashcard(data.flashcards[5]))
-              && (data.flashcards.size() < 7 || validLessonFlashcard(data.flashcards[6]))
-              && (data.flashcards.size() < 8 || validLessonFlashcard(data.flashcards[7]))
-              && (data.flashcards.size() < 9 || validLessonFlashcard(data.flashcards[8]))
-              && (data.flashcards.size() < 10 || validLessonFlashcard(data.flashcards[9]))
-              && data.quiz is list && data.quiz.size() >= 3 && data.quiz.size() <= 6
+              && data.quiz is list && data.quiz.size() >= 3 && data.quiz.size() <= 4
               && validLessonQuestion(data.quiz[0])
-              && (data.quiz.size() < 2 || validLessonQuestion(data.quiz[1]))
-              && (data.quiz.size() < 3 || validLessonQuestion(data.quiz[2]))
+              && validLessonQuestion(data.quiz[1])
+              && validLessonQuestion(data.quiz[2])
               && (data.quiz.size() < 4 || validLessonQuestion(data.quiz[3]))
-              && (data.quiz.size() < 5 || validLessonQuestion(data.quiz[4]))
-              && (data.quiz.size() < 6 || validLessonQuestion(data.quiz[5]))
               && data.updatedAt is timestamp;
           }
           // getAfter() also sees a plan written in the same batch. A plain get()/exists() only sees the state

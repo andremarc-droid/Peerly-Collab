@@ -79,7 +79,9 @@
   to { opacity: 1; transform: none; }
 }
 
-.m3-enter { animation: m3-enter 360ms cubic-bezier(0.2, 0, 0, 1) both; }
+/* `backwards`, not `both`: once the entrance finishes the container must have no transform left, because a transformed
+   element becomes the containing block for `position: fixed` children (tutor button, dialogs, sheets). */
+.m3-enter { animation: m3-enter 360ms cubic-bezier(0.2, 0, 0, 1) backwards; }
 
 /* Screen titles take focus on route change for screen readers; they are not controls, so they get no ring. */
 .m3-title:focus { outline: none; }

@@ -23,10 +23,10 @@ function setup(options: { allowDocuments?: boolean } = {}) {
   return { onSend, box }
 }
 
-/** The image picker's input comes first in the page; the document picker's input is the second one. */
+/** The document picker's file input is the only file input in the composer. */
 function pickDocuments(files: File[]) {
   const inputs = document.querySelectorAll<HTMLInputElement>('input[type="file"]')
-  fireEvent.change(inputs[1], { target: { files } })
+  fireEvent.change(inputs[0], { target: { files } })
 }
 
 const pdf = () => new File(['%PDF'], 'notes.pdf', { type: 'application/pdf' })

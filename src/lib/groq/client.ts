@@ -52,6 +52,14 @@ export function stripThinking(text: string): string {
   return (open === -1 ? withoutBlocks : withoutBlocks.slice(0, open)).trim()
 }
 
+/** Groq's 429 text ends with e.g. "Please try again in 14m22.5s"; returns that wait in whole seconds. */
+function parseWaitFromMessage(message: string): number | null {
+  const match = /try again in\s+(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:([\d.]+)s)?/i.exec(message)
+  if (!match) return null
+  const seconds = Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0)
+  return seconds > 0 ? Math.ceil(seconds) : null
+}
+
 async function toGroqError(response: Response): Promise<GroqError> {
   let detail = ''
   try {
@@ -62,7 +70,8 @@ async function toGroqError(response: Response): Promise<GroqError> {
   }
 
   const retryHeader = Number(response.headers.get('retry-after'))
-  const retryAfter = Number.isFinite(retryHeader) && retryHeader > 0 ? Math.ceil(retryHeader) : null
+  const retryAfter = Number.isFinite(retryHeader) && retryHeader > 0 ? Math.ceil(retryHeader) : (response.status === 429 ? parseWaitFromMessage(detail) : null)
+  if (response.status === 429) console.warn('[groq] rate limited:', detail || '(no detail)', { retryAfterHeader: response.headers.get('retry-after') })
 
   switch (response.status) {
     case 401:
@@ -109,6 +118,8 @@ export async function createChatCompletion(options: ChatCompletionOptions): Prom
     stream: false,
   }
   if (config.model.startsWith('qwen/')) body.reasoning_effort = 'none'
+  // gpt-oss models always reason first, and those tokens count against max_tokens, so keep it short.
+  else if (config.model.startsWith('openai/gpt-oss')) body.reasoning_effort = 'low'
 
   let response: Response
   try {

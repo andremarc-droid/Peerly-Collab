@@ -12,6 +12,7 @@ import { Input } from '../../shared/ui/Input'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useAuth } from '../auth/useAuth'
 import { generateRemainingLessons } from './generate'
+import { describeLessonGeneration } from './generationMessage'
 import { lessonPlanCompletion } from './progress'
 import { deletePlan, getLessonPlan, listLessonPlans, loadPlanSource, renameLessonPlan, saveLesson, loadLessonProgress } from './services'
 import { LearnTopicDialog } from './LearnTopicDialog'
@@ -33,6 +34,7 @@ export function LessonsTab() {
   const [deleteTarget, setDeleteTarget] = useState<LessonPlan | null>(null)
   const [busyId, setBusyId] = useState('')
   const [progressText, setProgressText] = useState('')
+  const [errorPlanId, setErrorPlanId] = useState('')
   const controller = useRef<AbortController | null>(null)
 
   const refresh = useCallback(async () => {
@@ -71,7 +73,7 @@ export function LessonsTab() {
     finally { setBusyId('') }
   }
   const generatePlanLessons = async (plan: LessonPlan) => {
-    setBusyId(plan.id); setError(''); setProgressText('Starting…'); controller.current = new AbortController()
+    setBusyId(plan.id); setError(''); setErrorPlanId(plan.id); setProgressText('Starting…'); controller.current = new AbortController()
     try {
       const result = await getLessonPlan(uid, plan.id)
       if (!result) throw new Error('This plan no longer exists.')
@@ -86,11 +88,12 @@ export function LessonsTab() {
         if (before.has(id)) continue
         await saveLesson(uid, plan.id, id, item)
       }
-      if (generated.failureReason === 'rate-limit') setError('The AI is rate-limited. Completed lessons were saved; try again later.')
+      if (generated.failureReason) console.warn('[lessons] generation ended early:', generated.failureReason, generated.retryAfterSeconds ?? '')
+      if (generated.failureReason === 'rate-limit') setError(describeLessonGeneration(generated))
       else if (generated.failureReason) setError('Some lessons could not be regenerated. Their previous saved versions remain available.')
       else if (generated.cancelled) setError('Regeneration was cancelled. Completed lessons were saved.')
       await refresh()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not regenerate lessons.') }
+    } catch (cause) { console.error('[lessons] regenerate failed', cause); setError(cause instanceof Error ? cause.message : 'Could not regenerate lessons.') }
     finally { setBusyId(''); setProgressText(''); controller.current = null }
   }
 
@@ -106,7 +109,7 @@ export function LessonsTab() {
     {loading ? <div className="grid gap-3">{[1, 2, 3].map(item => <Skeleton key={item} className="h-28 rounded-2xl"/>)}</div> : plans.length === 0 ? <EmptyState title="No lesson plans yet" description="Choose a topic and create a private, step-by-step learning plan." action={<Button variant="primary" onClick={() => setCreateOpen(true)}>Learn a topic</Button>}/> : <div className="grid gap-3">{plans.map(plan => {
       const percent = lessonPlanCompletion(plan.order, progress[plan.id] ?? { version: 1, lessons: {}, lastLessonId: null, updatedAt: plan.updatedAt })
       return <DataCard key={plan.id} title={plan.title} meta={`${plan.topic} · ${plan.level} · ${plan.lessonCount} lessons`} badge={plan.status === 'partial' ? <span className="badge">Partial</span> : <span className="badge">{percent}% complete</span>} actions={<div className="flex flex-wrap items-center gap-2"><Button variant="primary" disabled={busyId === plan.id} onClick={() => setEditing(plan)}>Resume</Button><Button variant="secondary" className="hidden lg:inline-flex" disabled={busyId === plan.id} onClick={() => startRename(plan)}>Rename</Button><Button variant="secondary" className="hidden lg:inline-flex" disabled={busyId === plan.id} onClick={() => void generatePlanLessons(plan)}>{busyId === plan.id ? progressText || 'Generating…' : plan.status === 'partial' ? 'Generate the rest' : 'Regenerate lessons'}</Button><Button variant="secondary" className="hidden lg:inline-flex" disabled={busyId === plan.id} onClick={() => setDeleteTarget(plan)}>Delete</Button>{menu(plan)}</div>}>
-        <div className="grid gap-2"><div className="flex justify-between gap-2 text-sm text-navy-900"><span>Completion</span><span>{percent}%</span></div><progress className="h-3 w-full accent-navy-900" max={100} value={percent} aria-label={`${plan.title} completion`}/>{plan.status === 'partial' && <p className="m-0 text-sm text-navy-900">Some lessons still need to be generated.</p>}</div>
+        <div className="grid gap-2"><div className="flex justify-between gap-2 text-sm text-navy-900"><span>Completion</span><span>{percent}%</span></div><progress className="h-3 w-full accent-navy-900" max={100} value={percent} aria-label={`${plan.title} completion`}/>{plan.status === 'partial' && <p className="m-0 text-sm text-navy-900">Some lessons still need to be generated.</p>}{busyId === plan.id && <p role="status" className="m-0 text-sm text-navy-900">{progressText || 'Working…'}</p>}{error && errorPlanId === plan.id && <p role="alert" className="m-0 text-sm font-bold text-navy-900">{error}</p>}</div>
       </DataCard>
     })}</div>}
     {createOpen && <LearnTopicDialog uid={uid} onClose={() => setCreateOpen(false)} onSaved={() => { void refresh() }} onOpen={plan => setEditing(plan)}/>}

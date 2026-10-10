@@ -66,14 +66,17 @@ export async function getLessonPlan(uid: string, planId: string, db: Firestore =
 export async function saveLesson(uid: string, planId: string, lessonId: string, lesson: Omit<LessonRecord, 'updatedAt'>, db: Firestore = firestore): Promise<void> {
   const checked = parseLesson({ ...lesson, updatedAt: { toMillis: () => Date.now() } })
   const { updatedAt: _ignored, ...safeLesson } = checked
-  await setDoc(doc(lessonsRef(uid, planId, db), lessonId), { ...safeLesson, updatedAt: serverTimestamp() })
-  const plan = await getDoc(planRef(uid, planId, db))
-  if (plan.exists()) {
-    const metadata = parseLessonPlan(plan.data(), plan.id)
-    const saved = await getDocs(lessonsRef(uid, planId, db))
-    const ids = new Set(saved.docs.map(item => item.id))
-    await updateDoc(plan.ref, { status: metadata.order.every(id => ids.has(id)) ? 'ready' : 'partial', updatedAt: serverTimestamp() })
-  }
+  try { await setDoc(doc(lessonsRef(uid, planId, db), lessonId), { ...safeLesson, updatedAt: serverTimestamp() }) }
+  catch (error) { console.error('[lessons] writing the lesson document was refused', { planId, lessonId }, error); throw error }
+  try {
+    const plan = await getDoc(planRef(uid, planId, db))
+    if (plan.exists()) {
+      const metadata = parseLessonPlan(plan.data(), plan.id)
+      const saved = await getDocs(lessonsRef(uid, planId, db))
+      const ids = new Set(saved.docs.map(item => item.id))
+      await updateDoc(plan.ref, { status: metadata.order.every(id => ids.has(id)) ? 'ready' : 'partial', updatedAt: serverTimestamp() })
+    }
+  } catch (error) { console.error('[lessons] updating the plan status was refused', { planId }, error); throw error }
 }
 
 export async function renameLessonPlan(uid: string, planId: string, title: string, db: Firestore = firestore): Promise<void> {

@@ -55,13 +55,7 @@ textarea, select { font: inherit; }
 
 /* ── Dialogs ───────────────────────────────────────────────────────────────── */
 
-@media (max-width: 480px) {
-  .dialog-backdrop { padding: 12px; }
-  .dialog { border-radius: 20px; }
-  /* Full-width, thumb-friendly actions with the primary action on top. */
-  .dialog__actions { flex-direction: column-reverse; align-items: stretch; }
-  .dialog__actions .button { width: 100%; margin-right: 0; }
-}
+/* Phone dialogs are bottom sheets, defined in components.css (the block above .learning-create-dialog). */
 
 /* ── Toasts ────────────────────────────────────────────────────────────────── */
 

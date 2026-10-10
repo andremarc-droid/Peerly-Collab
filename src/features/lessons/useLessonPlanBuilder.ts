@@ -85,7 +85,10 @@ export function useLessonPlanBuilder(input: LessonPlanBuilderInput, onSaved?: (p
     } catch (cause) {
       if (isAbortError(cause)) setError('Generation was stopped before any lesson was saved.')
       else if (cause instanceof AiError && cause.reason === 'rate-limit') setError('The AI is rate-limited. Try again later.')
-      else setError(cause instanceof Error ? cause.message : 'Could not create this lesson plan.')
+      else {
+        console.error('Lesson generation failed', cause)
+        setError(cause instanceof RangeError ? 'Something went wrong while building your plan. Try again, or use a shorter source.' : cause instanceof Error ? cause.message : 'Could not create this lesson plan.')
+      }
     } finally {
       setBusy(false)
       controller.current = null
