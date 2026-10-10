@@ -9,12 +9,12 @@ const DEFLATED = 8
 export type Inflate = (data: Uint8Array, maxBytes: number) => Promise<Uint8Array>
 
 const TOO_LARGE = 'This document is too large to read.'
-const DAMAGED = 'This Word file is damaged and could not be opened.'
+const DAMAGED = 'This zipped document is damaged and could not be opened.'
 
 /** Inflates raw DEFLATE data with the browser's built-in decompressor, stopping if the result gets too big. */
 export const inflateRaw: Inflate = async (data, maxBytes) => {
   if (typeof DecompressionStream === 'undefined') {
-    throw new DocumentError('This browser cannot open Word files. Save the file as a PDF or text file instead.')
+    throw new DocumentError('This browser cannot open compressed Office files. Save the file as a PDF or text file instead.')
   }
   const stream = new Blob([new Uint8Array(data)]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
   const reader = stream.getReader()
@@ -63,15 +63,16 @@ export async function readZipEntry(
   entryName: string,
   maxBytes: number,
   inflate: Inflate = inflateRaw,
+  documentName = 'Word (.docx)',
 ): Promise<Uint8Array | null> {
   const view = new DataView(buffer)
   const bytes = new Uint8Array(buffer)
   const end = findEndOfCentralDirectory(view)
-  if (end === -1) throw new DocumentError('This does not look like a Word (.docx) file.')
+  if (end === -1) throw new DocumentError(`This does not look like a ${documentName} file. It may be password-protected or damaged.`)
 
   const entryCount = view.getUint16(end + 10, true)
   let cursor = view.getUint32(end + 16, true)
-  if (cursor === 0xffffffff) throw new DocumentError('This Word file uses a format that cannot be opened. Try a PDF instead.')
+  if (cursor === 0xffffffff) throw new DocumentError(`This ${documentName} file uses a format that cannot be opened. Try a PDF instead.`)
 
   const decoder = new TextDecoder()
   for (let entry = 0; entry < entryCount; entry += 1) {
@@ -97,7 +98,7 @@ export async function readZipEntry(
 
     if (method === STORED) return new Uint8Array(data)
     if (method === DEFLATED) return inflate(data, maxBytes)
-    throw new DocumentError('This Word file uses a compression format that cannot be opened. Try a PDF instead.')
+    throw new DocumentError(`This ${documentName} file uses a compression format that cannot be opened. Try a PDF instead.`)
   }
   return null
 }

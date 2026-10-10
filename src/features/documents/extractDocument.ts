@@ -4,7 +4,7 @@ import { DocumentError } from './errors'
 import { extractPdfText, type PdfText } from './pdf'
 import { cleanExtractedText, cleanFileName } from './text'
 
-export type DocumentKind = 'pdf' | 'docx' | 'text'
+export type DocumentKind = 'pdf' | 'docx' | 'pptx' | 'text'
 
 export interface ExtractedDocument {
   id: string
@@ -41,6 +41,7 @@ export function detectKind(file: Pick<File, 'name' | 'type'>): DocumentKind | nu
   const extension = extensionOf(file.name)
   if (extension === 'pdf') return 'pdf'
   if (extension === 'docx') return 'docx'
+  if (extension === 'pptx') return 'pptx'
   if (TEXT_EXTENSIONS.has(extension)) return 'text'
   if (extension === '') {
     if (file.type === 'application/pdf') return 'pdf'
@@ -75,6 +76,10 @@ async function readRaw(file: DocumentFile, kind: DocumentKind, deps: ExtractDeps
   }
   const buffer = await file.arrayBuffer()
   if (kind === 'docx') return { text: await deps.docx(buffer), partial: false }
+  if (kind === 'pptx') {
+    const { extractPptxText } = await import('./pptx')
+    return { text: await extractPptxText(buffer), partial: false }
+  }
   const pdf = await deps.pdf(buffer)
   return { text: pdf.text, partial: pdf.pagesRead < pdf.totalPages }
 }
@@ -103,7 +108,7 @@ export async function extractDocument(file: DocumentFile, deps: ExtractDeps = de
   if (!cleaned) {
     throw new DocumentError(
       kind === 'pdf'
-        ? 'No selectable text was found. This PDF may be scanned pictures of pages, which cannot be read here.'
+        ? 'No selectable text was found. This PDF may be scanned pictures of pages. Try the Photo source to transcribe a page image.'
         : 'This file has no readable text.',
     )
   }

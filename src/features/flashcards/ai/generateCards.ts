@@ -1,4 +1,5 @@
-import { createChatCompletion, type CompleteFn, type GroqMessage } from '../../../lib/groq/client'
+import type { CompleteFn, GroqMessage } from '../../../lib/groq/client'
+import { aiComplete } from '../../studyEngine/ai'
 import { AI_BACK_TARGET_CHARS, AI_FRONT_TARGET_CHARS, clampAiCount } from './constants'
 import { parseGeneratedCards, type ParsedGeneratedCards } from './parseGenerated'
 
@@ -43,18 +44,16 @@ export async function generateFlashcards({
   sourceText,
   count,
   signal,
-  complete = createChatCompletion,
+  complete,
 }: GenerateFlashcardsOptions): Promise<ParsedGeneratedCards> {
   if (!sourceText.trim()) {
     throw new FlashcardGenerationError('There is no study material to build cards from.')
   }
   const wanted = clampAiCount(count)
-  const reply = await complete({
-    messages: buildGenerationMessages(sourceText, wanted),
-    maxTokens: tokensForCount(wanted),
-    temperature: 0.4,
-    signal,
-  })
+  const messages = buildGenerationMessages(sourceText, wanted)
+  const reply = complete
+    ? await complete({ messages, maxTokens: tokensForCount(wanted), temperature: 0.4, signal })
+    : await aiComplete(messages, { signal, maxTokens: tokensForCount(wanted), temperature: 0.4 })
 
   const result = parseGeneratedCards(reply, wanted)
   if (result.cards.length === 0) {

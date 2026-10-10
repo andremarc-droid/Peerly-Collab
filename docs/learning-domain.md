@@ -20,15 +20,24 @@ The deck study dialog now supports flashcards, quiz, and practice-test modes. Th
 
 AI calls continue to use the existing Groq client through `src/features/studyEngine/ai.ts`; `VITE_GROQ_API_KEY` remains visible in browser code and should be moved server-side before public launch. No new dependencies were added.
 
+## Phase 3 import pipeline (3A)
+
+The Learning Home and Decks tabs open one lazy-loaded Create flow. It supports typed/pasted notes, locally extracted PDF/DOCX/PPTX/TXT/Markdown/CSV documents, up to four photo scans transcribed through the vision model, configurable Quizlet text, and Anki plain-text exports. Files are never uploaded. PDF/DOCX limits and password/scanned-file errors come from `src/features/documents`; PPTX reads slide text and speaker notes from the existing ZIP reader, with no added package. Photo transcription is AI-generated and must be reviewed for accuracy before card generation.
+
+Quizlet accepts tab/comma/custom term separators and newline/semicolon/custom row separators. Anki honors `#separator:`, `#html:`, and `#columns:` headers, uses the first two columns by default, strips tags and sound markers, and warns when image media is dropped. Each parser reports valid, skipped, and truncated rows; fields are capped at 300/600 characters. Imports over 100 cards can be split into multiple personal decks (100 cards maximum each). Anki `.apkg` archives remain unsupported because reading their SQLite database would add a heavy runtime; export notes as plain text from Anki instead.
+
+AI card generation uses only the shared `src/features/studyEngine/ai.ts` wrapper. Source is treated as untrusted data, chunked at about 6,000 characters, and capped at 10 chunks/60,000 characters. Chunks run sequentially with progress and cancellation; retry retains completed cards, deduplicates fronts, and validates every card against the existing schema. Decks are reviewed and saved with the existing personal deck service in `classes/{uid}/flashcardDecks`. Choosing Quiz saves the same deck and offers an on-the-fly Phase 2 quiz or practice test; it does not create a quiz document. Lessons remain disabled until Phase 4.
+
 ## Planned motivation model (Phase 5)
 
 Streak and XP persistence are not implemented yet. The future design must define local-calendar-day and timezone-change behavior, daily goal handling, XP caps, and client-write tampering limits. Client-written XP must not be used for real-stakes rewards.
 
 ## Known limitations
 
-- Lessons, import flows, groups, live games, streaks, and XP are staged for later phases.
+- Lessons, YouTube imports, groups, live games, streaks, and XP remain staged for later phases.
 - Progress updates are last-write-wins across devices; simultaneous study sessions can overwrite each other's progress. The device clock and local timezone determine due times and the daily new-card counter.
 - Quiz and test grading run in the browser and are not secure or suitable for stakes. The Groq key configured through `VITE_GROQ_API_KEY` is exposed to browser users; move AI calls behind a server-side function before a public launch.
 - Rules and collection-group indexes are source changes only until manually deployed. Study-engine rules tests are written but have not been run in the emulator here.
 - The current personal-content schema continues to reuse `classes/{uid}` as a storage container; it is not a class membership relationship.
 - The legacy graph data model and rules remain in Firestore for compatibility, although the app no longer exposes graph views or graph invite acceptance.
+- Anki `.apkg` archives are deferred because their SQLite payload needs a heavy browser runtime; export text from Anki. Handwriting/photo transcription can be inaccurate and is always editable before generation. The configured Groq browser key is visible to learners.

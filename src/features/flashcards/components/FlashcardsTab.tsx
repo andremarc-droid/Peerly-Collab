@@ -21,6 +21,7 @@ interface FlashcardsTabProps {
   selectedClassId: string
   role: 'instructor' | 'student'
   error?: string | null
+  onCreateDeck?: () => void
 }
 
 function statusLabel(deck: FlashcardDeckWithId, uid: string | undefined): string {
@@ -38,7 +39,7 @@ function formatDate(deck: FlashcardDeckWithId): string {
   })
 }
 
-export function FlashcardsTab({ decks, classes, selectedClassId, role, error }: FlashcardsTabProps) {
+export function FlashcardsTab({ decks, classes, selectedClassId, role, error, onCreateDeck }: FlashcardsTabProps) {
   const { user } = useAuth()
   const { showToast } = useToast()
   const uid = user?.uid
@@ -94,6 +95,7 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error }: 
   }, [decks, search, selectedClassId])
 
   const openCreate = () => {
+    if (onCreateDeck) { onCreateDeck(); return }
     setEditing(null)
     setEditorOpen(true)
   }

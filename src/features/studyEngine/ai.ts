@@ -1,4 +1,5 @@
 import { createChatCompletion, GroqError, isAbortError } from '../../lib/groq/client'
+import type { GroqMessage } from '../../lib/groq/client'
 export { isAbortError }
 
 export type AiFailureReason = 'rate-limit' | 'unavailable' | 'invalid-reply'
@@ -8,15 +9,20 @@ export class AiError extends Error {
   constructor(reason: AiFailureReason, message: string) { super(message); this.reason = reason; this.name = 'AiError' }
 }
 
-export type AiComplete = (prompt: string, signal?: AbortSignal) => Promise<string>
-export interface AiOptions { complete?: AiComplete; signal?: AbortSignal }
-const defaultComplete: AiComplete = async (prompt, signal) => createChatCompletion({
-  messages: [{ role: 'user', content: prompt }], signal, maxTokens: 1600, temperature: 0.3,
+export type AiInput = string | GroqMessage[]
+export interface AiGenerationSettings { maxTokens?: number; temperature?: number }
+export type AiComplete = (prompt: AiInput, signal?: AbortSignal, settings?: AiGenerationSettings) => Promise<string>
+export interface AiOptions extends AiGenerationSettings { complete?: AiComplete; signal?: AbortSignal }
+const defaultComplete: AiComplete = async (prompt, signal, settings) => createChatCompletion({
+  messages: typeof prompt === 'string' ? [{ role: 'user', content: prompt }] : prompt,
+  signal,
+  maxTokens: settings?.maxTokens ?? 1600,
+  temperature: settings?.temperature ?? 0.3,
 })
 
-export async function aiComplete(prompt: string, options: AiOptions = {}): Promise<string> {
+export async function aiComplete(prompt: AiInput, options: AiOptions = {}): Promise<string> {
   try {
-    const reply = await (options.complete ?? defaultComplete)(prompt, options.signal)
+    const reply = await (options.complete ?? defaultComplete)(prompt, options.signal, options)
     if (!reply.trim()) throw new AiError('invalid-reply', 'The AI returned an empty response.')
     return reply
   } catch (error) {

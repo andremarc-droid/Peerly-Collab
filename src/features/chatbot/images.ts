@@ -26,14 +26,16 @@ export async function prepareChatImages(
   currentCount: number,
   deps?: ImageProcessingDeps,
   makeId: () => string = () => crypto.randomUUID(),
+  maxImages = MAX_IMAGES_PER_MESSAGE,
 ): Promise<PrepareImagesResult> {
   const images: ChatImage[] = []
   const errors: string[] = []
-  const capacity = Math.max(0, MAX_IMAGES_PER_MESSAGE - currentCount)
+  const safeMaximum = Math.max(0, Math.floor(maxImages))
+  const capacity = Math.max(0, safeMaximum - currentCount)
 
   for (const file of files) {
     if (images.length >= capacity) {
-      errors.push(`You can attach up to ${MAX_IMAGES_PER_MESSAGE} images per message.`)
+      errors.push(`You can attach up to ${safeMaximum} images per import.`)
       break
     }
     try {

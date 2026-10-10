@@ -8,10 +8,10 @@ const QuizModeScreen = lazy(() => import('./QuizModeScreen').then(module => ({ d
 const PracticeTestScreen = lazy(() => import('./PracticeTestScreen').then(module => ({ default: module.PracticeTestScreen })))
 
 type StudyMode = 'flashcards' | 'quiz' | 'test'
-interface Props { deck: FlashcardDeckWithId; onClose: () => void }
+interface Props { deck: FlashcardDeckWithId; onClose: () => void; initialMode?: StudyMode }
 
-export function FlashcardStudyDialog({ deck, onClose }: Props) {
-  const [mode, setMode] = useState<StudyMode>('flashcards')
+export function FlashcardStudyDialog({ deck, onClose, initialMode = 'flashcards' }: Props) {
+  const [mode, setMode] = useState<StudyMode>(initialMode)
   return (
     <Dialog open onClose={onClose} title={deck.title} description="Choose how you want to study">
       <div className="grid gap-4">

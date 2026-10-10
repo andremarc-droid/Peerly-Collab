@@ -19,15 +19,17 @@ export const MAX_BINARY_RATIO = 0.02
 export const DOCUMENT_ACCEPT = [
   '.pdf',
   '.docx',
+  '.pptx',
   '.txt',
   '.md',
   '.markdown',
   '.csv',
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
   'text/markdown',
   'text/csv',
 ].join(',')
 
-export const SUPPORTED_FORMATS_LABEL = 'PDF, Word (.docx), or text (.txt, .md, .csv)'
+export const SUPPORTED_FORMATS_LABEL = 'PDF, Word (.docx), PowerPoint (.pptx), or text (.txt, .md, .csv)'

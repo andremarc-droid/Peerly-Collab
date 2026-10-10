@@ -18,7 +18,7 @@ interface DocumentPickerProps {
   labelClassName?: string
 }
 
-/** A button that opens the file dialog for PDF, Word and text files. Reading happens in the parent. */
+/** A button that opens the file dialog for PDF, Word, PowerPoint, and text files. */
 export function DocumentPicker({
   onFiles,
   count,
