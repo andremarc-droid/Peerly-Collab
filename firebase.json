@@ -4,6 +4,7 @@
     "predeploy": ["npm --prefix functions run build"]
   },
   "emulators": {
+    "hub": { "port": 4410 },
     "auth": { "port": 9099 },
     "firestore": { "port": 8180 },
     "functions": { "port": 5001 },
