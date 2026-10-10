@@ -6,6 +6,10 @@ const mocks = vi.hoisted(() => ({ aiComplete: vi.fn(), createDeck: vi.fn() }))
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'learner' } }) }))
 vi.mock('../../studyEngine/ai', async importOriginal => ({ ...await importOriginal<typeof import('../../studyEngine/ai')>(), aiComplete: mocks.aiComplete }))
 vi.mock('../services', () => ({ createDeck: mocks.createDeck }))
+vi.mock('../youtubeTranscript', () => ({
+  isSupportedYoutubeUrl: (value: string) => value.startsWith('https://www.youtube.com/watch?v='),
+  requestYoutubeTranscript: vi.fn(async () => { throw new Error('functions/not-found') }),
+}))
 
 function beginNotes(text = 'Cell biology is the study of cells and their functions.') {
   render(<CreateLearningFlow onClose={vi.fn()} onStudy={vi.fn()}/> )
@@ -64,5 +68,16 @@ describe('CreateLearningFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate flashcards' }))
     expect(await screen.findByText(/rate-limited right now/)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry remaining chunks' })).toBeTruthy()
+  })
+
+  it('offers paste-transcript fallback when the YouTube callable is unavailable', async () => {
+    render(<CreateLearningFlow onClose={vi.fn()} onStudy={vi.fn()}/> )
+    fireEvent.click(screen.getByRole('button', { name: 'YouTube' }))
+    fireEvent.change(screen.getByText('YouTube video URL').parentElement!.querySelector('input')!, { target: { value: 'https://www.youtube.com/watch?v=abcdefghijk' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Fetch transcript' }))
+    expect(await screen.findByText(/function may not be deployed yet/)).toBeTruthy()
+    fireEvent.change(screen.getByText('Or paste the transcript').parentElement!.querySelector('textarea')!, { target: { value: 'Pasted transcript text.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(screen.getByLabelText('Extracted text')).toHaveProperty('value', 'Pasted transcript text.')
   })
 })
