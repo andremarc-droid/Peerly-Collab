@@ -1,5 +1,5 @@
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
+import { deleteDoc, doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
 import rules from '../../../firestore.rules?raw'
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest'
 
@@ -75,5 +75,36 @@ describe('lesson plan security rules', () => {
     await assertFails(setDoc(lessonRef, { ...lesson, quiz: [multipleChoice, ...lesson.quiz.slice(1)], updatedAt: now }))
     await assertFails(setDoc(lessonRef, { ...lesson, quiz: [{ ...multipleChoice, options: ['A'.repeat(301), 'B'] }, ...lesson.quiz.slice(1)] }))
     await assertFails(setDoc(lessonRef, { ...lesson, quiz: [{ ...multipleChoice, options: ['A', 'B', 'C', 'D', 'E'] }, ...lesson.quiz.slice(1)] }))
+  })
+
+  it('lets only the owner keep a bounded source document for regeneration', async () => {
+    const owner = environment.authenticatedContext('student').firestore()
+    const stranger = environment.authenticatedContext('stranger').firestore()
+    const signedOut = environment.unauthenticatedContext().firestore()
+    const source = (text: string) => ({ text, updatedAt: new Date() })
+    const path = 'users/student/lessonPlans/plan-a/source/main'
+    await assertSucceeds(setDoc(doc(owner, 'users/student/lessonPlans/plan-a'), plan()))
+    await assertSucceeds(setDoc(doc(owner, path), source('Cells are the unit of life.')))
+    await assertSucceeds(getDoc(doc(owner, path)))
+    await assertSucceeds(setDoc(doc(owner, path), source('x'.repeat(60000))))
+    await assertFails(setDoc(doc(owner, path), source('x'.repeat(60001))))
+    await assertFails(setDoc(doc(owner, path), source('')))
+    await assertFails(setDoc(doc(owner, path), { ...source('ok'), extra: true }))
+    await assertFails(setDoc(doc(owner, 'users/student/lessonPlans/plan-a/source/other'), source('ok')))
+    await assertFails(setDoc(doc(owner, path), { text: 'ok', updatedAt: 'not a timestamp' }))
+    await assertFails(getDoc(doc(stranger, path)))
+    await assertFails(setDoc(doc(stranger, path), source('ok')))
+    await assertFails(deleteDoc(doc(stranger, path)))
+    await assertFails(getDoc(doc(signedOut, path)))
+    await assertSucceeds(deleteDoc(doc(owner, path)))
+  })
+
+  it('accepts a new plan, its lessons and its source in one batch', async () => {
+    const db = environment.authenticatedContext('student').firestore()
+    const batch = writeBatch(db)
+    batch.set(doc(db, 'users/student/lessonPlans/plan-b'), plan(['one']))
+    batch.set(doc(db, 'users/student/lessonPlans/plan-b/source/main'), { text: 'My pasted notes', updatedAt: new Date() })
+    batch.set(doc(db, 'users/student/lessonPlans/plan-b/lessons/one'), lesson)
+    await assertSucceeds(batch.commit())
   })
 })

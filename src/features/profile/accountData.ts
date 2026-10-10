@@ -9,6 +9,7 @@ import { deleteCanvasSubcollections } from '../learningCanvas/collab/cleanup'
 import { deleteQuizCascade } from '../quizzes/services/deleteQuizCascade'
 import { deleteMyTurnIns } from '../assignments/services/turnInService'
 import { cleanupGroups } from '../groups/services'
+import { cleanupGames } from '../games/services'
 
 const PAGE = 100
 const DECK_SUBCOLLECTIONS = ['members', 'invites', 'activity', 'presence'] as const
@@ -98,6 +99,7 @@ async function deleteLearningPlans(uid: string, db: Firestore): Promise<void> {
   const plans = await getDocs(collection(db, 'users', uid, 'lessonPlans'))
   for (const plan of plans.docs) {
     await emptyCollection(db, 'users', uid, 'lessonPlans', plan.id, 'lessons')
+    await emptyCollection(db, 'users', uid, 'lessonPlans', plan.id, 'source')
     await deleteDoc(plan.ref)
   }
   await emptyCollection(db, 'users', uid, 'lessonProgress')
@@ -109,6 +111,9 @@ async function deleteLearningPlans(uid: string, db: Firestore): Promise<void> {
  */
 export async function deleteAccountData(uid: string, role: UserRole | null, db: Firestore = firestore): Promise<void> {
   await cleanupGroups()
+  // Hosted games are deleted and the person is removed from the game they play. If this fails the error propagates,
+  // nothing else is deleted and the Auth account stays, so the person can simply retry.
+  await cleanupGames()
   await deleteLearningPlans(uid, db)
   await emptyCollection(db, 'users', uid, 'deckProgress')
   await emptyCollection(db, 'users', uid, 'studyAttempts')

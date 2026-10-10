@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Bot, X } from 'lucide-react'
+import { useTutorFocus } from '../tutorFocusContext'
 
 interface TutorDockProps {
   /** The tutor itself. It stays mounted while the panel is closed, so a reply in progress is never lost. */
@@ -25,6 +26,11 @@ const FLOATING_BUTTON =
  */
 export function TutorDock({ children, defaultOpen = false }: TutorDockProps) {
   const [open, setOpen] = useState(defaultOpen)
+  // Opens when a deck or lesson screen asks the tutor about what the learner is studying.
+  const openRequest = useTutorFocus()?.openRequest ?? 0
+  useEffect(() => {
+    if (openRequest > 0) setOpen(true)
+  }, [openRequest])
   const panelRef = useRef<HTMLElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)

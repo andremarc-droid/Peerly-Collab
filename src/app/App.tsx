@@ -34,6 +34,7 @@ const LearningHubPage = lazy(() => import('../features/learningCanvas/LearningHu
 const NoteEditorPage = lazy(() => import('../features/learningCanvas/NoteEditorPage').then((module) => ({ default: module.NoteEditorPage })))
 const CanvasInvitePage = lazy(() => import('../features/learningCanvas/CanvasInvitePage').then((module) => ({ default: module.CanvasInvitePage })))
 const TutorInvitePage = lazy(() => import('../features/chatbot/TutorInvitePage').then((module) => ({ default: module.TutorInvitePage })))
+const GamePage = lazy(() => import('../features/games/GamePage').then((module) => ({ default: module.GamePage })))
 const DeckInvitePage = lazy(() => import('../features/flashcards/DeckInvitePage').then((module) => ({ default: module.DeckInvitePage })))
 
 export function AppRoutes() {
@@ -52,6 +53,7 @@ export function AppRoutes() {
       <Route path="/learning/join/:classId/:canvasId/:token" element={<ProtectedRoute><ToastProvider><CanvasInvitePage /></ToastProvider></ProtectedRoute>} />
       <Route path="/learning/tutor/:threadId/:token" element={<ProtectedRoute><ToastProvider><TutorInvitePage /></ToastProvider></ProtectedRoute>} />
       <Route path="/learning/join-graph/:classId/:graphId/:token" element={<Navigate replace to="/student/learning?tab=canvases" />} />
+      <Route path="/learning/games/:gameId" element={<ProtectedRoute><RoleRoute allowedRoles={['student', 'instructor']}><ToastProvider><GamePage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/learning/join/deck/:classId/:deckId/:token" element={<ProtectedRoute><DeckInvitePage /></ProtectedRoute>} />
       <Route path="/instructor" element={<ProtectedRoute><RoleRoute allowedRoles={['instructor']}><ToastProvider><Outlet /></ToastProvider></RoleRoute></ProtectedRoute>}>
         <Route index element={<ClassesPage />} />

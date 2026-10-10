@@ -346,6 +346,21 @@ service cloud.firestore {
           && request.resource.data.createdAt == resource.data.createdAt;
         allow delete: if signedIn() && request.auth.uid == userId;
 
+        // The material a plan was built from, kept so "Regenerate lessons" can reuse it. It lives in its own
+        // document so the plan stays small and group sharing (which copies the plan document) never exposes it.
+        match /source/{sourceId} {
+          function validPlanSource(data) {
+            return sourceId == 'main'
+              && data.keys().hasOnly(['text', 'updatedAt'])
+              && data.keys().hasAll(['text', 'updatedAt'])
+              && data.text is string && data.text.size() >= 1 && data.text.size() <= 60000
+              && data.updatedAt is timestamp;
+          }
+          allow get, list: if signedIn() && request.auth.uid == userId;
+          allow create, update: if signedIn() && request.auth.uid == userId && validPlanSource(request.resource.data);
+          allow delete: if signedIn() && request.auth.uid == userId;
+        }
+
         match /lessons/{lessonId} {
           function validLessonFlashcard(card) {
             return card is map
@@ -2166,6 +2181,54 @@ service cloud.firestore {
         allow delete: if isThreadOwner();
       }
     }
+
+    // Live quiz games. Clients may only READ. Every write is made by Cloud Functions with firebase-admin,
+    // so there is no create/update/delete rule below. (If a future rule depends on a document written in the
+    // same batch, use existsAfter()/getAfter(): exists()/get() see the state before the batch.)
+    // A player is whoever has games/{gameId}/players/{uid}; removing that document removes their access.
+    function gameHostId(gameId) {
+      return get(/databases/$(database)/documents/games/$(gameId)).data.hostId;
+    }
+    function isGamePlayer(gameId) {
+      return exists(/databases/$(database)/documents/games/$(gameId)/players/$(request.auth.uid));
+    }
+    function canReadGameParts(gameId) {
+      return signedIn() && (isGamePlayer(gameId) || gameHostId(gameId) == request.auth.uid);
+    }
+
+    match /games/{gameId} {
+      allow get: if signedIn() && (resource.data.hostId == request.auth.uid || isGamePlayer(gameId));
+      allow list: if false;
+      allow create, update, delete: if false;
+
+      match /players/{playerUid} {
+        allow get, list: if canReadGameParts(gameId);
+        allow create, update, delete: if false;
+      }
+      // Only state/current (the open question, no answer) and state/reveal (after the deadline) live here.
+      match /state/{stateId} {
+        allow get, list: if canReadGameParts(gameId);
+        allow create, update, delete: if false;
+      }
+      // Questions, answer key, kicked list and every submitted answer: no client access at all.
+      match /private/{privateId} {
+        allow read, write: if false;
+      }
+      match /answers/{answerId} {
+        allow read, write: if false;
+      }
+    }
+
+    // Resume pointers written by functions: the signed-in person may read only their own.
+    match /gamePlayerSessions/{uid} {
+      allow get: if signedIn() && uid == request.auth.uid;
+      allow list, create, update, delete: if false;
+    }
+    match /gameHosts/{uid} {
+      allow get: if signedIn() && uid == request.auth.uid;
+      allow list, create, update, delete: if false;
+    }
+    // gameCodes and gameRateLimits have no rules on purpose: they are denied to every client.
 
     // Unknown paths are denied by default.
   }

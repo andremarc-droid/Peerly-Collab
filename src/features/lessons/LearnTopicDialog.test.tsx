@@ -33,6 +33,15 @@ describe('LearnTopicDialog', () => {
     expect(mocks.createPlan).toHaveBeenCalledWith('learner', expect.objectContaining({ status: 'ready', topic: 'Cell biology' }))
   })
 
+  it('keeps the pasted study material with the plan so lessons can be regenerated from it', async () => {
+    renderDialog()
+    fireEvent.change(screen.getByText('Topic').parentElement!.querySelector('input')!, { target: { value: 'Cell biology' } })
+    fireEvent.change(screen.getByLabelText(/Optional study material/), { target: { value: 'Mitochondria make ATP.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create lesson plan' }))
+    expect(await screen.findByText(/3 of 3 lessons ready/)).toBeTruthy()
+    expect(mocks.createPlan).toHaveBeenCalledWith('learner', expect.objectContaining({ sourceText: 'Mitochondria make ATP.' }))
+  })
+
   it('saves partial results and generates the missing lessons on request', async () => {
     mocks.generate.mockResolvedValueOnce(partial)
     renderDialog()

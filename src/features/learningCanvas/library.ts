@@ -1,13 +1,13 @@
 import type { LearningCanvasWithId } from './types'
 
-export type LearningTab = 'home' | 'decks' | 'lessons' | 'notes' | 'canvases' | 'groups'
+export type LearningTab = 'home' | 'decks' | 'lessons' | 'notes' | 'canvases' | 'groups' | 'games'
 
 /** Keeps the old Learning query values usable while normalizing the new tabs. */
 export function resolveLearningTab(value: string | null): LearningTab {
   if (value === 'flashcards' || value === 'decks') return 'decks'
   if (value === 'notes') return 'notes'
   if (value === 'canvases' || value === 'canvas' || value === 'graph') return 'canvases'
-  if (value === 'lessons' || value === 'groups') return value
+  if (value === 'lessons' || value === 'groups' || value === 'games') return value
   return 'home'
 }
 

@@ -15,6 +15,18 @@ import {
   shareStudyItem as shareStudyItemHandler,
   unshareStudyItem as unshareStudyItemHandler,
 } from './studyGroups.js'
+import {
+  advanceQuestion as advanceQuestionHandler,
+  cleanupGames as cleanupGamesHandler,
+  createGame as createGameHandler,
+  deleteGame as deleteGameHandler,
+  endGame as endGameHandler,
+  joinGame as joinGameHandler,
+  kickPlayer as kickPlayerHandler,
+  startGame as startGameHandler,
+  submitAnswer as submitAnswerHandler,
+  syncGame as syncGameHandler,
+} from './liveGames.js'
 
 initializeApp()
 
@@ -125,3 +137,14 @@ export const removeStudyGroupMember = onCall({ region: 'us-central1' }, removeSt
 export const cleanupStudyGroups = onCall({ region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' }, cleanupStudyGroupsHandler)
 export const shareStudyItem = onCall({ region: 'us-central1' }, shareStudyItemHandler)
 export const unshareStudyItem = onCall({ region: 'us-central1' }, unshareStudyItemHandler)
+
+export const createGame = onCall({ region: 'us-central1' }, createGameHandler)
+export const joinGame = onCall({ region: 'us-central1' }, joinGameHandler)
+export const startGame = onCall({ region: 'us-central1' }, startGameHandler)
+export const submitAnswer = onCall({ region: 'us-central1' }, submitAnswerHandler)
+export const advanceQuestion = onCall({ region: 'us-central1' }, advanceQuestionHandler)
+export const syncGame = onCall({ region: 'us-central1' }, syncGameHandler)
+export const endGame = onCall({ region: 'us-central1' }, endGameHandler)
+export const kickPlayer = onCall({ region: 'us-central1' }, kickPlayerHandler)
+export const deleteGame = onCall({ region: 'us-central1', timeoutSeconds: 120 }, deleteGameHandler)
+export const cleanupGames = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, cleanupGamesHandler)

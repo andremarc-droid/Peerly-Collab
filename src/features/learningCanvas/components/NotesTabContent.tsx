@@ -7,6 +7,7 @@ import {
   Trash2,
   Orbit,
   Calendar,
+  Sparkles,
   Share2,
 } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
@@ -28,6 +29,8 @@ interface NotesTabContentProps {
   onCreateNote: (input: { classId: string; title: string; content: string }) => Promise<string | undefined>
   onDeleteNote: (note: LearningCanvasWithId) => Promise<void>
   onViewInGraph: (noteId: string) => void
+  /** Opens the Create flow with this note's text as study material. Owned notes only. */
+  onMakeStudyMaterial?: (note: LearningCanvasWithId) => void
   sharedError?: string | null
 }
 
@@ -39,6 +42,7 @@ export function NotesTabContent({
   onCreateNote,
   onDeleteNote,
   onViewInGraph,
+  onMakeStudyMaterial,
   sharedError,
 }: NotesTabContentProps) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -242,6 +246,17 @@ export function NotesTabContent({
                     >
                       <Edit3 size={13} aria-hidden="true" />
                       <span>Edit</span>
+                    </Button>}
+                    {!note.shareRole && onMakeStudyMaterial && <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => onMakeStudyMaterial(note)}
+                      className="py-1 px-2.5 text-xs min-h-11 gap-1"
+                      title="Turn this note into flashcards, a quiz or a lesson plan"
+                      aria-label={`Make study cards from note "${note.title}"`}
+                    >
+                      <Sparkles size={13} aria-hidden="true" />
+                      <span>Make cards</span>
                     </Button>}
                     {note.shareRole && <Button
                       to={`/${role}/classes/${encodeURIComponent(note.classId)}/learning/${encodeURIComponent(note.id)}`}

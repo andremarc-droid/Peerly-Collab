@@ -19,6 +19,8 @@ export const MAX_MESSAGE_CHARS = 3000
 /** Documents per message, and the most document text sent to the model with ANY single request (all documents together). */
 export const MAX_DOCUMENTS_PER_MESSAGE = 2
 export const MAX_CHAT_DOCUMENT_CHARS = 5000
+/** The most deck or lesson text sent with ANY request when the learner asks the tutor about what they are studying. */
+export const MAX_STUDY_FOCUS_CHARS = 3000
 
 export const SUMMARY_MAX_TOKENS = 400
 export const SUMMARY_MAX_TRANSCRIPT_CHARS = 6000

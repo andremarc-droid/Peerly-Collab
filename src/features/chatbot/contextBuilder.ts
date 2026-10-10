@@ -10,6 +10,7 @@ import {
   MESSAGE_TOKEN_OVERHEAD,
 } from './constants'
 import { selectPromptDocuments } from './documents'
+import { clampStudyFocus, type StudyFocus } from './studyFocus'
 import { buildSystemPrompt } from './systemPrompt'
 import { estimateTokens } from './tokenEstimate'
 import type { ChatImage, ChatMessage, ChatThread } from './types'
@@ -31,6 +32,8 @@ export const DEFAULT_CONTEXT_LIMITS: ContextLimits = {
 export interface ContextInput {
   thread: ChatThread
   classLabel?: string
+  /** The deck or lesson the learner is studying. Sent with every request while it is set. */
+  studyFocus?: StudyFocus | null
   limits?: Partial<ContextLimits>
 }
 
@@ -102,7 +105,7 @@ function toGroqMessage(message: ChatMessage, images: ChatImage[]): GroqMessage {
   return { role: 'user', content: parts }
 }
 
-function prepare({ thread, classLabel, limits }: ContextInput): Prepared {
+function prepare({ thread, classLabel, studyFocus, limits }: ContextInput): Prepared {
   const resolved: ContextLimits = { ...DEFAULT_CONTEXT_LIMITS, ...limits }
   // Failed or stopped messages never reach the model.
   const slots = thread.messages
@@ -120,6 +123,7 @@ function prepare({ thread, classLabel, limits }: ContextInput): Prepared {
     summary: thread.summary,
     documents,
     includeAppGuide: wantsAppGuide(learnerTexts),
+    studyFocus: clampStudyFocus(studyFocus),
   })
   const fixed =
     estimateTokens(systemText) + tokenCost(latest.message, latestImages.length > 0, resolved, latestImages.length)

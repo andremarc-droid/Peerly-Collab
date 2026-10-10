@@ -29,7 +29,7 @@ export function LearnTopicDialog({ uid, onClose, onSaved, onOpen }: Props) {
 
   const persist = async (generated: GeneratedLessonPlan) => {
     if (!plan) {
-      const created = await createLessonPlan(uid, { outline: generated.outline, topic: topic.trim(), level, lessons: generated.lessons, status: generated.status })
+      const created = await createLessonPlan(uid, { outline: generated.outline, topic: topic.trim(), level, lessons: generated.lessons, status: generated.status, sourceText })
       setPlan(created)
       setResult(generated)
       onSaved(created)

@@ -15,25 +15,33 @@ import { createDeck } from '../services'
 import { parseAnkiText, parseQuizletText, splitCardsIntoDecks, type CardImportResult, type QuizletParseOptions } from '../importParsers'
 import { generateImportCards } from '../importGeneration'
 import { isSupportedYoutubeUrl, requestYoutubeTranscript } from '../youtubeTranscript'
+import { CreateLessonPanel } from '../../lessons/CreateLessonPanel'
+import { suggestTopicFromSource } from '../../lessons/topicFromSource'
+import type { LessonPlan } from '../../lessons/types'
+import { seedSourceText, type CreateSeed } from './seed'
 
 type Step = 'source' | 'preview' | 'output' | 'review' | 'saved'
 type Source = 'notes' | 'documents' | 'photo' | 'quizlet' | 'anki' | 'youtube'
-type Output = 'flashcards' | 'quiz'
+type Output = 'flashcards' | 'quiz' | 'lesson'
 const steps: Step[] = ['source', 'preview', 'output', 'review', 'saved']
 const blankParse: CardImportResult = { cards: [], skipped: 0, truncated: 0, warnings: [] }
 
 export interface CreateLearningFlowProps {
   onClose: () => void
   onStudy: (deck: FlashcardDeckWithId, mode: 'flashcards' | 'quiz' | 'test') => void
+  /** Called when the learner opens a lesson plan that was generated from the chosen source. */
+  onOpenLesson?: (plan: LessonPlan) => void
+  /** Starts the flow at the preview step with this material, for example from a saved note. */
+  seed?: CreateSeed
 }
 
 /** One guided personal Learning create flow for notes, supported imports, AI and saved decks. */
-export function CreateLearningFlow({ onClose, onStudy }: CreateLearningFlowProps) {
+export function CreateLearningFlow({ onClose, onStudy, onOpenLesson, seed }: CreateLearningFlowProps) {
   const { user } = useAuth()
   const documents = useDocumentImport(10)
-  const [step, setStep] = useState<Step>('source')
+  const [step, setStep] = useState<Step>(seed ? 'preview' : 'source')
   const [source, setSource] = useState<Source>('notes')
-  const [sourceText, setSourceText] = useState('')
+  const [sourceText, setSourceText] = useState(() => (seed ? seedSourceText(seed) : ''))
   const [quizletText, setQuizletText] = useState('')
   const [ankiText, setAnkiText] = useState('')
   const [youtubeUrl, setYoutubeUrl] = useState('')
@@ -46,10 +54,10 @@ export function CreateLearningFlow({ onClose, onStudy }: CreateLearningFlowProps
   const [parsed, setParsed] = useState<CardImportResult>(blankParse)
   const [photoErrors, setPhotoErrors] = useState<string[]>([])
   const [photoBusy, setPhotoBusy] = useState(false)
-  const [desiredCount, setDesiredCount] = useState(20)
+  const [desiredCount, setDesiredCount] = useState(seed ? 10 : 20)
   const [output, setOutput] = useState<Output>('flashcards')
   const [cards, setCards] = useState<Flashcard[]>([])
-  const [title, setTitle] = useState('')
+  const [title, setTitle] = useState(seed?.title.trim().slice(0, 120) ?? '')
   const [description, setDescription] = useState('')
   const [progress, setProgress] = useState('')
   const [failedChunks, setFailedChunks] = useState<number[]>([])
@@ -177,7 +185,7 @@ export function CreateLearningFlow({ onClose, onStudy }: CreateLearningFlowProps
 
       {step === 'preview' && <section className="grid min-w-0 gap-3"><h3 className="m-0 text-lg font-bold text-navy-900">Preview and edit source text</h3>{(source === 'quizlet' || source === 'anki') && <><p className="m-0 text-sm text-navy-900">{parsed.cards.length} valid · {parsed.skipped} skipped · {parsed.truncated} truncated rows</p><div className="max-w-full overflow-x-auto rounded-xl border border-navy-900-15"><table className="w-full min-w-[420px] border-collapse text-left text-sm"><caption className="p-2 text-left text-sm text-navy-900">Imported card preview (first 5)</caption><thead><tr><th scope="col" className="border-b border-navy-900-15 p-2">Front</th><th scope="col" className="border-b border-navy-900-15 p-2">Back</th></tr></thead><tbody>{parsed.cards.slice(0, 5).map(card => <tr key={card.id}><td className="max-w-[200px] break-words border-b border-navy-900-08 p-2">{card.front}</td><td className="max-w-[200px] break-words border-b border-navy-900-08 p-2">{card.back}</td></tr>)}</tbody></table></div></>}{parsed.warnings.map(warning => <Alert key={warning} tone="info" label="Import note">{warning}</Alert>)}{capped && <Alert tone="warning" label="Source limit">Only the first 60,000 characters will be sent for generation.</Alert>}<Textarea label="Extracted text" rows={12} value={sourceText} onChange={event => setSourceText(event.target.value)}/></section>}
 
-      {step === 'output' && <section className="grid gap-4"><h3 className="m-0 text-lg font-bold text-navy-900">What do you want to generate?</h3><div className="grid gap-2 sm:grid-cols-2"><Button variant={output === 'flashcards' ? 'primary' : 'secondary'} onClick={() => setOutput('flashcards')}>Flashcards</Button><Button variant={output === 'quiz' ? 'primary' : 'secondary'} onClick={() => setOutput('quiz')}>Quiz from these cards</Button><Button variant="secondary" disabled>Lesson · Coming soon</Button></div><p className="m-0 text-base text-navy-900">Quiz uses the Phase 2 study engine after this deck is saved. It does not create a separate quiz.</p>{parsed.cards.length > 0 ? <><p className="m-0 text-base text-navy-900">Import found {parsed.cards.length} cards. Choose how many to review:</p><Button variant="primary" onClick={() => setStep('review')}>Review imported cards</Button></> : <><label className="field"><span className="field__label">Target card count</span><select className="field__control" value={desiredCount} onChange={event => setDesiredCount(Number(event.target.value))}>{[5,10,15,20,30,50,75,100].map(value => <option key={value} value={value}>{value}</option>)}</select></label>{progress && <p role="status" className="m-0 text-base text-navy-900">{progress}</p>}{aiError && <Alert tone="error" label="AI generation">{aiError}</Alert>}{busy ? <Button variant="secondary" onClick={cancelGeneration}>Stop generation</Button> : <Button variant="primary" onClick={() => void generate(Boolean(failedChunks.length))}>{failedChunks.length ? 'Retry remaining chunks' : 'Generate flashcards'}</Button>}{cards.length > 0 && <Button variant="secondary" onClick={() => setStep('review')}>Continue with {cards.length} cards</Button>}</>}</section>}
+      {step === 'output' && <section className="grid gap-4"><h3 className="m-0 text-lg font-bold text-navy-900">What do you want to generate?</h3><div className="grid gap-2 sm:grid-cols-2"><Button variant={output === 'flashcards' ? 'primary' : 'secondary'} disabled={busy} onClick={() => setOutput('flashcards')}>Flashcards</Button><Button variant={output === 'quiz' ? 'primary' : 'secondary'} disabled={busy} onClick={() => setOutput('quiz')}>Quiz from these cards</Button><Button variant={output === 'lesson' ? 'primary' : 'secondary'} disabled={busy} onClick={() => setOutput('lesson')}>Lesson plan</Button></div>{output === 'lesson' ? (user ? <CreateLessonPanel uid={user.uid} sourceText={sourceText} initialTopic={suggestTopicFromSource(sourceText)} onBusyChange={setBusy} onOpen={plan => onOpenLesson?.(plan)}/> : <Alert tone="info" label="Sign in required">Sign in to build a lesson plan.</Alert>) : <><p className="m-0 text-base text-navy-900">Quiz uses the Phase 2 study engine after this deck is saved. It does not create a separate quiz.</p>{parsed.cards.length > 0 ? <><p className="m-0 text-base text-navy-900">Import found {parsed.cards.length} cards. Choose how many to review:</p><Button variant="primary" onClick={() => setStep('review')}>Review imported cards</Button></> : <><label className="field"><span className="field__label">Target card count</span><select className="field__control" value={desiredCount} onChange={event => setDesiredCount(Number(event.target.value))}>{[5,10,15,20,30,50,75,100].map(value => <option key={value} value={value}>{value}</option>)}</select></label>{progress && <p role="status" className="m-0 text-base text-navy-900">{progress}</p>}{aiError && <Alert tone="error" label="AI generation">{aiError}</Alert>}{busy ? <Button variant="secondary" onClick={cancelGeneration}>Stop generation</Button> : <Button variant="primary" onClick={() => void generate(Boolean(failedChunks.length))}>{failedChunks.length ? 'Retry remaining chunks' : 'Generate flashcards'}</Button>}{cards.length > 0 && <Button variant="secondary" onClick={() => setStep('review')}>Continue with {cards.length} cards</Button>}</>}</>}</section>}
 
       {step === 'review' && <section className="grid gap-3"><h3 className="m-0 text-lg font-bold text-navy-900">Review and edit cards</h3>{capped && <Alert tone="warning" label="Source limit">The source was capped at 60,000 characters.</Alert>}{aiError && <Alert tone="info" label="Generation status">{aiError}</Alert>}<Input label="Deck title" value={title} onChange={event => setTitle(event.target.value)} maxLength={120} required/><Textarea label="Description (optional)" value={description} onChange={event => setDescription(event.target.value)} maxLength={300} rows={2}/>{cards.length > 100 && <section className="grid gap-2 rounded-xl border border-navy-900-30 p-3"><p className="m-0 text-base text-navy-900">{deckParts.length} decks will be needed ({deckParts.map(part => part.length).join(' + ')} cards).</p><label className="flex min-h-11 items-center gap-3 text-base text-navy-900"><input type="checkbox" checked={split} onChange={event => setSplit(event.target.checked)}/>Split into multiple decks</label></section>}<ol className="m-0 grid max-h-[45dvh] list-none gap-3 overflow-y-auto p-0">{cards.map((card, index) => <li key={card.id} className="grid gap-2 rounded-xl border border-navy-900-15 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold text-navy-900">Card {index + 1}</span><div className="flex gap-1"><Button variant="secondary" disabled={index === 0} aria-label={`Move card ${index + 1} up`} onClick={() => moveCard(index, -1)}>↑</Button><Button variant="secondary" disabled={index === cards.length - 1} aria-label={`Move card ${index + 1} down`} onClick={() => moveCard(index, 1)}>↓</Button><Button variant="secondary" aria-label={`Delete card ${index + 1}`} onClick={() => setCards(current => current.filter(item => item.id !== card.id))}>Delete</Button></div></div><Textarea label={`Card ${index + 1} front`} value={card.front} maxLength={300} rows={2} onChange={event => patchCard(card.id, { front: event.target.value })}/><Textarea label={`Card ${index + 1} back`} value={card.back} maxLength={600} rows={2} onChange={event => patchCard(card.id, { back: event.target.value })}/></li>)}</ol><Button variant="secondary" disabled={cards.length >= 1000} onClick={() => setCards(current => [...current, { id: newCardId(), front: '', back: '' }])}>Add card</Button>{saveError && <Alert tone="error" label="Could not save">{saveError}</Alert>}</section>}
 

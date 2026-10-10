@@ -2,6 +2,7 @@ import { createChatCompletion, type CompleteFn } from '../../lib/groq/client'
 import { MAX_OUTPUT_TOKENS } from './constants'
 import { buildContext, planCompaction } from './contextBuilder'
 import { summarizeMessages } from './summarize'
+import type { StudyFocus } from './studyFocus'
 import { appendMessage, createAssistantMessage } from './threadUtils'
 import type { ChatThread } from './types'
 
@@ -9,6 +10,8 @@ export interface GenerateReplyInput {
   /** The chat to answer. Its last usable message must be from the learner. */
   thread: ChatThread
   classLabel?: string
+  /** The deck or lesson the learner is studying, if they opened the tutor from one. */
+  studyFocus?: StudyFocus | null
   signal?: AbortSignal
   complete?: CompleteFn
   /** Called after older messages are folded into the summary, so the progress can be saved before the reply. */
@@ -24,13 +27,14 @@ export interface GenerateReplyInput {
 export async function generateReply({
   thread,
   classLabel,
+  studyFocus,
   signal,
   complete = createChatCompletion,
   onThreadChange,
 }: GenerateReplyInput): Promise<ChatThread> {
   let working = thread
 
-  const plan = planCompaction({ thread: working, classLabel })
+  const plan = planCompaction({ thread: working, classLabel, studyFocus })
   if (plan) {
     const summary = await summarizeMessages(
       { previousSummary: working.summary, messages: working.messages.slice(plan.from, plan.to), signal },
@@ -40,7 +44,7 @@ export async function generateReply({
     onThreadChange?.(working)
   }
 
-  const context = buildContext({ thread: working, classLabel })
+  const context = buildContext({ thread: working, classLabel, studyFocus })
   const reply = await complete({ messages: context.messages, maxTokens: MAX_OUTPUT_TOKENS, signal })
   return appendMessage(working, createAssistantMessage(reply))
 }

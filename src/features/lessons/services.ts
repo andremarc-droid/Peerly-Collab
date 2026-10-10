@@ -2,6 +2,7 @@ import { collection, deleteDoc, doc, documentId, getCountFromServer, getDoc, get
 import { firestore } from '../../lib/firebase/firestore'
 import { parseLesson, parseLessonPlan, parseLessonProgress, MAX_PLANS } from './schemas'
 import { emptyLessonProgress } from './progress'
+import { clampPlanSource } from './planSource'
 import type { Lesson, LessonPlan, LessonPlanOutline, LessonProgressRecord, LessonRecord, LessonLevel, LessonPlanStatus } from './types'
 
 export class LessonPlanLimitError extends Error { constructor() { super(`You can keep up to ${MAX_PLANS} lesson plans. Delete one to create another.`); this.name = 'LessonPlanLimitError' } }
@@ -9,6 +10,7 @@ const plansRef = (uid: string, db: Firestore) => collection(db, 'users', uid, 'l
 const planRef = (uid: string, planId: string, db: Firestore) => doc(db, 'users', uid, 'lessonPlans', planId)
 const lessonsRef = (uid: string, planId: string, db: Firestore) => collection(db, 'users', uid, 'lessonPlans', planId, 'lessons')
 const progressRef = (uid: string, planId: string, db: Firestore) => doc(db, 'users', uid, 'lessonProgress', planId)
+const planSourceRef = (uid: string, planId: string, db: Firestore) => doc(db, 'users', uid, 'lessonPlans', planId, 'source', 'main')
 const srsRef = (uid: string, planId: string, lessonId: string, db: Firestore) => doc(db, 'users', uid, 'deckProgress', `lesson~${planId}~${lessonId}`)
 
 export async function listLessonPlans(uid: string, db: Firestore = firestore): Promise<LessonPlan[]> {
@@ -20,6 +22,8 @@ export async function listLessonPlans(uid: string, db: Firestore = firestore): P
 
 export async function createLessonPlan(uid: string, input: {
   outline: LessonPlanOutline; topic: string; level: LessonLevel; lessons: Record<string, Omit<LessonRecord, 'updatedAt'>>; status: LessonPlanStatus
+  /** The material the plan was built from, kept (capped) so lessons can be regenerated from it later. */
+  sourceText?: string
 }, db: Firestore = firestore): Promise<LessonPlan> {
   const count = await getCountFromServer(plansRef(uid, db))
   if (count.data().count >= MAX_PLANS) throw new LessonPlanLimitError()
@@ -28,6 +32,8 @@ export async function createLessonPlan(uid: string, input: {
   const planData = { title: input.outline.title, topic: input.topic.slice(0, 500), level: input.level, lessonCount: input.outline.lessons.length, order: input.outline.lessons.map(item => item.id), createdAt: now, updatedAt: now, status: input.status }
   const batch = writeBatch(db)
   batch.set(ref, planData)
+  const source = clampPlanSource(input.sourceText)
+  if (source) batch.set(planSourceRef(uid, ref.id, db), { text: source, updatedAt: now })
   for (const [lessonId, lesson] of Object.entries(input.lessons)) {
     const parsed = parseLesson({ ...lesson, updatedAt: { toMillis: () => Date.now() } })
     const { updatedAt: _ignored, ...safeLesson } = parsed
@@ -36,6 +42,13 @@ export async function createLessonPlan(uid: string, input: {
   await batch.commit()
   const created = await getDoc(ref)
   return parseLessonPlan(created.data(), ref.id)
+}
+
+/** The material a plan was generated from, or an empty string when none was kept (older or imported plans). */
+export async function loadPlanSource(uid: string, planId: string, db: Firestore = firestore): Promise<string> {
+  const snapshot = await getDoc(planSourceRef(uid, planId, db))
+  const text = snapshot.exists() ? (snapshot.data() as { text?: unknown }).text : ''
+  return typeof text === 'string' ? clampPlanSource(text) : ''
 }
 
 export async function getLessonPlan(uid: string, planId: string, db: Firestore = firestore): Promise<{ plan: LessonPlan; lessons: Record<string, Lesson> } | null> {
@@ -112,6 +125,7 @@ export async function deletePlan(uid: string, planId: string, db: Firestore = fi
     srs.docs.slice(start, start + 400).forEach(item => batch.delete(item.ref))
     await batch.commit()
   }
+  await deleteDoc(planSourceRef(uid, planId, db))
   await deleteDoc(progressRef(uid, planId, db))
   await deleteDoc(planRef(uid, planId, db))
 }

@@ -1,4 +1,7 @@
 export { ChatbotTab } from './components/ChatbotTab'
 export { TutorDock } from './components/TutorDock'
 export { useChatbot } from './useChatbot'
+export { TutorFocusProvider } from './TutorFocusProvider'
+export { useTutorFocus } from './tutorFocusContext'
+export { buildDeckFocus, buildLessonFocus, type StudyFocus } from './studyFocus'
 export * from './types'

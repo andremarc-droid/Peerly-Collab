@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Calendar, Edit3, Link2, Play, Plus, Search, Trash2, X } from 'lucide-react'
+import { Bot, Calendar, Edit3, Link2, Play, Plus, Search, Trash2, X } from 'lucide-react'
 import { Alert } from '../../../shared/ui/Alert'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
@@ -7,6 +7,8 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../../shared/ui/EmptyState'
 import { useToast } from '../../../shared/ui/useToast'
 import { useAuth } from '../../auth/useAuth'
+import { buildDeckFocus } from '../../chatbot/studyFocus'
+import { useTutorFocus } from '../../chatbot/tutorFocusContext'
 import { createDeck, deleteDeck, updateDeck } from '../services'
 import { summarizeDeckChanges } from '../activity'
 import { logDeckActivity, writeDeckPresence } from '../sharing'
@@ -42,6 +44,7 @@ function formatDate(deck: FlashcardDeckWithId): string {
 export function FlashcardsTab({ decks, classes, selectedClassId, role, error, onCreateDeck }: FlashcardsTabProps) {
   const { user } = useAuth()
   const { showToast } = useToast()
+  const tutorFocus = useTutorFocus()
   const uid = user?.uid
 
   const [search, setSearch] = useState('')
@@ -244,6 +247,20 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error, on
                     <Play size={16} aria-hidden="true" />
                     <span>Study</span>
                   </Button>
+                  {tutorFocus && deck.cardCount > 0 && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        const focus = buildDeckFocus(deck.title, deck.cards)
+                        if (focus) tutorFocus.askTutor(focus)
+                      }}
+                      aria-label={`Ask the AI tutor about deck "${deck.title}"`}
+                    >
+                      <Bot size={16} aria-hidden="true" />
+                      <span>Ask tutor</span>
+                    </Button>
+                  )}
                   {canEdit && (
                     <div className="flex items-center gap-1">
                       <Button

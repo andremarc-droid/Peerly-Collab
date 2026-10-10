@@ -4,6 +4,7 @@ import { getGroqConfigIssue } from '../../lib/groq/requiredEnv'
 import { MAX_MESSAGE_CHARS, MAX_THREADS } from './constants'
 import { generateReply } from './engine'
 import { createChatStorage, createMemoryStorage, type ChatStorage } from './storage'
+import type { StudyFocus } from './studyFocus'
 import {
   appendMessage,
   createThread,
@@ -27,6 +28,11 @@ interface UseChatbotOptions {
   uid: string | undefined
   /** Name of the class the learner is looking at; passed to the tutor as a hint. */
   classLabel?: string
+  /**
+   * The deck or lesson the learner opened the tutor from. It is sent to the AI with each request but never stored in
+   * the chat, and it is left out of shared conversations so a shared reply cannot reveal it to other people.
+   */
+  studyFocus?: StudyFocus | null
   /** Test hooks. */
   storage?: ChatStorage
   complete?: CompleteFn
@@ -38,7 +44,7 @@ function messageOf(error: unknown): string {
   return error instanceof Error && error.message ? error.message : 'Something went wrong. Please try again.'
 }
 
-export function useChatbot({ uid, classLabel, storage, complete = createChatCompletion, configIssue }: UseChatbotOptions) {
+export function useChatbot({ uid, classLabel, studyFocus, storage, complete = createChatCompletion, configIssue }: UseChatbotOptions) {
   const [threads, setThreads] = useState<ChatThread[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
@@ -50,6 +56,7 @@ export function useChatbot({ uid, classLabel, storage, complete = createChatComp
   const activeIdRef = useRef<string | null>(null)
   const uidRef = useRef(uid)
   const classLabelRef = useRef(classLabel)
+  const studyFocusRef = useRef(studyFocus)
   const completeRef = useRef(complete)
   const storageRef = useRef<ChatStorage | null>(storage ?? null)
   const controllers = useRef(new Map<string, AbortController>())
@@ -57,6 +64,7 @@ export function useChatbot({ uid, classLabel, storage, complete = createChatComp
   useEffect(() => {
     uidRef.current = uid
     classLabelRef.current = classLabel
+    studyFocusRef.current = studyFocus
     completeRef.current = complete
   })
 
@@ -185,6 +193,7 @@ export function useChatbot({ uid, classLabel, storage, complete = createChatComp
         const updated = await generateReply({
           thread: current,
           classLabel: classLabelRef.current,
+          studyFocus: current.sharedRole === undefined ? studyFocusRef.current : null,
           signal: controller.signal,
           complete: completeRef.current,
           onThreadChange: (progress) => commit(progress),

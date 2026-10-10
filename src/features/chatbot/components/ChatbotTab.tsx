@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { Spinner } from '../../../shared/ui/Spinner'
 import { useAuth } from '../../auth/useAuth'
 import { useChatbot } from '../useChatbot'
+import { useTutorFocus } from '../tutorFocusContext'
 import { useTutorSharing } from '../useTutorSharing'
 import type { ChatThread } from '../types'
 import { Composer } from './Composer'
@@ -31,9 +32,19 @@ const STARTERS: Array<{ label: string; prompt: string }> = [
   { label: 'Plan my study time', prompt: 'Help me make a short study plan. Ask me about the subject and how much time I have.' },
 ]
 
+/** Starters shown instead when the tutor was opened from a deck or lesson. The material itself is already in the tutor's context. */
+const FOCUS_STARTERS: Array<{ label: string; prompt: string }> = [
+  { label: 'Quiz me on this', prompt: 'Quiz me on what I am studying, one question at a time. Wait for my answer before you tell me if I am right.' },
+  { label: 'Explain the hardest parts', prompt: 'Which parts of what I am studying are usually the hardest to understand? Explain them step by step in plain language.' },
+  { label: 'Explain it simply', prompt: 'Explain the main ideas of what I am studying in simple terms, then ask me one question to check I understood.' },
+  { label: 'Help me remember it', prompt: 'Suggest memory tricks or examples that would help me remember what I am studying.' },
+]
+
 export function ChatbotTab({ classLabel, compact = false }: ChatbotTabProps) {
   const { user } = useAuth()
-  const chat = useChatbot({ uid: user?.uid, classLabel })
+  const tutorFocus = useTutorFocus()
+  const studyFocus = tutorFocus?.focus ?? null
+  const chat = useChatbot({ uid: user?.uid, classLabel, studyFocus })
   const sharing = useTutorSharing(user?.uid, user?.displayName || user?.email || 'Learner', chat)
   const [searchParams] = useSearchParams()
   const selectThread = chat.selectThread
@@ -51,6 +62,17 @@ export function ChatbotTab({ classLabel, compact = false }: ChatbotTabProps) {
   const sharedThreads = savedThreads.filter((thread) => thread.sharedRole === 'viewer' || thread.sharedRole === 'editor')
   const viewOnly = chat.activeThread?.sharedRole === 'viewer'
   const canStart = Boolean(user) && chat.ready && !chat.configIssue && !viewOnly && !chat.isSending
+
+  // Each time a deck or lesson asks the tutor about it, begin a fresh chat so topics never mix.
+  const openRequest = tutorFocus?.openRequest ?? 0
+  const handledRequest = useRef(0)
+  const startFreshChat = chat.newChat
+  useEffect(() => {
+    if (openRequest > handledRequest.current && chat.ready) {
+      handledRequest.current = openRequest
+      startFreshChat()
+    }
+  }, [openRequest, chat.ready, startFreshChat])
 
   useEffect(() => {
     const requestedThread = searchParams.get('thread')
@@ -205,7 +227,7 @@ export function ChatbotTab({ classLabel, compact = false }: ChatbotTabProps) {
               </div>
               {!viewOnly && (
                 <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Conversation starters">
-                  {STARTERS.map((starter) => (
+                  {(studyFocus ? FOCUS_STARTERS : STARTERS).map((starter) => (
                     <li key={starter.label}>
                       <button
                         type="button"
@@ -270,6 +292,13 @@ export function ChatbotTab({ classLabel, compact = false }: ChatbotTabProps) {
                 This browser blocked local storage, so chats will be lost when you close or reload the page.
               </Alert>
             )}
+          </div>
+        )}
+
+        {studyFocus && !viewOnly && (
+          <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-2xl border border-navy-900-12 bg-white px-3 py-2 text-sm text-navy-900 sm:mx-4" role="status">
+            <span className="min-w-0 truncate">The tutor can see your {studyFocus.kind}: <strong>{studyFocus.title}</strong></span>
+            <button type="button" className="tutor-chip shrink-0" onClick={tutorFocus?.clearFocus}>Stop sharing</button>
           </div>
         )}
 

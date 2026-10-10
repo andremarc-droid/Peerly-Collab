@@ -6,7 +6,7 @@ import { LessonsTab } from './LessonsTab'
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), progress: vi.fn(), get: vi.fn(), loadProgress: vi.fn(), rename: vi.fn(), remove: vi.fn() }))
 vi.mock('../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'learner' } }) }))
-vi.mock('./services', () => ({ listLessonPlans: mocks.list, loadLessonProgress: mocks.loadProgress, getLessonPlan: mocks.get, renameLessonPlan: mocks.rename, deletePlan: mocks.remove, reorderLessons: vi.fn(), saveLesson: vi.fn(), saveLessonProgress: vi.fn(), deleteLesson: vi.fn() }))
+vi.mock('./services', () => ({ listLessonPlans: mocks.list, loadLessonProgress: mocks.loadProgress, getLessonPlan: mocks.get, renameLessonPlan: mocks.rename, deletePlan: mocks.remove, reorderLessons: vi.fn(), saveLesson: vi.fn(), saveLessonProgress: vi.fn(), loadPlanSource: vi.fn().mockResolvedValue(''), deleteLesson: vi.fn() }))
 
 beforeEach(() => {
   vi.clearAllMocks()

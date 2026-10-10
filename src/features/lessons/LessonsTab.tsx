@@ -13,7 +13,7 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { useAuth } from '../auth/useAuth'
 import { generateRemainingLessons } from './generate'
 import { lessonPlanCompletion } from './progress'
-import { deletePlan, getLessonPlan, listLessonPlans, renameLessonPlan, saveLesson, loadLessonProgress } from './services'
+import { deletePlan, getLessonPlan, listLessonPlans, loadPlanSource, renameLessonPlan, saveLesson, loadLessonProgress } from './services'
 import { LearnTopicDialog } from './LearnTopicDialog'
 import { LessonPlanWorkspace } from './LessonPlanWorkspace'
 import type { LessonPlan, LessonPlanOutline, LessonProgressRecord, LessonRecord } from './types'
@@ -79,7 +79,8 @@ export function LessonsTab() {
       const outline: LessonPlanOutline = { title: plan.title, lessons: plan.order.map(id => ({ id, title: current[id]?.title ?? `Lesson ${plan.order.indexOf(id) + 1}`, objective: current[id]?.objective ?? plan.topic })) }
       const ids = plan.status === 'partial' ? plan.order.filter(id => !current[id]) : plan.order
       const existing = plan.status === 'partial' ? Object.fromEntries(Object.entries(current).map(([id, item]) => { const { id: _id, updatedAt: _updated, ...value } = item; return [id, value] })) as Record<string, Omit<LessonRecord, 'updatedAt'>> : {}
-      const generated = await generateRemainingLessons({ topic: plan.topic, level: plan.level, lessonCount: plan.lessonCount, outline, sourceText: plan.topic, signal: controller.current.signal, existing, lessonIds: ids, onProgress: (done, total) => setProgressText(`Lesson ${done} of ${total}`) })
+      const savedSource = await loadPlanSource(uid, plan.id).catch(() => '')
+      const generated = await generateRemainingLessons({ topic: plan.topic, level: plan.level, lessonCount: plan.lessonCount, outline, sourceText: savedSource || plan.topic, signal: controller.current.signal, existing, lessonIds: ids, onProgress: (done, total) => setProgressText(`Lesson ${done} of ${total}`) })
       const before = new Set(Object.keys(current))
       for (const [id, item] of Object.entries(generated.lessons)) {
         if (before.has(id)) continue
