@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { sortDecksByUpdated, watchClassDecks, watchMyDecks } from './services'
+import { sortDecksByUpdated, watchMyDecks } from './services'
 import { watchSharedDecks } from './sharing'
 import type { FlashcardDeckWithId } from './types'
 
@@ -17,8 +17,7 @@ interface DeckState {
 }
 
 /**
- * Live flashcard decks across the given classes.
- * Loads class decks, private decks the user owns, and individually shared decks.
+ * Live personal and shared decks. Class decks are intentionally excluded from Learning.
  */
 export function useFlashcardDecks({ role, uid, classIds }: UseFlashcardDecksOptions) {
   const classKey = classIds.join('|')
@@ -46,32 +45,8 @@ export function useFlashcardDecks({ role, uid, classIds }: UseFlashcardDecksOpti
 
     const unsubs: Array<() => void> = []
     unsubs.push(watchSharedDecks(uid, (items) => update('shared', items), (err) => fail(err.message)))
-    for (const classId of classKey ? classKey.split('|') : []) {
-      const personalWorkspace = role === 'student' && classId === uid
-      if (personalWorkspace) {
-        unsubs.push(
-          watchMyDecks(classId, uid, (items) => update(`mine:${classId}`, items), (err) => fail(err.message)),
-        )
-        continue
-      }
-      unsubs.push(
-        watchClassDecks(
-          classId,
-          role,
-          (items) => update(`class:${classId}`, items),
-          (err) => fail(err.message),
-        ),
-      )
-      if (role === 'student') {
-        unsubs.push(
-          watchMyDecks(
-            classId,
-            uid,
-            (items) => update(`mine:${classId}`, items),
-            (err) => fail(err.message),
-          ),
-        )
-      }
+    if (classKey.split('|').includes(uid)) {
+      unsubs.push(watchMyDecks(uid, uid, (items) => update(`mine:${uid}`, items), (err) => fail(err.message)))
     }
     return () => unsubs.forEach((unsubscribe) => unsubscribe())
   }, [classKey, role, uid, viewKey])

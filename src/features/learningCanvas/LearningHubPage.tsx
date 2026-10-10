@@ -1,0 +1,81 @@
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Layout, Plus, StickyNote } from 'lucide-react'
+import { AppShell } from '../../app/AppShell'
+import { PageHeader } from '../../shared/ui/PageHeader'
+import { Tabs } from '../../shared/ui/Tabs'
+import { Button } from '../../shared/ui/Button'
+import { EmptyState } from '../../shared/ui/EmptyState'
+import { Alert } from '../../shared/ui/Alert'
+import { Skeleton } from '../../shared/ui/Skeleton'
+import { useAuth } from '../auth/useAuth'
+import { useToast } from '../../shared/ui/useToast'
+import { ChatbotTab, TutorDock } from '../chatbot'
+import { FlashcardsTab, useFlashcardDecks } from '../flashcards'
+import { NotesTabContent } from './components/NotesTabContent'
+import { CreateLearningCanvasDialog } from './components/CreateLearningCanvasDialog'
+import { SharedCanvasList } from './collab/SharedCanvasList'
+import { useSharedCanvases } from './collab/useSharedCanvases'
+import { watchMyCanvases, createCanvas, deleteCanvas } from './services'
+import type { LearningCanvasWithId } from './types'
+import { NOTE_CONTENT_MAX, NOTE_NODE_ID, noteDescription } from './noteContent'
+import { LearningInviteCodeInput } from '../learningSharing/LearningInviteCodeInput'
+import { aggregateLearningLibrary, resolveLearningTab, type LearningTab } from './library'
+
+const tabNames = ['home', 'decks', 'lessons', 'notes', 'canvases', 'groups'] as const
+const labels: Record<LearningTab, string> = { home: 'Home', decks: 'Decks', lessons: 'Lessons', notes: 'Notes', canvases: 'Canvases', groups: 'Groups' }
+
+export function LearningHubPage() {
+  const { user, profile } = useAuth()
+  const role = profile?.role === 'instructor' ? 'instructor' : 'student'
+  const { showToast } = useToast()
+  const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const activeTab = resolveLearningTab(params.get('tab'))
+  const [canvases, setCanvases] = useState<LearningCanvasWithId[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const shared = useSharedCanvases(user?.uid)
+  const workspaceId = user?.uid ?? ''
+  const { decks, error: deckError } = useFlashcardDecks({ role: 'student', uid: user?.uid, classIds: workspaceId ? [workspaceId] : [] })
+
+  useEffect(() => {
+    if (!workspaceId || !user) return undefined
+    setLoading(true)
+    return watchMyCanvases(workspaceId, user.uid, (items) => { setCanvases(items); setLoading(false); setError(null) }, (cause) => { setError(cause.message); setLoading(false) })
+  }, [workspaceId, user])
+
+  const allCanvases = useMemo(() => aggregateLearningLibrary(canvases, shared.items), [canvases, shared.items])
+  const notes = allCanvases.filter((item) => item.sourceCanvasId === 'note')
+  const boards = allCanvases.filter((item) => item.sourceCanvasId !== 'note')
+  const recent = [...decks.map((item) => ({ type: 'deck' as const, title: item.title, date: item.updatedAt, href: `/${role}/learning?tab=decks` })), ...allCanvases.map((item) => ({ type: item.sourceCanvasId === 'note' ? 'note' as const : 'canvas' as const, title: item.title, date: item.updatedAt, href: `/${role}/classes/${encodeURIComponent(item.classId)}/${item.sourceCanvasId === 'note' ? 'notes' : 'learning'}/${encodeURIComponent(item.id)}` }))].sort((a,b) => b.date.toMillis() - a.date.toMillis())[0]
+
+  const createCanvasItem = async (title: string, description: string) => {
+    if (!user) return
+    const id = await createCanvas(user.uid, user.uid, { kind: 'personal', title, description })
+    showToast('success', 'Study canvas created.')
+    navigate(`/${role}/classes/${encodeURIComponent(user.uid)}/learning/${encodeURIComponent(id)}`)
+  }
+  const createNote = async ({ title, content }: { classId: string; title: string; content: string }) => {
+    if (!user) return undefined
+    const id = await createCanvas(user.uid, user.uid, { kind: 'personal', title, description: noteDescription(content), sourceCanvasId: 'note', initialContent: { nodes: [{ id: NOTE_NODE_ID, type: 'text', x: 0, y: 0, width: 380, height: 240, color: 'none', text: content.slice(0, NOTE_CONTENT_MAX) }] } })
+    return id
+  }
+  const changeTab = (tab: LearningTab) => setParams((old) => { const next = new URLSearchParams(old); next.set('tab', tab); next.delete('classId'); next.delete('graphId'); return next }, { replace: true })
+  const tabContent = (tab: LearningTab) => {
+    if (tab === 'home') return <div className="grid gap-4">
+      <section className="grid gap-3 rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm" aria-labelledby="continue-heading"><h2 id="continue-heading" className="m-0 text-xl font-bold text-navy-900">Continue studying</h2>{recent ? <div className="flex flex-wrap items-center justify-between gap-3"><p className="m-0 text-base text-navy-900">{recent.title}</p><Button to={recent.href} variant="primary">Open {recent.type}</Button></div> : <p className="m-0 text-base text-navy-900">Your recent decks, notes and canvases will appear here.</p>}</section>
+      <section className="grid gap-2 rounded-3xl border border-navy-900-15 bg-white p-5"><h2 className="m-0 text-lg font-bold text-navy-900">Cards due today</h2><p className="m-0 text-base text-navy-900">Spaced repetition arrives in a later phase.</p></section>
+      <div className="grid gap-3 sm:grid-cols-2"><section className="rounded-3xl border border-navy-900-15 bg-white p-5"><h2 className="m-0 text-lg font-bold text-navy-900">Streak</h2><p className="m-0 text-base text-navy-900">Coming in a later phase</p></section><section className="rounded-3xl border border-navy-900-15 bg-white p-5"><h2 className="m-0 text-lg font-bold text-navy-900">XP</h2><p className="m-0 text-base text-navy-900">Coming in a later phase</p></section></div>
+      <div className="flex flex-wrap gap-2"><Button variant="primary" onClick={() => changeTab('decks')}><Plus size={16} aria-hidden="true"/>Create deck</Button><Button variant="secondary" onClick={() => changeTab('notes')}><StickyNote size={16} aria-hidden="true"/>Create note</Button><Button variant="secondary" onClick={() => setCreateOpen(true)}><Layout size={16} aria-hidden="true"/>Create canvas</Button></div>
+    </div>
+    if (tab === 'decks') return <>{deckError && <Alert tone="error" label="Could not load decks">{deckError}</Alert>}<FlashcardsTab decks={decks} classes={workspaceId ? [{ id: workspaceId, name: 'Personal workspace', isPersonalWorkspace: true }] : []} selectedClassId="all" role="student" error={deckError}/></>
+    if (tab === 'notes') return <NotesTabContent notes={notes} classes={workspaceId ? [{ id: workspaceId, name: 'Personal workspace' }] : []} selectedClassId="all" role={role} onCreateNote={createNote} onDeleteNote={async (item) => { await deleteCanvas(item.classId, item.id) }} onViewInGraph={() => changeTab('canvases')} sharedError={shared.error}/>
+    if (tab === 'canvases') return <div className="grid gap-4"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="m-0 text-xl font-bold text-navy-900">Your study canvases</h2><Button variant="primary" onClick={() => setCreateOpen(true)}><Plus size={16} aria-hidden="true"/>New canvas</Button></div>{loading ? <Skeleton className="h-24 rounded-2xl"/> : error ? <Alert tone="error" label="Could not load canvases">{error}</Alert> : boards.length ? <div className="grid gap-3">{boards.map((item) => <article key={`${item.classId}/${item.id}`} className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm"><h3 className="m-0 text-lg font-bold text-navy-900">{item.title}</h3><p className="mt-2 mb-4 text-base text-navy-900">{item.description || 'Study canvas'}</p><Button to={`/${role}/classes/${encodeURIComponent(item.classId)}/learning/${encodeURIComponent(item.id)}`} variant="secondary">Open canvas</Button></article>)}</div> : <EmptyState title="No canvases yet" description="Create a visual board to connect ideas and study materials." action={<Button variant="primary" onClick={() => setCreateOpen(true)}>Create canvas</Button>}/>}<SharedCanvasList items={shared.items} error={shared.error} role={role} selectedClassId="all"/></div>
+    if (tab === 'lessons') return <EmptyState title="Lessons are coming soon" description="Turn a topic into a guided learning plan in a later phase."/>
+    return <div className="grid gap-4"><LearningInviteCodeInput/><EmptyState title="Study groups are coming soon" description="Groups and live quiz games arrive in a later phase."/></div>
+  }
+
+  return <AppShell><PageHeader eyebrow="STUDY & KNOWLEDGE" title="Learning" subtitle="Build a library and keep your learning moving." action={<LearningInviteCodeInput/>}/><main className="app-shell__content"><Tabs label="Learning sections" tabs={tabNames.map((tab) => ({ label: labels[tab], content: tabContent(tab) }))} defaultIndex={tabNames.indexOf(activeTab)} onChange={(index) => changeTab(tabNames[index] ?? 'home')}/></main><TutorDock defaultOpen={params.get('tab') === 'tutor' || params.has('thread')}><ChatbotTab compact/></TutorDock><CreateLearningCanvasDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={createCanvasItem} classes={workspaceId ? [{ id: workspaceId, name: 'Personal workspace' }] : []} defaultClassId={workspaceId}/></AppShell>
+}
