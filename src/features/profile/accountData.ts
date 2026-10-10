@@ -92,11 +92,21 @@ async function deleteProfileDocuments(uid: string, db: Firestore): Promise<void>
   await batch.commit()
 }
 
+async function deleteLearningPlans(uid: string, db: Firestore): Promise<void> {
+  const plans = await getDocs(collection(db, 'users', uid, 'lessonPlans'))
+  for (const plan of plans.docs) {
+    await emptyCollection(db, 'users', uid, 'lessonPlans', plan.id, 'lessons')
+    await deleteDoc(plan.ref)
+  }
+  await emptyCollection(db, 'users', uid, 'lessonProgress')
+}
+
 /**
  * Removes what this person owns, then their profile. The profile goes last because losing it sends
  * the app to the role screen, and because every earlier step can be safely retried if it fails.
  */
 export async function deleteAccountData(uid: string, role: UserRole | null, db: Firestore = firestore): Promise<void> {
+  await deleteLearningPlans(uid, db)
   await emptyCollection(db, 'users', uid, 'deckProgress')
   await emptyCollection(db, 'users', uid, 'studyAttempts')
   if (role === 'instructor') await deleteOwnedClasses(uid, db)

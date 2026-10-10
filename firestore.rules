@@ -266,6 +266,60 @@ service cloud.firestore {
         allow update: if signedIn() && request.auth.uid == userId && validStudyAttempt(request.resource.data);
         allow delete: if signedIn() && request.auth.uid == userId;
       }
+
+      match /lessonPlans/{planId} {
+        function validLessonPlan(data) {
+          return data.keys().hasOnly(['title', 'topic', 'level', 'lessonCount', 'order', 'createdAt', 'updatedAt', 'status'])
+            && data.keys().hasAll(['title', 'topic', 'level', 'lessonCount', 'order', 'createdAt', 'updatedAt', 'status'])
+            && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+            && data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 500
+            && data.level in ['beginner', 'intermediate', 'advanced']
+            && data.lessonCount is int && data.lessonCount >= 1 && data.lessonCount <= 12
+            && data.order is list && data.order.size() == data.lessonCount && data.order.size() <= 12
+            && data.createdAt is timestamp && data.updatedAt is timestamp
+            && data.status in ['ready', 'partial'];
+        }
+        allow get, list: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn() && request.auth.uid == userId && validLessonPlan(request.resource.data);
+        allow update: if signedIn() && request.auth.uid == userId && validLessonPlan(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if signedIn() && request.auth.uid == userId;
+
+        match /lessons/{lessonId} {
+          function validLesson(data) {
+            return data.keys().hasOnly(['title', 'objective', 'content', 'keyPoints', 'flashcards', 'quiz', 'updatedAt'])
+              && data.keys().hasAll(['title', 'objective', 'content', 'keyPoints', 'flashcards', 'quiz', 'updatedAt'])
+              && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+              && data.objective is string && data.objective.size() >= 1 && data.objective.size() <= 300
+              && data.content is string && data.content.size() >= 1 && data.content.size() <= 2000
+              && data.keyPoints is list && data.keyPoints.size() >= 1 && data.keyPoints.size() <= 6
+              && data.flashcards is list && data.flashcards.size() >= 5 && data.flashcards.size() <= 10
+              && data.quiz is list && data.quiz.size() >= 3 && data.quiz.size() <= 6
+              && data.updatedAt is timestamp;
+          }
+          function lessonIsInPlan() {
+            return exists(/databases/$(database)/documents/users/$(userId)/lessonPlans/$(planId))
+              && lessonId in get(/databases/$(database)/documents/users/$(userId)/lessonPlans/$(planId)).data.order;
+          }
+          allow get, list: if signedIn() && request.auth.uid == userId;
+          allow create: if signedIn() && request.auth.uid == userId && lessonIsInPlan() && validLesson(request.resource.data);
+          allow update: if signedIn() && request.auth.uid == userId && lessonIsInPlan() && validLesson(request.resource.data);
+          allow delete: if signedIn() && request.auth.uid == userId;
+        }
+      }
+
+      match /lessonProgress/{planId} {
+        function validLessonProgress(data) {
+          return data.keys().hasOnly(['version', 'lessons', 'lastLessonId', 'updatedAt'])
+            && data.keys().hasAll(['version', 'lessons', 'lastLessonId', 'updatedAt'])
+            && data.version == 1 && data.lessons is map && data.lessons.size() <= 12
+            && (data.lastLessonId == null || (data.lastLessonId is string && data.lastLessonId.size() <= 128))
+            && data.updatedAt is timestamp;
+        }
+        allow get, list: if signedIn() && request.auth.uid == userId;
+        allow create, update: if signedIn() && request.auth.uid == userId && validLessonProgress(request.resource.data);
+        allow delete: if signedIn() && request.auth.uid == userId;
+      }
     }
 
     // Collection-group library queries may list only a user's own personal canvases and notes.
