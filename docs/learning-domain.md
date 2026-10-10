@@ -56,7 +56,7 @@ The plan limit of 20 is enforced by the client service count before creation; Fi
 
 ## Known limitations
 
-- Groups, live games, streaks, and XP remain staged for later phases.
+- Groups and live games remain staged for later phases.
 - Progress updates are last-write-wins across devices; simultaneous study sessions can overwrite each other's progress. The device clock and local timezone determine due times and the daily new-card counter.
 - Quiz and test grading run in the browser and are not secure or suitable for stakes. The Groq key configured through `VITE_GROQ_API_KEY` is exposed to browser users; move AI calls behind a server-side function before a public launch.
 - Rules and collection-group indexes are source changes only until manually deployed. Study-engine rules tests are written but have not been run in the emulator here.
@@ -64,3 +64,4 @@ The plan limit of 20 is enforced by the client service count before creation; Fi
 - The legacy graph data model and rules remain in Firestore for compatibility, although the app no longer exposes graph views or graph invite acceptance.
 - Anki `.apkg` archives are deferred because their SQLite payload needs a heavy browser runtime; export text from Anki. Handwriting/photo transcription can be inaccurate and is always editable before generation. The configured Groq browser key is visible to learners.
 - The YouTube transcript provider depends on undocumented timed-text endpoints and only works when a public video exposes captions. Rules tests for the private quota path are present but require the Firestore emulator to run.
+
