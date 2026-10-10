@@ -3,11 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FlashcardDeckWithId } from '../types'
 import { PracticeTestScreen } from './PracticeTestScreen'
 
-const serviceMocks = vi.hoisted(() => ({ listAttempts: vi.fn(), saveAttempt: vi.fn(), buildQuiz: vi.fn() }))
+const serviceMocks = vi.hoisted(() => ({ listAttempts: vi.fn(), saveAttempt: vi.fn(), buildQuiz: vi.fn(), recordActivity: vi.fn() }))
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'learner' } }) }))
 vi.mock('../../studyEngine/quizAi', () => ({ generateDistractors: vi.fn().mockResolvedValue({}) }))
 vi.mock('../../studyEngine/services', () => serviceMocks)
 vi.mock('../../studyEngine/quiz', () => ({ buildQuiz: serviceMocks.buildQuiz }))
+vi.mock('../../stats/services', () => ({ recordActivity: serviceMocks.recordActivity }))
 
 const deck = {
   id: 'deck', classId: 'personal', ownerId: 'learner', kind: 'personal', title: 'Biology', description: '',
@@ -23,6 +24,7 @@ beforeEach(() => {
     { id: 'q1', cardId: 'c1', kind: 'multiple-choice', prompt: 'Cell?', answer: 'Unit', options: ['Unit', 'wrong'], correctIndex: 0, explanation: 'A cell is a unit.' },
     { id: 'q2', cardId: 'c2', kind: 'multiple-choice', prompt: 'Gene?', answer: 'DNA', options: ['DNA', 'wrong'], correctIndex: 0, explanation: 'A gene is DNA.' },
   ], notice: null })
+  serviceMocks.recordActivity.mockResolvedValue(true)
 })
 afterEach(() => {
   cleanup()
@@ -61,6 +63,7 @@ describe('PracticeTestScreen session', () => {
     expect(await screen.findByText(/Score:/)).toBeTruthy()
     expect(await screen.findByText('Reference: Unit')).toBeTruthy()
     await waitFor(() => expect(serviceMocks.saveAttempt).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(serviceMocks.recordActivity).toHaveBeenCalledWith('learner', expect.objectContaining({ kind: 'quizFinished', amount: 7, key: 'test:attempt-id' })))
   })
 
   it('shows latest attempt history with date, score, and duration', async () => {

@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FlashcardDeckWithId } from '../types'
 import { FlashcardPractice } from './FlashcardPractice'
 
-const mocks = vi.hoisted(() => ({ loadProgress: vi.fn(), saveProgress: vi.fn() }))
+const mocks = vi.hoisted(() => ({ loadProgress: vi.fn(), saveProgress: vi.fn(), recordActivity: vi.fn() }))
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'learner' } }) }))
 vi.mock('../../studyEngine/services', () => mocks)
+vi.mock('../../stats/services', () => ({ recordActivity: mocks.recordActivity }))
 
 const deck = {
   id: 'deck', classId: 'personal', ownerId: 'learner', kind: 'personal', title: 'Biology', description: '',
@@ -17,6 +18,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.loadProgress.mockResolvedValue({ version: 1, cards: {}, newDay: '2026-10-10', newCount: 0 })
   mocks.saveProgress.mockResolvedValue(undefined)
+  mocks.recordActivity.mockResolvedValue(true)
 })
 afterEach(cleanup)
 
@@ -50,5 +52,15 @@ describe('FlashcardPractice', () => {
     fireEvent.pointerUp(card!, { clientX: 100 })
     await waitFor(() => expect(mocks.saveProgress).toHaveBeenCalledTimes(1))
     expect(await screen.findByText('Gene?')).toBeTruthy()
+  })
+
+  it('keeps studying when the XP write is queued after a review', async () => {
+    mocks.recordActivity.mockResolvedValue(false)
+    render(<FlashcardPractice deck={deck}/> )
+    await screen.findByText(/Card 1 of 2/)
+    fireEvent.click(screen.getByRole('button', { name: /Reveal answer/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Good/ }))
+    expect(await screen.findByText(/Card 2 of 2/)).toBeTruthy()
+    await waitFor(() => expect(mocks.recordActivity).toHaveBeenCalledWith('learner', expect.objectContaining({ kind: 'review', amount: 2 })))
   })
 })

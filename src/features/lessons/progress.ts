@@ -11,7 +11,7 @@ export function advanceLessonProgress(
   step: Exclude<LessonStep, 'done'>,
   updatedAt: LessonProgressRecord['updatedAt'],
 ): LessonProgressRecord {
-  const current = progress.lessons[lessonId] ?? { step: 'read', bestScore: 0, completedAt: null }
+  const current = progress.lessons[lessonId] ?? { step: 'read', bestScore: 0, completedAt: null, xpAwarded: false }
   const currentIndex = steps.indexOf(current.step)
   const nextIndex = Math.max(currentIndex, Math.min(currentIndex + 1, steps.indexOf(step)))
   const nextStep = steps[nextIndex]!
@@ -27,10 +27,10 @@ export function finishLessonQuiz(
   updatedAt: LessonProgressRecord['updatedAt'],
   completedAt = updatedAt.toMillis(),
 ): LessonProgressRecord {
-  const current = progress.lessons[lessonId] ?? { step: 'read', bestScore: 0, completedAt: null }
+  const current = progress.lessons[lessonId] ?? { step: 'read', bestScore: 0, completedAt: null, xpAwarded: false }
   const safeTotal = Math.max(0, Math.floor(total))
   const safeScore = Math.max(0, Math.min(safeTotal, Math.floor(score)))
-  const completion: LessonCompletion = { step: 'done', bestScore: Math.max(current.bestScore, safeScore), completedAt }
+  const completion: LessonCompletion = { step: 'done', bestScore: Math.max(current.bestScore, safeScore), completedAt: current.completedAt ?? completedAt, xpAwarded: current.xpAwarded ?? current.completedAt !== null }
   return { version: 1, lessons: { ...progress.lessons, [lessonId]: completion }, lastLessonId: lessonId, updatedAt }
 }
 

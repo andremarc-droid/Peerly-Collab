@@ -267,6 +267,67 @@ service cloud.firestore {
         allow delete: if signedIn() && request.auth.uid == userId;
       }
 
+      match /stats/summary {
+        function padded(value) { return value < 10 ? '0' + string(value) : string(value); }
+        function dayString(value) { return string(value.year()) + '-' + padded(value.month()) + '-' + padded(value.day()); }
+        function validActivityDay(value) {
+          let utcDay = request.time.date();
+          return value is string && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && value in [dayString(utcDay - duration.value(1, 'd')), dayString(utcDay), dayString(utcDay + duration.value(1, 'd'))];
+        }
+        function validGoal(value) { return value in [10, 20, 50, 100]; }
+        function validStats(data) {
+          return data.keys().hasOnly(['version', 'xp', 'totalReviews', 'currentStreak', 'longestStreak', 'lastActiveDay', 'dailyGoalXp', 'today', 'updatedAt'])
+            && data.keys().hasAll(['version', 'xp', 'totalReviews', 'currentStreak', 'longestStreak', 'lastActiveDay', 'dailyGoalXp', 'today', 'updatedAt'])
+            && data.version == 1
+            && data.xp is int && data.xp >= 0
+            && data.totalReviews is int && data.totalReviews >= 0
+            && data.currentStreak is int && data.currentStreak >= 0
+            && data.longestStreak is int && data.longestStreak >= data.currentStreak
+            && data.lastActiveDay is string && data.lastActiveDay.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && validGoal(data.dailyGoalXp)
+            && data.today is map && data.today.keys().hasOnly(['day', 'xp']) && data.today.keys().hasAll(['day', 'xp'])
+            && data.today.day == data.lastActiveDay
+            && data.today.xp is int && data.today.xp >= 0 && data.today.xp <= 2000
+            && data.updatedAt == request.time;
+        }
+        allow get, list: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn() && request.auth.uid == userId && validStats(request.resource.data)
+          && validActivityDay(request.resource.data.lastActiveDay)
+          && request.resource.data.xp <= 25 && request.resource.data.totalReviews <= 25
+          && request.resource.data.currentStreak <= 1 && request.resource.data.longestStreak <= 1
+          && request.resource.data.today.xp <= 25
+          && request.resource.data.xp == request.resource.data.today.xp;
+        allow update: if signedIn() && request.auth.uid == userId && validStats(request.resource.data)
+          && request.resource.data.xp >= resource.data.xp && request.resource.data.xp - resource.data.xp <= 25
+          && request.resource.data.totalReviews >= resource.data.totalReviews && request.resource.data.totalReviews - resource.data.totalReviews <= 25
+          && (request.resource.data.currentStreak == resource.data.currentStreak
+            || request.resource.data.currentStreak == resource.data.currentStreak + 1
+            || request.resource.data.currentStreak == 1)
+          && request.resource.data.longestStreak >= resource.data.longestStreak
+          && (request.resource.data.lastActiveDay == resource.data.lastActiveDay
+            && request.resource.data.xp == resource.data.xp
+            && request.resource.data.totalReviews == resource.data.totalReviews
+            && request.resource.data.currentStreak == resource.data.currentStreak
+            && request.resource.data.longestStreak == resource.data.longestStreak
+            && request.resource.data.today == resource.data.today
+            ? true : validActivityDay(request.resource.data.lastActiveDay))
+          && (request.resource.data.lastActiveDay == resource.data.lastActiveDay
+            ? request.resource.data.today.xp >= resource.data.today.xp
+              && request.resource.data.today.xp - resource.data.today.xp <= 25
+              && request.resource.data.today.xp - resource.data.today.xp == request.resource.data.xp - resource.data.xp
+              && (request.resource.data.currentStreak == resource.data.currentStreak
+                || (resource.data.currentStreak == 0 && request.resource.data.currentStreak == 1))
+            : request.resource.data.lastActiveDay > resource.data.lastActiveDay
+              && request.resource.data.today.xp <= 25
+              && request.resource.data.today.xp == request.resource.data.xp - resource.data.xp
+              && (request.resource.data.currentStreak == resource.data.currentStreak + 1
+                || request.resource.data.currentStreak == 1));
+        // Client-side account deletion removes this doc in the same batch as users/{userId}.
+        allow delete: if signedIn() && request.auth.uid == userId
+          && !existsAfter(/databases/$(database)/documents/users/$(userId));
+      }
+
       match /lessonPlans/{planId} {
         function validLessonPlan(data) {
           return data.keys().hasOnly(['title', 'topic', 'level', 'lessonCount', 'order', 'createdAt', 'updatedAt', 'status'])

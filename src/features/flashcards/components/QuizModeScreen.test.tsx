@@ -3,11 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FlashcardDeckWithId } from '../types'
 import { QuizModeScreen } from './QuizModeScreen'
 
-const mocks = vi.hoisted(() => ({ buildQuiz: vi.fn(), gradeWrittenWithAi: vi.fn(), loadProgress: vi.fn(), saveProgress: vi.fn() }))
+const mocks = vi.hoisted(() => ({ buildQuiz: vi.fn(), gradeWrittenWithAi: vi.fn(), loadProgress: vi.fn(), saveProgress: vi.fn(), recordActivity: vi.fn() }))
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'learner' } }) }))
 vi.mock('../../studyEngine/quiz', async importOriginal => ({ ...await importOriginal<typeof import('../../studyEngine/quiz')>(), buildQuiz: mocks.buildQuiz }))
 vi.mock('../../studyEngine/grading', async importOriginal => ({ ...await importOriginal<typeof import('../../studyEngine/grading')>(), gradeWrittenWithAi: mocks.gradeWrittenWithAi }))
 vi.mock('../../studyEngine/services', () => ({ loadProgress: mocks.loadProgress, saveProgress: mocks.saveProgress }))
+vi.mock('../../stats/services', () => ({ recordActivity: mocks.recordActivity }))
 
 const deck = {
   id: 'deck', classId: 'personal', ownerId: 'learner', kind: 'personal', title: 'Biology', description: '',
@@ -21,6 +22,7 @@ beforeEach(() => {
   mocks.gradeWrittenWithAi.mockResolvedValue({ verdict: 'unsure', feedback: 'Self-grade.', selfGrade: true, reason: 'rate-limit' })
   mocks.loadProgress.mockResolvedValue({ version: 1, cards: {}, newDay: '2026-10-10', newCount: 0 })
   mocks.saveProgress.mockResolvedValue(undefined)
+  mocks.recordActivity.mockResolvedValue(true)
 })
 afterEach(cleanup)
 
@@ -33,5 +35,7 @@ describe('QuizModeScreen self-grade flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'My answer was correct' }))
     expect(await screen.findByText(/Quiz complete/)).toBeTruthy()
     expect(screen.getByText(/1 correct of 1/)).toBeTruthy()
+    await vi.waitFor(() => expect(mocks.recordActivity).toHaveBeenCalledWith('learner', expect.objectContaining({ kind: 'quizFinished', amount: 6 })))
+    expect(mocks.recordActivity).toHaveBeenCalledTimes(1)
   })
 })

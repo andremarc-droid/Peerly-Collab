@@ -97,10 +97,11 @@ export function parseLessonProgress(value: unknown, allowedIds?: readonly string
     id(lessonId, 'Progress lesson id')
     if (allowedIds && !allowedIds.includes(lessonId)) throw new LessonValidationError('Progress contains a lesson outside this plan.')
     if (!record(raw)) throw new LessonValidationError(`Progress for ${lessonId} is invalid.`)
-    exact(raw, ['step', 'bestScore', 'completedAt'], `Progress for ${lessonId}`)
+    if (Object.keys(raw).some(key => !['step', 'bestScore', 'completedAt', 'xpAwarded'].includes(key)) || ['step', 'bestScore', 'completedAt'].some(key => !(key in raw))) throw new LessonValidationError(`Progress for ${lessonId} has unexpected fields.`)
     const step = raw.step as LessonStep
-    if (!['read', 'practice', 'quiz', 'done'].includes(step) || !Number.isInteger(raw.bestScore) || (raw.bestScore as number) < 0 || (raw.bestScore as number) > 6 || !(raw.completedAt === null || (typeof raw.completedAt === 'number' && Number.isFinite(raw.completedAt)))) throw new LessonValidationError(`Progress for ${lessonId} is invalid.`)
-    lessons[lessonId] = { step, bestScore: raw.bestScore as number, completedAt: raw.completedAt as number | null }
+    if (!['read', 'practice', 'quiz', 'done'].includes(step) || !Number.isInteger(raw.bestScore) || (raw.bestScore as number) < 0 || (raw.bestScore as number) > 6 || !(raw.completedAt === null || (typeof raw.completedAt === 'number' && Number.isFinite(raw.completedAt))) || (raw.xpAwarded !== undefined && typeof raw.xpAwarded !== 'boolean')) throw new LessonValidationError(`Progress for ${lessonId} is invalid.`)
+    // Existing completed lessons predate XP; don't retroactively reward them.
+    lessons[lessonId] = { step, bestScore: raw.bestScore as number, completedAt: raw.completedAt as number | null, xpAwarded: raw.xpAwarded === undefined ? raw.completedAt !== null : raw.xpAwarded }
   }
   const last = value.lastLessonId === null ? null : id(value.lastLessonId, 'Last lesson id')
   if (last && allowedIds && !allowedIds.includes(last)) throw new LessonValidationError('Last lesson id is not in this plan.')

@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeLesson, makePlan, makeProgress } from './testFactories'
 import { LessonPlanWorkspace } from './LessonPlanWorkspace'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), progress: vi.fn(), saveLesson: vi.fn(), regenerate: vi.fn(), saveProgress: vi.fn() }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), progress: vi.fn(), saveLesson: vi.fn(), regenerate: vi.fn(), saveProgress: vi.fn(), recordActivity: vi.fn() }))
 vi.mock('../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'learner' } }) }))
 vi.mock('./services', () => ({ getLessonPlan: mocks.get, loadLessonProgress: mocks.progress, saveLesson: mocks.saveLesson, saveLessonProgress: mocks.saveProgress, renameLessonPlan: vi.fn(), reorderLessons: vi.fn(), deleteLesson: vi.fn(), deletePlan: vi.fn() }))
 vi.mock('./generate', () => ({ regenerateLesson: mocks.regenerate }))
+vi.mock('../stats/services', () => ({ recordActivity: mocks.recordActivity }))
+vi.mock('./LessonPlayer', () => ({ LessonPlayer: ({ onQuizComplete }: { onQuizComplete: (score: number, total: number) => void }) => <button onClick={() => onQuizComplete(2, 3)}>Complete lesson</button> }))
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.get.mockResolvedValue({ plan: makePlan({ order: ['lesson-1'], lessonCount: 1 }), lessons: { 'lesson-1': makeLesson() } })
@@ -14,6 +16,7 @@ beforeEach(() => {
   mocks.saveLesson.mockResolvedValue(undefined)
   mocks.saveProgress.mockResolvedValue(undefined)
   mocks.regenerate.mockRejectedValue(new Error('AI unavailable'))
+  mocks.recordActivity.mockResolvedValue(true)
 })
 afterEach(cleanup)
 
@@ -29,5 +32,11 @@ describe('LessonPlanWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate lesson' }))
     expect(await screen.findByText(/Your saved lesson is unchanged/)).toBeTruthy()
     expect(screen.getByLabelText('Lesson content (Markdown)')).toHaveProperty('value', 'Edited content.')
+  })
+
+  it('records the first lesson completion as one 20 XP action', async () => {
+    render(<LessonPlanWorkspace plan={makePlan({ order: ['lesson-1'], lessonCount: 1 })} onClose={vi.fn()} onChanged={vi.fn()}/> )
+    fireEvent.click(await screen.findByRole('button', { name: 'Complete lesson' }))
+    await waitFor(() => expect(mocks.recordActivity).toHaveBeenCalledWith('learner', { kind: 'lessonCompleted', amount: 20, key: 'lesson:plan-a:lesson-1' }))
   })
 })

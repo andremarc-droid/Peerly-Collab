@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { useAuth } from '../../auth/useAuth'
 import { aiComplete } from '../../studyEngine/ai'
@@ -9,6 +9,8 @@ import { answerQuestion, nextQuestion, quizSessionComplete, resolveSelfGrade, re
 import { deckProgressKey } from '../../studyEngine/queue'
 import { loadProgress, saveProgress } from '../../studyEngine/services'
 import { localDayKey, recordGrade } from '../../studyEngine/progress'
+import { recordActivity } from '../../stats/services'
+import { quizXp } from '../../stats/xp'
 import type { FlashcardDeckWithId } from '../types'
 
 interface Props { deck: FlashcardDeckWithId; progressKey?: string; onComplete?: (score: number, total: number) => void }
@@ -21,8 +23,17 @@ export function QuizModeScreen({ deck, progressKey, onComplete }: Props) {
   const [written, setWritten] = useState('')
   const [grading, setGrading] = useState(false)
   const [aiReason, setAiReason] = useState<string | null>(null)
+  const recordedRounds = useRef(new Set<string>())
   const cards = useMemo(() => deck.cards.map(({ id, front, back }) => ({ id, front, back })), [deck.cards])
   const key = progressKey ?? deckProgressKey(deck.classId, deck.id)
+
+  useEffect(() => {
+    if (!user || !session || session.questions.length === 0 || !quizSessionComplete(session)) return
+    const actionKey = `quiz:${key}:${session.round}`
+    if (recordedRounds.current.has(actionKey)) return
+    recordedRounds.current.add(actionKey)
+    void recordActivity(user.uid, { kind: 'quizFinished', amount: quizXp(session.correct, session.questions.length), key: actionKey })
+  }, [key, session, user])
 
   useEffect(() => {
     let active = true

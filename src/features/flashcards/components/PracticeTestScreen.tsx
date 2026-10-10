@@ -8,6 +8,8 @@ import { generateDistractors } from '../../studyEngine/quizAi'
 import { isTimeUp, remainingSeconds, scoreTest, type TestAttempt } from '../../studyEngine/practiceTest'
 import { deckProgressKey, type StudyCard } from '../../studyEngine/queue'
 import { listAttempts, saveAttempt } from '../../studyEngine/services'
+import { recordActivity } from '../../stats/services'
+import { quizXp } from '../../stats/xp'
 import type { FlashcardDeckWithId } from '../types'
 
 interface Props { deck: FlashcardDeckWithId }
@@ -72,6 +74,7 @@ export function PracticeTestScreen({ deck }: Props) {
       setAttempt(result)
       const id = await saveAttempt(user.uid, result)
       setAttemptId(id)
+      void recordActivity(user.uid, { kind: 'quizFinished', amount: quizXp(result.score, result.maxScore), key: `test:${id}` })
       const recent = await listAttempts(user.uid, deckKey)
       setHistory(recent.map((item, itemIndex) => ({ id: `${item.createdAt}-${itemIndex}`, attempt: item })))
     } catch (cause) {

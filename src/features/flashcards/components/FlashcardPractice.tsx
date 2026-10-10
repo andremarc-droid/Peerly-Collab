@@ -5,6 +5,8 @@ import { buildQueue, deckProgressKey, type StudyCard } from '../../studyEngine/q
 import { loadProgress, saveProgress } from '../../studyEngine/services'
 import { localDayKey, pruneProgress, recordGrade, type DeckProgress } from '../../studyEngine/progress'
 import { previewIntervals, type ReviewGrade } from '../../studyEngine/srs'
+import { recordActivity } from '../../stats/services'
+import { reviewXp } from '../../stats/xp'
 import { FlipCard } from './FlipCard'
 import type { FlashcardDeckWithId } from '../types'
 
@@ -20,6 +22,7 @@ export function FlashcardPractice({ deck, progressKey }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const pointerStart = useRef<number | null>(null)
+  const grading = useRef(false)
   const key = progressKey ?? deckProgressKey(deck.classId, deck.id)
   const cards: StudyCard[] = useMemo(() => deck.cards.map(({ id, front, back }) => ({ id, front, back })), [deck.cards])
   const queue = buildQueue({ classId: deck.classId, id: deck.id, cards }, progress, now)
@@ -42,18 +45,20 @@ export function FlashcardPractice({ deck, progressKey }: Props) {
   }, [cards, key, user?.uid])
 
   const gradeCard = useCallback(async (grade: ReviewGrade) => {
-    if (!user || !current || !flipped) return
+    if (!user || !current || !flipped || grading.current) return
+    grading.current = true
     try {
       const reviewedAt = Date.now()
       const next = recordGrade(progress, current.id, grade, reviewedAt, localDayKey(new Date(reviewedAt)))
       setProgress(next)
       await saveProgress(user.uid, key, next)
+      void recordActivity(user.uid, { kind: 'review', amount: reviewXp(grade), key: `review:${key}:${current.id}:${reviewedAt}:${Math.random()}` })
       setStudiedCount(count => count + 1)
       setFlipped(false)
       setNow(reviewedAt)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save study progress.')
-    }
+    } finally { grading.current = false }
   }, [current, flipped, key, progress, user])
 
   useEffect(() => {

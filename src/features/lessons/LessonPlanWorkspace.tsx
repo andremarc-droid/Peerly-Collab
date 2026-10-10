@@ -12,6 +12,8 @@ import { advanceLessonProgress, finishLessonQuiz, nextLessonToResume } from './p
 import { deleteLesson, getLessonPlan, loadLessonProgress, renameLessonPlan, reorderLessons, saveLesson, saveLessonProgress } from './services'
 import { regenerateLesson } from './generate'
 import type { Lesson, LessonPlan, LessonPlanOutline, LessonProgressRecord, LessonStep } from './types'
+import { recordActivity } from '../stats/services'
+import { XP_AWARDS } from '../stats/xp'
 
 interface Props { plan: LessonPlan; onClose: () => void; onChanged: () => void }
 export function LessonPlanWorkspace({ plan: initialPlan, onClose, onChanged }: Props) {
@@ -34,6 +36,9 @@ export function LessonPlanWorkspace({ plan: initialPlan, onClose, onChanged }: P
       if (!active) return
       if (!result) { setError('This lesson plan no longer exists.'); return }
       setPlan(result.plan); setLessons(result.lessons); setProgress(savedProgress)
+      for (const [lessonId, completion] of Object.entries(savedProgress.lessons)) {
+        if (completion.step === 'done' && !completion.xpAwarded) void recordActivity(uid, { kind: 'lessonCompleted', amount: XP_AWARDS.lessonCompleted, key: `lesson:${plan.id}:${lessonId}` })
+      }
       const resumeId = nextLessonToResume(result.plan.order, savedProgress) ?? result.plan.order[0] ?? null
       if (resumeId) {
         setSelectedId(resumeId); setActiveStep(savedProgress.lessons[resumeId]?.step ?? 'read')
@@ -50,9 +55,9 @@ export function LessonPlanWorkspace({ plan: initialPlan, onClose, onChanged }: P
     setSelectedId(id); setDraft(lessons[id] ?? null); setActiveStep(progress?.lessons[id]?.step ?? 'read')
     if (progress && !progress.lessons[id]) void persistProgress(advanceLessonProgress(progress, id, 'read', { toMillis: () => Date.now() }))
   }
-  const persistProgress = useCallback(async (next: LessonProgressRecord) => {
+  const persistProgress = useCallback(async (next: LessonProgressRecord): Promise<boolean> => {
     setProgress(next)
-    try { await saveLessonProgress(uid, plan.id, next) } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save lesson progress.') }
+    try { await saveLessonProgress(uid, plan.id, next); return true } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save lesson progress.'); return false }
   }, [plan.id, uid])
   const changeStep = async (step: Exclude<LessonStep, 'done'>) => {
     if (!progress || !selectedId) return
@@ -62,7 +67,12 @@ export function LessonPlanWorkspace({ plan: initialPlan, onClose, onChanged }: P
   const finishQuiz = async (score: number, total: number) => {
     if (!progress || !selectedId) return
     setActiveStep('done')
-    await persistProgress(finishLessonQuiz(progress, selectedId, score, total, { toMillis: () => Date.now() }))
+    const saved = await persistProgress(finishLessonQuiz(progress, selectedId, score, total, { toMillis: () => Date.now() }))
+    if (!saved) return
+    const key = `lesson:${plan.id}:${selectedId}`
+    void recordActivity(uid, { kind: 'lessonCompleted', amount: XP_AWARDS.lessonCompleted, key }).then(awarded => {
+      if (awarded) setProgress(current => current ? { ...current, lessons: { ...current.lessons, [selectedId]: { ...current.lessons[selectedId]!, xpAwarded: true } } } : current)
+    })
   }
   const nextLesson = () => {
     const index = plan.order.indexOf(selectedId ?? '')

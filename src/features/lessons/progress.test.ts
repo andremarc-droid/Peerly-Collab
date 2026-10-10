@@ -11,7 +11,13 @@ describe('lesson progress', () => {
     state = advanceLessonProgress(state, 'one', 'quiz', stamp(4))
     state = finishLessonQuiz(state, 'one', 2, 3, stamp(5), 5)
     state = finishLessonQuiz(state, 'one', 1, 3, stamp(6), 6)
-    expect(state.lessons.one).toMatchObject({ step: 'done', bestScore: 2, completedAt: 6 })
+    expect(state.lessons.one).toMatchObject({ step: 'done', bestScore: 2, completedAt: 5 })
+  })
+  it('keeps the lesson XP award marker across retakes', () => {
+    let state = finishLessonQuiz(emptyLessonProgress(stamp(1)), 'one', 2, 3, stamp(2), 2)
+    state = { ...state, lessons: { ...state.lessons, one: { ...state.lessons.one!, xpAwarded: true } } }
+    state = finishLessonQuiz(state, 'one', 3, 3, stamp(3), 3)
+    expect(state.lessons.one).toMatchObject({ step: 'done', bestScore: 3, completedAt: 2, xpAwarded: true })
   })
   it('computes completion and resumes the last unfinished lesson', () => {
     let state = emptyLessonProgress(stamp(1))

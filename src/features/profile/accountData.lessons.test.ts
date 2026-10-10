@@ -17,6 +17,7 @@ beforeEach(async () => {
     await db.doc('users/learner/lessonPlans/plan-a/lessons/one').set({ title: 'Lesson' })
     await db.doc('users/learner/lessonProgress/plan-a').set({ version: 1 })
     await db.doc('users/learner/deckProgress/lesson~plan-a~one').set({ version: 1 })
+    await db.doc('users/learner/stats/summary').set({ version: 1, xp: 0 })
   })
 })
 
@@ -30,6 +31,7 @@ describe('deleteAccountData lesson cleanup', () => {
       expect((await getDoc(doc(admin, 'users/learner/lessonPlans/plan-a/lessons/one'))).exists()).toBe(false)
       expect((await getDoc(doc(admin, 'users/learner/lessonProgress/plan-a'))).exists()).toBe(false)
       expect((await getDoc(doc(admin, 'users/learner/deckProgress/lesson~plan-a~one'))).exists()).toBe(false)
+      expect((await getDoc(doc(admin, 'users/learner/stats/summary'))).exists()).toBe(false)
       expect((await getDoc(doc(admin, 'users/learner'))).exists()).toBe(false)
     })
   })

@@ -88,6 +88,7 @@ async function leaveClasses(uid: string, db: Firestore): Promise<void> {
 async function deleteProfileDocuments(uid: string, db: Firestore): Promise<void> {
   const batch = writeBatch(db)
   batch.delete(doc(db, 'publicProfiles', uid))
+  batch.delete(doc(db, 'users', uid, 'stats', 'summary'))
   batch.delete(doc(db, 'users', uid))
   await batch.commit()
 }
