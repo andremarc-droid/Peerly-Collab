@@ -26,7 +26,9 @@ import {
 import { Capacitor } from '@capacitor/core'
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
 import { auth } from '../../lib/firebase/auth'
+import { firebaseConfig } from '../../lib/firebase/config'
 import { AccountNotRegisteredError } from './authErrors'
+import { getGoogleAuthErrorDetails, reportGoogleAuthDiagnostic } from './googleAuthDiagnostics'
 import { beginSignInCheck } from './signInGate'
 import { isGoogleSigninOnly, markAccountNotRegistered, setGoogleSigninOnly } from './notRegisteredMark'
 
@@ -99,10 +101,45 @@ export async function signInWithGoogle({ requireExistingAccount = false }: Googl
   const endCheck = requireExistingAccount ? beginSignInCheck() : () => {}
   try {
     if (Capacitor.isNativePlatform()) {
-      const nativeResult = await FirebaseAuthentication.signInWithGoogle()
+      reportGoogleAuthDiagnostic({
+        step: 'Native Google sign-in started',
+        status: 'info',
+        message: `Firebase project configured: ${Boolean(firebaseConfig.projectId)}; auth domain configured: ${Boolean(firebaseConfig.authDomain)}.`,
+      })
+      let nativeResult: Awaited<ReturnType<typeof FirebaseAuthentication.signInWithGoogle>>
+      try {
+        nativeResult = await FirebaseAuthentication.signInWithGoogle()
+      } catch (error) {
+        reportGoogleAuthDiagnostic({
+          step: 'Native Google sign-in',
+          status: 'error',
+          ...getGoogleAuthErrorDetails(error),
+        })
+        throw error
+      }
       const idToken = nativeResult.credential?.idToken
-      if (!idToken) throw new Error('Google sign-in did not return an ID token. Check the Android Firebase configuration.')
-      const result = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken))
+      reportGoogleAuthDiagnostic({
+        step: 'Google ID token returned',
+        status: idToken ? 'success' : 'error',
+        message: idToken ? 'An ID token was returned. Its value is hidden.' : 'No ID token was returned by the native Google sign-in provider.',
+      })
+      if (!idToken) {
+        const error = Object.assign(new Error('Google sign-in returned no ID token.'), { code: 'app/missing-google-id-token' })
+        reportGoogleAuthDiagnostic({ step: 'Firebase credential exchange', status: 'error', code: error.code, message: error.message })
+        throw error
+      }
+      let result: UserCredential
+      try {
+        result = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken))
+        reportGoogleAuthDiagnostic({ step: 'Firebase credential exchange', status: 'success', message: 'Firebase accepted the Google credential.' })
+      } catch (error) {
+        reportGoogleAuthDiagnostic({
+          step: 'Firebase credential exchange',
+          status: 'error',
+          ...getGoogleAuthErrorDetails(error),
+        })
+        throw error
+      }
       if (requireExistingAccount) await rejectIfNewAccount(result)
       return result
     }
