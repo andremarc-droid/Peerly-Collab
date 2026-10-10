@@ -76,6 +76,7 @@ jobs:
           fi
           echo "APK debug signing SHA-1: $ANDROID_SIGNING_SHA1"
           export ANDROID_SIGNING_SHA1
+          echo "ANDROID_SIGNING_SHA1=$ANDROID_SIGNING_SHA1" >> "$GITHUB_ENV"
           python3 - <<'PY'
           import json
           import os
@@ -138,6 +139,20 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+
+      - name: Verify the APK is signed with the key registered in Firebase
+        run: |
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          APK_SHA1="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/certificate SHA-1 digest/{print tolower($2); exit}' | tr -d ':[:space:]')"
+          pretty() { echo "$1" | tr a-f A-F | sed 's/../&:/g;s/:$//'; }
+          echo "Package:                      com.peerly.collab"
+          echo "SHA-1 registered in Firebase: $(pretty "$ANDROID_SIGNING_SHA1")"
+          echo "SHA-1 the APK is signed with: $(pretty "$APK_SHA1")"
+          if [ -z "$APK_SHA1" ] || [ "$APK_SHA1" != "$ANDROID_SIGNING_SHA1" ]; then
+            echo "ERROR: The APK is not signed with the key whose SHA-1 is registered in Firebase, so native Google sign-in will fail with error 10."
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
