@@ -4,10 +4,11 @@ import { firestore } from '../../lib/firebase/firestore'
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 const CODE_LENGTH = 8
 
-export type LearningInviteKind = 'canvas' | 'flashcard' | 'graph' | 'tutor'
+export type LearningInviteKind = 'canvas' | 'flashcard' | 'graph' | 'tutor' | 'group'
 
 export type LearningInviteTarget =
   | { kind: 'canvas' | 'flashcard' | 'graph'; classId: string; itemId: string; inviteToken: string }
+  | { kind: 'group'; itemId: string; inviteToken: string }
   | { kind: 'tutor'; itemId: string; inviteToken: string }
 
 function learningInviteCodeRef(code: string, db: Firestore) {
@@ -61,16 +62,16 @@ export async function findLearningInviteCode(
   if (!snap.exists()) throw new Error('That learning invite code was not found.')
   const data = snap.data()
   if (
-    (data.kind !== 'canvas' && data.kind !== 'flashcard' && data.kind !== 'graph' && data.kind !== 'tutor')
+    (data.kind !== 'canvas' && data.kind !== 'flashcard' && data.kind !== 'graph' && data.kind !== 'tutor' && data.kind !== 'group')
     || typeof data.itemId !== 'string'
     || typeof data.inviteToken !== 'string'
-    || (data.kind !== 'tutor' && typeof data.classId !== 'string')
+    || (data.kind !== 'tutor' && data.kind !== 'group' && typeof data.classId !== 'string')
     || (data.expiresAt instanceof Timestamp && data.expiresAt.toMillis() <= Date.now())
   ) {
     throw new Error('That learning invite code is invalid or has expired.')
   }
   let target: LearningInviteTarget
-  if (data.kind === 'tutor') {
+  if (data.kind === 'tutor' || data.kind === 'group') {
     if (typeof data.classId === 'string') throw new Error('That invite code is invalid.')
     target = { kind: data.kind, itemId: data.itemId, inviteToken: data.inviteToken }
   } else {
@@ -88,8 +89,10 @@ export async function findLearningInviteCode(
       ? doc(db, 'classes', target.classId, 'flashcardDecks', target.itemId, 'invites', target.inviteToken)
       : target.kind === 'graph'
         ? doc(db, 'classes', target.classId, 'graphViews', target.itemId, 'invites', target.inviteToken)
-        : doc(db, 'sharedTutorThreads', target.itemId, 'invites', target.inviteToken)
-  if (target.kind !== 'flashcard') {
+        : target.kind === 'tutor'
+          ? doc(db, 'sharedTutorThreads', target.itemId, 'invites', target.inviteToken)
+          : null
+  if (target.kind !== 'flashcard' && target.kind !== 'group') {
     const invite = await getDoc(inviteRef)
     if (
       !invite.exists()

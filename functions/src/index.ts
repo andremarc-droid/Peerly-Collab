@@ -4,6 +4,17 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
 import { isGraphOwner, parseGraphDeleteRequest } from './graphDeletionValidation.js'
 import { fetchTranscriptForUser, TranscriptFailure, youtubeTimedTextProvider } from './youtubeTranscript.js'
+import {
+  cleanupStudyGroups as cleanupStudyGroupsHandler,
+  createStudyGroup as createStudyGroupHandler,
+  deleteStudyGroup as deleteStudyGroupHandler,
+  joinStudyGroup as joinStudyGroupHandler,
+  leaveStudyGroup as leaveStudyGroupHandler,
+  previewStudyGroup as previewStudyGroupHandler,
+  removeStudyGroupMember as removeStudyGroupMemberHandler,
+  shareStudyItem as shareStudyItemHandler,
+  unshareStudyItem as unshareStudyItemHandler,
+} from './studyGroups.js'
 
 initializeApp()
 
@@ -104,3 +115,13 @@ export const fetchYoutubeTranscript = onCall({ region: 'us-central1', timeoutSec
     throw new HttpsError('internal', 'Transcript import failed. Paste the transcript instead.')
   }
 })
+
+export const createStudyGroup = onCall({ region: 'us-central1' }, createStudyGroupHandler)
+export const deleteStudyGroup = onCall({ region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' }, deleteStudyGroupHandler)
+export const previewStudyGroup = onCall({ region: 'us-central1' }, previewStudyGroupHandler)
+export const joinStudyGroup = onCall({ region: 'us-central1' }, joinStudyGroupHandler)
+export const leaveStudyGroup = onCall({ region: 'us-central1' }, leaveStudyGroupHandler)
+export const removeStudyGroupMember = onCall({ region: 'us-central1' }, removeStudyGroupMemberHandler)
+export const cleanupStudyGroups = onCall({ region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' }, cleanupStudyGroupsHandler)
+export const shareStudyItem = onCall({ region: 'us-central1' }, shareStudyItemHandler)
+export const unshareStudyItem = onCall({ region: 'us-central1' }, unshareStudyItemHandler)

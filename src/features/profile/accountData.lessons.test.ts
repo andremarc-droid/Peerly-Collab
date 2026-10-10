@@ -1,8 +1,11 @@
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { doc, getDoc, type Firestore } from 'firebase/firestore'
 import rules from '../../../firestore.rules?raw'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteAccountData } from './accountData'
+import { cleanupGroups } from '../groups/services'
+
+vi.mock('../groups/services', () => ({ cleanupGroups: vi.fn().mockResolvedValue({ success: true }) }))
 
 let environment: RulesTestEnvironment
 beforeAll(async () => { environment = await initializeTestEnvironment({ projectId: 'demo-peerly-collab', firestore: { host: '127.0.0.1', port: Number(process.env.PEERLY_FIRESTORE_TEST_PORT ?? 8180), rules } }) })
@@ -34,5 +37,12 @@ describe('deleteAccountData lesson cleanup', () => {
       expect((await getDoc(doc(admin, 'users/learner/stats/summary'))).exists()).toBe(false)
       expect((await getDoc(doc(admin, 'users/learner'))).exists()).toBe(false)
     })
+  })
+  it('cleans up group memberships before deleting the account profile', async () => {
+    const cleanup = vi.mocked(cleanupGroups)
+    cleanup.mockClear()
+    const db = environment.authenticatedContext('learner').firestore()
+    await deleteAccountData('learner', 'student', db as unknown as Firestore)
+    expect(cleanup).toHaveBeenCalledOnce()
   })
 })

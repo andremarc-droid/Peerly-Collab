@@ -8,6 +8,7 @@ import { enrollmentsRef } from '../classes/services/paths'
 import { deleteCanvasSubcollections } from '../learningCanvas/collab/cleanup'
 import { deleteQuizCascade } from '../quizzes/services/deleteQuizCascade'
 import { deleteMyTurnIns } from '../assignments/services/turnInService'
+import { cleanupGroups } from '../groups/services'
 
 const PAGE = 100
 const DECK_SUBCOLLECTIONS = ['members', 'invites', 'activity', 'presence'] as const
@@ -107,6 +108,7 @@ async function deleteLearningPlans(uid: string, db: Firestore): Promise<void> {
  * the app to the role screen, and because every earlier step can be safely retried if it fails.
  */
 export async function deleteAccountData(uid: string, role: UserRole | null, db: Firestore = firestore): Promise<void> {
+  await cleanupGroups()
   await deleteLearningPlans(uid, db)
   await emptyCollection(db, 'users', uid, 'deckProgress')
   await emptyCollection(db, 'users', uid, 'studyAttempts')

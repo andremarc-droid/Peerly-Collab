@@ -347,6 +347,37 @@ service cloud.firestore {
         allow delete: if signedIn() && request.auth.uid == userId;
 
         match /lessons/{lessonId} {
+          function validLessonFlashcard(card) {
+            return card is map
+              && card.keys().hasOnly(['id', 'front', 'back'])
+              && card.keys().hasAll(['id', 'front', 'back'])
+              && card.id is string && card.id.size() >= 1 && card.id.size() <= 128
+              && card.front is string && card.front.size() >= 1 && card.front.size() <= 300
+              && card.back is string && card.back.size() >= 1 && card.back.size() <= 600;
+          }
+          function validLessonOption(option) {
+            return option is string && option.size() >= 1 && option.size() <= 300;
+          }
+          function validLessonQuestion(question) {
+            return question is map && question.kind in ['multiple-choice', 'written']
+              && (question.kind == 'multiple-choice'
+                ? question.keys().hasOnly(['id', 'cardId', 'kind', 'prompt', 'answer', 'options', 'correctIndex', 'explanation'])
+                  && question.keys().hasAll(['id', 'kind', 'prompt', 'answer', 'options', 'correctIndex', 'explanation'])
+                  && question.options is list && question.options.size() >= 2 && question.options.size() <= 4
+                  && validLessonOption(question.options[0])
+                  && (question.options.size() < 3 || validLessonOption(question.options[2]))
+                  && (question.options.size() < 4 || validLessonOption(question.options[3]))
+                  && (question.options.size() < 2 || validLessonOption(question.options[1]))
+                  && question.correctIndex is int && question.correctIndex >= 0 && question.correctIndex < question.options.size()
+                  && question.options[question.correctIndex] == question.answer
+                : question.keys().hasOnly(['id', 'cardId', 'kind', 'prompt', 'answer', 'explanation'])
+                  && question.keys().hasAll(['id', 'kind', 'prompt', 'answer', 'explanation']))
+              && question.id is string && question.id.size() >= 1 && question.id.size() <= 128
+              && (!('cardId' in question) || (question.cardId is string && question.cardId.size() >= 1 && question.cardId.size() <= 128))
+              && question.prompt is string && question.prompt.size() >= 1 && question.prompt.size() <= 500
+              && question.answer is string && question.answer.size() >= 1 && question.answer.size() <= 600
+              && question.explanation is string && question.explanation.size() <= 500;
+          }
           function validLesson(data) {
             return data.keys().hasOnly(['title', 'objective', 'content', 'keyPoints', 'flashcards', 'quiz', 'updatedAt'])
               && data.keys().hasAll(['title', 'objective', 'content', 'keyPoints', 'flashcards', 'quiz', 'updatedAt'])
@@ -354,13 +385,37 @@ service cloud.firestore {
               && data.objective is string && data.objective.size() >= 1 && data.objective.size() <= 300
               && data.content is string && data.content.size() >= 1 && data.content.size() <= 2000
               && data.keyPoints is list && data.keyPoints.size() >= 1 && data.keyPoints.size() <= 6
+              && data.keyPoints[0] is string && data.keyPoints[0].size() >= 1 && data.keyPoints[0].size() <= 200
+              && (data.keyPoints.size() < 2 || (data.keyPoints[1] is string && data.keyPoints[1].size() >= 1 && data.keyPoints[1].size() <= 200))
+              && (data.keyPoints.size() < 3 || (data.keyPoints[2] is string && data.keyPoints[2].size() >= 1 && data.keyPoints[2].size() <= 200))
+              && (data.keyPoints.size() < 4 || (data.keyPoints[3] is string && data.keyPoints[3].size() >= 1 && data.keyPoints[3].size() <= 200))
+              && (data.keyPoints.size() < 5 || (data.keyPoints[4] is string && data.keyPoints[4].size() >= 1 && data.keyPoints[4].size() <= 200))
+              && (data.keyPoints.size() < 6 || (data.keyPoints[5] is string && data.keyPoints[5].size() >= 1 && data.keyPoints[5].size() <= 200))
               && data.flashcards is list && data.flashcards.size() >= 5 && data.flashcards.size() <= 10
+              && data.flashcards[0] is map && validLessonFlashcard(data.flashcards[0])
+              && (data.flashcards.size() < 2 || validLessonFlashcard(data.flashcards[1]))
+              && (data.flashcards.size() < 3 || validLessonFlashcard(data.flashcards[2]))
+              && (data.flashcards.size() < 4 || validLessonFlashcard(data.flashcards[3]))
+              && (data.flashcards.size() < 5 || validLessonFlashcard(data.flashcards[4]))
+              && (data.flashcards.size() < 6 || validLessonFlashcard(data.flashcards[5]))
+              && (data.flashcards.size() < 7 || validLessonFlashcard(data.flashcards[6]))
+              && (data.flashcards.size() < 8 || validLessonFlashcard(data.flashcards[7]))
+              && (data.flashcards.size() < 9 || validLessonFlashcard(data.flashcards[8]))
+              && (data.flashcards.size() < 10 || validLessonFlashcard(data.flashcards[9]))
               && data.quiz is list && data.quiz.size() >= 3 && data.quiz.size() <= 6
+              && validLessonQuestion(data.quiz[0])
+              && (data.quiz.size() < 2 || validLessonQuestion(data.quiz[1]))
+              && (data.quiz.size() < 3 || validLessonQuestion(data.quiz[2]))
+              && (data.quiz.size() < 4 || validLessonQuestion(data.quiz[3]))
+              && (data.quiz.size() < 5 || validLessonQuestion(data.quiz[4]))
+              && (data.quiz.size() < 6 || validLessonQuestion(data.quiz[5]))
               && data.updatedAt is timestamp;
           }
+          // getAfter() also sees a plan written in the same batch. A plain get()/exists() only sees the state
+          // before the batch, which would reject every lesson of a brand-new plan. One call per lesson also keeps a
+          // 12-lesson batch under the 20 document-access-call limit.
           function lessonIsInPlan() {
-            return exists(/databases/$(database)/documents/users/$(userId)/lessonPlans/$(planId))
-              && lessonId in get(/databases/$(database)/documents/users/$(userId)/lessonPlans/$(planId)).data.order;
+            return lessonId in getAfter(/databases/$(database)/documents/users/$(userId)/lessonPlans/$(planId)).data.order;
           }
           allow get, list: if signedIn() && request.auth.uid == userId;
           allow create: if signedIn() && request.auth.uid == userId && lessonIsInPlan() && validLesson(request.resource.data);
@@ -1772,20 +1827,127 @@ service cloud.firestore {
         return data.keys().hasOnly(['kind', 'classId', 'itemId', 'inviteToken', 'ownerId', 'createdAt', 'expiresAt'])
           && data.keys().hasAll(['kind', 'itemId', 'inviteToken', 'ownerId', 'createdAt', 'expiresAt'])
           && code.matches('^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$')
-          && data.kind in ['canvas', 'flashcard', 'graph', 'tutor']
+          && data.kind in ['canvas', 'flashcard', 'graph', 'tutor', 'group']
           && data.itemId is string && data.itemId.size() > 0 && data.itemId.size() <= 150
           && data.inviteToken is string && data.inviteToken.size() >= 32 && data.inviteToken.size() <= 64
           && data.ownerId == request.auth.uid
           && data.createdAt == request.time
           && (data.expiresAt == null || (data.expiresAt is timestamp && data.expiresAt > request.time))
-          && (data.kind == 'tutor'
+          && (data.kind == 'tutor' || data.kind == 'group'
             ? !('classId' in data)
             : data.classId is string && data.classId.size() > 0 && data.classId.size() <= 150);
       }
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn() && validInviteCode(request.resource.data);
-      allow update, delete: if false;
+      allow create: if signedIn() && validInviteCode(request.resource.data)
+        && (request.resource.data.kind != 'group'
+          || (exists(/databases/$(database)/documents/groups/$(request.resource.data.itemId))
+            && get(/databases/$(database)/documents/groups/$(request.resource.data.itemId)).data.ownerId == request.auth.uid));
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.kind == 'group'
+        && exists(/databases/$(database)/documents/groups/$(resource.data.itemId))
+        && get(/databases/$(database)/documents/groups/$(resource.data.itemId)).data.ownerId == request.auth.uid;
+    }
+
+    // Study groups expose only group metadata and deliberate, read-only snapshots.
+    // Membership changes and group creation/deletion go through callable functions.
+    match /groups/{groupId} {
+      function isGroupMember() {
+        return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+      }
+      function isGroupOwner() {
+        return isGroupMember() && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'owner'
+          && resource.data.ownerId == request.auth.uid;
+      }
+      allow get, list: if isGroupMember();
+      allow create, delete: if false;
+      allow update: if isGroupOwner()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'description', 'updatedAt', 'joinCode', 'joiningOpen'])
+        && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
+        && request.resource.data.description is string && request.resource.data.description.size() <= 300
+        && request.resource.data.joinCode.matches('^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$')
+        && request.resource.data.joiningOpen is bool && request.resource.data.updatedAt == request.time;
+
+      match /members/{memberUid} {
+        function groupMember() { return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)); }
+        allow get, list: if groupMember();
+        allow create, update, delete: if false;
+      }
+      match /shares/{shareId} {
+        function groupMember() { return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)); }
+        function groupOwner() { return groupMember() && get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'owner'; }
+        allow get, list: if groupMember();
+        allow create: if groupMember() && request.resource.data.keys().hasOnly(['kind', 'ownerId', 'title', 'snapshotPath', 'sharedAt'])
+          && request.resource.data.keys().hasAll(['kind', 'ownerId', 'title', 'snapshotPath', 'sharedAt'])
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.kind in ['lessonPlan', 'deck', 'canvas']
+          && request.resource.data.title is string && request.resource.data.title.size() >= 1 && request.resource.data.title.size() <= 120
+          && request.resource.data.snapshotPath == 'groups/' + groupId + '/sharedContent/' + shareId
+          && request.resource.data.sharedAt == request.time
+          && existsAfter(/databases/$(database)/documents/groups/$(groupId)/sharedContent/$(shareId))
+          && getAfter(/databases/$(database)/documents/groups/$(groupId)/sharedContent/$(shareId)).data.ownerId == request.auth.uid
+          && getAfter(/databases/$(database)/documents/groups/$(groupId)/sharedContent/$(shareId)).data.kind == request.resource.data.kind
+          && getAfter(/databases/$(database)/documents/groups/$(groupId)/sharedContent/$(shareId)).data.title == request.resource.data.title;
+        allow update: if false;
+        allow delete: if groupMember() && (resource.data.ownerId == request.auth.uid || groupOwner());
+      }
+      match /sharedContent/{shareId} {
+        function groupMember() { return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)); }
+        function sharePath() { return /databases/$(database)/documents/groups/$(groupId)/shares/$(shareId); }
+        allow get, list: if groupMember();
+        allow create: if groupMember() && existsAfter(sharePath())
+          && request.resource.data.keys().hasOnly(['kind', 'ownerId', 'sourceId', 'sourceClassId', 'title', 'data', 'createdAt'])
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.kind == getAfter(sharePath()).data.kind
+          && request.resource.data.title == getAfter(sharePath()).data.title
+          && request.resource.data.createdAt == request.time
+          && ((request.resource.data.kind == 'lessonPlan'
+              && request.resource.data.sourceClassId == null
+              && exists(/databases/$(database)/documents/users/$(request.auth.uid)/lessonPlans/$(request.resource.data.sourceId))
+              && request.resource.data.data == get(/databases/$(database)/documents/users/$(request.auth.uid)/lessonPlans/$(request.resource.data.sourceId)).data)
+            || (request.resource.data.kind == 'deck'
+              && request.resource.data.sourceClassId is string
+              && exists(/databases/$(database)/documents/classes/$(request.resource.data.sourceClassId)/flashcardDecks/$(request.resource.data.sourceId))
+              && get(/databases/$(database)/documents/classes/$(request.resource.data.sourceClassId)/flashcardDecks/$(request.resource.data.sourceId)).data.ownerId == request.auth.uid
+              && get(/databases/$(database)/documents/classes/$(request.resource.data.sourceClassId)/flashcardDecks/$(request.resource.data.sourceId)).data.kind == 'personal'
+              && request.resource.data.data == get(/databases/$(database)/documents/classes/$(request.resource.data.sourceClassId)/flashcardDecks/$(request.resource.data.sourceId)).data)
+            || (request.resource.data.kind == 'canvas'
+              && request.resource.data.sourceClassId is string
+              && exists(/databases/$(database)/documents/classes/$(request.resource.data.sourceClassId)/learningCanvases/$(request.resource.data.sourceId))
+              && get(/databases/$(database)/documents/classes/$(request.resource.data.sourceClassId)/learningCanvases/$(request.resource.data.sourceId)).data.ownerId == request.auth.uid
+              && get(/databases/$(database)/documents/classes/$(request.resource.data.sourceClassId)/learningCanvases/$(request.resource.data.sourceId)).data.kind == 'personal'
+              && request.resource.data.data == get(/databases/$(database)/documents/classes/$(request.resource.data.sourceClassId)/learningCanvases/$(request.resource.data.sourceId)).data));
+        allow update: if false;
+        allow delete: if groupMember() && (resource.data.ownerId == request.auth.uid || get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'owner');
+        match /content/{contentId} {
+          function groupMember() { return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)); }
+          allow get, list: if groupMember();
+          allow create, update: if false;
+          allow delete: if groupMember()
+            && (get(/databases/$(database)/documents/groups/$(groupId)/sharedContent/$(shareId)).data.ownerId == request.auth.uid
+              || get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'owner');
+        }
+        match /lessons/{lessonId} {
+          function groupMember() { return signedIn() && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)); }
+          allow get, list: if groupMember();
+          allow create, update: if false;
+          allow delete: if groupMember()
+            && (get(/databases/$(database)/documents/groups/$(groupId)/sharedContent/$(shareId)).data.ownerId == request.auth.uid
+              || get(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)).data.role == 'owner');
+        }
+      }
+    }
+
+    match /users/{uid}/groupState/{stateId} {
+      allow get, list: if signedIn() && request.auth.uid == uid;
+      allow create, update, delete: if false;
+    }
+    match /users/{uid}/groupMemberships/{groupId} {
+      allow get, list: if signedIn() && request.auth.uid == uid;
+      allow create, update, delete: if false;
+    }
+    match /{path=**}/groupMemberships/{groupId} {
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
     match /sharedTutorThreads/{threadId} {

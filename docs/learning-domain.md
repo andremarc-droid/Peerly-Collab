@@ -54,9 +54,21 @@ Stats are client-written and only cap-limited, not cheat-proof. Rules reject obv
 
 The plan limit of 20 is enforced by the client service count before creation; Firestore Rules cannot safely count sibling documents without a separate counter document, so this limit is not a race-proof security boundary. Lesson and progress rules are owner-only and validate allowed keys and bounded list/content sizes. No composite index is needed for the lesson plan's single-field updated-time sort. The corresponding emulator tests are written but were not run because the Firestore emulator is unavailable. AI still uses the existing browser Groq key; move requests behind a server function before public launch.
 
+## Phase 6A study groups and sharing
+
+Study groups are separate from classes. `groups/{groupId}` stores a name, description, owner, member count, timestamps, 8-character invite code and joining state. Membership is stored at `groups/{groupId}/members/{uid}` with only role, display name and joined time. Account-private statistics, lesson progress, notes, plans and decks remain under their existing owner-only paths.
+
+Group membership limits are 30 people per group, 10 owned groups and 20 joined groups per account. `groupState/summary` and `groupMemberships/{groupId}` are server-maintained indexes. Membership changes, creation/deletion, preview/join checks, and sharing are callable Cloud Functions so code validation, duplicate checks and caps are atomic. Group callable functions require deployment; `learningInviteCodes` continues to use the shared 8-character invite system.
+
+Shares are snapshots at `groups/{groupId}/sharedContent/{shareId}` with lesson children under `lessons/{lessonId}` and canvas content under `content/main`. They are read-only to members and do not sync with later edits. Only the source owner may share their own private lesson plan, deck, or canvas. Members can import a deck/canvas/lesson plan into their own private workspace; plans still count against the existing limit of 20. Share deletion is available to the sharer or group owner. Leaving removes the membership and shares made by that member; it never deletes that member's private originals. Group deletion and account cleanup use callable functions to remove memberships, shares, and snapshots.
+
+Firestore rules deny direct client membership creation/deletion and snapshot writes. Group rules do not grant reads to private source records or other users' `lessonProgress`, statistics, notes, or personal learning items. Group names, descriptions and study content are plain data; lesson content must render with `SafeMarkdown` and never as HTML or images.
+
+Firestore emulator tests for membership privacy, direct-write denial and oversized snapshot writes are present but **written, NOT run** here. Callable code must be deployed for group operations. Deploy the functions with `firebase deploy --only functions:createStudyGroup,functions:deleteStudyGroup,functions:previewStudyGroup,functions:joinStudyGroup,functions:leaveStudyGroup,functions:removeStudyGroupMember,functions:cleanupStudyGroups,functions:shareStudyItem,functions:unshareStudyItem --project <your-firebase-project-id>`. Manual deployment also requires reviewing and deploying both `firestore.rules` and `firestore.indexes.json` (the latter adds the collection-group `groupMemberships` index on `uid` and descending `joinedAt`). No deployment was performed.
+
 ## Known limitations
 
-- Groups and live games remain staged for later phases.
+- Live quiz games remain staged for Phase 6B.
 - Progress updates are last-write-wins across devices; simultaneous study sessions can overwrite each other's progress. The device clock and local timezone determine due times and the daily new-card counter.
 - Quiz and test grading run in the browser and are not secure or suitable for stakes. The Groq key configured through `VITE_GROQ_API_KEY` is exposed to browser users; move AI calls behind a server-side function before a public launch.
 - Rules and collection-group indexes are source changes only until manually deployed. Study-engine rules tests are written but have not been run in the emulator here.

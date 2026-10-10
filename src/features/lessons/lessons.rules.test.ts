@@ -61,4 +61,19 @@ describe('lesson plan security rules', () => {
     await assertFails(setDoc(doc(owner, 'users/student/lessonProgress/plan-a'), { ...progress, extra: 1 }))
     await assertFails(getDoc(doc(signedOut, path)))
   })
+
+  it('rejects malformed nested cards, quiz options and key points before lessons can be shared', async () => {
+    const db = environment.authenticatedContext('student').firestore()
+    const planRef = doc(db, 'users/student/lessonPlans/plan-a')
+    await assertSucceeds(setDoc(planRef, plan()))
+    const lessonRef = doc(planRef, 'lessons/one')
+    await assertSucceeds(setDoc(lessonRef, lesson))
+    await assertFails(setDoc(lessonRef, { ...lesson, flashcards: [{ id: 'x', front: 'f'.repeat(301), back: 'answer' }, ...lesson.flashcards.slice(1)] }))
+    await assertFails(setDoc(lessonRef, { ...lesson, flashcards: [{ id: 'x', front: 'front', back: 'b'.repeat(601) }, ...lesson.flashcards.slice(1)] }))
+    await assertFails(setDoc(lessonRef, { ...lesson, keyPoints: ['k'.repeat(201)] }))
+    const multipleChoice = { id: 'q0', kind: 'multiple-choice', prompt: 'Pick one', answer: 'A', options: ['A', 'B'], correctIndex: 0, explanation: '' }
+    await assertFails(setDoc(lessonRef, { ...lesson, quiz: [multipleChoice, ...lesson.quiz.slice(1)], updatedAt: now }))
+    await assertFails(setDoc(lessonRef, { ...lesson, quiz: [{ ...multipleChoice, options: ['A'.repeat(301), 'B'] }, ...lesson.quiz.slice(1)] }))
+    await assertFails(setDoc(lessonRef, { ...lesson, quiz: [{ ...multipleChoice, options: ['A', 'B', 'C', 'D', 'E'] }, ...lesson.quiz.slice(1)] }))
+  })
 })
