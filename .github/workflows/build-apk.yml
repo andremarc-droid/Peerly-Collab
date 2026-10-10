@@ -55,6 +55,7 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
           ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          EXPECTED_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
         run: |
           if [ -z "$GOOGLE_SERVICES_JSON" ]; then
             echo "Missing GOOGLE_SERVICES_JSON GitHub Actions secret. Add the Firebase Android google-services.json for com.peerly.collab."
@@ -68,6 +69,59 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
           mkdir -p "$HOME/.android"
           printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          ANDROID_SIGNING_SHA1="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -alias androiddebugkey -storepass android | awk '/SHA1:/{print $2; exit}' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$ANDROID_SIGNING_SHA1" ]; then
+            echo "Could not read SHA-1 from the configured Android debug keystore. Check ANDROID_DEBUG_KEYSTORE_BASE64."
+            exit 1
+          fi
+          echo "APK debug signing SHA-1: $ANDROID_SIGNING_SHA1"
+          export ANDROID_SIGNING_SHA1
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          with open('android/app/google-services.json', encoding='utf-8') as file:
+              config = json.load(file)
+
+          project_id = config.get('project_info', {}).get('project_id', '')
+          expected_project_id = os.environ.get('EXPECTED_FIREBASE_PROJECT_ID', '')
+          package_name = 'com.peerly.collab'
+          signing_sha1 = os.environ['ANDROID_SIGNING_SHA1']
+          matching_clients = [
+              client for client in config.get('client', [])
+              if client.get('client_info', {}).get('android_client_info', {}).get('package_name') == package_name
+          ]
+          matching_android_oauth = any(
+              oauth.get('client_type') == 1
+              and oauth.get('android_info', {}).get('package_name') == package_name
+              and oauth.get('android_info', {}).get('certificate_hash', '').replace(':', '').lower() == signing_sha1
+              for client in matching_clients
+              for oauth in client.get('oauth_client', [])
+          )
+          has_web_oauth = any(
+              oauth.get('client_type') == 3
+              for client in matching_clients
+              for oauth in client.get('oauth_client', [])
+          )
+
+          print(f"Firebase Android project ID: {project_id or '(missing)'}")
+          print(f"Android package configured: {bool(matching_clients)}")
+          print(f"Android OAuth client matches CI signing SHA-1: {matching_android_oauth}")
+          print(f"Web OAuth client available: {has_web_oauth}")
+          if expected_project_id and project_id != expected_project_id:
+              print('ERROR: google-services.json and VITE_FIREBASE_PROJECT_ID refer to different Firebase projects.')
+              sys.exit(1)
+          if not matching_clients:
+              print(f'ERROR: google-services.json has no Android client for {package_name}.')
+              sys.exit(1)
+          if not matching_android_oauth:
+              print('ERROR: Add the printed CI signing SHA-1 to this Android app in Firebase, download a fresh google-services.json, and update GOOGLE_SERVICES_JSON.')
+              sys.exit(1)
+          if not has_web_oauth:
+              print('ERROR: google-services.json has no Web OAuth client (client_type 3) for this Android app.')
+              sys.exit(1)
+          PY
           cat >> android/variables.gradle <<'EOF'
 
           ext {
