@@ -233,6 +233,39 @@ service cloud.firestore {
         && validUserRoleOnUpdate() && validUserAge();
       // A person may delete only their own profile document (account deletion from Profile settings).
       allow delete: if signedIn() && request.auth.uid == userId;
+
+      match /deckProgress/{deckKey} {
+        function validProgress(data) {
+          return data.keys().hasOnly(['version', 'cards', 'newDay', 'newCount'])
+            && data.keys().hasAll(['version', 'cards', 'newDay', 'newCount'])
+            && data.version == 1 && data.cards is map && data.cards.size() <= 100
+            && data.newDay is string && data.newDay.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && data.newCount is int && data.newCount >= 0 && data.newCount <= 100;
+        }
+        allow get, list: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn() && request.auth.uid == userId && validProgress(request.resource.data);
+        allow update: if signedIn() && request.auth.uid == userId && validProgress(request.resource.data);
+        allow delete: if signedIn() && request.auth.uid == userId;
+      }
+
+      match /studyAttempts/{attemptId} {
+        function validStudyAttempt(data) {
+          return data.keys().hasOnly(['deckKey', 'createdAt', 'startedAt', 'durationSeconds', 'timeLimitSeconds', 'score', 'maxScore', 'review'])
+            && data.keys().hasAll(['deckKey', 'createdAt', 'startedAt', 'durationSeconds', 'timeLimitSeconds', 'score', 'maxScore', 'review'])
+            && data.deckKey is string && data.deckKey.size() > 0 && data.deckKey.size() <= 300
+            && data.createdAt is number && data.createdAt >= 0
+            && data.startedAt is number && data.startedAt >= 0 && data.startedAt <= data.createdAt
+            && data.durationSeconds is int && data.durationSeconds >= 0
+            && (data.timeLimitSeconds == null || (data.timeLimitSeconds is int && data.timeLimitSeconds >= 0 && data.timeLimitSeconds <= 10800))
+            && data.score is int && data.maxScore is int && data.score >= 0 && data.score <= data.maxScore
+            && data.maxScore >= 0 && data.maxScore <= 50
+            && data.review is list && data.review.size() == data.maxScore && data.review.size() <= 50;
+        }
+        allow get, list: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn() && request.auth.uid == userId && validStudyAttempt(request.resource.data);
+        allow update: if signedIn() && request.auth.uid == userId && validStudyAttempt(request.resource.data);
+        allow delete: if signedIn() && request.auth.uid == userId;
+      }
     }
 
     // Collection-group library queries may list only a user's own personal canvases and notes.

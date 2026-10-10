@@ -1,121 +1,30 @@
-import { useState } from 'react'
-import { Check, Eye, RotateCcw, Shuffle } from 'lucide-react'
+import { lazy, Suspense, useState } from 'react'
 import { Button } from '../../../shared/ui/Button'
 import { Dialog } from '../../../shared/ui/Dialog'
-import {
-  currentCard,
-  flipCard,
-  isComplete,
-  markCard,
-  startReviewSession,
-  startSession,
-} from '../studySession'
 import type { FlashcardDeckWithId } from '../types'
-import { FlipCard } from './FlipCard'
+import { FlashcardPractice } from './FlashcardPractice'
 
-interface FlashcardStudyDialogProps {
-  deck: FlashcardDeckWithId
-  onClose: () => void
-}
+const QuizModeScreen = lazy(() => import('./QuizModeScreen').then(module => ({ default: module.QuizModeScreen })))
+const PracticeTestScreen = lazy(() => import('./PracticeTestScreen').then(module => ({ default: module.PracticeTestScreen })))
 
-export function FlashcardStudyDialog({ deck, onClose }: FlashcardStudyDialogProps) {
-  const [session, setSession] = useState(() => startSession(deck.cards))
+type StudyMode = 'flashcards' | 'quiz' | 'test'
+interface Props { deck: FlashcardDeckWithId; onClose: () => void }
 
-  const total = session.order.length
-  const card = currentCard(session)
-  const complete = isComplete(session)
-  const knownCount = session.known.length
-  const reviewCount = session.review.length
-
+export function FlashcardStudyDialog({ deck, onClose }: Props) {
+  const [mode, setMode] = useState<StudyMode>('flashcards')
   return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={deck.title}
-      description={complete ? 'Session complete' : `Card ${session.index + 1} of ${total}`}
-    >
-      {complete || !card ? (
-        <div className="grid gap-4" aria-live="polite">
-          <p className="m-0 text-base text-navy-900">
-            You got {knownCount} of {total} {total === 1 ? 'card' : 'cards'}.{' '}
-            {reviewCount > 0
-              ? `${reviewCount} ${reviewCount === 1 ? 'card is' : 'cards are'} still learning.`
-              : 'Nice work, nothing left to review.'}
-          </p>
-          <div className="dialog__actions">
-            <Button type="button" variant="secondary" onClick={onClose}>
-              Close
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setSession(startSession(deck.cards))}
-            >
-              <RotateCcw size={16} aria-hidden="true" />
-              <span>Study all again</span>
-            </Button>
-            {reviewCount > 0 && (
-              <Button
-                type="button"
-                variant="primary"
-                onClick={() => setSession(startReviewSession(session))}
-              >
-                <span>Review {reviewCount} missed</span>
-              </Button>
-            )}
-          </div>
+    <Dialog open onClose={onClose} title={deck.title} description="Choose how you want to study">
+      <div className="grid gap-4">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Study mode">
+          <Button variant={mode === 'flashcards' ? 'primary' : 'secondary'} onClick={() => setMode('flashcards')}>Flashcards</Button>
+          <Button variant={mode === 'quiz' ? 'primary' : 'secondary'} onClick={() => setMode('quiz')}>Quiz</Button>
+          <Button variant={mode === 'test' ? 'primary' : 'secondary'} onClick={() => setMode('test')}>Practice test</Button>
+          <Button variant="secondary" disabled aria-label="Live game, coming soon">Live game · Coming soon</Button>
         </div>
-      ) : (
-        <div className="grid gap-4">
-          <p className="m-0 text-sm text-navy-800" aria-live="polite">
-            {knownCount} got it · {reviewCount} still learning
-          </p>
-
-          <FlipCard
-            key={card.id}
-            front={card.front}
-            back={card.back}
-            flipped={session.flipped}
-            onFlip={() => setSession((s) => flipCard(s))}
-          />
-
-          <div className="dialog__actions">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setSession(startSession(deck.cards, { shuffle: true }))}
-            >
-              <Shuffle size={16} aria-hidden="true" />
-              <span>Shuffle</span>
-            </Button>
-            {session.flipped ? (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setSession((s) => markCard(s, 'review'))}
-                >
-                  <RotateCcw size={16} aria-hidden="true" />
-                  <span>Still learning</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={() => setSession((s) => markCard(s, 'known'))}
-                >
-                  <Check size={16} aria-hidden="true" />
-                  <span>Got it</span>
-                </Button>
-              </>
-            ) : (
-              <Button type="button" variant="primary" onClick={() => setSession((s) => flipCard(s))}>
-                <Eye size={16} aria-hidden="true" />
-                <span>Reveal answer</span>
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+        {mode === 'flashcards' && <FlashcardPractice deck={deck}/>}
+        {mode === 'quiz' && <Suspense fallback={<p role="status">Loading quiz…</p>}><QuizModeScreen deck={deck}/></Suspense>}
+        {mode === 'test' && <Suspense fallback={<p role="status">Loading practice test…</p>}><PracticeTestScreen deck={deck}/></Suspense>}
+      </div>
     </Dialog>
   )
 }

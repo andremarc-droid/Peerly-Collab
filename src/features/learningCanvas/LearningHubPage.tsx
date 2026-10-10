@@ -21,6 +21,9 @@ import type { LearningCanvasWithId } from './types'
 import { NOTE_CONTENT_MAX, NOTE_NODE_ID, noteDescription } from './noteContent'
 import { LearningInviteCodeInput } from '../learningSharing/LearningInviteCodeInput'
 import { aggregateLearningLibrary, resolveLearningTab, type LearningTab } from './library'
+import { watchDeckProgress } from '../studyEngine/services'
+import { countStudyLoad, deckProgressKey, type StudyDeck } from '../studyEngine/queue'
+import type { DeckProgress } from '../studyEngine/progress'
 
 const tabNames = ['home', 'decks', 'lessons', 'notes', 'canvases', 'groups'] as const
 const labels: Record<LearningTab, string> = { home: 'Home', decks: 'Decks', lessons: 'Lessons', notes: 'Notes', canvases: 'Canvases', groups: 'Groups' }
@@ -36,9 +39,16 @@ export function LearningHubPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [progressByKey, setProgressByKey] = useState<Record<string, DeckProgress>>({})
   const shared = useSharedCanvases(user?.uid)
   const workspaceId = user?.uid ?? ''
   const { decks, error: deckError } = useFlashcardDecks({ role: 'student', uid: user?.uid, classIds: workspaceId ? [workspaceId] : [] })
+  useEffect(() => {
+    if (!user || decks.length === 0) { setProgressByKey({}); return undefined }
+    const keys = decks.map(deck => deckProgressKey(deck.classId, deck.id))
+    return watchDeckProgress(user.uid, keys, setProgressByKey, () => setProgressByKey({}))
+  }, [user?.uid, decks])
+  const studyLoad = useMemo(() => countStudyLoad(decks.map(deck => ({ classId: deck.classId, id: deck.id, cards: deck.cards } satisfies StudyDeck)), progressByKey, Date.now()), [decks, progressByKey])
 
   useEffect(() => {
     if (!workspaceId || !user) return undefined
@@ -66,7 +76,7 @@ export function LearningHubPage() {
   const tabContent = (tab: LearningTab) => {
     if (tab === 'home') return <div className="grid gap-4">
       <section className="grid gap-3 rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm" aria-labelledby="continue-heading"><h2 id="continue-heading" className="m-0 text-xl font-bold text-navy-900">Continue studying</h2>{recent ? <div className="flex flex-wrap items-center justify-between gap-3"><p className="m-0 text-base text-navy-900">{recent.title}</p><Button to={recent.href} variant="primary">Open {recent.type}</Button></div> : <p className="m-0 text-base text-navy-900">Your recent decks, notes and canvases will appear here.</p>}</section>
-      <section className="grid gap-2 rounded-3xl border border-navy-900-15 bg-white p-5"><h2 className="m-0 text-lg font-bold text-navy-900">Cards due today</h2><p className="m-0 text-base text-navy-900">Spaced repetition arrives in a later phase.</p></section>
+      <section className="grid gap-2 rounded-3xl border border-navy-900-15 bg-white p-5"><h2 className="m-0 text-lg font-bold text-navy-900">Study queue</h2><p className="m-0 text-base text-navy-900">{studyLoad.due} due · {studyLoad.new} new cards available today.</p><Button type="button" variant="secondary" onClick={() => changeTab('decks')}>Open decks</Button></section>
       <div className="grid gap-3 sm:grid-cols-2"><section className="rounded-3xl border border-navy-900-15 bg-white p-5"><h2 className="m-0 text-lg font-bold text-navy-900">Streak</h2><p className="m-0 text-base text-navy-900">Coming in a later phase</p></section><section className="rounded-3xl border border-navy-900-15 bg-white p-5"><h2 className="m-0 text-lg font-bold text-navy-900">XP</h2><p className="m-0 text-base text-navy-900">Coming in a later phase</p></section></div>
       <div className="flex flex-wrap gap-2"><Button variant="primary" onClick={() => changeTab('decks')}><Plus size={16} aria-hidden="true"/>Create deck</Button><Button variant="secondary" onClick={() => changeTab('notes')}><StickyNote size={16} aria-hidden="true"/>Create note</Button><Button variant="secondary" onClick={() => setCreateOpen(true)}><Layout size={16} aria-hidden="true"/>Create canvas</Button></div>
     </div>

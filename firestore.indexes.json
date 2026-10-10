@@ -9,6 +9,14 @@
       ]
     },
     {
+      "collectionGroup": "studyAttempts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deckKey", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "modules",
       "queryScope": "COLLECTION",
       "fields": [

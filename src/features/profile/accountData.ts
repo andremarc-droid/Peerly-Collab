@@ -97,6 +97,8 @@ async function deleteProfileDocuments(uid: string, db: Firestore): Promise<void>
  * the app to the role screen, and because every earlier step can be safely retried if it fails.
  */
 export async function deleteAccountData(uid: string, role: UserRole | null, db: Firestore = firestore): Promise<void> {
+  await emptyCollection(db, 'users', uid, 'deckProgress')
+  await emptyCollection(db, 'users', uid, 'studyAttempts')
   if (role === 'instructor') await deleteOwnedClasses(uid, db)
   else await leaveClasses(uid, db)
   await deleteProfileDocuments(uid, db)
