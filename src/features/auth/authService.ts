@@ -110,12 +110,31 @@ export async function signInWithGoogle({ requireExistingAccount = false }: Googl
       try {
         nativeResult = await FirebaseAuthentication.signInWithGoogle()
       } catch (error) {
-        reportGoogleAuthDiagnostic({
-          step: 'Native Google sign-in',
-          status: 'error',
-          ...getGoogleAuthErrorDetails(error),
-        })
-        throw error
+        const details = getGoogleAuthErrorDetails(error)
+        if (details.message?.toLowerCase().includes('no credentials available')) {
+          reportGoogleAuthDiagnostic({
+            step: 'Credential Manager fallback',
+            status: 'info',
+            message: 'Credential Manager had no available credential. Opening the Google account chooser instead.',
+          })
+          try {
+            nativeResult = await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false })
+          } catch (fallbackError) {
+            reportGoogleAuthDiagnostic({
+              step: 'Google account chooser',
+              status: 'error',
+              ...getGoogleAuthErrorDetails(fallbackError),
+            })
+            throw fallbackError
+          }
+        } else {
+          reportGoogleAuthDiagnostic({
+            step: 'Native Google sign-in',
+            status: 'error',
+            ...details,
+          })
+          throw error
+        }
       }
       const idToken = nativeResult.credential?.idToken
       reportGoogleAuthDiagnostic({
