@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Bot, X } from 'lucide-react'
+import { useMobileChrome } from '../../../lib/platform/mobileChromeContext'
 import { useTutorFocus } from '../tutorFocusContext'
 
 interface TutorDockProps {
@@ -16,8 +18,13 @@ const FLOATING_PANEL =
   'sm:inset-x-auto sm:bottom-6 sm:right-6 sm:h-[min(42rem,calc(100dvh-8rem))] sm:w-[26rem]'
 
 const FLOATING_BUTTON =
-  'fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-14 min-w-14 cursor-pointer items-center justify-center gap-2 rounded-full border-0 bg-navy-900 px-4 text-base font-bold text-white shadow-lg ' +
-  'hover:bg-navy-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-800 motion-reduce:transition-none sm:bottom-6 sm:right-6 sm:px-5'
+  'fixed right-4 z-40 inline-flex min-h-14 min-w-14 cursor-pointer items-center justify-center gap-2 rounded-full border-0 bg-navy-900 px-4 text-base font-bold text-white shadow-lg ' +
+  'hover:bg-navy-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-800 motion-reduce:transition-none sm:right-6 sm:px-5'
+
+/** Corner position on screens without the phone bottom bar. */
+const BUTTON_CORNER = 'bottom-[max(1rem,env(safe-area-inset-bottom))] sm:bottom-6'
+/** Phone tab screens have a bottom navigation bar (about 4rem tall); sit above it instead of covering its tabs. */
+const BUTTON_ABOVE_NAV = 'bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]'
 
 /**
  * The AI tutor, available on every Learning tab through a floating button at the bottom-right.
@@ -26,6 +33,8 @@ const FLOATING_BUTTON =
  */
 export function TutorDock({ children, defaultOpen = false }: TutorDockProps) {
   const [open, setOpen] = useState(defaultOpen)
+  // On phone tab screens the bottom navigation bar is showing, so the button must sit above it.
+  const aboveNav = useMobileChrome()?.tabRoot === true
   // Opens when a deck or lesson screen asks the tutor about what the learner is studying.
   const openRequest = useTutorFocus()?.openRequest ?? 0
   useEffect(() => {
@@ -69,7 +78,10 @@ export function TutorDock({ children, defaultOpen = false }: TutorDockProps) {
     }
   }, [open])
 
-  return (
+  // Rendered into <body>, not in place. The page container plays a zoom-and-fade entrance animation (m3-enter), and
+  // a `position: fixed` child of an element with a transform is positioned against that element instead of the
+  // screen. That left the button at the very end of the page content, so it only showed after scrolling down.
+  return createPortal(
     <>
       <section
         ref={panelRef}
@@ -100,7 +112,7 @@ export function TutorDock({ children, defaultOpen = false }: TutorDockProps) {
         <button
           ref={buttonRef}
           type="button"
-          className={FLOATING_BUTTON}
+          className={`${FLOATING_BUTTON} ${aboveNav ? BUTTON_ABOVE_NAV : BUTTON_CORNER}`}
           aria-label="Open AI tutor"
           aria-expanded={false}
           aria-controls={PANEL_ID}
@@ -110,6 +122,7 @@ export function TutorDock({ children, defaultOpen = false }: TutorDockProps) {
           <span className="hidden sm:inline">AI Tutor</span>
         </button>
       )}
-    </>
+    </>,
+    document.body,
   )
 }
