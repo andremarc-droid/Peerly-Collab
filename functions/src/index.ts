@@ -3,6 +3,7 @@ import { FieldPath, getFirestore } from 'firebase-admin/firestore'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
 import { isGraphOwner, parseGraphDeleteRequest } from './graphDeletionValidation.js'
+import { fetchTranscriptForUser, TranscriptFailure, youtubeTimedTextProvider } from './youtubeTranscript.js'
 
 initializeApp()
 
@@ -74,3 +75,32 @@ export const deleteSharedGraph = onCall(
     }
   },
 )
+
+export const fetchYoutubeTranscript = onCall({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async call => {
+  const limits = {
+    async consume(uid: string, now: number, limit: number, windowMs: number): Promise<boolean> {
+      const ref = db.doc(`youtubeTranscriptRateLimits/${uid}`)
+      return db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(ref)
+        const data = snapshot.data()
+        const startedAt = data?.windowStartedAt?.toMillis?.() as number | undefined
+        const count = typeof data?.count === 'number' ? data.count : 0
+        if (!startedAt || now - startedAt >= windowMs || now < startedAt) {
+          transaction.set(ref, { windowStartedAt: new Date(now), count: 1 })
+          return true
+        }
+        if (count >= limit) return false
+        transaction.update(ref, { count: count + 1 })
+        return true
+      })
+    },
+  }
+  try {
+    const result = await fetchTranscriptForUser(call.auth?.uid ?? null, call.data?.url, { provider: youtubeTimedTextProvider, limits })
+    return result
+  } catch (error) {
+    if (error instanceof TranscriptFailure) throw new HttpsError(error.code, error.message)
+    logger.error('Could not fetch YouTube transcript.', { error })
+    throw new HttpsError('internal', 'Transcript import failed. Paste the transcript instead.')
+  }
+})

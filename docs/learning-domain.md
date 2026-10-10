@@ -28,16 +28,19 @@ Quizlet accepts tab/comma/custom term separators and newline/semicolon/custom ro
 
 AI card generation uses only the shared `src/features/studyEngine/ai.ts` wrapper. Source is treated as untrusted data, chunked at about 6,000 characters, and capped at 10 chunks/60,000 characters. Chunks run sequentially with progress and cancellation; retry retains completed cards, deduplicates fronts, and validates every card against the existing schema. Decks are reviewed and saved with the existing personal deck service in `classes/{uid}/flashcardDecks`. Choosing Quiz saves the same deck and offers an on-the-fly Phase 2 quiz or practice test; it does not create a quiz document. Lessons remain disabled until Phase 4.
 
+YouTube import accepts HTTPS watch, short, embed, shorts, and live URLs on an explicit hostname allowlist. The callable validates the video ID again, allows 10 requests per signed-in user per rolling hour, and returns at most 20,000 transcript characters. Quota documents live at `youtubeTranscriptRateLimits/{uid}` and are written with Admin SDK transactions; Firestore client rules explicitly deny all client reads and writes. The default provider uses fixed YouTube timed-text and oEmbed endpoints and never fetches a caller-supplied URL. YouTube does not provide a stable general-purpose transcript API here, so caption availability and endpoint behavior can change; users can paste transcripts when the function is not deployed or captions cannot be read. The callable requires deploying Cloud Functions and may require enabling billing (Blaze) for deployment/use depending on the Firebase project plan. No function or rules were deployed as part of this work.
+
 ## Planned motivation model (Phase 5)
 
 Streak and XP persistence are not implemented yet. The future design must define local-calendar-day and timezone-change behavior, daily goal handling, XP caps, and client-write tampering limits. Client-written XP must not be used for real-stakes rewards.
 
 ## Known limitations
 
-- Lessons, YouTube imports, groups, live games, streaks, and XP remain staged for later phases.
+- Lessons, groups, live games, streaks, and XP remain staged for later phases.
 - Progress updates are last-write-wins across devices; simultaneous study sessions can overwrite each other's progress. The device clock and local timezone determine due times and the daily new-card counter.
 - Quiz and test grading run in the browser and are not secure or suitable for stakes. The Groq key configured through `VITE_GROQ_API_KEY` is exposed to browser users; move AI calls behind a server-side function before a public launch.
 - Rules and collection-group indexes are source changes only until manually deployed. Study-engine rules tests are written but have not been run in the emulator here.
 - The current personal-content schema continues to reuse `classes/{uid}` as a storage container; it is not a class membership relationship.
 - The legacy graph data model and rules remain in Firestore for compatibility, although the app no longer exposes graph views or graph invite acceptance.
 - Anki `.apkg` archives are deferred because their SQLite payload needs a heavy browser runtime; export text from Anki. Handwriting/photo transcription can be inaccurate and is always editable before generation. The configured Groq browser key is visible to learners.
+- The YouTube transcript provider depends on undocumented timed-text endpoints and only works when a public video exposes captions. Rules tests for the private quota path are present but require the Firestore emulator to run.

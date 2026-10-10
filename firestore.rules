@@ -1647,6 +1647,11 @@ service cloud.firestore {
       allow list: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
+    // Callable-only YouTube transcript quota; clients must never inspect or alter counters.
+    match /youtubeTranscriptRateLimits/{uid} {
+      allow read, write: if false;
+    }
+
     match /learningInviteCodes/{code} {
       function validInviteCode(data) {
         return data.keys().hasOnly(['kind', 'classId', 'itemId', 'inviteToken', 'ownerId', 'createdAt', 'expiresAt'])
