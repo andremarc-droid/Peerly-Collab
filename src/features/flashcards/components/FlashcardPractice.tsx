@@ -8,10 +8,10 @@ import { previewIntervals, type ReviewGrade } from '../../studyEngine/srs'
 import { FlipCard } from './FlipCard'
 import type { FlashcardDeckWithId } from '../types'
 
-interface Props { deck: FlashcardDeckWithId }
+interface Props { deck: FlashcardDeckWithId; progressKey?: string }
 const grades: ReviewGrade[] = ['again', 'hard', 'good', 'easy']
 
-export function FlashcardPractice({ deck }: Props) {
+export function FlashcardPractice({ deck, progressKey }: Props) {
   const { user } = useAuth()
   const [progress, setProgress] = useState<DeckProgress>({ version: 1, cards: {}, newDay: localDayKey(new Date()), newCount: 0 })
   const [studiedCount, setStudiedCount] = useState(0)
@@ -20,7 +20,7 @@ export function FlashcardPractice({ deck }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const pointerStart = useRef<number | null>(null)
-  const key = deckProgressKey(deck.classId, deck.id)
+  const key = progressKey ?? deckProgressKey(deck.classId, deck.id)
   const cards: StudyCard[] = useMemo(() => deck.cards.map(({ id, front, back }) => ({ id, front, back })), [deck.cards])
   const queue = buildQueue({ classId: deck.classId, id: deck.id, cards }, progress, now)
   const current = queue.cards[0]

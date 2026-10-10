@@ -11,8 +11,8 @@ import { loadProgress, saveProgress } from '../../studyEngine/services'
 import { localDayKey, recordGrade } from '../../studyEngine/progress'
 import type { FlashcardDeckWithId } from '../types'
 
-interface Props { deck: FlashcardDeckWithId }
-export function QuizModeScreen({ deck }: Props) {
+interface Props { deck: FlashcardDeckWithId; progressKey?: string; onComplete?: (score: number, total: number) => void }
+export function QuizModeScreen({ deck, progressKey, onComplete }: Props) {
   const { user } = useAuth()
   const [session, setSession] = useState<QuizSession<QuizQuestion> | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -22,7 +22,7 @@ export function QuizModeScreen({ deck }: Props) {
   const [grading, setGrading] = useState(false)
   const [aiReason, setAiReason] = useState<string | null>(null)
   const cards = useMemo(() => deck.cards.map(({ id, front, back }) => ({ id, front, back })), [deck.cards])
-  const key = deckProgressKey(deck.classId, deck.id)
+  const key = progressKey ?? deckProgressKey(deck.classId, deck.id)
 
   useEffect(() => {
     let active = true
@@ -36,6 +36,7 @@ export function QuizModeScreen({ deck }: Props) {
     })()
     return () => { active = false }
   }, [cards])
+
 
   const current = session?.questions[session.index]
   const submit = async (response: string | number) => {
@@ -72,6 +73,7 @@ export function QuizModeScreen({ deck }: Props) {
     <h3 className="m-0 text-lg font-bold text-navy-900">Quiz complete</h3>
     <p className="m-0 text-base text-navy-900">{session.correct} correct of {session.questions.length} · {session.missed.length} missed.</p>
     {session.missed.length > 0 && <Button variant="primary" onClick={() => setSession(retryMissed(session))}>Retry missed</Button>}
+    {onComplete && <Button variant="secondary" onClick={() => onComplete(session.correct, session.questions.length)}>Finish lesson quiz</Button>}
   </section>
 
   return <section className="grid gap-4" aria-label="Quiz">
