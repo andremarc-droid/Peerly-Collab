@@ -12,6 +12,8 @@ function invitePath(target: Awaited<ReturnType<typeof findLearningInviteCode>>):
   const itemId = encodeURIComponent(target.itemId)
   const token = encodeURIComponent(target.inviteToken)
   if (target.kind === 'tutor') return `/learning/tutor/${itemId}/${token}`
+  // Study group codes are joined from the Groups tab (preview, then join), so they have no invite route.
+  if (target.kind === 'group') return '/learning'
   const classId = encodeURIComponent(target.classId)
   if (target.kind === 'canvas') return `/learning/join/${classId}/${itemId}/${token}`
   if (target.kind === 'flashcard') return `/learning/join/deck/${classId}/${itemId}/${token}`

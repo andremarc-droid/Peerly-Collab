@@ -13,7 +13,7 @@ export function JoinGameForm() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [code, setCode] = useState('')
-  const [name, setName] = useState(profile?.displayName || user?.displayName || '')
+  const [name, setName] = useState(profile?.name || user?.displayName || '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const submit = async () => {

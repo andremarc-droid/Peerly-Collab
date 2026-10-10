@@ -92,7 +92,7 @@ export async function findLearningInviteCode(
         : target.kind === 'tutor'
           ? doc(db, 'sharedTutorThreads', target.itemId, 'invites', target.inviteToken)
           : null
-  if (target.kind !== 'flashcard' && target.kind !== 'group') {
+  if (inviteRef && target.kind !== 'flashcard') {
     const invite = await getDoc(inviteRef)
     if (
       !invite.exists()

@@ -22,7 +22,7 @@ import type { GroupPreview, GroupShare, StudyGroup, StudyGroupMember } from './t
 export function GroupsTab() {
   const { user, profile } = useAuth()
   const { showToast } = useToast()
-  const displayName = profile?.displayName || user?.displayName || 'Learner'
+  const displayName = profile?.name || user?.displayName || 'Learner'
   const [groups, setGroups] = useState<StudyGroup[]>([])
   const [selectedId, setSelectedId] = useState('')
   const [group, setGroup] = useState<StudyGroup | null>(null)
