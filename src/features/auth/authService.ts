@@ -26,9 +26,7 @@ import {
 import { Capacitor } from '@capacitor/core'
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
 import { auth } from '../../lib/firebase/auth'
-import { firebaseConfig } from '../../lib/firebase/config'
 import { AccountNotRegisteredError } from './authErrors'
-import { getGoogleAuthErrorDetails, reportGoogleAuthDiagnostic } from './googleAuthDiagnostics'
 import { beginSignInCheck } from './signInGate'
 import { isGoogleSigninOnly, markAccountNotRegistered, setGoogleSigninOnly } from './notRegisteredMark'
 
@@ -95,70 +93,31 @@ interface GoogleSignInOptions {
   requireExistingAccount?: boolean
 }
 
+/** Android reports this when Credential Manager has no saved Google account to offer. */
+function hasNoCredentialsMessage(error: unknown): boolean {
+  const message = (error as { message?: unknown } | null)?.message
+  return typeof message === 'string' && message.toLowerCase().includes('no credentials available')
+}
+
 export async function signInWithGoogle({ requireExistingAccount = false }: GoogleSignInOptions = {}) {
   const provider = new GoogleAuthProvider()
   provider.setCustomParameters({ prompt: 'select_account' })
   const endCheck = requireExistingAccount ? beginSignInCheck() : () => {}
   try {
     if (Capacitor.isNativePlatform()) {
-      reportGoogleAuthDiagnostic({
-        step: 'Native Google sign-in started',
-        status: 'info',
-        message: `Firebase project configured: ${Boolean(firebaseConfig.projectId)}; auth domain configured: ${Boolean(firebaseConfig.authDomain)}.`,
-      })
       let nativeResult: Awaited<ReturnType<typeof FirebaseAuthentication.signInWithGoogle>>
       try {
         nativeResult = await FirebaseAuthentication.signInWithGoogle()
       } catch (error) {
-        const details = getGoogleAuthErrorDetails(error)
-        if (details.message?.toLowerCase().includes('no credentials available')) {
-          reportGoogleAuthDiagnostic({
-            step: 'Credential Manager fallback',
-            status: 'info',
-            message: 'Credential Manager had no available credential. Opening the Google account chooser instead.',
-          })
-          try {
-            nativeResult = await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false })
-          } catch (fallbackError) {
-            reportGoogleAuthDiagnostic({
-              step: 'Google account chooser',
-              status: 'error',
-              ...getGoogleAuthErrorDetails(fallbackError),
-            })
-            throw fallbackError
-          }
-        } else {
-          reportGoogleAuthDiagnostic({
-            step: 'Native Google sign-in',
-            status: 'error',
-            ...details,
-          })
-          throw error
-        }
+        if (!hasNoCredentialsMessage(error)) throw error
+        // Credential Manager has no saved Google credential, so open the Google account chooser instead.
+        nativeResult = await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false })
       }
       const idToken = nativeResult.credential?.idToken
-      reportGoogleAuthDiagnostic({
-        step: 'Google ID token returned',
-        status: idToken ? 'success' : 'error',
-        message: idToken ? 'An ID token was returned. Its value is hidden.' : 'No ID token was returned by the native Google sign-in provider.',
-      })
       if (!idToken) {
-        const error = Object.assign(new Error('Google sign-in returned no ID token.'), { code: 'app/missing-google-id-token' })
-        reportGoogleAuthDiagnostic({ step: 'Firebase credential exchange', status: 'error', code: error.code, message: error.message })
-        throw error
+        throw Object.assign(new Error('Google sign-in returned no ID token.'), { code: 'app/missing-google-id-token' })
       }
-      let result: UserCredential
-      try {
-        result = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken))
-        reportGoogleAuthDiagnostic({ step: 'Firebase credential exchange', status: 'success', message: 'Firebase accepted the Google credential.' })
-      } catch (error) {
-        reportGoogleAuthDiagnostic({
-          step: 'Firebase credential exchange',
-          status: 'error',
-          ...getGoogleAuthErrorDetails(error),
-        })
-        throw error
-      }
+      const result = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken))
       if (requireExistingAccount) await rejectIfNewAccount(result)
       return result
     }

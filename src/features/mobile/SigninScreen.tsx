@@ -5,7 +5,6 @@ import { M3PasswordField } from '../../shared/ui/m3/M3PasswordField'
 import { M3TextField } from '../../shared/ui/m3/M3TextField'
 import { AccountNotRegisteredDialog } from '../auth/AccountNotRegisteredDialog'
 import type { SigninForm } from '../auth/useSigninForm'
-import { GoogleAuthDebugPanel } from './GoogleAuthDebugPanel'
 import { MobileAuthLayout, MobileDivider, MobileGoogleButton, MobileRoleChip } from './MobileAuthParts'
 import { useFocusFirstInvalid } from './useFocusFirstInvalid'
 
@@ -21,7 +20,6 @@ export function SigninScreen({ form }: { form: SigninForm }) {
       <div ref={contentRef} className="flex flex-1 flex-col gap-5">
         <MobileRoleChip role={role} />
         {error && <Alert tone="error" label="We couldn’t sign you in">{error}</Alert>}
-        <GoogleAuthDebugPanel />
         <MobileGoogleButton onClick={() => void form.handleGoogle()} disabled={busy} />
         <MobileDivider />
         <form className="flex flex-1 flex-col gap-4" noValidate onSubmit={(event) => void form.handleSignin(event)}>
