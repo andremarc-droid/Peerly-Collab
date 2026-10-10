@@ -1,5 +1,6 @@
 import {
   deleteDoc,
+  collectionGroup,
   doc,
   getDoc,
   onSnapshot,
@@ -8,6 +9,7 @@ import {
   Timestamp,
   where,
   type Firestore,
+  type CollectionReference,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { firestore } from '../../lib/firebase/firestore'
@@ -63,6 +65,22 @@ export function watchMyDecks(
 ) {
   const q = query(
     flashcardDecksRef(db, classId),
+    where('kind', '==', 'personal'),
+    where('ownerId', '==', uid),
+  )
+  return onSnapshot(q, (snap) => onChange(toDecks(snap.docs)), onError)
+}
+
+/** Watches only the signed-in user's personal decks across all class partitions. */
+export function watchMyDecksAcrossClasses(
+  uid: string,
+  onChange: (decks: FlashcardDeckWithId[]) => void,
+  onError: (error: Error) => void,
+  db: Firestore = firestore,
+) {
+  const base = collectionGroup(db, 'flashcardDecks') as CollectionReference<FlashcardDeckRecord>
+  const q = query(
+    base,
     where('kind', '==', 'personal'),
     where('ownerId', '==', uid),
   )

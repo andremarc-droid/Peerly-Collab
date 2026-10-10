@@ -6,10 +6,12 @@ import {
 } from '@firebase/rules-unit-testing'
 import {
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
+  orderBy,
   query,
   setDoc,
   updateDoc,
@@ -115,6 +117,31 @@ beforeEach(async () => {
 })
 
 describe('Learning Canvas security rules emulator matrix', () => {
+  it('allows collection-group listing of only the signed-in owner’s personal canvases', async () => {
+    const owner = environment.authenticatedContext('personal-owner').firestore()
+    const other = environment.authenticatedContext('other-student').firestore()
+    const signedOut = environment.unauthenticatedContext().firestore()
+    const ownQuery = query(
+      collectionGroup(owner, 'learningCanvases'),
+      where('kind', '==', 'personal'),
+      where('ownerId', '==', 'personal-owner'),
+      orderBy('updatedAt', 'desc'),
+    )
+    await assertSucceeds(getDocs(ownQuery))
+    await assertFails(getDocs(query(
+      collectionGroup(other, 'learningCanvases'),
+      where('kind', '==', 'personal'),
+      where('ownerId', '==', 'personal-owner'),
+      orderBy('updatedAt', 'desc'),
+    )))
+    await assertFails(getDocs(query(
+      collectionGroup(signedOut, 'learningCanvases'),
+      where('kind', '==', 'personal'),
+      where('ownerId', '==', 'personal-owner'),
+      orderBy('updatedAt', 'desc'),
+    )))
+  })
+
   it('matrix for CLASS KIND: read, create, update, delete across all roles', async () => {
     const owner = environment.authenticatedContext('owner').firestore()
     const otherInstructor = environment.authenticatedContext('other-instructor').firestore()

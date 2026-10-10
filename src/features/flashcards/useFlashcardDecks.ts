@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { sortDecksByUpdated, watchMyDecks } from './services'
+import { sortDecksByUpdated, watchMyDecksAcrossClasses } from './services'
 import { watchSharedDecks } from './sharing'
 import type { FlashcardDeckWithId } from './types'
 
@@ -45,9 +45,7 @@ export function useFlashcardDecks({ role, uid, classIds }: UseFlashcardDecksOpti
 
     const unsubs: Array<() => void> = []
     unsubs.push(watchSharedDecks(uid, (items) => update('shared', items), (err) => fail(err.message)))
-    if (classKey.split('|').includes(uid)) {
-      unsubs.push(watchMyDecks(uid, uid, (items) => update(`mine:${uid}`, items), (err) => fail(err.message)))
-    }
+    unsubs.push(watchMyDecksAcrossClasses(uid, (items) => update('mine', items), (err) => fail(err.message)))
     return () => unsubs.forEach((unsubscribe) => unsubscribe())
   }, [classKey, role, uid, viewKey])
 

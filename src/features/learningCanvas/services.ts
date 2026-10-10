@@ -1,5 +1,6 @@
 import {
   doc,
+  collectionGroup,
   getDoc,
   onSnapshot,
   orderBy,
@@ -120,6 +121,25 @@ export function watchMyCanvases(
     },
     onError,
   )
+}
+
+/** Watches the user's private canvases and notes across all storage class partitions. */
+export function watchMyCanvasesAcrossClasses(
+  uid: string,
+  onChange: (canvases: LearningCanvasWithId[]) => void,
+  onError: (error: Error) => void,
+  db: Firestore = firestore,
+) {
+  const q = query(
+    collectionGroup(db, 'learningCanvases'),
+    where('kind', '==', 'personal'),
+    where('ownerId', '==', uid),
+    orderBy('updatedAt', 'desc'),
+  )
+  return onSnapshot(q, (snap) => {
+    const items = snap.docs.map((d) => ({ ...parseLearningCanvasMetadata(d.data()), id: d.id }))
+    onChange(items)
+  }, onError)
 }
 
 export async function createCanvas(

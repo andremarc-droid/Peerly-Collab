@@ -16,7 +16,7 @@ import { NotesTabContent } from './components/NotesTabContent'
 import { CreateLearningCanvasDialog } from './components/CreateLearningCanvasDialog'
 import { SharedCanvasList } from './collab/SharedCanvasList'
 import { useSharedCanvases } from './collab/useSharedCanvases'
-import { watchMyCanvases, createCanvas, deleteCanvas } from './services'
+import { watchMyCanvasesAcrossClasses, createCanvas, deleteCanvas } from './services'
 import type { LearningCanvasWithId } from './types'
 import { NOTE_CONTENT_MAX, NOTE_NODE_ID, noteDescription } from './noteContent'
 import { LearningInviteCodeInput } from '../learningSharing/LearningInviteCodeInput'
@@ -43,7 +43,7 @@ export function LearningHubPage() {
   useEffect(() => {
     if (!workspaceId || !user) return undefined
     setLoading(true)
-    return watchMyCanvases(workspaceId, user.uid, (items) => { setCanvases(items); setLoading(false); setError(null) }, (cause) => { setError(cause.message); setLoading(false) })
+    return watchMyCanvasesAcrossClasses(user.uid, (items) => { setCanvases(items); setLoading(false); setError(null) }, (cause) => { setError(cause.message); setLoading(false) })
   }, [workspaceId, user])
 
   const allCanvases = useMemo(() => aggregateLearningLibrary(canvases, shared.items), [canvases, shared.items])

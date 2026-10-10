@@ -6,6 +6,7 @@ import {
 } from '@firebase/rules-unit-testing'
 import {
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
@@ -70,6 +71,28 @@ beforeEach(async () => {
 })
 
 describe('Flashcard deck security rules', () => {
+  it('allows collection-group listing of only the signed-in owner’s personal decks', async () => {
+    const owner = environment.authenticatedContext('student').firestore()
+    const other = environment.authenticatedContext('outsider').firestore()
+    const signedOut = environment.unauthenticatedContext().firestore()
+    const ownQuery = query(
+      collectionGroup(owner, 'flashcardDecks'),
+      where('kind', '==', 'personal'),
+      where('ownerId', '==', 'student'),
+    )
+    await assertSucceeds(getDocs(ownQuery))
+    await assertFails(getDocs(query(
+      collectionGroup(other, 'flashcardDecks'),
+      where('kind', '==', 'personal'),
+      where('ownerId', '==', 'student'),
+    )))
+    await assertFails(getDocs(query(
+      collectionGroup(signedOut, 'flashcardDecks'),
+      where('kind', '==', 'personal'),
+      where('ownerId', '==', 'student'),
+    )))
+  })
+
   it('class decks: only the class owner sees drafts; active students see published', async () => {
     const owner = environment.authenticatedContext('owner').firestore()
     const student = environment.authenticatedContext('student').firestore()

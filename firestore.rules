@@ -235,6 +235,20 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == userId;
     }
 
+    // Collection-group library queries may list only a user's own personal canvases and notes.
+    match /{path=**}/learningCanvases/{id} {
+      allow list: if signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.kind == 'personal';
+    }
+
+    // Collection-group library queries may list only a user's own personal decks.
+    match /{path=**}/flashcardDecks/{deckId} {
+      allow list: if signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.kind == 'personal';
+    }
+
     match /publicProfiles/{userId} {
       allow get: if signedIn();
       allow list: if false;
