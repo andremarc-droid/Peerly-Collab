@@ -1,5 +1,6 @@
 import { collection, deleteDoc, getDoc, getDocs, limit, query, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
+import { deleteTeamData } from './deleteTeamData'
 import { quizRef } from './paths'
 
 const childCollections = ['questions', 'answerKeys', 'participants', 'attempts', 'results', 'images'] as const
@@ -32,5 +33,7 @@ export async function deleteQuizCascade(quizId: string, db: Firestore = firestor
       if (page.size < 400) break
     }
   }
+  // Group quizzes: teams, live sessions, reveals and private picks. Does nothing for quizzes that never had teams.
+  await deleteTeamData(quizId, db)
   await deleteDoc(quizRef(db, quizId))
 }

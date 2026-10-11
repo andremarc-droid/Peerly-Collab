@@ -7,6 +7,7 @@ import { deleteClassCascade } from '../classes/services/deleteClassCascade'
 import { enrollmentsRef } from '../classes/services/paths'
 import { deleteCanvasSubcollections } from '../learningCanvas/collab/cleanup'
 import { deleteQuizCascade } from '../quizzes/services/deleteQuizCascade'
+import { cleanupGroupQuizData } from '../quizzes/services/teamService'
 import { deleteMyTurnIns } from '../assignments/services/turnInService'
 import { cleanupGroups } from '../groups/services'
 import { cleanupGames } from '../games/services'
@@ -114,6 +115,9 @@ export async function deleteAccountData(uid: string, role: UserRole | null, db: 
   // Hosted games are deleted and the person is removed from the game they play. If this fails the error propagates,
   // nothing else is deleted and the Auth account stays, so the person can simply retry.
   await cleanupGames()
+  // Group quizzes: takes this person off every team (a team left empty is deleted). Same rule: if it fails, nothing
+  // else is deleted and the Auth account stays, so the person can retry.
+  await cleanupGroupQuizData()
   await deleteLearningPlans(uid, db)
   await emptyCollection(db, 'users', uid, 'deckProgress')
   await emptyCollection(db, 'users', uid, 'studyAttempts')

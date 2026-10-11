@@ -1,7 +1,8 @@
 import { Timestamp } from 'firebase/firestore'
 import type {
-  AnswerKey, Quiz, QuizAttempt, QuizParticipant, QuizQuestion, QuizResult, QuizSettings,
+  AnswerKey, Participation, Quiz, QuizAttempt, QuizParticipant, QuizQuestion, QuizResult, QuizSettings,
 } from '../types'
+import { ANSWER_MODES, GROUP_LIMITS, TEAM_FORMATIONS } from '../types/group'
 import { validateCanvasDefinition, validateCanvasKey } from '../../canvas/schemas'
 
 export class DomainValidationError extends Error {
@@ -42,17 +43,30 @@ const oneOf = <T extends string>(value: unknown, values: readonly T[], name: str
 
 const quizKeys = ['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'boardKind', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings']
 const settingsKeys = ['answerReveal', 'participation', 'scoreVisibility', 'scoresReleased', 'timeLimitMinutes', 'attemptsAllowed', 'shuffleQuestions', 'shuffleOptions']
+const groupKeys = ['type', 'groupSize', 'answerMode', 'teamFormation', 'waitForEveryone', 'questionTimeSec']
 
 export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSettings {
   const settings = record(value, 'settings')
   exactKeys(settings, settingsKeys, 'settings')
   const participation = record(settings.participation, 'settings.participation')
   const participationType = oneOf(participation.type, ['individual', 'group'] as const, 'settings.participation.type')
-  exactKeys(participation, participationType === 'group' ? ['type', 'groupSize'] : ['type'], 'settings.participation')
-  const parsedParticipation = participationType === 'group'
-    ? { type: 'group' as const, groupSize: integer(participation.groupSize, 'groupSize', 2) }
-    : { type: 'individual' as const }
-  if (parsedParticipation.type === 'group' && parsedParticipation.groupSize > 10) throw new DomainValidationError('groupSize cannot exceed 10')
+  exactKeys(participation, participationType === 'group' ? groupKeys : ['type'], 'settings.participation')
+  const parsedParticipation: Participation = participationType === 'group'
+    ? {
+      type: 'group',
+      groupSize: integer(participation.groupSize, 'groupSize', GROUP_LIMITS.minTeamSize),
+      // Older documents only stored groupSize, so every newer field has a safe default.
+      answerMode: participation.answerMode === undefined ? 'representative' : oneOf(participation.answerMode, ANSWER_MODES, 'answerMode'),
+      teamFormation: participation.teamFormation === undefined ? 'assigned' : oneOf(participation.teamFormation, TEAM_FORMATIONS, 'teamFormation'),
+      waitForEveryone: participation.waitForEveryone === undefined ? false : bool(participation.waitForEveryone, 'waitForEveryone'),
+      questionTimeSec: participation.questionTimeSec === undefined || participation.questionTimeSec === null ? null : integer(participation.questionTimeSec, 'questionTimeSec', GROUP_LIMITS.minQuestionTimeSec),
+    }
+    : { type: 'individual' }
+  if (parsedParticipation.type === 'group') {
+    if (parsedParticipation.groupSize > GROUP_LIMITS.maxTeamSize) throw new DomainValidationError('groupSize cannot exceed 10')
+    if (parsedParticipation.questionTimeSec !== null && parsedParticipation.questionTimeSec > GROUP_LIMITS.maxQuestionTimeSec) throw new DomainValidationError('questionTimeSec cannot exceed 300')
+    if (mode !== 'quiz') throw new DomainValidationError('Only quizzes can be taken as a group')
+  }
   const answerReveal = oneOf(settings.answerReveal, ['after_each', 'after_submit', 'never'] as const, 'answerReveal')
   const scoreVisibility = oneOf(settings.scoreVisibility, ['immediate', 'after_release', 'hidden'] as const, 'scoreVisibility')
   if (mode === 'flashcards' && (answerReveal !== 'never' || scoreVisibility !== 'hidden' || settings.scoresReleased !== false)) {
@@ -180,7 +194,7 @@ export function validateQuestionAnswerPair(
 
 export function parseQuizAttempt(value: unknown): QuizAttempt {
   const attempt = record(value, 'attempt')
-  exactKeys(attempt, ['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds'], 'attempt')
+  exactKeys(attempt, ['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds', 'teamId', 'teamName'], 'attempt')
   const answers = record(attempt.answers, 'answers')
   if (Object.keys(answers).length > 200) throw new DomainValidationError('answers must not exceed 200 items')
   for (const [id, answer] of Object.entries(answers)) {
@@ -232,6 +246,8 @@ export function parseQuizAttempt(value: unknown): QuizAttempt {
     optionOrder: optionOrder as QuizAttempt['optionOrder'], startedAt: timestamp(attempt.startedAt, 'startedAt'),
     submittedAt: attempt.submittedAt === null ? null : timestamp(attempt.submittedAt, 'submittedAt'),
     timeSpentSeconds: integer(attempt.timeSpentSeconds, 'timeSpentSeconds'),
+    ...(typeof attempt.teamId === 'string' ? { teamId: attempt.teamId } : {}),
+    ...(typeof attempt.teamName === 'string' ? { teamName: attempt.teamName } : {}),
   }
 }
 

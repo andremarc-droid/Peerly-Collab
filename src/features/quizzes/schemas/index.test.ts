@@ -20,7 +20,8 @@ describe('quiz runtime schemas', () => {
   it('rejects invalid settings, dates, group sizes, and non-neutral flashcard settings', () => {
     expect(() => parseQuiz({ ...quiz(), settings: { ...defaultQuizSettings('quiz'), participation: { type: 'group', groupSize: 11 } } })).toThrow(DomainValidationError)
     expect(() => parseQuiz({ ...quiz('flashcards'), settings: { ...defaultQuizSettings('quiz'), answerReveal: 'after_each' } })).toThrow('neutral')
-    expect(() => parseQuiz({ ...quiz('canvas'), settings: { ...defaultQuizSettings('canvas'), participation: { type: 'group', groupSize: 2 } } })).toThrow('individual')
+    // Group mode is for standard quizzes only; the schema's message names that rule.
+    expect(() => parseQuiz({ ...quiz('canvas'), settings: { ...defaultQuizSettings('canvas'), participation: { type: 'group', groupSize: 2 } } })).toThrow('Only quizzes can be taken as a group')
     expect(() => parseQuiz({ ...quiz(), createdAt: 1 })).toThrow('Firestore timestamp')
   })
 

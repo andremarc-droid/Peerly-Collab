@@ -27,6 +27,22 @@ import {
   submitAnswer as submitAnswerHandler,
   syncGame as syncGameHandler,
 } from './liveGames.js'
+import {
+  addTeamMember as addTeamMemberHandler,
+  advanceTeam as advanceTeamHandler,
+  cleanupGroupQuizData as cleanupGroupQuizDataHandler,
+  createSelfTeam as createSelfTeamHandler,
+  createTeam as createTeamHandler,
+  deleteTeam as deleteTeamHandler,
+  joinTeam as joinTeamHandler,
+  leaveTeam as leaveTeamHandler,
+  lockTeamAnswer as lockTeamAnswerHandler,
+  removeTeamMember as removeTeamMemberHandler,
+  setRepresentative as setRepresentativeHandler,
+  startTeamAttempt as startTeamAttemptHandler,
+  submitTeamAnswer as submitTeamAnswerHandler,
+  submitTeamAttempt as submitTeamAttemptHandler,
+} from './groupQuizzes.js'
 
 initializeApp()
 
@@ -148,3 +164,19 @@ export const endGame = onCall({ region: 'us-central1' }, endGameHandler)
 export const kickPlayer = onCall({ region: 'us-central1' }, kickPlayerHandler)
 export const deleteGame = onCall({ region: 'us-central1', timeoutSeconds: 120 }, deleteGameHandler)
 export const cleanupGames = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, cleanupGamesHandler)
+
+// Group quizzes: the only code that writes team, session and team result data.
+export const createTeam = onCall({ region: 'us-central1' }, createTeamHandler)
+export const addTeamMember = onCall({ region: 'us-central1' }, addTeamMemberHandler)
+export const createSelfTeam = onCall({ region: 'us-central1' }, createSelfTeamHandler)
+export const joinTeam = onCall({ region: 'us-central1' }, joinTeamHandler)
+export const leaveTeam = onCall({ region: 'us-central1' }, leaveTeamHandler)
+export const removeTeamMember = onCall({ region: 'us-central1' }, removeTeamMemberHandler)
+export const setRepresentative = onCall({ region: 'us-central1' }, setRepresentativeHandler)
+export const deleteTeam = onCall({ region: 'us-central1', timeoutSeconds: 120 }, deleteTeamHandler)
+export const startTeamAttempt = onCall({ region: 'us-central1' }, startTeamAttemptHandler)
+export const submitTeamAnswer = onCall({ region: 'us-central1' }, submitTeamAnswerHandler)
+export const lockTeamAnswer = onCall({ region: 'us-central1' }, lockTeamAnswerHandler)
+export const advanceTeam = onCall({ region: 'us-central1' }, advanceTeamHandler)
+export const submitTeamAttempt = onCall({ region: 'us-central1', timeoutSeconds: 120 }, submitTeamAttemptHandler)
+export const cleanupGroupQuizData = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, cleanupGroupQuizDataHandler)

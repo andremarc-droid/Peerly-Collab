@@ -7,9 +7,22 @@ export type QuestionType = 'multiple_choice' | 'true_false' | 'identification' |
 export type AnswerReveal = 'after_each' | 'after_submit' | 'never'
 export type ScoreVisibility = 'immediate' | 'after_release' | 'hidden'
 
-export type Participation =
-  | { type: 'individual' }
-  | { type: 'group'; groupSize: number }
+export type AnswerMode = 'representative' | 'everyone'
+export type TeamFormation = 'assigned' | 'self'
+
+export interface GroupParticipation {
+  type: 'group'
+  groupSize: number
+  /** representative: one teammate submits. everyone: each member answers, then any member locks the team's final answer. */
+  answerMode: AnswerMode
+  teamFormation: TeamFormation
+  /** The team does not advance until everyone (or the representative) has answered. */
+  waitForEveryone: boolean
+  /** Seconds per question, enforced by the server. null means no timer. */
+  questionTimeSec: number | null
+}
+
+export type Participation = { type: 'individual' } | GroupParticipation
 
 export interface QuizSettings {
   answerReveal: AnswerReveal
@@ -142,6 +155,9 @@ export interface QuizAttempt {
   startedAt: Timestamp
   submittedAt: Timestamp | null
   timeSpentSeconds: number
+  /** Only on attempts written for a team: the team this attempt belongs to. Solo attempts never have these. */
+  teamId?: string
+  teamName?: string
 }
 
 export interface QuestionResult {

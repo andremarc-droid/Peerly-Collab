@@ -27,7 +27,7 @@ export async function startAttempt(quizId: string, userId: string, userName: str
     if (!parent.exists()) throw new Error('Quiz not found')
     const quiz = parseQuiz(parent.data())
     if (quiz.status !== 'published') throw new Error('Only published quizzes can be started')
-    if (quiz.settings.participation.type !== 'individual') throw new Error('Group quizzes are coming soon.')
+    if (quiz.settings.participation.type !== 'individual') throw new Error('Group quizzes are played with your team.')
     if (questions.length === 0) throw new Error('This quiz has no questions')
     const priorParticipant = participantSnapshot.exists() ? parseQuizParticipant(participantSnapshot.data()) : null
     const attemptCount = priorParticipant?.attemptCount ?? 0
