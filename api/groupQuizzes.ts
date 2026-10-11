@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { getApps, initializeApp, cert } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import * as handlers from '../functions/lib/groupQuizzes.js'
+import * as handlers from '../functions/src/groupQuizzes.js'
 
 function initFirebase() {
   if (getApps().length === 0) {
