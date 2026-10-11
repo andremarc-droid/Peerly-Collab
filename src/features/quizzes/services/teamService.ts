@@ -2,15 +2,38 @@ import { httpsCallable } from 'firebase/functions'
 import { collection, doc, onSnapshot, type Firestore } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
 import { functions } from '../../../lib/firebase/functions'
+import { auth } from '../../../lib/firebase/auth'
 import { parseReveal, parseSession, parseTeam } from '../schemas/team'
 import type { Team, TeamAnswer, TeamReveal, TeamSession } from '../types/team'
 
 /**
- * Group quiz client. Every change goes through a Cloud Function, because waiting, timers and "only the representative
- * answers" are only real when a trusted server enforces them. The browser reads teams, the current question and reveals.
+ * Group quiz client. Every change goes through a Cloud Function (or Vercel Serverless Function), because waiting,
+ * timers and "only the representative answers" are only real when a trusted server enforces them. The browser reads
+ * teams, the current question and reveals.
  */
 
-const call = <I, O>(name: string, data: I) => httpsCallable<I, O>(functions, name)(data).then(result => result.data)
+async function call<I, O>(name: string, data: I): Promise<O> {
+  if (import.meta.env.MODE === 'test' || import.meta.env.VITE_USE_EMULATORS === 'true') {
+    return httpsCallable<I, O>(functions, name)(data).then(result => result.data)
+  }
+  const token = await auth.currentUser?.getIdToken()
+  const response = await fetch('/api/groupQuizzes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ action: name, data }),
+  })
+  const json = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(json.error || json.message || 'Something went wrong.')
+    ;(error as { code?: string }).code = json.code || 'functions/internal'
+    throw error
+  }
+  return json.result as O
+}
+
 type Fail = (error: Error) => void
 type Ok = { ok: true }
 

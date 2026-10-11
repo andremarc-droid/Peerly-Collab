@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:functions && tsc -b && vite build",
     "typecheck": "tsc -b",
     "lint": "oxlint",
     "test": "cross-env XDG_CONFIG_HOME=node_modules/.cache/firebase-cli-config firebase emulators:exec --only auth,firestore --project demo-peerly-collab \"vitest run\"",
@@ -23,6 +23,8 @@
     "@tailwindcss/vite": "^4.3.3",
     "@xyflow/react": "12.12.0",
     "firebase": "^11.10.0",
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0",
     "lucide-react": "^1.49.0",
     "pdfjs-dist": "^5.4.54",
     "react": "^19.2.8",
