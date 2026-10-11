@@ -1,4 +1,4 @@
-import { getGroqConfig, type GroqConfig } from './requiredEnv'
+import { getGroqConfig, getGroqVisionModel, modelReadsImages, type GroqConfig } from './requiredEnv'
 
 export const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions'
 export const DEFAULT_MAX_TOKENS = 1024
@@ -107,7 +107,10 @@ async function toGroqError(response: Response): Promise<GroqError> {
  * Qwen models run in fast instruct mode (reasoning_effort "none") to save tokens against the rate limit.
  */
 export async function createChatCompletion(options: ChatCompletionOptions): Promise<string> {
-  const config = options.config ?? getGroqConfig()
+  const configured = options.config ?? getGroqConfig()
+  const hasImages = options.messages.some((message) => Array.isArray(message.content) && message.content.some((part) => part.type === 'image_url'))
+  // A text-only model (such as gpt-oss) cannot read images, so requests that contain images use the vision model.
+  const config = hasImages && !modelReadsImages(configured.model) ? { ...configured, model: getGroqVisionModel() } : configured
   const send: GroqFetch = options.fetchImpl ?? ((input, init) => fetch(input, init))
 
   const body: Record<string, unknown> = {

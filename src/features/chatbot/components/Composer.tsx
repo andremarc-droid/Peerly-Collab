@@ -1,9 +1,12 @@
-import { useState, type KeyboardEvent } from 'react'
-import { Send, Square } from 'lucide-react'
+import { useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from 'react'
+import { ImagePlus, Send, Square, X } from 'lucide-react'
 import { Alert } from '../../../shared/ui/Alert'
 import { Button } from '../../../shared/ui/Button'
+import { toDataUrl } from '../../canvas/imageProcessing'
 import { DocumentChips, DocumentPicker, useDocumentImport } from '../../documents'
-import { MAX_DOCUMENTS_PER_MESSAGE, MAX_MESSAGE_CHARS } from '../constants'
+import { MAX_DOCUMENTS_PER_MESSAGE, MAX_IMAGES_PER_MESSAGE, MAX_MESSAGE_CHARS } from '../constants'
+import { prepareChatImages } from '../images'
+import type { ChatImage } from '../types'
 import type { SendInput } from '../useChatbot'
 import '../chatbot.css'
 
@@ -25,20 +28,56 @@ function usesTouchKeyboard(): boolean {
 export function Composer({ disabled, busy, allowDocuments = true, onSend, onStop }: ComposerProps) {
   const [text, setText] = useState('')
   const upload = useDocumentImport(MAX_DOCUMENTS_PER_MESSAGE)
+  const [images, setImages] = useState<ChatImage[]>([])
+  const [imageErrors, setImageErrors] = useState<string[]>([])
+  const [preparingImages, setPreparingImages] = useState(false)
+  const imageInput = useRef<HTMLInputElement>(null)
 
   const tooLong = text.length > MAX_MESSAGE_CHARS
-  const hasContent = text.trim().length > 0 || upload.documents.length > 0
-  const canSend = !disabled && !busy && !upload.preparing && hasContent && !tooLong
+  const hasContent = text.trim().length > 0 || upload.documents.length > 0 || images.length > 0
+  const canSend = !disabled && !busy && !upload.preparing && !preparingImages && hasContent && !tooLong
+
+  /** Resizes each picked or pasted image and keeps it as base64 until the message is sent. */
+  async function addImages(files: File[]) {
+    if (files.length === 0) return
+    setPreparingImages(true)
+    try {
+      const result = await prepareChatImages(files, images.length)
+      setImages((current) => [...current, ...result.images].slice(0, MAX_IMAGES_PER_MESSAGE))
+      setImageErrors(result.errors)
+    } finally {
+      setPreparingImages(false)
+    }
+  }
+
+  function handleImagePick(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    void addImages(files)
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith('image/'))
+    if (files.length === 0) return
+    event.preventDefault()
+    void addImages(files)
+  }
+
+  function removeImage(id: string) {
+    setImages((current) => current.filter((image) => image.id !== id))
+    setImageErrors([])
+  }
 
   function submit() {
     if (!canSend) return
     const documents = upload.documents.map(({ id, name, text: body, truncated }) => ({ id, name, text: body, truncated }))
-    // Images can no longer be attached, so `images` is always empty (the field stays for the send API and saved chats).
     // Only include `documents` when there are some, so messages without them look exactly as before.
-    const input: SendInput = documents.length > 0 ? { text, images: [], documents } : { text, images: [] }
+    const input: SendInput = documents.length > 0 ? { text, images, documents } : { text, images }
     if (onSend(input)) {
       setText('')
       upload.clear()
+      setImages([])
+      setImageErrors([])
     }
   }
 
@@ -67,10 +106,40 @@ export function Composer({ disabled, busy, allowDocuments = true, onSend, onStop
           </Alert>
         )}
 
+        {images.length > 0 && (
+          <ul className="m-0 flex list-none flex-wrap gap-2 p-0 px-1" aria-label="Images to send">
+            {images.map((image) => (
+              <li key={image.id} className="relative">
+                <img
+                  src={toDataUrl(image.mimeType, image.data)}
+                  alt={image.name}
+                  className="size-16 rounded-xl border border-navy-900-12 object-cover"
+                />
+                <button
+                  type="button"
+                  className="absolute -right-2 -top-2 inline-flex size-6 cursor-pointer items-center justify-center rounded-full border-0 bg-navy-900 text-white"
+                  aria-label={`Remove ${image.name}`}
+                  onClick={() => removeImage(image.id)}
+                  disabled={disabled}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {imageErrors.length > 0 && (
+          <Alert tone="warning" label="Some images were not added">
+            {imageErrors.join(' ')}
+          </Alert>
+        )}
+
         <textarea
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           rows={Math.min(6, Math.max(1, text.split('\n').length))}
           placeholder={disabled ? 'The AI tutor is not available.' : 'Ask the tutor…'}
           aria-label="Message to the AI tutor"
@@ -81,6 +150,27 @@ export function Composer({ disabled, busy, allowDocuments = true, onSend, onStop
         />
 
         <div className="flex items-center gap-2">
+          <input
+            ref={imageInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            hidden
+            tabIndex={-1}
+            aria-label="Choose images"
+            onChange={handleImagePick}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            className="tutor-icon-btn tutor-icon-btn--labelled"
+            onClick={() => imageInput.current?.click()}
+            disabled={disabled || preparingImages || images.length >= MAX_IMAGES_PER_MESSAGE}
+            aria-label="Attach image"
+          >
+            <ImagePlus size={16} aria-hidden="true" />
+            <span className="hidden sm:inline">{preparingImages ? 'Adding…' : 'Image'}</span>
+          </Button>
           <DocumentPicker
             onFiles={(files) => void upload.addFiles(files)}
             count={upload.documents.length}

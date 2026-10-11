@@ -35,6 +35,18 @@ export function getGroqLessonModel(env: EnvSource = import.meta.env): string {
   return env[GROQ_LESSON_MODEL_VAR]?.trim() || DEFAULT_GROQ_LESSON_MODEL
 }
 
+export const GROQ_VISION_MODEL_VAR = 'VITE_GROQ_VISION_MODEL'
+
+/** False for models known to be text-only. Any other model is assumed to read images. */
+export function modelReadsImages(model: string): boolean {
+  return !model.startsWith('openai/gpt-oss')
+}
+
+/** The model used for requests that contain images when the main model cannot read them. */
+export function getGroqVisionModel(env: EnvSource = import.meta.env): string {
+  return env[GROQ_VISION_MODEL_VAR]?.trim() || DEFAULT_GROQ_MODEL
+}
+
 /** A plain-language problem description, or null when Groq is configured. */
 export function getGroqConfigIssue(env: EnvSource = import.meta.env): string | null {
   try {

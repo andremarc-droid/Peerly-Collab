@@ -4,9 +4,11 @@ import rules from '../../../firestore.rules?raw'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteAccountData } from './accountData'
 import { cleanupGroups } from '../groups/services'
+import { cleanupGroupQuizData } from '../quizzes/services/teamService'
 
 vi.mock('../groups/services', () => ({ cleanupGroups: vi.fn().mockResolvedValue({ success: true }) }))
 vi.mock('../games/services', () => ({ cleanupGames: vi.fn().mockResolvedValue({ success: true }) }))
+vi.mock('../quizzes/services/teamService', () => ({ cleanupGroupQuizData: vi.fn().mockResolvedValue({ removed: 0 }) }))
 
 let environment: RulesTestEnvironment
 beforeAll(async () => { environment = await initializeTestEnvironment({ projectId: 'demo-peerly-collab', firestore: { host: '127.0.0.1', port: Number(process.env.PEERLY_FIRESTORE_TEST_PORT ?? 8180), rules } }) })
@@ -43,6 +45,13 @@ describe('deleteAccountData lesson cleanup', () => {
   })
   it('cleans up group memberships before deleting the account profile', async () => {
     const cleanup = vi.mocked(cleanupGroups)
+    cleanup.mockClear()
+    const db = environment.authenticatedContext('learner').firestore()
+    await deleteAccountData('learner', 'student', db as unknown as Firestore)
+    expect(cleanup).toHaveBeenCalledOnce()
+  })
+  it('takes the person off group quiz teams before deleting the account profile', async () => {
+    const cleanup = vi.mocked(cleanupGroupQuizData)
     cleanup.mockClear()
     const db = environment.authenticatedContext('learner').firestore()
     await deleteAccountData('learner', 'student', db as unknown as Firestore)

@@ -1,9 +1,17 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MAX_MESSAGE_CHARS } from '../constants'
 import type { SendInput } from '../useChatbot'
 import { Composer } from './Composer'
+
+// Resizing needs a real canvas, so the tests stand in for it and only check how the composer uses the result.
+vi.mock('../images', () => ({
+  prepareChatImages: vi.fn(async (files: File[]) => ({
+    images: files.map((file, index) => ({ id: `img-${index}`, data: 'AAAA', mimeType: 'image/jpeg', width: 10, height: 10, name: file.name })),
+    errors: [],
+  })),
+}))
 
 function setup(options: { accept?: boolean; disabled?: boolean; busy?: boolean } = {}) {
   const onSend = vi.fn<(input: SendInput) => boolean>(() => options.accept ?? true)
@@ -74,19 +82,43 @@ describe('Composer', () => {
   })
 
   describe('images', () => {
-    it('does not offer to attach images', () => {
+    it('offers to attach images', () => {
       setup()
-      expect(screen.queryByRole('button', { name: /Attach image/ })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Attach image' })).toBeEnabled()
     })
 
-    it('ignores an image pasted into the message box', () => {
-      const { onSend, box } = setup()
+    it('shows a picked image and sends it as base64 with the message', async () => {
+      const { onSend } = setup()
       const file = new File(['pixels'], 'notes.png', { type: 'image/png' })
+      fireEvent.change(screen.getByLabelText('Choose images'), { target: { files: [file] } })
+
+      expect(await screen.findByAltText('notes.png')).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled())
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+      expect(onSend).toHaveBeenCalledWith({ text: '', images: [expect.objectContaining({ name: 'notes.png', data: 'AAAA', mimeType: 'image/jpeg' })] })
+      expect(screen.queryByAltText('notes.png')).not.toBeInTheDocument()
+    })
+
+    it('accepts an image pasted into the message box', async () => {
+      setup()
+      const file = new File(['pixels'], 'pasted.png', { type: 'image/png' })
+      const box = screen.getByLabelText('Message to the AI tutor')
       fireEvent.paste(box, { clipboardData: { files: [file] } })
+
+      expect(await screen.findByAltText('pasted.png')).toBeInTheDocument()
+    })
+
+    it('removes an attached image before sending', async () => {
+      const { onSend } = setup()
+      const file = new File(['pixels'], 'notes.png', { type: 'image/png' })
+      fireEvent.change(screen.getByLabelText('Choose images'), { target: { files: [file] } })
+      await screen.findByAltText('notes.png')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove notes.png' }))
 
       expect(screen.queryByAltText('notes.png')).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
-      fireEvent.keyDown(box, { key: 'Enter' })
       expect(onSend).not.toHaveBeenCalled()
     })
   })
