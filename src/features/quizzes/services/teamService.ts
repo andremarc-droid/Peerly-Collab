@@ -27,6 +27,7 @@ async function call<I, O>(name: string, data: I): Promise<O> {
   })
   const json = await response.json().catch(() => ({}))
   if (!response.ok) {
+    console.error(`[groupQuizzes API Error: ${name}]`, json)
     const error = new Error(json.error || json.message || 'Something went wrong.')
     ;(error as { code?: string }).code = json.code || 'functions/internal'
     throw error

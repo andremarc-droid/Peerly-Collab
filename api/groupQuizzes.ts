@@ -6,17 +6,20 @@ import * as handlers from '../functions/lib/groupQuizzes.js'
 function initFirebase() {
   if (getApps().length === 0) {
     const raw = process.env.FIREBASE_SERVICE_ACCOUNT?.trim()
-    if (raw) {
-      try {
-        const jsonStr = raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf-8')
-        const credentials = JSON.parse(jsonStr)
-        initializeApp({ credential: cert(credentials) })
-      } catch (err) {
-        console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT, falling back to default credentials:', err)
-        initializeApp()
+    if (!raw) {
+      throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is missing on Vercel. Please add your Firebase Service Account JSON in Vercel Project Settings.')
+    }
+    try {
+      const jsonStr = raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf-8')
+      const credentials = JSON.parse(jsonStr) as Record<string, unknown>
+      if (typeof credentials.private_key === 'string') {
+        credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
       }
-    } else {
-      initializeApp()
+      initializeApp({ credential: cert(credentials) })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT:', err)
+      throw new Error(`FIREBASE_SERVICE_ACCOUNT invalid: ${msg}`)
     }
   }
 }
@@ -56,44 +59,45 @@ export default async function handler(
     return
   }
 
-  initFirebase()
-
-  const body = req.body || await parseBody(req)
-  const action = typeof body.action === 'string' ? body.action : ''
-  const data = body.data
-
-  const authHeader = req.headers.authorization
-  let uid: string | undefined
-  if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7)
-    try {
-      const decoded = await getAuth().verifyIdToken(token)
-      uid = decoded.uid
-    } catch (err) {
-      console.warn('Invalid ID token provided:', err)
-    }
-  }
-
-  const handlerFn = (handlers as Record<string, unknown>)[action] as ((call: unknown) => Promise<unknown>) | undefined
-  if (typeof handlerFn !== 'function') {
-    res.statusCode = 400
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: `Unknown action: ${action}` }))
-    return
-  }
-
-  const call = {
-    auth: uid ? { uid, token: {} } : undefined,
-    data,
-    rawRequest: req,
-  }
-
   try {
+    initFirebase()
+
+    const body = req.body || await parseBody(req)
+    const action = typeof body?.action === 'string' ? body.action : ''
+    const data = body?.data
+
+    const authHeader = req.headers.authorization
+    let uid: string | undefined
+    if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7)
+      try {
+        const decoded = await getAuth().verifyIdToken(token)
+        uid = decoded.uid
+      } catch (err) {
+        console.warn('Invalid ID token provided:', err)
+      }
+    }
+
+    const handlerFn = (handlers as Record<string, unknown>)[action] as ((call: unknown) => Promise<unknown>) | undefined
+    if (typeof handlerFn !== 'function') {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ error: `Unknown action: ${action}` }))
+      return
+    }
+
+    const call = {
+      auth: uid ? { uid, token: {} } : undefined,
+      data,
+      rawRequest: req,
+    }
+
     const result = await handlerFn(call)
     res.statusCode = 200
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({ result }))
   } catch (err: unknown) {
+    console.error('[groupQuizzes API error]:', err)
     const errorObj = err as { httpErrorCode?: { status?: number }; message?: string; code?: string }
     const status = errorObj?.httpErrorCode?.status || 500
     const rawCode = errorObj?.code || 'internal'
