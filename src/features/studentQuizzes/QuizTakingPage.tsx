@@ -76,7 +76,7 @@ export function QuizTakingPage() {
     void Promise.all([getQuiz(quizId), getAttempt(quizId, attemptId), listQuestions(quizId)]).then(([foundQuiz, foundAttempt, rawQuestions]) => {
       if (!live) return
       if (!foundQuiz || !foundAttempt || foundAttempt.userId !== user.uid || foundAttempt.status !== 'in_progress') { setError('This attempt is unavailable.'); setLoading(false); return }
-      if (foundQuiz.settings.participation.type === 'group') { setError('Group quizzes are coming soon.'); setLoading(false); return }
+      if (foundQuiz.settings.participation.type === 'group') { navigate(`/student/quizzes/${foundQuiz.id}/team`, { replace: true }); return }
       const records = rawQuestions.map(({ id, ...value }) => ({ ...parseQuestion(value), id }))
       setQuiz(foundQuiz); setAttempt({ ...foundAttempt, id: attemptId }); setAnswers(foundAttempt.answers)
       setQuestions(persistedQuestionOrder(foundAttempt, records)); setLoading(false)

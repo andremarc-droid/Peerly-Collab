@@ -90,11 +90,14 @@ export function StudentQuizCatalogPage() {
 }
 
 function CatalogCard({ quiz }: { quiz: CatalogQuiz }) {
+  const isGroup = quiz.settings.participation.type === 'group'
   const remaining = quiz.settings.attemptsAllowed === null ? null : Math.max(0, quiz.settings.attemptsAllowed - quiz.attempts.length)
   const latest = quiz.attempts.find((item) => item.status === 'in_progress')
-  const disabledGroup = quiz.settings.participation.type === 'group'
   const questionsLabel = quiz.mode === 'canvas' ? '1 canvas board' : `${quiz.questionCount} question${quiz.questionCount === 1 ? '' : 's'}`
-  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${questionsLabel}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} min` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><QuizTypeBadge mode={quiz.mode} />{quiz.mode === 'canvas' && quiz.boardKind === 'blank' && <Badge>Graded by instructor</Badge>}<Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={disabledGroup ? undefined : latest ? `/student/quizzes/${quiz.id}/attempts/${latest.id}` : `/student/quizzes/${quiz.id}`} disabled={disabledGroup || (remaining === 0 && !latest)} variant="secondary">{disabledGroup ? 'Group quizzes coming soon' : latest ? 'Resume' : 'View quiz'}</Button></DataCard>
+  const to = isGroup ? `/student/quizzes/${quiz.id}/team` : latest ? `/student/quizzes/${quiz.id}/attempts/${latest.id}` : `/student/quizzes/${quiz.id}`
+  const label = isGroup ? 'Play with team' : latest ? 'Resume' : 'View quiz'
+  const disabled = !isGroup && remaining === 0 && !latest
+  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${questionsLabel}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} min` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><QuizTypeBadge mode={quiz.mode} />{quiz.mode === 'canvas' && quiz.boardKind === 'blank' && <Badge>Graded by instructor</Badge>}<Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={to} disabled={disabled} variant="secondary">{disabled ? 'No attempts left' : label}</Button></DataCard>
 }
 
 function QuizCard({ quiz, attempt, action }: { quiz: CatalogQuiz; attempt: QuizAttempt & { id: string }; action: string }) {

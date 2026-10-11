@@ -304,8 +304,8 @@ function StudentClassDetail({ classId }: { classId: string }) {
                 const latestActive = attempts.find((a) => a.status === 'in_progress')
                 const remaining = quiz.settings.attemptsAllowed === null ? null : Math.max(0, quiz.settings.attemptsAllowed - attempts.length)
                 const meta = `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} minute time limit` : ' · No time limit'}${remaining !== null ? ` · ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left` : ' · Unlimited attempts'}`
-                const to = groupQuiz ? undefined : latestActive ? `/student/quizzes/${quiz.id}/attempts/${latestActive.id}` : `/student/quizzes/${quiz.id}`
-                const label = groupQuiz ? 'Start · Group quizzes coming soon' : latestActive ? 'Resume' : 'Start'
+                const to = groupQuiz ? `/student/quizzes/${quiz.id}/team` : latestActive ? `/student/quizzes/${quiz.id}/attempts/${latestActive.id}` : `/student/quizzes/${quiz.id}`
+                const label = groupQuiz ? 'Play with team' : latestActive ? 'Resume' : 'Start'
                 return (
                   <DataCard
                     key={quiz.id}
@@ -325,9 +325,9 @@ function StudentClassDetail({ classId }: { classId: string }) {
                     <Button
                       to={to}
                       variant="secondary"
-                      disabled={groupQuiz || (remaining === 0 && !latestActive)}
+                      disabled={!groupQuiz && remaining === 0 && !latestActive}
                     >
-                      {remaining === 0 && !latestActive ? 'No attempts left' : label}
+                      {!groupQuiz && remaining === 0 && !latestActive ? 'No attempts left' : label}
                     </Button>
                   </DataCard>
                 )
