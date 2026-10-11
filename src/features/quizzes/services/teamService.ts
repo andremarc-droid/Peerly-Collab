@@ -16,7 +16,16 @@ async function call<I, O>(name: string, data: I): Promise<O> {
   if (import.meta.env.MODE === 'test' || import.meta.env.VITE_USE_EMULATORS === 'true') {
     return httpsCallable<I, O>(functions, name)(data).then(result => result.data)
   }
-  const token = await auth.currentUser?.getIdToken()
+  if (typeof auth.authStateReady === 'function') {
+    await auth.authStateReady()
+  }
+  let token = await auth.currentUser?.getIdToken()
+  if (!token && auth.currentUser) {
+    token = await auth.currentUser.getIdToken(true).catch(() => undefined)
+  }
+  if (!token) {
+    console.warn(`[teamService: ${name}] No active auth token (currentUser: ${auth.currentUser?.uid || 'null'})`)
+  }
   const response = await fetch('/api/groupQuizzes', {
     method: 'POST',
     headers: {

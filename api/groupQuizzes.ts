@@ -100,16 +100,48 @@ export default async function handler(
 
     phase = 'verifyAuth'
     const authHeader = req.headers.authorization
-    let uid: string | undefined
-    if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7)
-      try {
-        const { getAuth } = await import('firebase-admin/auth')
-        const decoded = await getAuth().verifyIdToken(token)
-        uid = decoded.uid
-      } catch (err) {
-        console.warn('Invalid ID token provided:', err)
-      }
+    if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+      res.statusCode = 401
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({
+        error: 'Missing Authorization header. Please sign in.',
+        code: 'functions/unauthenticated',
+        phase: 'verifyAuth',
+        details: 'No Bearer token provided in request headers.',
+      }))
+      return
+    }
+
+    const token = authHeader.substring(7).trim()
+    if (!token) {
+      res.statusCode = 401
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({
+        error: 'Empty Bearer token provided.',
+        code: 'functions/unauthenticated',
+        phase: 'verifyAuth',
+        details: 'Bearer token string was empty.',
+      }))
+      return
+    }
+
+    let uid: string
+    try {
+      const { getAuth } = await import('firebase-admin/auth')
+      const decoded = await getAuth().verifyIdToken(token)
+      uid = decoded.uid
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn('Invalid ID token provided:', msg)
+      res.statusCode = 401
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({
+        error: `Authentication failed: ${msg}`,
+        code: 'functions/unauthenticated',
+        phase: 'verifyAuth',
+        details: msg,
+      }))
+      return
     }
 
     phase = 'findAction'
