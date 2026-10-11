@@ -30,9 +30,13 @@ export function QuizIntroPage() {
   useEffect(() => {
     if (!user || !quizId) return undefined
     let live = true
-    void Promise.all([getQuiz(quizId), listQuestions(quizId), listUserAttempts(quizId, user.uid)]).then(([found, questions, attempts]) => {
+    void getQuiz(quizId).then(async (found) => {
       if (!live) return
       if (!found || found.status !== 'published') { setError('This quiz is no longer available.'); setLoading(false); return }
+      // Group quizzes are played through the team flow. Students may not read the question list of a group quiz, so go there before loading it.
+      if (found.settings.participation.type === 'group') { navigate(`/student/quizzes/${found.id}/team`, { replace: true }); return }
+      const [questions, attempts] = await Promise.all([listQuestions(quizId), listUserAttempts(quizId, user.uid)])
+      if (!live) return
       if (questions.length === 0) { setError('This quiz does not have any questions yet.'); setLoading(false); return }
       setQuiz(found)
       if (found.mode === 'canvas') {
@@ -44,7 +48,7 @@ export function QuizIntroPage() {
       setLoading(false)
     }).catch((reason: unknown) => { if (live) { setError(reason instanceof Error ? reason.message : 'Quiz details could not be loaded.'); setLoading(false) } })
     return () => { live = false }
-  }, [user, quizId])
+  }, [user, quizId, navigate])
 
   async function begin() {
     if (!user || !quiz) return
@@ -60,7 +64,6 @@ export function QuizIntroPage() {
   if (loading) return <AppShell><main className="app-shell__content"><Skeleton className="h-72 rounded-3xl" label="Loading quiz" /></main></AppShell>
   if (!quiz) return <AppShell><PageHeader eyebrow="QUIZ" title="Quiz unavailable." subtitle="This quiz may have been unpublished." /><main className="app-shell__content grid gap-4">{error && <Alert tone="error" label="Quiz unavailable">{error}</Alert>}<Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
   const remaining = remainingAttempts(quiz, attemptCount)
-  const isGroup = quiz.settings.participation.type === 'group'
   const isCanvas = quiz.mode === 'canvas'
   const isBlankCanvas = isCanvas && quiz.boardKind === 'blank'
   const cardCount = canvasQuestion?.cards?.length ?? 0
@@ -161,11 +164,10 @@ export function QuizIntroPage() {
             </span>
           </li>
         </ul>
-        {isGroup && <Alert tone="warning" label="Group quizzes coming soon">This quiz is for a group and cannot be started yet.</Alert>}
-        {remaining === 0 && !active && !isGroup && <Alert tone="warning" label="No attempts left">You have used all attempts allowed for this quiz.</Alert>}
+        {remaining === 0 && !active && <Alert tone="warning" label="No attempts left">You have used all attempts allowed for this quiz.</Alert>}
         {error && <Alert tone="error" label="Could not start quiz">{error}</Alert>}
         <div className="mt-5 flex flex-wrap gap-3">
-          <Button type="button" disabled={busy || isGroup || (remaining === 0 && !active)} onClick={() => void begin()}>
+          <Button type="button" disabled={busy || (remaining === 0 && !active)} onClick={() => void begin()}>
             {busy ? 'Opening…' : active ? 'Resume quiz' : 'Start quiz'}
           </Button>
           <Button to="/student" variant="secondary">Back to practice</Button>

@@ -147,8 +147,15 @@ export const csvCell = (value: string | number): string => {
   return `"${safeText.replaceAll('"', '""')}"`
 }
 
+/**
+ * One row per attempt. A "Team" column (right after Student) is added only when at least one attempt belongs to a team,
+ * so the export of an ordinary solo quiz is exactly what it was before. Every member of a team has their own row with the same team name and score.
+ */
 export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = '', timeLimitMinutes: number | null = null): string {
-  const rows: Array<Array<string | number>> = [['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Review status', 'Score', 'Feedback', 'Late', 'Time spent (seconds)', 'Submitted at']]
+  const hasTeams = attempts.some((attempt) => Boolean(attempt.teamName))
+  const header: Array<string | number> = ['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Review status', 'Score', 'Feedback', 'Late', 'Time spent (seconds)', 'Submitted at']
+  if (hasTeams) header.splice(1, 0, 'Team')
+  const rows: Array<Array<string | number>> = [header]
   for (const attempt of attempts) {
     const lateInfo = isLate(attempt.startedAt, attempt.submittedAt, timeLimitMinutes)
     const lateCell = attempt.status === 'submitted'
@@ -159,7 +166,7 @@ export function resultsCsv(attempts: AttemptResult[], ungraded = false, classNam
       : null
     const reviewStatus = attempt.result?.reviewStatus ?? (attempt.status === 'submitted' ? 'graded' : '—')
     const feedback = attempt.result?.feedback ?? ''
-    rows.push([
+    const cells: Array<string | number> = [
       attempt.userName, attempt.userId, className, attempt.attemptNumber, attempt.status,
       reviewStatus,
       ungraded || !attempt.result ? 'Ungraded' : `${attempt.result.score}/${attempt.result.maxScore}`,
@@ -167,7 +174,9 @@ export function resultsCsv(attempts: AttemptResult[], ungraded = false, classNam
       lateCell,
       timeSpent !== null ? timeSpent : '—',
       attempt.submittedAt?.toDate().toISOString() ?? '',
-    ])
+    ]
+    if (hasTeams) cells.splice(1, 0, attempt.teamName ?? '')
+    rows.push(cells)
   }
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n')
 }

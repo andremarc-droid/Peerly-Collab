@@ -19,6 +19,8 @@ import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
 import type { QuizMode, QuizSettings } from '../types'
 import { validateQuizForm, type QuizFormErrors, type QuizFormValues } from './validation'
+import { GroupSettingsSection } from './GroupSettingsSection'
+import { describeGroupExperience } from './groupSettingsLogic'
 import { QuickCreateQuiz } from '../authoring/QuickCreateQuiz'
 const QuestionBuilderPage = lazy(() => import('../builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
 const CanvasBuilderPage = lazy(() => import('../builder/CanvasBuilderPage'))
@@ -136,18 +138,23 @@ export function QuizEditorPage() {
   }
   if (activeTab === 'preview') return <QuizPreviewTab quizId={quizId} />
 
+  const participation = form.settings.participation
+  const isGroupQuiz = form.mode === 'quiz' && participation.type === 'group'
+  const revealSentence = form.settings.answerReveal === 'after_each' ? 'Explanations appear after each question.' : form.settings.answerReveal === 'after_submit' ? 'Explanations appear after the team submits.' : 'Answers stay hidden.'
   const experience = form.mode === 'flashcards'
     ? `Students will review ${form.title.trim() || 'this set'} as flashcards and self-rate their recall.`
     : form.mode === 'canvas'
     ? form.boardKind === 'blank'
       ? `Students will create their own concept board from a blank canvas. You will review and grade their submissions.`
       : `Students will connect cards on the canvas board individually.`
+    : participation.type === 'group'
+    ? `${describeGroupExperience(participation)} ${revealSentence}`
     : `Students will answer ${form.title.trim() || 'this quiz'} individually${form.settings.timeLimitMinutes ? ` with ${form.settings.timeLimitMinutes} minutes` : ''}${form.settings.attemptsAllowed ? ` and ${form.settings.attemptsAllowed} ${form.settings.attemptsAllowed === 1 ? 'attempt' : 'attempts'}` : ' with unlimited attempts'}${form.settings.answerReveal === 'after_each' ? ', seeing explanations after each answer.' : form.settings.answerReveal === 'after_submit' ? ', reviewing explanations after they submit.' : ', with answers hidden.'}`
 
   return <AppShell>
     <PageHeader eyebrow={quizId ? 'EDIT QUIZ' : 'NEW QUIZ'} title={quizId ? 'Quiz settings.' : 'Create a quiz.'} subtitle="Set up the practice experience. Questions can be added in the next step." action={<Button type="button" variant="secondary" onClick={leaveEditor}><ArrowLeft size={17} aria-hidden="true" /> Back</Button>} />
     <main className="app-shell__content quiz-editor" id="main-content">
-      <nav aria-label="Quiz workspace" className="mb-4 flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} aria-current="page" variant="secondary">Settings</Button><Button to={`/instructor/quizzes/${quizId}?tab=preview`} variant="secondary">Preview</Button><Button to={`/instructor/quizzes/${quizId}/results`} variant="ghost">Results</Button></nav>
+      <nav aria-label="Quiz workspace" className="mb-4 flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} aria-current="page" variant="secondary">Settings</Button><Button to={`/instructor/quizzes/${quizId}?tab=preview`} variant="secondary">Preview</Button>{isGroupQuiz && <Button to={`/instructor/quizzes/${quizId}/teams`} variant="secondary">Teams</Button>}<Button to={`/instructor/quizzes/${quizId}/results`} variant="ghost">Results</Button></nav>
       {saveError && <Alert tone="error" label="Could not save changes">{saveError}</Alert>}
       {quizId && (!form.classId || (classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active'))) && <Alert tone="warning" label="Assign this quiz to a class">Choose an active class below and save to keep this quiz in the classroom catalog.</Alert>}
       {classesLoaded && !classes.some((item) => item.status === 'active') && <Alert tone="warning" label="Create a class first">Quizzes must belong to an active class. <Button to="/instructor" variant="secondary">Create a class</Button></Alert>}
@@ -196,18 +203,21 @@ export function QuizEditorPage() {
           </SectionCard>
         )}
 
-        <SectionCard title="Participation" description="Choose whether learners answer alone or together.">
-          <fieldset className="quiz-mode-picker"><legend>How students participate</legend><div className="quiz-mode-picker__grid">
-            <label className="quiz-mode-card is-selected"><input type="radio" name="participation" value="individual" checked readOnly /><strong>Individual</strong><span>Each student completes their own attempt.</span></label>
-            <label className="quiz-mode-card is-disabled"><input type="radio" name="participation" value="group" disabled /><strong>Group of 2 or more</strong><span>Shared answers and group sessions.</span><span className="coming-soon">Coming soon</span></label>
-          </div></fieldset>
-          <label className="field" htmlFor="disabled-group-size"><span className="field__label">Group size · Coming soon</span><input id="disabled-group-size" className="field__control" type="number" min={2} max={10} value={2} disabled /></label>
-        </SectionCard>
+        <GroupSettingsSection
+          mode={form.mode}
+          participation={participation}
+          // Teams are paced per question by the server, so the whole-quiz time limit does not apply to them.
+          onChange={(next) => updateSettings({ participation: next, ...(next.type === 'group' ? { timeLimitMinutes: null } : {}) })}
+        />
 
         <SectionCard title="Timing and attempts" description="Set a pace that supports thoughtful practice.">
           <div className="quiz-editor__settings-grid">
-            <label className="choice-control"><input type="checkbox" checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings({ timeLimitMinutes: event.target.checked ? 10 : null })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit</strong><small>Optional time for the quiz.</small></span></label>
-            {form.settings.timeLimitMinutes !== null && <Input label="Time limit in minutes" name="time-limit" type="number" min={1} value={String(form.settings.timeLimitMinutes)} onChange={(event) => updateSettings({ timeLimitMinutes: Math.max(1, Number(event.target.value) || 1) })} />}
+            {isGroupQuiz
+              ? <p className="field__hint">Teams are paced per question (see Participation), so there is no whole-quiz time limit.</p>
+              : <>
+                <label className="choice-control"><input type="checkbox" checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings({ timeLimitMinutes: event.target.checked ? 10 : null })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit</strong><small>Optional time for the quiz.</small></span></label>
+                {form.settings.timeLimitMinutes !== null && <Input label="Time limit in minutes" name="time-limit" type="number" min={1} value={String(form.settings.timeLimitMinutes)} onChange={(event) => updateSettings({ timeLimitMinutes: Math.max(1, Number(event.target.value) || 1) })} />}
+              </>}
             <Select label="Attempts allowed" name="attempts-allowed" value={form.settings.attemptsAllowed === null ? 'unlimited' : String(form.settings.attemptsAllowed)} onChange={(event) => updateSettings({ attemptsAllowed: event.target.value === 'unlimited' ? null : Number(event.target.value) })} options={[{ label: 'Unlimited', value: 'unlimited' }, { label: '1 attempt', value: '1' }, { label: '2 attempts', value: '2' }, { label: '3 attempts', value: '3' }]} />
             <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleQuestions} onChange={(event) => updateSettings({ shuffleQuestions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle questions</strong></span></label>
             <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleOptions} onChange={(event) => updateSettings({ shuffleOptions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle answer options</strong></span></label>

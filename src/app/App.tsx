@@ -18,6 +18,7 @@ const ModuleWorkspacePage = lazy(() => import('../features/modules/ModuleWorkspa
 const InstructorQuizzesPage = lazy(() => import('../features/quizzes/dashboard/InstructorQuizzesPage').then((module) => ({ default: module.InstructorQuizzesPage })))
 const QuizEditorPage = lazy(() => import('../features/quizzes/editor/QuizEditorPage').then((module) => ({ default: module.QuizEditorPage })))
 const QuizResultsPage = lazy(() => import('../features/quizzes/results/QuizResultsPage').then((module) => ({ default: module.QuizResultsPage })))
+const TeamManagementPage = lazy(() => import('../features/quizzes/teams/TeamManagementPage').then((module) => ({ default: module.TeamManagementPage })))
 function LegacyQuestionsRedirect() { const { quizId } = useParams(); return <Navigate replace to={`/instructor/quizzes/${quizId}?tab=questions`} /> }
 const StudentClassPage = lazy(() => import('../features/classes/StudentClassPage').then((module) => ({ default: module.StudentClassPage })))
 const StudentModulePage = lazy(() => import('../features/modules/StudentModulePage').then((module) => ({ default: module.StudentModulePage })))
@@ -26,6 +27,7 @@ const StudentAssignmentPage = lazy(() => import('../features/assignments/Student
 const JoinClassPage = lazy(() => import('../features/classes/JoinClassPage').then((module) => ({ default: module.JoinClassPage })))
 const StudentClassesPage = lazy(() => import('../features/classes/StudentClassesPage').then((module) => ({ default: module.StudentClassesPage })))
 const QuizIntroPage = lazy(() => import('../features/studentQuizzes/QuizIntroPage').then((module) => ({ default: module.QuizIntroPage })))
+const GroupQuizPage = lazy(() => import('../features/studentQuizzes/group/GroupQuizPage').then((module) => ({ default: module.GroupQuizPage })))
 const QuizTakingPage = lazy(() => import('../features/studentQuizzes/QuizTakingPage').then((module) => ({ default: module.QuizTakingPage })))
 const QuizResultPage = lazy(() => import('../features/studentQuizzes/QuizResultPage').then((module) => ({ default: module.QuizResultPage })))
 const InstructorLearningCanvasPage = lazy(() => import('../features/learningCanvas/InstructorLearningCanvasPage').then((module) => ({ default: module.InstructorLearningCanvasPage })))
@@ -68,6 +70,7 @@ export function AppRoutes() {
         <Route path="quizzes/:quizId" element={<QuizEditorPage />} />
         <Route path="quizzes/:quizId/questions" element={<LegacyQuestionsRedirect />} />
         <Route path="quizzes/:quizId/results" element={<QuizResultsPage />} />
+        <Route path="quizzes/:quizId/teams" element={<TeamManagementPage />} />
       </Route>
       <Route path="/student" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentClassesPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><StudentClassPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
@@ -77,6 +80,7 @@ export function AppRoutes() {
       <Route path="/student/learning" element={<ProtectedRoute><RoleRoute allowedRoles={['student', 'instructor']}><ToastProvider><LearningHubPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/classes/:classId/notes/:noteId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><NoteEditorPage role="student" /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><QuizIntroPage /></RoleRoute></ProtectedRoute>} />
+      <Route path="/student/quizzes/:quizId/team" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><GroupQuizPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId/attempts/:attemptId" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><ToastProvider><QuizTakingPage /></ToastProvider></RoleRoute></ProtectedRoute>} />
       <Route path="/student/quizzes/:quizId/attempts/:attemptId/result" element={<ProtectedRoute><RoleRoute allowedRoles={['student']}><QuizResultPage /></RoleRoute></ProtectedRoute>} />
       {import.meta.env.DEV && <Route path="/design" element={<DesignPage />} />}

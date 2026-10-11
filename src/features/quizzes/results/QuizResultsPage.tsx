@@ -1,4 +1,4 @@
-import { Clock3, Download, Eye } from 'lucide-react'
+import { Clock3, Download, Eye, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
@@ -87,10 +87,12 @@ export function QuizResultsPage() {
   const isBlankCanvas = quiz?.mode === 'canvas' && quiz.boardKind === 'blank'
 
   const visible = useMemo(() => {
+    const needle = search.toLowerCase()
     let filtered = buildRosterRows(enrollments, attempts).filter(
       (row) =>
-        row.userName.toLowerCase().includes(search.toLowerCase()) ||
-        row.userId.toLowerCase().includes(search.toLowerCase()),
+        row.userName.toLowerCase().includes(needle) ||
+        row.userId.toLowerCase().includes(needle) ||
+        (row.attempt?.teamName ?? '').toLowerCase().includes(needle),
     )
     if (isBlankCanvas && reviewFilter !== 'all') {
       filtered = filtered.filter((row) => {
@@ -159,7 +161,7 @@ export function QuizResultsPage() {
           <StatTile label="Completion" value={`${summary.inProgress} / ${summary.submitted}`} hint="In progress / submitted" />
         )}
       </StatRow>
-      <section className="grid gap-4" aria-labelledby="submission-heading"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="submission-heading" className="m-0 font-heading text-2xl">Submissions</h2><p className="m-0">Each attempt is listed; summary scores use each student’s best attempt.</p></div></header>
+      <section className="grid gap-4" aria-labelledby="submission-heading"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="submission-heading" className="m-0 font-heading text-2xl">Submissions</h2><p className="m-0">{quiz.settings.participation.type === 'group' ? 'Each team member has their own row with the team’s shared answers and score.' : 'Each attempt is listed; summary scores use each student’s best attempt.'}</p></div></header>
         <div className={`grid gap-3 ${isBlankCanvas ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
           <Input label="Search students" name="results-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or student ID" />
           <Select label="Sort submissions" name="results-sort" value={sort} onChange={(event) => setSort(event.target.value as SortMode)} options={[{ value: 'recent', label: 'Recently submitted' }, { value: 'student', label: 'Student name' }, { value: 'score', label: 'Score' }]} />
@@ -179,7 +181,7 @@ export function QuizResultsPage() {
         </div>
         {visible.length === 0 && attempts.length === 0 && !enrollments.some((item) => item.status === 'active') ? <EmptyState title="No submissions yet" description="Student attempts will appear here after they submit this quiz." /> : visible.length === 0 ? <p role="status">No submissions match this search.</p> : <>
           <DataTable label="Quiz submissions" rows={visible} getRowId={(row) => row.attempt?.id ?? row.userId} columns={[
-            { key: 'student', header: 'Student', cell: (row) => <>{row.userName}<MembershipBadge row={row} /></>, sortValue: (row) => row.userName },
+            { key: 'student', header: 'Student', cell: (row) => <>{row.userName}<TeamBadge row={row} /><MembershipBadge row={row} /></>, sortValue: (row) => row.userName },
             { key: 'attempt', header: 'Attempt', cell: (row) => row.attempt?.attemptNumber ?? '—', sortValue: (row) => row.attempt?.attemptNumber ?? 0 },
             { key: 'status', header: 'Status', cell: (row) => {
               if (!row.attempt) return <Badge>Not started</Badge>
@@ -220,7 +222,7 @@ export function QuizResultsPage() {
       </section>
       {(quiz.mode === 'quiz' || (quiz.mode === 'canvas' && !isBlankCanvas)) && <QuestionAnalytics questions={questions} attempts={attempts} />}
     </main>
-    <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} title="Attempt detail" description={selected ? `${selected.userName || selected.userId} · Attempt ${selected.attemptNumber}` : undefined} className="dialog--wide">
+    <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} title="Attempt detail" description={selected ? `${selected.userName || selected.userId}${selected.teamName ? ` · Team ${selected.teamName}` : ''} · Attempt ${selected.attemptNumber}` : undefined} className="dialog--wide">
       {selected && (
         <AttemptDetail
           quizId={quizId}
@@ -259,6 +261,12 @@ function compareResultRows(a: ResultListRow, b: ResultListRow, sort: SortMode) {
 function MembershipBadge({ row }: { row: ResultListRow }) {
   if (row.membership === 'enrolled') return null
   return <span className="ml-2 inline-flex"><Badge>{row.membership === 'no_longer_enrolled' ? 'No longer enrolled' : 'Enrolled · not started'}</Badge></span>
+}
+/** Shown only for attempts that belong to a team (group quizzes). The name is rendered as text, never as HTML. */
+function TeamBadge({ row }: { row: ResultListRow }) {
+  const name = row.attempt?.teamName
+  if (!name) return null
+  return <span className="ml-2 inline-flex"><Badge className="inline-flex items-center gap-1"><Users size={12} aria-hidden="true" /> Team · {name}</Badge></span>
 }
 
 function QuestionAnalytics({ questions, attempts }: { questions: SavedQuestion[]; attempts: AttemptResult[] }) {
