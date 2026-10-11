@@ -3,8 +3,18 @@ import { collection, doc, onSnapshot, type Firestore } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
 import { functions } from '../../../lib/firebase/functions'
 import { auth } from '../../../lib/firebase/auth'
+import { Capacitor } from '@capacitor/core'
 import { parseReveal, parseSession, parseTeam } from '../schemas/team'
 import type { Team, TeamAnswer, TeamReveal, TeamSession } from '../types/team'
+
+function getApiEndpoint(): string {
+  const custom = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
+  if (custom) return `${custom}/api/groupQuizzes`
+  if (Capacitor.isNativePlatform() || (typeof window !== 'undefined' && (window.location.protocol === 'capacitor:' || (window.location.hostname === 'localhost' && window.location.port === '')))) {
+    return 'https://peerly-collab.vercel.app/api/groupQuizzes'
+  }
+  return '/api/groupQuizzes'
+}
 
 /**
  * Group quiz client. Every change goes through a Cloud Function (or Vercel Serverless Function), because waiting,
@@ -26,7 +36,7 @@ async function call<I, O>(name: string, data: I): Promise<O> {
   if (!token) {
     console.warn(`[teamService: ${name}] No active auth token (currentUser: ${auth.currentUser?.uid || 'null'})`)
   }
-  const response = await fetch('/api/groupQuizzes', {
+  const response = await fetch(getApiEndpoint(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
