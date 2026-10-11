@@ -3,6 +3,8 @@ import type { IncomingMessage, ServerResponse } from 'http'
 // Lazy loaded singletons
 let firebaseInitialized = false
 let handlersCache: Record<string, unknown> | null = null
+let currentProjectId = 'collaboration-app-b3c91'
+let jwksCache: unknown = null
 
 async function getHandlers() {
   if (!handlersCache) {
@@ -26,6 +28,9 @@ async function ensureFirebase() {
     try {
       const jsonStr = clean.startsWith('{') ? clean : Buffer.from(clean, 'base64').toString('utf-8')
       const credentials = JSON.parse(jsonStr) as Record<string, unknown>
+      if (typeof credentials.project_id === 'string' && credentials.project_id) {
+        currentProjectId = credentials.project_id
+      }
       if (typeof credentials.private_key === 'string') {
         credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
       }
@@ -37,6 +42,23 @@ async function ensureFirebase() {
     }
   }
   firebaseInitialized = true
+}
+
+async function verifyFirebaseToken(token: string, projectId: string): Promise<string> {
+  const { jwtVerify, createRemoteJWKSet } = await import('jose')
+  if (!jwksCache) {
+    jwksCache = createRemoteJWKSet(
+      new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com')
+    )
+  }
+  const { payload } = await jwtVerify(token, jwksCache as Parameters<typeof jwtVerify>[1], {
+    issuer: `https://securetoken.google.com/${projectId}`,
+    audience: projectId,
+  })
+  if (!payload.sub) {
+    throw new Error('Token payload missing user id (sub claim)')
+  }
+  return payload.sub
 }
 
 async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -127,9 +149,7 @@ export default async function handler(
 
     let uid: string
     try {
-      const { getAuth } = await import('firebase-admin/auth')
-      const decoded = await getAuth().verifyIdToken(token)
-      uid = decoded.uid
+      uid = await verifyFirebaseToken(token, currentProjectId)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.warn('Invalid ID token provided:', msg)
@@ -154,7 +174,7 @@ export default async function handler(
     }
 
     const call = {
-      auth: uid ? { uid, token: {} } : undefined,
+      auth: { uid, token: {} },
       data,
       rawRequest: req,
     }
