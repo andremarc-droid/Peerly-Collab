@@ -25,11 +25,18 @@ async function call<I, O>(name: string, data: I): Promise<O> {
     },
     body: JSON.stringify({ action: name, data }),
   })
-  const json = await response.json().catch(() => ({}))
+  let json: Record<string, unknown> = {}
+  try {
+    json = await response.json()
+  } catch {
+    const text = await response.text().catch(() => '')
+    json = { error: text || `HTTP ${response.status} ${response.statusText}`, rawText: text }
+  }
   if (!response.ok) {
     console.error(`[groupQuizzes API Error: ${name}]`, json)
-    const error = new Error(json.error || json.message || 'Something went wrong.')
-    ;(error as { code?: string }).code = json.code || 'functions/internal'
+    const errorMsg = (typeof json.details === 'string' && json.details) || (typeof json.error === 'string' && json.error) || (typeof json.message === 'string' && json.message) || 'Something went wrong.'
+    const error = new Error(errorMsg)
+    ;(error as { code?: string }).code = (typeof json.code === 'string' && json.code) || 'functions/internal'
     throw error
   }
   return json.result as O

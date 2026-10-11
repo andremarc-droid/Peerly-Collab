@@ -1,13 +1,23 @@
 import type { IncomingMessage, ServerResponse } from 'http'
-import { getApps, initializeApp, cert } from 'firebase-admin/app'
-import { getAuth } from 'firebase-admin/auth'
-import * as handlers from '../functions/src/groupQuizzes.js'
 
-function initFirebase() {
+// Lazy loaded singletons
+let firebaseInitialized = false
+let handlersCache: Record<string, unknown> | null = null
+
+async function getHandlers() {
+  if (!handlersCache) {
+    handlersCache = (await import('../functions/src/groupQuizzes.js')) as unknown as Record<string, unknown>
+  }
+  return handlersCache
+}
+
+async function ensureFirebase() {
+  if (firebaseInitialized) return
+  const { getApps, initializeApp, cert } = await import('firebase-admin/app')
   if (getApps().length === 0) {
     const raw = process.env.FIREBASE_SERVICE_ACCOUNT?.trim()
     if (!raw) {
-      throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is missing on Vercel. Please add your Firebase Service Account JSON in Vercel Project Settings.')
+      throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is missing on Vercel.')
     }
     let clean = raw
     if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
@@ -26,6 +36,7 @@ function initFirebase() {
       throw new Error(`FIREBASE_SERVICE_ACCOUNT invalid: ${msg}`)
     }
   }
+  firebaseInitialized = true
 }
 
 async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -45,7 +56,7 @@ async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>>
 
 export default async function handler(
   req: IncomingMessage & { body?: unknown },
-  res: ServerResponse & { status?: (code: number) => unknown; json?: (data: unknown) => unknown }
+  res: ServerResponse
 ) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -64,9 +75,15 @@ export default async function handler(
     return
   }
 
+  let phase = 'start'
   try {
-    initFirebase()
+    phase = 'initFirebase'
+    await ensureFirebase()
 
+    phase = 'importHandlers'
+    const handlers = await getHandlers()
+
+    phase = 'parseBody'
     let body = req.body as Record<string, unknown> | string | undefined
     if (typeof body === 'string') {
       try {
@@ -81,11 +98,13 @@ export default async function handler(
     const action = typeof body?.action === 'string' ? body.action : ''
     const data = body?.data
 
+    phase = 'verifyAuth'
     const authHeader = req.headers.authorization
     let uid: string | undefined
     if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7)
       try {
+        const { getAuth } = await import('firebase-admin/auth')
         const decoded = await getAuth().verifyIdToken(token)
         uid = decoded.uid
       } catch (err) {
@@ -93,7 +112,8 @@ export default async function handler(
       }
     }
 
-    const handlerFn = (handlers as Record<string, unknown>)[action] as ((call: unknown) => Promise<unknown>) | undefined
+    phase = 'findAction'
+    const handlerFn = handlers[action] as ((call: unknown) => Promise<unknown>) | undefined
     if (typeof handlerFn !== 'function') {
       res.statusCode = 400
       res.setHeader('Content-Type', 'application/json')
@@ -107,13 +127,14 @@ export default async function handler(
       rawRequest: req,
     }
 
+    phase = 'runHandler'
     const result = await handlerFn(call)
     res.statusCode = 200
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({ result }))
   } catch (err: unknown) {
-    console.error('[groupQuizzes API error]:', err)
-    const errorObj = err as { httpErrorCode?: { status?: number }; message?: string; code?: string }
+    console.error(`[groupQuizzes API error at phase: ${phase}]:`, err)
+    const errorObj = err as { httpErrorCode?: { status?: number }; message?: string; code?: string; stack?: string }
     const status = errorObj?.httpErrorCode?.status || 500
     const rawCode = errorObj?.code || 'internal'
     const code = rawCode.startsWith('functions/') ? rawCode : `functions/${rawCode}`
@@ -122,6 +143,8 @@ export default async function handler(
     res.end(JSON.stringify({
       error: errorObj?.message || 'Something went wrong.',
       code,
+      phase,
+      details: String(err),
     }))
   }
 }
