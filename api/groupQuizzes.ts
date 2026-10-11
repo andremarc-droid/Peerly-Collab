@@ -9,8 +9,12 @@ function initFirebase() {
     if (!raw) {
       throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is missing on Vercel. Please add your Firebase Service Account JSON in Vercel Project Settings.')
     }
+    let clean = raw
+    if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
+      clean = clean.slice(1, -1).trim()
+    }
     try {
-      const jsonStr = raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf-8')
+      const jsonStr = clean.startsWith('{') ? clean : Buffer.from(clean, 'base64').toString('utf-8')
       const credentials = JSON.parse(jsonStr) as Record<string, unknown>
       if (typeof credentials.private_key === 'string') {
         credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
@@ -35,11 +39,12 @@ async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>>
         resolve({})
       }
     })
+    req.on('error', () => resolve({}))
   })
 }
 
 export default async function handler(
-  req: IncomingMessage & { body?: Record<string, unknown> },
+  req: IncomingMessage & { body?: unknown },
   res: ServerResponse & { status?: (code: number) => unknown; json?: (data: unknown) => unknown }
 ) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -62,7 +67,17 @@ export default async function handler(
   try {
     initFirebase()
 
-    const body = req.body || await parseBody(req)
+    let body = req.body as Record<string, unknown> | string | undefined
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body) as Record<string, unknown>
+      } catch {
+        body = undefined
+      }
+    }
+    if (!body || typeof body !== 'object') {
+      body = await parseBody(req)
+    }
     const action = typeof body?.action === 'string' ? body.action : ''
     const data = body?.data
 
