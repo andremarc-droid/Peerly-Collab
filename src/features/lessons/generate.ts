@@ -1,5 +1,6 @@
 import { aiComplete, aiJson, AiError, isAbortError, type AiComplete } from '../studyEngine/ai'
 import { chunkImportText } from '../flashcards/importGeneration'
+import { getGroqLessonModel } from '../../lib/groq/requiredEnv'
 import { parseLesson, parseOutline } from './schemas'
 import { buildLessonPrompt, buildOutlinePrompt } from './prompts'
 import type { LessonLevel, LessonPlanOutline, LessonRecord } from './types'
@@ -75,6 +76,9 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
+/** Lessons are written by their own text-only model (VITE_GROQ_LESSON_MODEL); every other AI feature keeps VITE_GROQ_MODEL. */
+const lessonComplete: AiComplete = (prompt, signal, settings) => aiComplete(prompt, { signal, maxTokens: settings?.maxTokens, temperature: settings?.temperature, model: getGroqLessonModel() })
+
 async function generateOne(run: () => Promise<Omit<LessonRecord, 'updatedAt'>>, paced: boolean, signal?: AbortSignal): Promise<Omit<LessonRecord, 'updatedAt'>> {
   try { return await run() } catch (error) {
     if (paced && error instanceof AiError && error.reason === 'rate-limit') {
@@ -89,7 +93,7 @@ async function generateOne(run: () => Promise<Omit<LessonRecord, 'updatedAt'>>, 
 }
 
 export async function generateLessonPlan(options: GenerateLessonPlanOptions): Promise<GeneratedLessonPlan> {
-  const complete = options.complete ?? ((prompt, signal, settings) => aiComplete(prompt, { signal, maxTokens: settings?.maxTokens, temperature: settings?.temperature }))
+  const complete = options.complete ?? lessonComplete
   const source = chunkImportText(options.sourceText ?? '')
   const sourceChunks = source.chunks
   const outline = await aiJson(buildOutlinePrompt(options.topic, options.level, options.lessonCount, sourceChunks[0] ?? ''), value => { try { return parseOutline(value, options.lessonCount) } catch { return null } }, { complete, signal: options.signal, maxTokens: 1200, temperature: 0.35 })
@@ -118,7 +122,7 @@ export async function generateLessonPlan(options: GenerateLessonPlanOptions): Pr
 }
 
 export async function generateRemainingLessons(options: GenerateLessonPlanOptions & { outline: LessonPlanOutline; existing: Record<string, Omit<LessonRecord, 'updatedAt'>>; lessonIds: string[] }): Promise<GeneratedLessonPlan> {
-  const complete = options.complete ?? ((prompt, signal, settings) => aiComplete(prompt, { signal, maxTokens: settings?.maxTokens, temperature: settings?.temperature }))
+  const complete = options.complete ?? lessonComplete
   const source = chunkImportText(options.sourceText ?? '')
   const lessons = { ...options.existing }
   const failedLessonIds: string[] = []

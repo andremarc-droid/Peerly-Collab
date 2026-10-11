@@ -3,6 +3,10 @@ export const GROQ_MODEL_VAR = 'VITE_GROQ_MODEL'
 /** Vision-capable model on Groq. Override with VITE_GROQ_MODEL. */
 export const DEFAULT_GROQ_MODEL = 'qwen/qwen3.8-27b'
 
+export const GROQ_LESSON_MODEL_VAR = 'VITE_GROQ_LESSON_MODEL'
+/** Text-only model that writes lessons (it cannot read images). Override with VITE_GROQ_LESSON_MODEL. */
+export const DEFAULT_GROQ_LESSON_MODEL = 'openai/gpt-oss-20b'
+
 export interface GroqConfig {
   apiKey: string
   model: string
@@ -24,6 +28,11 @@ export function validateGroqEnv(env: EnvSource): GroqConfig {
 /** Evaluated lazily so a missing key disables the AI tutor instead of crashing the whole app. */
 export function getGroqConfig(env: EnvSource = import.meta.env): GroqConfig {
   return validateGroqEnv(env)
+}
+
+/** The model used to write lessons. Everything else uses VITE_GROQ_MODEL. */
+export function getGroqLessonModel(env: EnvSource = import.meta.env): string {
+  return env[GROQ_LESSON_MODEL_VAR]?.trim() || DEFAULT_GROQ_LESSON_MODEL
 }
 
 /** A plain-language problem description, or null when Groq is configured. */

@@ -1,5 +1,6 @@
 import { createChatCompletion, GroqError, isAbortError } from '../../lib/groq/client'
 import type { GroqMessage } from '../../lib/groq/client'
+import { getGroqConfig } from '../../lib/groq/requiredEnv'
 export { isAbortError }
 
 export type AiFailureReason = 'rate-limit' | 'unavailable' | 'invalid-reply'
@@ -12,15 +13,19 @@ export class AiError extends Error {
 }
 
 export type AiInput = string | GroqMessage[]
-export interface AiGenerationSettings { maxTokens?: number; temperature?: number }
+export interface AiGenerationSettings { maxTokens?: number; temperature?: number; /** Use this Groq model for the request instead of VITE_GROQ_MODEL. */ model?: string }
 export type AiComplete = (prompt: AiInput, signal?: AbortSignal, settings?: AiGenerationSettings) => Promise<string>
 export interface AiOptions extends AiGenerationSettings { complete?: AiComplete; signal?: AbortSignal }
-const defaultComplete: AiComplete = async (prompt, signal, settings) => createChatCompletion({
-  messages: typeof prompt === 'string' ? [{ role: 'user', content: prompt }] : prompt,
-  signal,
-  maxTokens: settings?.maxTokens ?? 1600,
-  temperature: settings?.temperature ?? 0.3,
-})
+const defaultComplete: AiComplete = async (prompt, signal, settings) => {
+  const config = getGroqConfig()
+  return createChatCompletion({
+    messages: typeof prompt === 'string' ? [{ role: 'user', content: prompt }] : prompt,
+    signal,
+    maxTokens: settings?.maxTokens ?? 1600,
+    temperature: settings?.temperature ?? 0.3,
+    config: settings?.model ? { ...config, model: settings.model } : config,
+  })
+}
 
 const UNREADABLE_REPLY = 'The AI reply could not be read. Try again.'
 /** Replies nested deeper than this are never valid lesson, quiz, or card JSON, and can overflow the parser's stack. */
@@ -59,7 +64,7 @@ export async function aiComplete(prompt: AiInput, options: AiOptions = {}): Prom
   try {
     // Pass only the generation settings. Passing the whole options object would hand `complete` back to
     // callers that spread the settings into a nested aiComplete call, which then recurses forever.
-    const settings: AiGenerationSettings = { maxTokens: options.maxTokens, temperature: options.temperature }
+    const settings: AiGenerationSettings = { maxTokens: options.maxTokens, temperature: options.temperature, model: options.model }
     const reply = await (options.complete ?? defaultComplete)(prompt, options.signal, settings)
     if (!reply.trim()) throw new AiError('invalid-reply', 'The AI returned an empty response.')
     return reply
