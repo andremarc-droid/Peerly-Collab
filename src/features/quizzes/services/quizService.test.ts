@@ -5,8 +5,8 @@ import type { RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import rules from '../../../../firestore.rules?raw'
 import { defaultQuizSettings } from '../schemas/settings'
-import { createQuiz, getQuiz, publishQuiz, updateQuiz, watchOwnerQuizzes } from './quizService'
-import { saveQuestionAndKey } from './questionService'
+import { createQuiz, getQuiz, publishQuiz, unpublishQuiz, updateQuiz, watchOwnerQuizzes } from './quizService'
+import { deleteQuestion, saveQuestionAndKey } from './questionService'
 import { duplicateQuiz } from './duplicateQuiz'
 import { deleteQuizCascade } from './deleteQuizCascade'
 import { startAttempt, getAttempt, autosaveAnswers, submitAttempt } from './attemptService'
@@ -199,5 +199,48 @@ describe('quiz Firestore services', () => {
     expect(copyQuiz?.mode).toBe('canvas')
     expect(copyQuiz?.questionCount).toBe(1)
     expect(copyQuiz?.status).toBe('draft')
+  })
+
+  it('enforces quiz edit lock after unpublish when attempts exist and prevents bypass', async () => {
+    await users()
+    const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+    const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
+    const input = quizInput('Unpublish Lock Test')
+    const quizId = await createQuiz('teacher', 'Teacher', input, owner)
+    const questionId = await saveQuestionAndKey(quizId, null,
+      { type: 'multiple_choice', order: 0, prompt: 'Q1', points: 2, options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] },
+      { type: 'choice', correctOptionId: 'a', explanation: 'A', caseSensitive: false }, owner)
+    await publishQuiz(quizId, owner)
+
+    // Student submits attempt
+    const attemptId = await startAttempt(quizId, 'student', 'Student', student)
+    await submitAttempt(quizId, attemptId, 5, student)
+
+    // Owner unpublishes quiz to draft
+    await unpublishQuiz(quizId, owner)
+    const draftQuiz = await getQuiz(quizId, owner)
+    expect(draftQuiz?.status).toBe('draft')
+
+    // Editing questions on draft must still be locked
+    await expect(saveQuestionAndKey(quizId, questionId,
+      { type: 'multiple_choice', order: 0, prompt: 'Modified Q1', points: 5, options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] },
+      { type: 'choice', correctOptionId: 'b', explanation: 'B', caseSensitive: false }, owner)
+    ).rejects.toThrow(/attempts or participants/)
+
+    // Deleting questions on draft must still be locked
+    await expect(deleteQuestion(quizId, questionId, owner)).rejects.toThrow(/attempts or participants/)
+
+    // Changing settings (shuffle/timeLimit/participation) on draft must still be locked
+    await expect(updateQuiz(quizId, { settings: { ...draftQuiz!.settings, shuffleQuestions: true } }, owner))
+      .rejects.toThrow(/attempts or participants/)
+
+    // Deep equality: passing same participation with different key order must NOT be treated as a change
+    const sameParticipationReordered = { ...draftQuiz!.settings, participation: JSON.parse('{"type":"individual"}') }
+    await expect(updateQuiz(quizId, { description: 'Updated description', settings: sameParticipationReordered }, owner))
+      .resolves.toBeUndefined()
+
+    // Republish succeeds
+    await publishQuiz(quizId, owner)
+    expect((await getQuiz(quizId, owner))?.status).toBe('published')
   })
 })

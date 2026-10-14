@@ -77,11 +77,9 @@ export function QuizEditorPage() {
       if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
       const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, boardKind: quiz.boardKind, settings: quiz.settings }
       setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setResolvedQuizId(quizId)
-      if (quiz.status === 'published') {
-        void hasQuizAttemptsOrParticipants(quizId).then((result) => {
-          if (active) setHasSubmissions(result)
-        })
-      }
+      void hasQuizAttemptsOrParticipants(quizId).then((result) => {
+        if (active) setHasSubmissions(result)
+      })
     }).catch((reason: unknown) => {
       if (active) { setLoadError(reason instanceof Error ? reason.message : 'This quiz could not be loaded.'); setResolvedQuizId(quizId) }
     })

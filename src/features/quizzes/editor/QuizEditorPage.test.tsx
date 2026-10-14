@@ -245,5 +245,26 @@ describe('quick create and quiz deletion confirmation', () => {
     expect(shuffleQ).toBeDisabled()
     expect(shuffleO).toBeDisabled()
   })
+
+  it('locks settings and offers duplicate quiz on an unpublished draft quiz with submissions', async () => {
+    mocks.getQuiz.mockResolvedValueOnce({
+      ...savedQuiz,
+      id: 'quiz-draft-with-attempts',
+      status: 'draft',
+    })
+    mocks.hasQuizAttemptsOrParticipants.mockResolvedValueOnce(true)
+
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-draft-with-attempts?tab=settings']}>
+        <Routes>
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Settings locked')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Duplicate quiz' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Shuffle questions')).toBeDisabled()
+  })
 })
 

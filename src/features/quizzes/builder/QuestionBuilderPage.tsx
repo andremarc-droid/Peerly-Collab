@@ -58,13 +58,13 @@ export function QuestionBuilderPage() {
   }, [quiz, quizId])
 
   useEffect(() => {
-    if (!quizId || quiz?.status !== 'published') return
+    if (!quizId) return
     let active = true
     hasQuizAttemptsOrParticipants(quizId).then((result) => {
       if (active) setHasSubmissions(result)
     }).catch(() => {})
     return () => { active = false }
-  }, [quizId, quiz?.status])
+  }, [quizId])
 
   useEffect(() => {
     if (!quiz || searchParams.get('newQuestion') !== '1' || draft || hasSubmissions) return
