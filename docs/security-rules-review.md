@@ -113,6 +113,9 @@ This document details the security hardening updates applied to `firestore.rules
 5. **Answer Reveal Coupled to Score Visibility**:
    * *Status*: Firestore rules permit students to read `results/{attemptId}` only when `scoreVisibility == 'immediate'` or `('after_release' && scoresReleased)`. When scores are hidden or delayed, the entire result document is unreadable to students.
    * *Resolution (Option A)*: In `src/features/studentQuizzes/quizLogic.ts`, `resultVisibility` couples `showAnswers` to `showScore` and result document presence. `QuizIntroPage` accurately informs students whether answers will appear immediately, upon instructor release, or remain hidden. When results are unreleased or hidden, `QuizResultPage` renders an informative notice explaining why question reviews are withheld.
+6. **Answer Key Protection & Server-Side Retrieval-Before-Reveal**:
+   * *Status*: Firestore rules currently allow active participants to read `quizzes/{quizId}/answerKeys/{questionId}` directly from the client during individual quiz taking.
+   * *Architectural Design*: Full architectural design documented in `docs/design-22-retrieval-before-reveal.md`. This details migrating `after_each` reveal checking and final attempt submission into server-side callables (`checkQuestionAnswer` and `submitQuizAttempt`) and removing student read access on `/answerKeys/{questionId}` so answer keys are strictly inaccessible from client Firestore queries.
 
 ---
 
