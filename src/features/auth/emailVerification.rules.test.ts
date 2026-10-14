@@ -35,7 +35,7 @@ const classData = (ownerId: string, joinCode: string, overrides: Record<string, 
   ...overrides,
 })
 
-const codeData = (classId: string, ownerId: string, joinCode: string, overrides: Record<string, unknown> = {}) => ({
+const codeData = (classId: string, ownerId: string, _joinCode: string, overrides: Record<string, unknown> = {}) => ({
   classId,
   ownerId,
   className: 'Science 101',

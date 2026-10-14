@@ -1,7 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GameQuestionView } from './GameQuestionView'
 import type { CurrentQuestion, Game, GamePlayer, RevealState } from '../types'
+
+afterEach(() => {
+  cleanup()
+})
 
 const game: Game = { id: 'g1', hostId: 'host', groupId: null, code: 'ABC234', status: 'question', questionIndex: 0, questionCount: 5, questionStartedAtMs: 0, questionEndsAtMs: 20000, timeLimitSec: 20, playerCount: 2, expiresAtMs: Date.now() + 3_600_000 }
 const current: CurrentQuestion = { questionIndex: 0, prompt: 'What is 2 + 2?', options: ['3', '4', '5', '6'], startedAtMs: 0, endsAtMs: 20000 }

@@ -33,7 +33,8 @@ describe('parseCurrentQuestion', () => {
     expect(() => parseCurrentQuestion({ ...current, options: ['only'] })).toThrow(GameDataError)
     expect(() => parseCurrentQuestion({ ...current, options: ['a', 'b', 'c', 'd', 'e'] })).toThrow(GameDataError)
     expect(() => parseCurrentQuestion({ ...current, options: ['a', 3] })).toThrow(GameDataError)
-    expect(() => parseCurrentQuestion({ ...current, endsAt: null })).toThrow(GameDataError)
+    expect(() => parseCurrentQuestion({ ...current, startedAt: null })).toThrow(GameDataError)
+    expect(parseCurrentQuestion({ ...current, endsAt: null }).endsAtMs).toBeNull()
   })
 })
 

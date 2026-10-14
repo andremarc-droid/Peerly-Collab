@@ -111,7 +111,7 @@ export const createGame = guarded(async (uid, data) => {
       const expiresAt = Timestamp.fromMillis(now + GAME_LIMITS.ttlMs)
       tx.create(ref, {
         hostId: uid, groupId: request.groupId, code, status: 'lobby', questionIndex: 0, questionCount: questions.length, questionStartedAt: null, questionEndsAt: null,
-        settings: { timeLimitSec: request.timeLimitSec }, playerCount: 0, createdAt: Timestamp.fromMillis(now), expiresAt,
+        settings: { timeLimitSec: request.timeLimitSec, pacing: request.pacing ?? 'timed' }, playerCount: 0, createdAt: Timestamp.fromMillis(now), expiresAt,
       })
       tx.create(privateRef(ref.id, 'questions'), { questions: questions.map(({ prompt, options }) => ({ prompt, options })) })
       tx.create(privateRef(ref.id, 'key'), { correct: questions.map(question => question.correctIndex) })
@@ -161,8 +161,11 @@ export const startGame = guarded(async (uid, data) => {
     assertHost(game, uid)
     const next = applyAction(progressOf(game), 'start', players.size)
     const limit = (game.settings as { timeLimitSec: number }).timeLimitSec
-    tx.update(snap.ref, { status: next.status, questionIndex: 0, playerCount: players.size, questionStartedAt: Timestamp.fromMillis(now), questionEndsAt: Timestamp.fromMillis(now + limit * 1000) })
-    tx.set(stateRef(gameId, 'current'), currentQuestionDoc(0, questionAt(questions, 0), now, limit))
+    const pacing = (game.settings as { pacing?: string })?.pacing ?? 'timed'
+    const untimed = pacing === 'wait_for_everyone'
+    const endsAt = untimed ? null : Timestamp.fromMillis(now + limit * 1000)
+    tx.update(snap.ref, { status: next.status, questionIndex: 0, playerCount: players.size, questionStartedAt: Timestamp.fromMillis(now), questionEndsAt: endsAt })
+    tx.set(stateRef(gameId, 'current'), currentQuestionDoc(0, questionAt(questions, 0), now, limit, untimed))
   })
   return { success: true }
 })
@@ -183,8 +186,11 @@ export const advanceQuestion = guarded(async (uid, data) => {
     }
     if (next.status === 'finished') { finishWrites(tx, gameId, game, players.docs.map(p => p.id)); return { status: 'finished' as GameStatus } }
     const limit = (game.settings as { timeLimitSec: number }).timeLimitSec
-    tx.update(snap.ref, { status: 'question', questionIndex: next.questionIndex, playerCount: players.size, questionStartedAt: Timestamp.fromMillis(now), questionEndsAt: Timestamp.fromMillis(now + limit * 1000) })
-    tx.set(stateRef(gameId, 'current'), currentQuestionDoc(next.questionIndex, questionAt(questions, next.questionIndex), now, limit))
+    const pacing = (game.settings as { pacing?: string })?.pacing ?? 'timed'
+    const untimed = pacing === 'wait_for_everyone'
+    const endsAt = untimed ? null : Timestamp.fromMillis(now + limit * 1000)
+    tx.update(snap.ref, { status: 'question', questionIndex: next.questionIndex, playerCount: players.size, questionStartedAt: Timestamp.fromMillis(now), questionEndsAt: endsAt })
+    tx.set(stateRef(gameId, 'current'), currentQuestionDoc(next.questionIndex, questionAt(questions, next.questionIndex), now, limit, untimed))
     tx.delete(stateRef(gameId, 'reveal'))
     return { status: 'question' as GameStatus }
   })
@@ -219,7 +225,8 @@ export const submitAnswer = guarded(async (uid, data) => {
     const self = players.docs.find(p => p.id === uid)
     if (!self) throw new GameInputError('Join this game first.', 'permission-denied')
     if (existing.exists) return { accepted: false, revealed: false }
-    checkAnswerWindow({ status: game.status as GameStatus, currentIndex: game.questionIndex, submittedIndex: request.questionIndex, nowMs: now, endsAtMs: endsAtOf(game) })
+    const pacing = (game.settings as { pacing?: import('./gameLogic.js').PacingMode })?.pacing
+    checkAnswerWindow({ status: game.status as GameStatus, currentIndex: game.questionIndex, submittedIndex: request.questionIndex, nowMs: now, endsAtMs: endsAtOf(game), pacing })
     const options = current.get('options')
     parseOptionIndex(request.optionIndex, Array.isArray(options) ? options.length : 0)
     const answered = players.docs.filter(p => p.id !== uid && p.get('answeredIndex') === request.questionIndex).length + 1

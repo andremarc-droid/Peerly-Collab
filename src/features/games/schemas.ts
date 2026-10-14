@@ -51,6 +51,7 @@ export function parseGame(data: unknown, id: string): Game {
     timeLimitSec: int(settings.timeLimitSec, GAME_LIMITS.minTimeSec, GAME_LIMITS.maxTimeSec, 'Time limit'),
     playerCount: int(d.playerCount ?? 0, 0, GAME_LIMITS.maxPlayers, 'Player count'),
     expiresAtMs,
+    pacing: typeof settings.pacing === 'string' && ['timed', 'wait_for_everyone', 'self_paced'].includes(settings.pacing) ? settings.pacing as Game['pacing'] : 'timed',
   }
 }
 
@@ -60,7 +61,7 @@ export function parseCurrentQuestion(data: unknown): CurrentQuestion {
   if (!Array.isArray(options) || options.length < 2 || options.length > 4 || !options.every(option => typeof option === 'string' && option.length >= 1 && option.length <= 300)) throw new GameDataError('Question options are invalid.')
   const startedAtMs = millisFrom(d.startedAt)
   const endsAtMs = millisFrom(d.endsAt)
-  if (startedAtMs === null || endsAtMs === null) throw new GameDataError('Question timing is invalid.')
+  if (startedAtMs === null) throw new GameDataError('Question timing is invalid.')
   return { questionIndex: int(d.questionIndex, 0, GAME_LIMITS.maxQuestions - 1, 'Question number'), prompt: text(d.prompt, 1, 500, 'Question'), options: options as string[], startedAtMs, endsAtMs }
 }
 

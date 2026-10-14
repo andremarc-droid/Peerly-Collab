@@ -1,5 +1,5 @@
 import { Timestamp, getFirestore, type DocumentReference, type Firestore, type Transaction } from 'firebase-admin/firestore'
-import { GAME_LIMITS, GameInputError, questionsFromDeck, questionsFromLessonQuizzes, type GameQuestion } from './gameLogic.js'
+import { GAME_LIMITS, GameInputError, parseQuestion, questionsFromDeck, questionsFromLessonQuizzes, type GameQuestion } from './gameLogic.js'
 import type { GameSourceRequest } from './gameRequests.js'
 import { buildReveal, type PlayerAnswer } from './gameReveal.js'
 
@@ -36,22 +36,52 @@ export async function loadQuestions(uid: string, source: GameSourceRequest): Pro
     if (!Array.isArray(cards)) throw new GameInputError('This deck has no cards.', 'failed-precondition')
     return questionsFromDeck(cards.map(card => ({ front: card?.front, back: card?.back })))
   }
-  const plan = await db.doc(`users/${uid}/lessonPlans/${source.planId}`).get()
-  if (!plan.exists) throw new GameInputError('Lesson plan not found.', 'not-found')
-  const order = plan.get('order')
-  if (!Array.isArray(order) || order.length > 12) throw new GameInputError('This lesson plan cannot be played.', 'failed-precondition')
-  const lessons = await Promise.all(order.map(id => typeof id === 'string' ? db.doc(`users/${uid}/lessonPlans/${source.planId}/lessons/${id}`).get() : null))
-  const quizzes = lessons.flatMap(lesson => lesson && lesson.exists && Array.isArray(lesson.get('quiz')) ? [lesson.get('quiz') as unknown[]] : [])
-  return questionsFromLessonQuizzes(quizzes)
+  if (source.kind === 'lesson') {
+    const plan = await db.doc(`users/${uid}/lessonPlans/${source.planId}`).get()
+    if (!plan.exists) throw new GameInputError('Lesson plan not found.', 'not-found')
+    const order = plan.get('order')
+    if (!Array.isArray(order) || order.length > 12) throw new GameInputError('This lesson plan cannot be played.', 'failed-precondition')
+    const lessons = await Promise.all(order.map(id => typeof id === 'string' ? db.doc(`users/${uid}/lessonPlans/${source.planId}/lessons/${id}`).get() : null))
+    const quizzes = lessons.flatMap(lesson => lesson && lesson.exists && Array.isArray(lesson.get('quiz')) ? [lesson.get('quiz') as unknown[]] : [])
+    return questionsFromLessonQuizzes(quizzes)
+  }
+  const quizDoc = await db.doc(`quizzes/${source.quizId}`).get()
+  if (!quizDoc.exists || quizDoc.get('ownerId') !== uid) throw new GameInputError('Only your own quizzes can be played live.', 'permission-denied')
+  const qSnap = await db.collection(`quizzes/${source.quizId}/questions`).get()
+  const kSnap = await db.collection(`quizzes/${source.quizId}/answerKeys`).get()
+  const keysMap = new Map<string, string>()
+  kSnap.docs.forEach(d => {
+    const ans = d.get('answer')
+    if (typeof ans === 'string') keysMap.set(d.id, ans)
+  })
+  const questions: GameQuestion[] = []
+  for (const d of qSnap.docs) {
+    const q = d.data()
+    if (q.type !== 'multiple_choice' || !Array.isArray(q.options) || typeof q.prompt !== 'string') continue
+    const ans = keysMap.get(d.id)
+    if (!ans) continue
+    const correctIndex = (q.options as string[]).indexOf(ans)
+    if (correctIndex === -1) continue
+    try {
+      questions.push(parseQuestion({ prompt: q.prompt, options: q.options, correctIndex }, `Quiz question ${questions.length + 1}`))
+    } catch {
+      continue
+    }
+    if (questions.length >= GAME_LIMITS.maxQuestions) break
+  }
+  if (questions.length < GAME_LIMITS.minQuestions) {
+    throw new GameInputError(`This quiz has only ${questions.length} usable multiple-choice questions. A game needs at least ${GAME_LIMITS.minQuestions}.`, 'failed-precondition')
+  }
+  return questions
 }
 
-export function currentQuestionDoc(index: number, question: { prompt: string; options: string[] }, startedAtMs: number, timeLimitSec: number) {
+export function currentQuestionDoc(index: number, question: { prompt: string; options: string[] }, startedAtMs: number, timeLimitSec: number, untimed = false) {
   return {
     questionIndex: index,
     prompt: question.prompt,
     options: question.options,
     startedAt: Timestamp.fromMillis(startedAtMs),
-    endsAt: Timestamp.fromMillis(startedAtMs + timeLimitSec * 1000),
+    endsAt: untimed ? null : Timestamp.fromMillis(startedAtMs + timeLimitSec * 1000),
   }
 }
 

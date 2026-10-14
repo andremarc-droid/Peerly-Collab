@@ -14,9 +14,13 @@ import { buildReveal } from './gameReveal'
 
 describe('parseCreateGameRequest', () => {
   const deck = { kind: 'deck', classId: 'class_1', deckId: 'deck-1' }
-  it('accepts a deck or lesson source with a valid time limit', () => {
-    expect(parseCreateGameRequest({ source: deck, timeLimitSec: 20 })).toEqual({ source: deck, timeLimitSec: 20, groupId: null })
-    expect(parseCreateGameRequest({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1' })).toEqual({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1' })
+  it('accepts a deck, lesson, or quiz source with a valid time limit and pacing', () => {
+    expect(parseCreateGameRequest({ source: deck, timeLimitSec: 20 })).toEqual({ source: deck, timeLimitSec: 20, groupId: null, pacing: 'timed' })
+    expect(parseCreateGameRequest({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1', pacing: 'wait_for_everyone' })).toEqual({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1', pacing: 'wait_for_everyone' })
+    expect(parseCreateGameRequest({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, pacing: 'self_paced' })).toEqual({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, groupId: null, pacing: 'self_paced' })
+  })
+  it('rejects invalid pacing values', () => {
+    expect(() => parseCreateGameRequest({ source: deck, timeLimitSec: 20, pacing: 'invalid' })).toThrow(GameInputError)
   })
   it('rejects extra fields at every level', () => {
     expect(() => parseCreateGameRequest({ source: deck, timeLimitSec: 20, hostId: 'x' })).toThrow(GameInputError)

@@ -23,6 +23,7 @@ export interface Game {
   timeLimitSec: number
   playerCount: number
   expiresAtMs: number
+  pacing?: PacingMode
 }
 
 /** The open question only. It never carries the answer. */
@@ -31,7 +32,7 @@ export interface CurrentQuestion {
   prompt: string
   options: string[]
   startedAtMs: number
-  endsAtMs: number
+  endsAtMs: number | null
 }
 
 export interface RevealState {
@@ -50,12 +51,16 @@ export interface GamePlayer {
 
 export interface RankedGamePlayer extends GamePlayer { rank: number }
 
+export type PacingMode = 'timed' | 'wait_for_everyone' | 'self_paced'
+
 export type GameSourceChoice =
   | { kind: 'deck'; classId: string; deckId: string }
   | { kind: 'lesson'; planId: string }
+  | { kind: 'quiz'; classId: string; quizId: string }
 
 export interface CreateGameInput {
   source: GameSourceChoice
   timeLimitSec: number
   groupId?: string | null
+  pacing?: PacingMode
 }

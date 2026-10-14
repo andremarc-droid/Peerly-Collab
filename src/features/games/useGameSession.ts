@@ -69,7 +69,7 @@ export function useAutoReveal(session: GameSession, isHost: boolean): void {
     if (!game || game.status !== 'question' || !current) return undefined
     const timer = window.setInterval(() => {
       const now = Date.now()
-      const timeUp = now >= current.endsAtMs + GAME_LIMITS_GRACE_MS
+      const timeUp = current.endsAtMs !== null && now >= current.endsAtMs + GAME_LIMITS_GRACE_MS
       const everyone = players.length > 0 && answeredCount(players, current.questionIndex) >= players.length
       if (!timeUp && !everyone) return
       if (now - lastAsk.current < 3000 + (isHost ? 0 : Math.random() * 1500)) return

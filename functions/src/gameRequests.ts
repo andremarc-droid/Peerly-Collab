@@ -1,4 +1,4 @@
-import { GameInputError, cleanDisplayName, normalizeGameCode, parseTimeLimit } from './gameLogic.js'
+import { GameInputError, cleanDisplayName, normalizeGameCode, parseTimeLimit, type PacingMode } from './gameLogic.js'
 
 /**
  * Strict validation of callable payloads for live games. Unknown fields are rejected, never ignored.
@@ -8,8 +8,16 @@ import { GameInputError, cleanDisplayName, normalizeGameCode, parseTimeLimit } f
 const ID = /^[A-Za-z0-9_-]{1,128}$/
 const UID = /^[A-Za-z0-9:_-]{1,128}$/
 
-export type GameSourceRequest = { kind: 'deck'; classId: string; deckId: string } | { kind: 'lesson'; planId: string }
-export interface CreateGameRequest { source: GameSourceRequest; timeLimitSec: number; groupId: string | null }
+export type GameSourceRequest =
+  | { kind: 'deck'; classId: string; deckId: string }
+  | { kind: 'lesson'; planId: string }
+  | { kind: 'quiz'; classId: string; quizId: string }
+export interface CreateGameRequest {
+  source: GameSourceRequest
+  timeLimitSec: number
+  groupId: string | null
+  pacing?: PacingMode
+}
 export interface JoinGameRequest { code: string; displayName: string }
 export interface SubmitAnswerRequest { gameId: string; questionIndex: number; optionIndex: number }
 
@@ -33,9 +41,9 @@ function wholeNumber(value: unknown, min: number, max: number, label: string): n
 }
 
 export function parseCreateGameRequest(data: unknown): CreateGameRequest {
-  const record = exact(data, ['source', 'timeLimitSec'], ['groupId'])
+  const record = exact(data, ['source', 'timeLimitSec'], ['groupId', 'pacing'])
   const rawSource = record.source
-  if (typeof rawSource !== 'object' || rawSource === null || Array.isArray(rawSource)) throw new GameInputError('Choose a deck or a lesson plan.')
+  if (typeof rawSource !== 'object' || rawSource === null || Array.isArray(rawSource)) throw new GameInputError('Choose a deck, lesson plan, or quiz.')
   const kind = (rawSource as Record<string, unknown>).kind
   let source: GameSourceRequest
   if (kind === 'deck') {
@@ -44,9 +52,20 @@ export function parseCreateGameRequest(data: unknown): CreateGameRequest {
   } else if (kind === 'lesson') {
     const parsed = exact(rawSource, ['kind', 'planId'])
     source = { kind: 'lesson', planId: id(parsed.planId, 'The lesson plan') }
-  } else throw new GameInputError('Choose a deck or a lesson plan.')
+  } else if (kind === 'quiz') {
+    const parsed = exact(rawSource, ['kind', 'classId', 'quizId'])
+    source = { kind: 'quiz', classId: id(parsed.classId, 'The quiz class'), quizId: id(parsed.quizId, 'The quiz') }
+  } else throw new GameInputError('Choose a deck, lesson plan, or quiz.')
   const groupId = record.groupId === undefined || record.groupId === null ? null : id(record.groupId, 'The group')
-  return { source, timeLimitSec: parseTimeLimit(record.timeLimitSec), groupId }
+  let pacing: PacingMode = 'timed'
+  if ('pacing' in record && record.pacing !== undefined) {
+    if (record.pacing === 'timed' || record.pacing === 'wait_for_everyone' || record.pacing === 'self_paced') {
+      pacing = record.pacing
+    } else {
+      throw new GameInputError('Pacing must be timed, wait_for_everyone, or self_paced.')
+    }
+  }
+  return { source, timeLimitSec: parseTimeLimit(record.timeLimitSec), groupId, pacing }
 }
 
 export function parseJoinRequest(data: unknown): JoinGameRequest {

@@ -7,8 +7,9 @@ import { randomInt } from 'node:crypto'
 
 export type GameStatus = 'lobby' | 'question' | 'reveal' | 'finished'
 export type GameAction = 'start' | 'reveal' | 'next' | 'end'
+export type PacingMode = 'timed' | 'wait_for_everyone' | 'self_paced'
 export interface GameQuestion { prompt: string; options: string[]; correctIndex: number }
-export interface GameProgress { status: GameStatus; questionIndex: number; questionCount: number }
+export interface GameProgress { status: GameStatus; questionIndex: number; questionCount: number; pacing?: PacingMode }
 export interface RankedPlayer { uid: string; displayName: string; score: number; rank: number }
 
 export const GAME_LIMITS = {
@@ -185,9 +186,10 @@ export function actionForAdvance(status: GameStatus): 'reveal' | 'next' {
 }
 
 /** Answers are accepted only for the open question and only until the server deadline plus a small network grace. */
-export function checkAnswerWindow(input: { status: GameStatus; currentIndex: number; submittedIndex: number; nowMs: number; endsAtMs: number | null }): void {
+export function checkAnswerWindow(input: { status: GameStatus; currentIndex: number; submittedIndex: number; nowMs: number; endsAtMs: number | null; pacing?: PacingMode }): void {
   if (input.status !== 'question') throw new GameInputError('This question is closed.', 'failed-precondition')
   if (input.submittedIndex !== input.currentIndex) throw new GameInputError('That question is no longer open.', 'failed-precondition')
+  if (input.pacing === 'wait_for_everyone' || input.pacing === 'self_paced') return
   if (input.endsAtMs === null || input.nowMs > input.endsAtMs + GAME_LIMITS.lateGraceMs) throw new GameInputError('Time is up for this question.', 'failed-precondition')
 }
 
