@@ -103,7 +103,8 @@ export function applyQuestionOverride(result: QuizResult, questionId: string, po
   if (!Number.isFinite(pointsAwarded) || pointsAwarded < 0 || pointsAwarded > maxPoints) throw new Error(`Points must be between 0 and ${maxPoints}`)
   const prior = result.perQuestion[questionId]
   if (!prior) throw new Error(`Question ${questionId} is not in this result`)
-  const perQuestion = { ...result.perQuestion, [questionId]: { correct: pointsAwarded >= maxPoints, pointsAwarded, overridden: true } }
+  const correct = Math.round(pointsAwarded * 100) >= Math.round(maxPoints * 100)
+  const perQuestion = { ...result.perQuestion, [questionId]: { correct, pointsAwarded, overridden: true } }
   return { ...result, perQuestion, score: Math.round(Object.values(perQuestion).reduce((sum, item) => sum + item.pointsAwarded, 0) * 100) / 100 }
 }
 

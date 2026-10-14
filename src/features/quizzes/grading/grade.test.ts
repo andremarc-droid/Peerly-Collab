@@ -47,6 +47,48 @@ describe('calculateGrade', () => {
   it('fails clearly when a graded question has no answer key', () => {
     expect(() => gradeAttempt({ userId: 's', questions: [mappedQuestions[0]], answerKeys: {}, answers: {}, gradedAt: Timestamp.now() })).toThrow('Missing answer key')
   })
+
+  it.each([
+    { points: 1, blankCount: 6, expectedPoints: 1 },
+    { points: 2, blankCount: 7, expectedPoints: 2 },
+    { points: 7, blankCount: 6, expectedPoints: 7 },
+    { points: 12, blankCount: 7, expectedPoints: 12 },
+  ])('correctly grades points: $points, blanks: $blankCount without float inaccuracy', ({ points, blankCount, expectedPoints }) => {
+    const blanks = Array.from({ length: blankCount }, (_, i) => [`ans${i}`])
+    const question: QuizQuestion & { id: string } = {
+      id: 'fb',
+      type: 'fill_blank',
+      order: 0,
+      prompt: 'Fill blanks',
+      points,
+    }
+    const key: Record<string, AnswerKey> = {
+      fb: { type: 'fill_blank', blanks, explanation: '', caseSensitive: false },
+    }
+    const fullAnswers = Array.from({ length: blankCount }, (_, i) => `ans${i}`)
+    const fullGrade = gradeAttempt({
+      userId: 's',
+      questions: [question],
+      answerKeys: key,
+      answers: { fb: fullAnswers },
+      gradedAt: Timestamp.now(),
+    })
+    expect(fullGrade.perQuestion.fb.correct).toBe(true)
+    expect(fullGrade.perQuestion.fb.pointsAwarded).toBe(expectedPoints)
+    expect(fullGrade.score).toBe(expectedPoints)
+
+    // Partial answer: only 1 blank correct
+    const partialAnswers = [`ans0`, ...Array.from({ length: blankCount - 1 }, () => 'wrong')]
+    const partialGrade = gradeAttempt({
+      userId: 's',
+      questions: [question],
+      answerKeys: key,
+      answers: { fb: partialAnswers },
+      gradedAt: Timestamp.now(),
+    })
+    expect(partialGrade.perQuestion.fb.correct).toBe(false)
+    expect(partialGrade.perQuestion.fb.pointsAwarded).toBe(Math.round((1 / blankCount) * points * 100) / 100)
+  })
 })
 
 describe('gradeAttempt canvas mode', () => {

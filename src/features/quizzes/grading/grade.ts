@@ -60,7 +60,10 @@ export function gradeCanvasQuestion(
   const penalty = wrongCount * (penaltyMultiplier * avgPoints)
   const netPoints = Math.max(0, matchedPoints - penalty)
   const pointsAwarded = Math.round((netPoints / totalKeyPoints) * question.points * 100) / 100
-  const correct = pointsAwarded === question.points && question.points > 0
+  const correct =
+    question.points > 0 &&
+    ((matchedPoints === totalKeyPoints && wrongCount === 0) ||
+      Math.round(pointsAwarded * 100) >= Math.round(question.points * 100))
 
   return {
     correct,
@@ -71,14 +74,16 @@ export function gradeCanvasQuestion(
 
 function isCorrect(question: QuizQuestion, key: AnswerKey, answer: string | string[] | undefined): boolean | null {
   if (question.type === 'flashcard' || question.type === 'canvas') return null
-  if (answer === undefined || Array.isArray(answer)) return false
+  if (answer === undefined) return false
   if (question.type === 'multiple_choice' || question.type === 'true_false') {
+    if (Array.isArray(answer)) return false
     return key.type === 'choice' && answer === key.correctOptionId
   }
   if (question.type === 'identification') {
+    if (Array.isArray(answer)) return false
     return key.type === 'identification' && key.acceptedAnswers.some((accepted) => normalizeAnswer(answer, key.caseSensitive) === normalizeAnswer(accepted, key.caseSensitive))
   }
-  if (key.type !== 'fill_blank') return false
+  if (key.type !== 'fill_blank' || question.type !== 'fill_blank') return false
   const submitted = Array.isArray(answer) ? answer : [answer]
   return submitted.length === key.blanks.length && key.blanks.every((acceptedAnswers, index) => acceptedAnswers.some((accepted) => normalizeAnswer(submitted[index] ?? '', key.caseSensitive) === normalizeAnswer(accepted, key.caseSensitive)))
 }
@@ -116,12 +121,18 @@ export function gradeAttempt(input: {
     let correct = isCorrect(question, key, answer)
     if (question.type === 'fill_blank' && key.type === 'fill_blank') {
       const submitted = Array.isArray(answer) ? answer : answer === undefined ? [] : [answer]
-      const eachBlank = question.points / key.blanks.length
-      pointsAwarded = key.blanks.reduce((subtotal, acceptedAnswers, index) => {
+      let matchedBlanks = 0
+      for (let index = 0; index < key.blanks.length; index++) {
+        const acceptedAnswers = key.blanks[index] ?? []
         const value = submitted[index] ?? ''
-        return subtotal + (acceptedAnswers.some((accepted) => normalizeAnswer(value, key.caseSensitive) === normalizeAnswer(accepted, key.caseSensitive)) ? eachBlank : 0)
-      }, 0)
-      correct = pointsAwarded === question.points && submitted.length === key.blanks.length
+        if (acceptedAnswers.some((accepted) => normalizeAnswer(value, key.caseSensitive) === normalizeAnswer(accepted, key.caseSensitive))) {
+          matchedBlanks += 1
+        }
+      }
+      pointsAwarded = key.blanks.length > 0
+        ? Math.round((matchedBlanks / key.blanks.length) * question.points * 100) / 100
+        : 0
+      correct = matchedBlanks === key.blanks.length && submitted.length === key.blanks.length
     } else if (correct) pointsAwarded = question.points
     score += pointsAwarded
     perQuestion[question.id] = { correct, pointsAwarded, overridden: false }
