@@ -12,7 +12,7 @@ import type { EnrollmentWithId } from '../../classes/types'
 import { getQuiz } from '../services/quizService'
 import { getClass } from '../../classes/services/classService'
 import { listEnrollments } from '../../classes/services/enrollmentService'
-import { addTeamMember, createTeam, deleteTeam, removeTeamMember, setRepresentative, watchQuizTeams } from '../services/teamService'
+import { addTeamMember, createTeam, deleteTeam, overrideTeamQuestion, removeTeamMember, setRepresentative, watchQuizTeams } from '../services/teamService'
 
 // The signed-in user must be the SAME object on every render, like the real useAuth. A fresh object each time would make the page reload forever.
 const { showToast, signedIn } = vi.hoisted(() => ({
@@ -26,7 +26,7 @@ vi.mock('../services/quizService', () => ({ getQuiz: vi.fn() }))
 vi.mock('../../classes/services/classService', () => ({ getClass: vi.fn() }))
 vi.mock('../../classes/services/enrollmentService', () => ({ listEnrollments: vi.fn() }))
 vi.mock('../services/teamService', () => ({
-  watchQuizTeams: vi.fn(), addTeamMember: vi.fn(), createTeam: vi.fn(), deleteTeam: vi.fn(), removeTeamMember: vi.fn(), setRepresentative: vi.fn(),
+  watchQuizTeams: vi.fn(), addTeamMember: vi.fn(), createTeam: vi.fn(), deleteTeam: vi.fn(), overrideTeamQuestion: vi.fn(), removeTeamMember: vi.fn(), setRepresentative: vi.fn(),
   describeTeamError: (reason: unknown) => (reason instanceof Error ? reason.message : 'Something went wrong.'),
 }))
 
@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.mocked(getClass).mockResolvedValue({ id: 'class-1', name: 'Math' } as never)
   vi.mocked(listEnrollments).mockResolvedValue([student('ana', 'Ana'), student('ben', 'Ben'), student('cy', 'Cy')])
   vi.mocked(watchQuizTeams).mockImplementation((_quizId, onChange) => { onChange(teams); return () => undefined })
-  for (const fn of [addTeamMember, createTeam, deleteTeam, removeTeamMember, setRepresentative]) vi.mocked(fn).mockResolvedValue(undefined as never)
+  for (const fn of [addTeamMember, createTeam, deleteTeam, overrideTeamQuestion, removeTeamMember, setRepresentative]) vi.mocked(fn).mockResolvedValue(undefined as never)
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -187,5 +187,15 @@ describe('team management page: changing teams', () => {
     expect(screen.getByRole('button', { name: 'Delete Red Team' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Remove Ben from Red Team' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Make Ben the representative' })).not.toBeInTheDocument()
+  })
+
+  it('allows the instructor to advance a stuck team that is playing', async () => {
+    teams = [team({ status: 'in_progress' })]
+    const user = userEvent.setup()
+    renderPage()
+    const advanceBtn = await screen.findByRole('button', { name: 'Advance stuck team Red Team' })
+    expect(advanceBtn).toBeInTheDocument()
+    await user.click(advanceBtn)
+    await waitFor(() => expect(overrideTeamQuestion).toHaveBeenCalledWith('quiz-1', 'team-1'))
   })
 })

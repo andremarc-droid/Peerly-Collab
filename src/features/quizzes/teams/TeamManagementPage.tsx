@@ -1,4 +1,4 @@
-import { Crown, Shuffle, Trash2, UserMinus, UserPlus, Users } from 'lucide-react'
+import { Crown, FastForward, Shuffle, Trash2, UserMinus, UserPlus, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
@@ -20,7 +20,7 @@ import { useToast } from '../../../shared/ui/useToast'
 import { getClass } from '../../classes/services/classService'
 import { listEnrollments } from '../../classes/services/enrollmentService'
 import { getQuiz, type QuizRecord } from '../services/quizService'
-import { addTeamMember, createTeam, deleteTeam, describeTeamError, removeTeamMember, setRepresentative, watchQuizTeams } from '../services/teamService'
+import { addTeamMember, createTeam, deleteTeam, describeTeamError, overrideTeamQuestion, removeTeamMember, setRepresentative, watchQuizTeams } from '../services/teamService'
 import type { Team } from '../types/team'
 import {
   MAX_TEAMS_PER_QUIZ, TEAM_NAME_MAX, autoAssignDrafts, isDuplicateTeamName, isTeamEditable, memberLabel, rosterFromEnrollments,
@@ -142,7 +142,8 @@ export function TeamManagementPage() {
             onAdd={memberId => run(`add-${team.id}`, () => addTeamMember(quiz.id, team.id, memberId), 'Student added.')}
             onRemove={memberId => run(`remove-${team.id}-${memberId}`, () => removeTeamMember(quiz.id, team.id, memberId), 'Student removed.')}
             onRepresentative={memberId => run(`rep-${team.id}`, () => setRepresentative(quiz.id, team.id, memberId), 'Representative changed.')}
-            onDelete={() => setDeleting(team)} />
+            onDelete={() => setDeleting(team)}
+            onOverride={() => run(`override-${team.id}`, () => overrideTeamQuestion(quiz.id, team.id), `${team.name} was advanced.`)} />
         </li>)}</ul>}
     </main>
 
@@ -165,16 +166,25 @@ interface TeamCardProps {
   onRemove: (memberId: string) => Promise<boolean>
   onRepresentative: (memberId: string) => Promise<boolean>
   onDelete: () => void
+  onOverride: () => void
 }
 
-function TeamCard({ team, groupSize, roster, waiting, busy, onAdd, onRemove, onRepresentative, onDelete }: TeamCardProps) {
+function TeamCard({ team, groupSize, roster, waiting, busy, onAdd, onRemove, onRepresentative, onDelete, onOverride }: TeamCardProps) {
   const [toAdd, setToAdd] = useState('')
   const editable = isTeamEditable(team.status)
   const room = team.memberIds.length < groupSize
   const working = busy !== null
   return <SectionCard title={team.name} description={teamHint(team, groupSize)} icon={<Users size={20} />}
-    action={<div className="flex flex-wrap items-center gap-2"><Badge>{teamStatusLabel(team.status)}</Badge>{team.code && <Badge>Code {team.code}</Badge>}
-      <Button type="button" variant="secondary" disabled={!editable || working} onClick={onDelete} aria-label={`Delete ${team.name}`}><Trash2 size={16} aria-hidden="true" /> Delete</Button></div>}>
+    action={<div className="flex flex-wrap items-center gap-2">
+      <Badge>{teamStatusLabel(team.status)}</Badge>
+      {team.code && <Badge>Code {team.code}</Badge>}
+      {team.status === 'in_progress' && (
+        <Button type="button" variant="secondary" disabled={working} onClick={onOverride} aria-label={`Advance stuck team ${team.name}`}>
+          <FastForward size={16} aria-hidden="true" /> Advance team
+        </Button>
+      )}
+      <Button type="button" variant="secondary" disabled={!editable || working} onClick={onDelete} aria-label={`Delete ${team.name}`}><Trash2 size={16} aria-hidden="true" /> Delete</Button>
+    </div>}>
     <ul className="m-0 grid list-none gap-2 p-0" aria-label={`Members of ${team.name}`}>
       {team.memberIds.map(id => {
         const isRep = id === team.representativeId

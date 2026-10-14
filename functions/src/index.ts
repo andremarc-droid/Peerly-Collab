@@ -37,6 +37,7 @@ import {
   joinTeam as joinTeamHandler,
   leaveTeam as leaveTeamHandler,
   lockTeamAnswer as lockTeamAnswerHandler,
+  overrideTeamQuestion as overrideTeamQuestionHandler,
   removeTeamMember as removeTeamMemberHandler,
   setRepresentative as setRepresentativeHandler,
   startTeamAttempt as startTeamAttemptHandler,
@@ -179,5 +180,6 @@ export const startTeamAttempt = onCall({ region: 'us-central1' }, wrapGroupQuizH
 export const submitTeamAnswer = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(submitTeamAnswerHandler))
 export const lockTeamAnswer = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(lockTeamAnswerHandler))
 export const advanceTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(advanceTeamHandler))
+export const overrideTeamQuestion = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(overrideTeamQuestionHandler))
 export const submitTeamAttempt = onCall({ region: 'us-central1', timeoutSeconds: 120 }, wrapGroupQuizHandler(submitTeamAttemptHandler))
 export const cleanupGroupQuizData = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, wrapGroupQuizHandler(cleanupGroupQuizDataHandler))

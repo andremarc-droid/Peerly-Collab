@@ -4,7 +4,7 @@ import {
   GroupQuizError, assertCanStart, assertCanSubmit, autoAnswer, buildQuestionOrder, canAdvanceReview, canLockAnswer, isTimeUp, nextTeamStatus, validateAnswer,
   type Answer,
 } from './groupQuizLogic.js'
-import { parseAnswerRequest, parseQuestionStep, parseStartTeam } from './groupQuizRequests.js'
+import { parseAnswerRequest, parseQuestionStep, parseStartTeam, parseTeamRef } from './groupQuizRequests.js'
 import {
   RATE, assertMember, assertPlayable, authedUid, db, enforceRate, guarded, participantRef, privateRef, quizRef, readPrivate, readQuiz, readSession, readTeam,
   revealRef, sessionRef, teamRef,
@@ -221,3 +221,51 @@ export async function advanceTeam(call: CallableRequest<unknown>) {
     })
   })
 }
+
+/** Allows the quiz owner (instructor) to force-close an open question or advance a stuck team. */
+export async function overrideTeamQuestion(call: CallableRequest<unknown>) {
+  const uid = authedUid(call)
+  return guarded(async () => {
+    const request = parseTeamRef(call.data)
+    await enforceRate(uid, 'manage', RATE.manage)
+    return db().runTransaction(async tx => {
+      const ctx = await loadPlay(tx, request.quizId, request.teamId)
+      const { quiz, team, session, priv } = ctx
+      if (quiz.ownerId !== uid) {
+        throw new GroupQuizError('Only the quiz instructor can override a team.', 'permission-denied')
+      }
+      const now = Date.now()
+      if (session.phase === 'finished') {
+        return { advanced: false, phase: 'finished' as const, currentIndex: session.currentIndex }
+      }
+      if (session.phase === 'answering') {
+        const question = session.question
+        if (!question) return { advanced: false, phase: session.phase, currentIndex: session.currentIndex }
+        const picks = priv.picks[question.id] ?? {}
+        const final = quiz.settings.answerMode === 'representative' ? (picks[team.representativeId] ?? null) : autoAnswer(picks, team.memberIds)
+        closeQuestion(tx, ctx, { final, lockedBy: uid, auto: false }, now)
+        return { advanced: true, phase: 'review' as const, currentIndex: session.currentIndex }
+      }
+      // In review phase: advance to next question
+      const nextIndex = session.currentIndex + 1
+      if (nextIndex >= session.total) {
+        tx.set(sessionRef(request.quizId, request.teamId), finishedSessionFields(session.total))
+        return { advanced: true, phase: 'finished' as const, currentIndex: nextIndex }
+      }
+      const nextId = priv.questionOrder[nextIndex]
+      if (!nextId) {
+        tx.set(sessionRef(request.quizId, request.teamId), finishedSessionFields(session.total))
+        return { advanced: true, phase: 'finished' as const, currentIndex: nextIndex }
+      }
+      const nextDoc = await tx.get(questionDoc(request.quizId, nextId))
+      if (!nextDoc.exists) {
+        tx.set(sessionRef(request.quizId, request.teamId), finishedSessionFields(session.total))
+        return { advanced: true, phase: 'finished' as const, currentIndex: nextIndex }
+      }
+      const next = toSessionQuestion(nextDoc, nextIndex, priv.optionOrder[nextId])
+      tx.set(sessionRef(request.quizId, request.teamId), openSessionFields(next, session.total, quiz, now))
+      return { advanced: true, phase: 'answering' as const, currentIndex: nextIndex }
+    })
+  })
+}
+

@@ -97,6 +97,8 @@ export const lockTeamAnswer = (quizId: string, teamId: string, questionIndex: nu
 /** Safe to call repeatedly: the server makes at most one legal move per call (close an expired question, mark ready, or go on). */
 export const advanceTeam = (quizId: string, teamId: string, questionIndex: number) =>
   call<{ quizId: string; teamId: string; questionIndex: number }, { advanced: boolean; phase: string; currentIndex: number }>('advanceTeam', { quizId, teamId, questionIndex })
+export const overrideTeamQuestion = (quizId: string, teamId: string) =>
+  call<{ quizId: string; teamId: string }, { advanced: boolean; phase: string; currentIndex: number }>('overrideTeamQuestion', { quizId, teamId })
 export const submitTeamAttempt = (quizId: string, teamId: string) =>
   call<{ quizId: string; teamId: string }, { alreadySubmitted: boolean; score: number | null; maxScore: number | null }>('submitTeamAttempt', { quizId, teamId })
 /** Used by account deletion: takes this person off every team. If it fails, nothing else is deleted so they can retry. */
