@@ -23,6 +23,7 @@ import type { BlankCanvasAnswer } from '../quizzes/types'
 import { toDataUrl } from '../canvas/imageProcessing'
 import { listImages } from '../canvas/imageService'
 import { lazy, Suspense } from 'react'
+import { MasteryPractice } from './components/MasteryPractice'
 
 const CanvasBoard = lazy(() => import('../canvas/components/CanvasBoard'))
 
@@ -39,6 +40,7 @@ export function QuizResultPage() {
   const [review, setReview] = useState<ReviewItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [masteryMode, setMasteryMode] = useState(false)
   const [canvasImages, setCanvasImages] = useState<Record<string, { dataUrl: string; alt?: string }>>({})
   const [canvasImagesError, setCanvasImagesError] = useState(false)
 
@@ -102,6 +104,14 @@ export function QuizResultPage() {
   const blankCards = (boardAnswer?.cards ?? []) as CanvasCard[]
   const blankConnections = boardAnswer?.connections ?? []
 
+  const missedItems = review.filter(
+    (item): item is { question: QuestionRecord; key: AnswerKey } =>
+      item.key !== null &&
+      Boolean(result?.perQuestion[item.question.id]) &&
+      !result?.perQuestion[item.question.id]?.correct &&
+      item.question.type !== 'canvas',
+  ).map((item) => ({ id: item.question.id, question: item.question, key: item.key }))
+
   return <AppShell><PageHeader eyebrow="SUBMISSION COMPLETE" title="Your result." subtitle={quiz.title} />
     <main className="app-shell__content grid gap-5">
       {late && <Alert tone="warning" label="Late submission">Submitted after the time limit. Your instructor may review this.</Alert>}
@@ -160,50 +170,75 @@ export function QuizResultPage() {
       ) : (
         <>
           <SectionCard title={visibility.showScore && result ? 'Your score' : 'Submitted'} description={visibility.showScore && result ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
-            {quiz.mode === 'flashcards' ? <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p> : visibility.showScore && result ? <div className="quiz-score-summary"><ScoreRing percent={result.maxScore > 0 ? Math.round(result.score / result.maxScore * 100) : 0} /><strong>{result.score} / {result.maxScore} points</strong></div> : <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>}
-          </SectionCard>
-          {!visibility.showAnswers && quiz.mode !== 'flashcards' && quiz.settings.answerReveal !== 'never' && (
-            <Alert tone="info" label="Answers hidden">
-              {quiz.settings.scoreVisibility === 'after_release' && !quiz.settings.scoresReleased
-                ? 'Answers and explanations will appear after your instructor releases results.'
-                : 'Answers and explanations are not shown for this quiz.'}
-            </Alert>
-          )}
-          {visibility.showAnswers && result && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {
-            const grade = result.perQuestion[question.id]
-            return <SectionCard key={question.id} title={`Question ${index + 1}`} description={question.prompt}>
-              {quiz.mode !== 'flashcards' && visibility.showScore && <span className={`attempt-status ${grade?.correct ? 'attempt-status--correct' : 'attempt-status--incorrect'}`}>{grade?.correct ? <CircleCheck size={16} aria-hidden="true" /> : <CircleX size={16} aria-hidden="true" />}{grade?.correct ? 'Correct' : 'Needs practice'} · {grade?.pointsAwarded ?? 0} / {question.points}</span>}
-              {question.type === 'canvas' && key?.type === 'canvas' ? (
-                <div className="mt-3">
-                  <CanvasReviewView
-                    question={question as unknown as CanvasQuestion}
-                    attemptId={attemptId}
-                    studentAnswer={typeof attempt.answers[question.id] === 'string' || Array.isArray(attempt.answers[question.id]) ? (attempt.answers[question.id] as string | string[]) : undefined}
-                    answerKey={key as unknown as CanvasAnswerKey}
-                    images={canvasImages}
-                  />
-                  {canvasImagesError && (
-                    <div className="mt-2 flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
-                      <span>Some board images could not be loaded.</span>
-                      <button
-                        type="button"
-                        onClick={() => void loadCanvasImages()}
-                        className="underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  )}
+            {quiz.mode === 'flashcards' ? (
+              <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p>
+            ) : visibility.showScore && result ? (
+              <div className="grid gap-4">
+                <div className="quiz-score-summary">
+                  <ScoreRing percent={result.maxScore > 0 ? Math.round(result.score / result.maxScore * 100) : 0} />
+                  <strong>{result.score} / {result.maxScore} points</strong>
                 </div>
-              ) : (
-                <>
-                  <p className="mt-3 mb-0"><strong>Your answer:</strong> {answerText(attempt.answers[question.id])}</p>
-                  {key && <p className="mt-2 mb-0"><strong>Answer:</strong> {key.type === 'choice' && 'options' in question ? question.options.find(({ id }) => id === key.correctOptionId)?.text : key.type === 'identification' ? key.acceptedAnswers.join(', ') : key.type === 'fill_blank' ? key.blanks.map((blank) => blank.join(' / ')).join(' · ') : key.type === 'flashcard' ? key.back : ''}</p>}
-                  {key?.explanation && <p className="mt-2 mb-0">{key.explanation}</p>}
-                </>
+                {missedItems.length > 0 && !masteryMode && (
+                  <div>
+                    <Button type="button" onClick={() => setMasteryMode(true)}>
+                      Practice missed questions ({missedItems.length})
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>
+            )}
+          </SectionCard>
+
+          {masteryMode && missedItems.length > 0 ? (
+            <MasteryPractice items={missedItems} onExit={() => setMasteryMode(false)} />
+          ) : (
+            <>
+              {!visibility.showAnswers && quiz.mode !== 'flashcards' && quiz.settings.answerReveal !== 'never' && (
+                <Alert tone="info" label="Answers hidden">
+                  {quiz.settings.scoreVisibility === 'after_release' && !quiz.settings.scoresReleased
+                    ? 'Answers and explanations will appear after your instructor releases results.'
+                    : 'Answers and explanations are not shown for this quiz.'}
+                </Alert>
               )}
-            </SectionCard>
-          })}</section>}
+              {visibility.showAnswers && result && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {
+                const grade = result.perQuestion[question.id]
+                return <SectionCard key={question.id} title={`Question ${index + 1}`} description={question.prompt}>
+                  {quiz.mode !== 'flashcards' && visibility.showScore && <span className={`attempt-status ${grade?.correct ? 'attempt-status--correct' : 'attempt-status--incorrect'}`}>{grade?.correct ? <CircleCheck size={16} aria-hidden="true" /> : <CircleX size={16} aria-hidden="true" />}{grade?.correct ? 'Correct' : 'Needs practice'} · {grade?.pointsAwarded ?? 0} / {question.points}</span>}
+                  {question.type === 'canvas' && key?.type === 'canvas' ? (
+                    <div className="mt-3">
+                      <CanvasReviewView
+                        question={question as unknown as CanvasQuestion}
+                        attemptId={attemptId}
+                        studentAnswer={typeof attempt.answers[question.id] === 'string' || Array.isArray(attempt.answers[question.id]) ? (attempt.answers[question.id] as string | string[]) : undefined}
+                        answerKey={key as unknown as CanvasAnswerKey}
+                        images={canvasImages}
+                      />
+                      {canvasImagesError && (
+                        <div className="mt-2 flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
+                          <span>Some board images could not be loaded.</span>
+                          <button
+                            type="button"
+                            onClick={() => void loadCanvasImages()}
+                            className="underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mt-3 mb-0"><strong>Your answer:</strong> {answerText(attempt.answers[question.id])}</p>
+                      {key && <p className="mt-2 mb-0"><strong>Answer:</strong> {key.type === 'choice' && 'options' in question ? question.options.find(({ id }) => id === key.correctOptionId)?.text : key.type === 'identification' ? key.acceptedAnswers.join(', ') : key.type === 'fill_blank' ? key.blanks.map((blank) => blank.join(' / ')).join(' · ') : key.type === 'flashcard' ? key.back : ''}</p>}
+                      {key?.explanation && <p className="mt-2 mb-0">{key.explanation}</p>}
+                    </>
+                  )}
+                </SectionCard>
+              })}</section>}
+            </>
+          )}
         </>
       )}
       <Button to="/student">Back to practice</Button></main>

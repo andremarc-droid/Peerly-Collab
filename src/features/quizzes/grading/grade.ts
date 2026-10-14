@@ -72,7 +72,7 @@ export function gradeCanvasQuestion(
   }
 }
 
-function isCorrect(question: QuizQuestion, key: AnswerKey, answer: string | string[] | undefined): boolean | null {
+export function isCorrect(question: QuizQuestion, key: AnswerKey, answer: string | string[] | undefined): boolean | null {
   if (question.type === 'flashcard' || question.type === 'canvas') return null
   if (answer === undefined) return false
   if (question.type === 'multiple_choice' || question.type === 'true_false') {
