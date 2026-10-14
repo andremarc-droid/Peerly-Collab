@@ -205,7 +205,8 @@ export async function shareStudyItem(call: CallableRequest<unknown>) {
   const sourceClassId = data.sourceClassId
   if (!['lessonPlan', 'deck', 'canvas'].includes(String(kind)) || typeof sourceId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(sourceId)) throw new HttpsError('invalid-argument', 'Choose a valid study item.')
   const groupRef = db().doc(`groups/${groupId}`)
-  const membership = await groupRef.collection('members').doc(uid).get()
+  const memberRef = groupRef.collection('members').doc(uid)
+  const membership = await memberRef.get()
   if (!membership.exists) throw new HttpsError('permission-denied', 'Join the group before sharing study items.')
   const shareRef = groupRef.collection('shares').doc()
   const snapshotRef = groupRef.collection('sharedContent').doc(shareRef.id)
@@ -243,8 +244,8 @@ export async function shareStudyItem(call: CallableRequest<unknown>) {
     }
   }
   await db().runTransaction(async tx => {
-    const current = await tx.get(groupRef)
-    if (!current.exists || !membership.exists) throw new HttpsError('not-found', 'The group is no longer available.')
+    const [current, currentMember] = await Promise.all([tx.get(groupRef), tx.get(memberRef)])
+    if (!current.exists || !currentMember.exists) throw new HttpsError('not-found', 'The group is no longer available.')
     tx.create(shareRef, { kind, ownerId: uid, title: shortText(title, 'Study item title', 1, 120), snapshotPath: snapshotRef.path, sharedAt: now })
     tx.create(snapshotRef, snapshot)
     childSnapshots.forEach(child => tx.create(snapshotRef.collection(child.path.split('/')[0]!).doc(child.path.split('/')[1]!), child.data))
