@@ -35,7 +35,7 @@ export async function prepareChatImages(
 
   for (const file of files) {
     if (images.length >= capacity) {
-      errors.push(`You can attach up to ${safeMaximum} images per import.`)
+      errors.push(`You can attach up to ${safeMaximum} images per message.`)
       break
     }
     try {

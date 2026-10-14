@@ -1,29 +1,59 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import type { DecodedIdToken } from 'firebase-admin/auth'
 
-// In-memory rate limiter per user: max 30 requests per 60 seconds
-const userRateLimits = new Map<string, number[]>()
-const RATE_LIMIT_WINDOW_MS = 60_000
-const MAX_REQUESTS_PER_WINDOW = 30
+export const ALLOWED_MODELS = ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b'] as const
+export type AllowedModel = (typeof ALLOWED_MODELS)[number]
 
-export function checkUserRateLimit(uid: string, now = Date.now()): { allowed: boolean; retryAfter: number } {
-  let timestamps = userRateLimits.get(uid)
-  if (!timestamps) {
-    timestamps = []
-    userRateLimits.set(uid, timestamps)
+export const MAX_MESSAGES = 50
+export const MAX_TOTAL_CHARACTERS = 1_500_000
+export const MAX_TOKENS = 4096
+
+export interface RateWindow {
+  startedAtMs: number
+  count: number
+}
+
+/** Fixed-window rate limiter: returns whether this attempt is allowed, next window to persist, and retry delay. */
+export function consumeRateWindow(
+  current: RateWindow | null,
+  nowMs: number,
+  limit: number,
+  windowMs: number,
+): { allowed: boolean; next: RateWindow; retryAfter: number } {
+  if (!current || nowMs < current.startedAtMs || nowMs - current.startedAtMs >= windowMs) {
+    return { allowed: true, next: { startedAtMs: nowMs, count: 1 }, retryAfter: 0 }
   }
-  const cutoff = now - RATE_LIMIT_WINDOW_MS
-  timestamps = timestamps.filter((t) => t > cutoff)
-  userRateLimits.set(uid, timestamps)
-
-  if (timestamps.length >= MAX_REQUESTS_PER_WINDOW) {
-    const oldest = timestamps[0]
-    const retryAfter = Math.max(1, Math.ceil((oldest + RATE_LIMIT_WINDOW_MS - now) / 1000))
-    return { allowed: false, retryAfter }
+  if (current.count >= limit) {
+    const retryAfter = Math.max(1, Math.ceil((current.startedAtMs + windowMs - nowMs) / 1000))
+    return { allowed: false, next: current, retryAfter }
   }
+  return { allowed: true, next: { startedAtMs: current.startedAtMs, count: current.count + 1 }, retryAfter: 0 }
+}
 
-  timestamps.push(now)
-  return { allowed: true, retryAfter: 0 }
+/** Firestore-backed per-user fixed window rate limiter. */
+export async function checkUserRateLimit(
+  uid: string,
+  now = Date.now(),
+  limit = 30,
+  windowMs = 60_000,
+  firestore?: FirebaseFirestore.Firestore,
+): Promise<{ allowed: boolean; retryAfter: number }> {
+  const { getFirestore } = await import('firebase-admin/firestore')
+  const db = firestore ?? getFirestore()
+  const ref = db.doc(`aiRateLimits/${uid}`)
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    const raw = snap.get('window') as { startedAtMs?: unknown; count?: unknown } | undefined
+    const current: RateWindow | null =
+      raw && typeof raw.startedAtMs === 'number' && typeof raw.count === 'number'
+        ? { startedAtMs: raw.startedAtMs, count: raw.count }
+        : null
+    const result = consumeRateWindow(current, now, limit, windowMs)
+    if (result.allowed) {
+      tx.set(ref, { window: result.next }, { merge: true })
+    }
+    return { allowed: result.allowed, retryAfter: result.retryAfter }
+  })
 }
 
 let firebaseInitialized = false
@@ -138,8 +168,8 @@ export default async function handler(
       return
     }
 
-    // Rate limit check
-    const rateCheck = checkUserRateLimit(decoded.uid)
+    // Rate limit check backed by Firestore
+    const rateCheck = await checkUserRateLimit(decoded.uid)
     if (!rateCheck.allowed) {
       res.statusCode = 429
       res.setHeader('Retry-After', String(rateCheck.retryAfter))
@@ -161,7 +191,7 @@ export default async function handler(
       body = await parseBody(req)
     }
 
-    const groqApiKey = process.env.GROQ_API_KEY?.trim() || process.env.VITE_GROQ_API_KEY?.trim()
+    const groqApiKey = process.env.GROQ_API_KEY?.trim()
     if (!groqApiKey) {
       res.statusCode = 500
       res.setHeader('Content-Type', 'application/json')
@@ -169,17 +199,127 @@ export default async function handler(
       return
     }
 
-    const messages = body.messages
-    if (!Array.isArray(messages) || messages.length === 0) {
+    // Model allow-list validation
+    const requestedModel = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'qwen/qwen3.8-27b'
+    if (!(ALLOWED_MODELS as readonly string[]).includes(requestedModel)) {
       res.statusCode = 400
       res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: 'Request body must include a non-empty messages array.', code: 'bad-request' }))
+      res.end(JSON.stringify({
+        error: `Model '${requestedModel}' is not supported. Allowed models: ${ALLOWED_MODELS.join(', ')}`,
+        code: 'bad-request',
+      }))
+      return
+    }
+    const model = requestedModel as AllowedModel
+
+    // Messages array validation & message count cap
+    const messages = body.messages
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > MAX_MESSAGES) {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({
+        error: `Request body must include between 1 and ${MAX_MESSAGES} messages.`,
+        code: 'bad-request',
+      }))
       return
     }
 
-    const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'qwen/qwen3.8-27b'
-    const maxTokens = typeof body.max_tokens === 'number' ? Math.min(body.max_tokens, 4096) : 1024
-    const temperature = typeof body.temperature === 'number' ? body.temperature : 0.6
+    // Message roles, content types and total character count validation
+    const ALLOWED_ROLES = new Set(['system', 'user', 'assistant'])
+    let totalChars = 0
+
+    for (const msg of messages) {
+      if (typeof msg !== 'object' || msg === null) {
+        res.statusCode = 400
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ error: 'Each message must be an object.', code: 'bad-request' }))
+        return
+      }
+      const role = (msg as { role?: unknown }).role
+      if (typeof role !== 'string' || !ALLOWED_ROLES.has(role)) {
+        res.statusCode = 400
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ error: `Message role must be 'system', 'user', or 'assistant'.`, code: 'bad-request' }))
+        return
+      }
+      const content = (msg as { content?: unknown }).content
+      if (typeof content === 'string') {
+        if (!content.trim()) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'Message content cannot be empty.', code: 'bad-request' }))
+          return
+        }
+        totalChars += content.length
+      } else if (Array.isArray(content)) {
+        if (content.length === 0) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'Message content parts cannot be empty.', code: 'bad-request' }))
+          return
+        }
+        for (const part of content) {
+          if (typeof part !== 'object' || part === null) {
+            res.statusCode = 400
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Message content part must be an object.', code: 'bad-request' }))
+            return
+          }
+          const partType = (part as { type?: unknown }).type
+          if (partType === 'text') {
+            const text = (part as { text?: unknown }).text
+            if (typeof text !== 'string') {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Text content part must contain a text string.', code: 'bad-request' }))
+              return
+            }
+            totalChars += text.length
+          } else if (partType === 'image_url') {
+            const imageUrl = (part as { image_url?: { url?: unknown } }).image_url
+            if (!imageUrl || typeof imageUrl.url !== 'string') {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'image_url part must contain a valid URL string.', code: 'bad-request' }))
+              return
+            }
+            totalChars += imageUrl.url.length
+          } else {
+            res.statusCode = 400
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: `Content part type '${String(partType)}' is not supported.`, code: 'bad-request' }))
+            return
+          }
+        }
+      } else {
+        res.statusCode = 400
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ error: 'Message content must be a string or array of parts.', code: 'bad-request' }))
+        return
+      }
+    }
+
+    if (totalChars > MAX_TOTAL_CHARACTERS) {
+      res.statusCode = 400
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({
+        error: `Total message characters (${totalChars}) exceed the limit of ${MAX_TOTAL_CHARACTERS}.`,
+        code: 'bad-request',
+      }))
+      return
+    }
+
+    // max_tokens validation
+    if (body.max_tokens !== undefined) {
+      if (typeof body.max_tokens !== 'number' || !Number.isInteger(body.max_tokens) || body.max_tokens <= 0 || body.max_tokens > MAX_TOKENS) {
+        res.statusCode = 400
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ error: `max_tokens must be an integer between 1 and ${MAX_TOKENS}.`, code: 'bad-request' }))
+        return
+      }
+    }
+    const maxTokens = typeof body.max_tokens === 'number' ? body.max_tokens : 1024
+    const temperature = typeof body.temperature === 'number' && body.temperature >= 0 && body.temperature <= 2 ? body.temperature : 0.6
 
     const groqPayload: Record<string, unknown> = {
       model,
@@ -224,10 +364,9 @@ export default async function handler(
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({ text: content, choices: [{ message: { content } }] }))
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
     console.error('[aiChat error]:', err)
     res.statusCode = 500
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Internal server error', details: msg }))
+    res.end(JSON.stringify({ error: 'Internal server error' }))
   }
 }

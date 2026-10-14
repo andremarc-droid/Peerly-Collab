@@ -1,4 +1,3 @@
-export const GROQ_API_KEY_VAR = 'VITE_GROQ_API_KEY'
 export const GROQ_MODEL_VAR = 'VITE_GROQ_MODEL'
 /** Vision-capable model on Groq. Override with VITE_GROQ_MODEL. */
 export const DEFAULT_GROQ_MODEL = 'qwen/qwen3.8-27b'
@@ -8,27 +7,19 @@ export const GROQ_LESSON_MODEL_VAR = 'VITE_GROQ_LESSON_MODEL'
 export const DEFAULT_GROQ_LESSON_MODEL = 'openai/gpt-oss-20b'
 
 export interface GroqConfig {
-  apiKey: string
   model: string
 }
 
 export type EnvSource = Record<string, string | undefined>
 
-/** Reads the Groq settings. The API key is required; the model is optional. */
-export function validateGroqEnv(env: EnvSource): GroqConfig {
-  const apiKey = env[GROQ_API_KEY_VAR]?.trim()
-  if (!apiKey) {
-    throw new Error(
-      `Missing required environment variable ${GROQ_API_KEY_VAR}. Add it to .env.local and restart the dev server.`,
-    )
-  }
-  return { apiKey, model: env[GROQ_MODEL_VAR]?.trim() || DEFAULT_GROQ_MODEL }
+/** Reads the Groq model settings. Model is optional and falls back to default. */
+export function validateGroqEnv(env: EnvSource = import.meta.env): GroqConfig {
+  return { model: env[GROQ_MODEL_VAR]?.trim() || DEFAULT_GROQ_MODEL }
 }
 
-/** Evaluated lazily so a missing key falls back to the server proxy instead of crashing the app. */
+/** Evaluated lazily. */
 export function getGroqConfig(env: EnvSource = import.meta.env): GroqConfig {
-  const apiKey = env[GROQ_API_KEY_VAR]?.trim() || ''
-  return { apiKey, model: env[GROQ_MODEL_VAR]?.trim() || DEFAULT_GROQ_MODEL }
+  return { model: env[GROQ_MODEL_VAR]?.trim() || DEFAULT_GROQ_MODEL }
 }
 
 /** The model used to write lessons. Everything else uses VITE_GROQ_MODEL. */
@@ -49,14 +40,6 @@ export function getGroqVisionModel(env: EnvSource = import.meta.env): string {
 }
 
 /** A plain-language problem description, or null when Groq is configured. */
-export function getGroqConfigIssue(env: EnvSource = import.meta.env): string | null {
-  try {
-    validateGroqEnv(env)
-    return null
-  } catch (error) {
-    if (env === import.meta.env && typeof window !== 'undefined') {
-      return null
-    }
-    return error instanceof Error ? error.message : 'The AI tutor is not configured.'
-  }
+export function getGroqConfigIssue(_env: EnvSource = import.meta.env): string | null {
+  return null
 }

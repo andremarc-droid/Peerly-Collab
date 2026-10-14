@@ -1,7 +1,16 @@
+import { Capacitor } from '@capacitor/core'
 import { getGroqConfig, getGroqVisionModel, modelReadsImages, type GroqConfig } from './requiredEnv'
 
-export const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions'
 export const DEFAULT_MAX_TOKENS = 1024
+
+export function getAiChatEndpoint(): string {
+  const custom = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
+  if (custom) return `${custom}/api/aiChat`
+  if (Capacitor.isNativePlatform() || (typeof window !== 'undefined' && (window.location.protocol === 'capacitor:' || (window.location.hostname === 'localhost' && window.location.port === '')))) {
+    return 'https://peerly-collab.vercel.app/api/aiChat'
+  }
+  return '/api/aiChat'
+}
 
 export type GroqContentPart =
   | { type: 'text'; text: string }
@@ -81,7 +90,7 @@ async function toGroqError(response: Response): Promise<GroqError> {
   switch (response.status) {
     case 401:
     case 403:
-      return new GroqError('The AI service rejected the API key. Check VITE_GROQ_API_KEY.', response.status)
+      return new GroqError('Authentication failed for the AI service. Please sign in again.', response.status)
     case 413:
       return new GroqError('This message is too large for the AI service. Try a shorter message or fewer images.', response.status)
     case 429:
@@ -108,8 +117,7 @@ async function toGroqError(response: Response): Promise<GroqError> {
 }
 
 /**
- * Sends one chat completion request to Groq and returns the reply text.
- * When client config.apiKey is not present, proxies through /api/aiChat with Firebase Auth.
+ * Sends one chat completion request to the AI proxy (/api/aiChat) and returns the reply text.
  * Qwen models run in fast instruct mode (reasoning_effort "none") to save tokens against the rate limit.
  */
 export async function createChatCompletion(options: ChatCompletionOptions): Promise<string> {
@@ -130,37 +138,25 @@ export async function createChatCompletion(options: ChatCompletionOptions): Prom
 
   let response: Response
   try {
-    if (config.apiKey) {
-      response = await send(GROQ_CHAT_URL, {
-        method: 'POST',
-        signal: options.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify(body),
-      })
-    } else {
-      let token: string | undefined
-      try {
-        const { auth } = await import('../firebase/auth')
-        if (typeof auth?.authStateReady === 'function') {
-          await auth.authStateReady()
-        }
-        token = await auth?.currentUser?.getIdToken()
-      } catch {
-        // Firebase client not loaded
+    let token: string | undefined
+    try {
+      const { auth } = await import('../firebase/auth')
+      if (typeof auth?.authStateReady === 'function') {
+        await auth.authStateReady()
       }
-      response = await send('/api/aiChat', {
-        method: 'POST',
-        signal: options.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(body),
-      })
+      token = await auth?.currentUser?.getIdToken()
+    } catch {
+      // Firebase client not loaded
     }
+    response = await send(getAiChatEndpoint(), {
+      method: 'POST',
+      signal: options.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
   } catch (error) {
     if (isAbortError(error)) throw error
     throw new GroqError('Could not reach the AI service. Check your connection and try again.')

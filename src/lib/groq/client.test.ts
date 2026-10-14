@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createChatCompletion, GroqError, stripThinking, type GroqFetch } from './client'
+import { createChatCompletion, getAiChatEndpoint, GroqError, stripThinking, type GroqFetch } from './client'
 
-const config = { apiKey: 'secret-key', model: 'qwen/qwen3.8-27b' }
+const config = { model: 'qwen/qwen3.8-27b' }
 const messages = [{ role: 'user' as const, content: 'Hi' }]
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -16,15 +16,20 @@ describe('stripThinking', () => {
   })
 })
 
+describe('getAiChatEndpoint', () => {
+  it('returns /api/aiChat in standard web mode', () => {
+    expect(getAiChatEndpoint()).toBe('/api/aiChat')
+  })
+})
+
 describe('createChatCompletion', () => {
-  it('posts the request with auth header and instruct mode for qwen', async () => {
+  it('posts the request to /api/aiChat with instruct mode for qwen', async () => {
     const fetchImpl = vi.fn<GroqFetch>().mockResolvedValue(jsonResponse({ choices: [{ message: { content: 'Hello' } }] }))
     const reply = await createChatCompletion({ messages, config, fetchImpl })
 
     expect(reply).toBe('Hello')
     const [url, init] = fetchImpl.mock.calls[0]
-    expect(url).toBe('https://api.groq.com/openai/v1/chat/completions')
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer secret-key')
+    expect(url).toBe('/api/aiChat')
     const body = JSON.parse(init.body as string)
     expect(body.model).toBe('qwen/qwen3.8-27b')
     expect(body.reasoning_effort).toBe('none')
@@ -47,11 +52,11 @@ describe('createChatCompletion', () => {
     expect((error as GroqError).message).toContain('12 seconds')
   })
 
-  it('reports a rejected key without leaking it', async () => {
+  it('reports authentication error without leaking keys', async () => {
     const fetchImpl: GroqFetch = async () => jsonResponse({}, { status: 401 })
     const error = (await createChatCompletion({ messages, config, fetchImpl }).catch((e: unknown) => e)) as GroqError
-    expect(error.message).toContain('VITE_GROQ_API_KEY')
-    expect(error.message).not.toContain('secret-key')
+    expect(error.message).toContain('Authentication failed')
+    expect(error.message).not.toContain('API key')
   })
 
   it('includes the provider detail for bad requests', async () => {
