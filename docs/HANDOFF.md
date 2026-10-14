@@ -33,3 +33,18 @@ npx vitest run functions/src/gameLogic.test.ts functions/src/gameRequests.test.t
 ## Open risks
 - 6A bug (not mine, not fixed): functions/src/studyGroups.ts calls getFirestore() at module load, before initializeApp() in index.ts. Compiled CJS requires it first, so the function bundle may fail to load. liveGames uses a lazy getter. Suggest verifying in the Functions emulator.
 - Not typechecked yet: user must run build:functions and fix any compile errors I could not see.
+
+## TTL Policy Configuration
+TTL policy declarations for `games` and `gameCodes` are declared in `firestore.indexes.json` using `fieldOverrides` with `"ttl": true`.
+If deploying to Google Cloud Firestore using `gcloud`, the exact CLI commands to enable TTL on the expiration fields are:
+
+```powershell
+gcloud firestore fields ttls update expiresAt --collection-group=games --enable-ttl
+gcloud firestore fields ttls update expiresAt --collection-group=gameCodes --enable-ttl
+```
+
+To verify the TTL policies:
+```powershell
+gcloud firestore fields ttls list
+```
+
