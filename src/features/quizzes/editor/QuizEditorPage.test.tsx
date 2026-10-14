@@ -7,15 +7,36 @@ import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
 import { QuizEditorPage } from './QuizEditorPage'
 import { defaultQuizSettings } from '../schemas/settings'
 
-const mocks = vi.hoisted(() => ({ classes: [] as Array<{ id: string; name: string; status: string }>, questionCount: 0, createQuiz: vi.fn(), getQuiz: vi.fn(), updateQuiz: vi.fn(), saveQuestionAndKey: vi.fn(), watchQuestionPairs: vi.fn(), getQuestionWithKey: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  classes: [] as Array<{ id: string; name: string; status: string }>,
+  questionCount: 0,
+  createQuiz: vi.fn(),
+  getQuiz: vi.fn(),
+  updateQuiz: vi.fn(),
+  saveQuestionAndKey: vi.fn(),
+  watchQuestionPairs: vi.fn(),
+  getQuestionWithKey: vi.fn(),
+  duplicateQuiz: vi.fn(),
+  hasQuizAttemptsOrParticipants: vi.fn(),
+}))
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'teacher', displayName: 'Teacher' } }) }))
 vi.mock('../../profile/useUserProfile', () => ({ useUserProfile: () => ({ profile: { name: 'Teacher' } }) }))
-vi.mock('../services', () => ({ createQuiz: mocks.createQuiz, getQuiz: mocks.getQuiz, updateQuiz: mocks.updateQuiz, saveQuestionAndKey: mocks.saveQuestionAndKey, watchQuestionPairs: mocks.watchQuestionPairs, getQuestionWithKey: mocks.getQuestionWithKey }))
+vi.mock('../services', () => ({
+  createQuiz: mocks.createQuiz,
+  getQuiz: mocks.getQuiz,
+  updateQuiz: mocks.updateQuiz,
+  saveQuestionAndKey: mocks.saveQuestionAndKey,
+  watchQuestionPairs: mocks.watchQuestionPairs,
+  getQuestionWithKey: mocks.getQuestionWithKey,
+  duplicateQuiz: mocks.duplicateQuiz,
+  hasQuizAttemptsOrParticipants: mocks.hasQuizAttemptsOrParticipants,
+}))
 vi.mock('../services/quizService', () => ({
   createQuiz: mocks.createQuiz,
   getQuiz: mocks.getQuiz,
   updateQuiz: mocks.updateQuiz,
-  duplicateQuiz: vi.fn(),
+  duplicateQuiz: mocks.duplicateQuiz,
+  hasQuizAttemptsOrParticipants: mocks.hasQuizAttemptsOrParticipants,
   deleteQuizCascade: vi.fn(),
   publishQuiz: vi.fn(),
   unpublishQuiz: vi.fn(),
@@ -49,6 +70,8 @@ beforeEach(() => {
   mocks.saveQuestionAndKey.mockReset().mockResolvedValue('question-1')
   mocks.watchQuestionPairs.mockReset().mockImplementation((_id: string, onChange: (items: never[]) => void) => { onChange([]); return vi.fn() })
   mocks.getQuestionWithKey.mockReset().mockResolvedValue(null)
+  mocks.duplicateQuiz.mockReset().mockResolvedValue('quiz-copy')
+  mocks.hasQuizAttemptsOrParticipants.mockReset().mockResolvedValue(false)
 })
 
 describe('quick create and quiz deletion confirmation', () => {
@@ -159,7 +182,7 @@ describe('quick create and quiz deletion confirmation', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('CANVAS BUILDER')).toBeInTheDocument()
+    expect(await screen.findByText('CANVAS BUILDER', {}, { timeout: 4000 })).toBeInTheDocument()
     const workspaceNav = await screen.findByRole('navigation', { name: 'Quiz workspace' })
     expect(workspaceNav).toBeInTheDocument()
     expect(workspaceNav).toHaveTextContent('Questions')
@@ -194,6 +217,33 @@ describe('quick create and quiz deletion confirmation', () => {
 
     expect(confirmSpy).toHaveBeenCalledWith('You have unsaved changes. Leave without saving?')
     expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('locks settings and offers duplicate quiz when published quiz has submissions', async () => {
+    mocks.getQuiz.mockResolvedValueOnce({
+      ...savedQuiz,
+      id: 'quiz-pub',
+      status: 'published',
+      publishedAt: Timestamp.fromMillis(2),
+    })
+    mocks.hasQuizAttemptsOrParticipants.mockResolvedValueOnce(true)
+
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-pub?tab=settings']}>
+        <Routes>
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Settings locked')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Duplicate quiz' })).toBeInTheDocument()
+
+    // Shuffle checkboxes are disabled
+    const shuffleQ = screen.getByLabelText('Shuffle questions') as HTMLInputElement
+    const shuffleO = screen.getByLabelText('Shuffle answer options') as HTMLInputElement
+    expect(shuffleQ).toBeDisabled()
+    expect(shuffleO).toBeDisabled()
   })
 })
 

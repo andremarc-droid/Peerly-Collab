@@ -1,5 +1,5 @@
 import {
-  collection, doc, getDoc, getDocs, orderBy, query, runTransaction, serverTimestamp, Timestamp, where,
+  collection, doc, getDoc, getDocs, limit, orderBy, query, runTransaction, serverTimestamp, Timestamp, where,
   type Firestore,
 } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
@@ -127,4 +127,12 @@ export async function listUserAttempts(quizId: string, userId: string, db: Fires
 export async function listQuizAttempts(quizId: string, db: Firestore = firestore): Promise<Array<QuizAttempt & { id: string }>> {
   const snapshot = await getDocs(query(collection(db, 'quizzes', quizId, 'attempts'), orderBy('startedAt', 'desc')))
   return snapshot.docs.map((item) => ({ ...parseQuizAttempt(item.data()), id: item.id }))
+}
+
+export async function hasQuizAttemptsOrParticipants(quizId: string, db: Firestore = firestore): Promise<boolean> {
+  const [attSnap, partSnap] = await Promise.all([
+    getDocs(query(collection(db, 'quizzes', quizId, 'attempts'), limit(1))),
+    getDocs(query(collection(db, 'quizzes', quizId, 'participants'), limit(1))),
+  ])
+  return !attSnap.empty || !partSnap.empty
 }

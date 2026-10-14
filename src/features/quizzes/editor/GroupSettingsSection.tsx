@@ -9,6 +9,7 @@ import { DEFAULT_GROUP_TIMER_SEC, defaultGroupParticipation, groupSettingsErrors
 interface Props {
   mode: QuizMode
   participation: Participation
+  disabled?: boolean
   onChange: (next: Participation) => void
 }
 
@@ -24,7 +25,7 @@ const formationOptions: Array<{ value: TeamFormation; label: string; hint: strin
 /** Turns what was typed into a number. An empty or unreadable box becomes NaN so the field shows an error instead of a silent default. */
 const toNumber = (text: string) => (text.trim() === '' ? Number.NaN : Number(text))
 
-export function GroupSettingsSection({ mode, participation, onChange }: Props) {
+export function GroupSettingsSection({ mode, participation, disabled, onChange }: Props) {
   if (mode !== 'quiz') {
     return (
       <SectionCard title="Participation" description="Choose whether learners answer alone or together.">
@@ -38,6 +39,7 @@ export function GroupSettingsSection({ mode, participation, onChange }: Props) {
       <RadioGroup
         label="How students participate"
         name="participation"
+        disabled={disabled}
         value={participation.type}
         options={[
           { value: 'individual', label: 'Individual', hint: 'Each student completes their own attempt.' },
@@ -45,12 +47,12 @@ export function GroupSettingsSection({ mode, participation, onChange }: Props) {
         ]}
         onChange={(value) => onChange(value === 'group' ? (participation.type === 'group' ? participation : defaultGroupParticipation()) : { type: 'individual' })}
       />
-      {isGroup && <GroupFields participation={participation} onChange={onChange} />}
+      {isGroup && <GroupFields participation={participation} disabled={disabled} onChange={onChange} />}
     </SectionCard>
   )
 }
 
-function GroupFields({ participation, onChange }: { participation: GroupParticipation; onChange: (next: Participation) => void }) {
+function GroupFields({ participation, disabled, onChange }: { participation: GroupParticipation; disabled?: boolean; onChange: (next: Participation) => void }) {
   const [sizeText, setSizeText] = useState(String(participation.groupSize))
   const [timerText, setTimerText] = useState(String(participation.questionTimeSec ?? DEFAULT_GROUP_TIMER_SEC))
   const errors = groupSettingsErrors(participation)
@@ -66,22 +68,24 @@ function GroupFields({ participation, onChange }: { participation: GroupParticip
         inputMode="numeric"
         min={GROUP_LIMITS.minTeamSize}
         max={GROUP_LIMITS.maxTeamSize}
+        disabled={disabled}
         value={sizeText}
         onChange={(event) => { setSizeText(event.target.value); update({ groupSize: toNumber(event.target.value) }) }}
         error={errors.groupSize}
         hint={`Teams can have ${GROUP_LIMITS.minTeamSize} to ${GROUP_LIMITS.maxTeamSize} members. A team needs at least 2 members to start.`}
       />
-      <RadioGroup label="How teams answer" name="group-answer-mode" value={participation.answerMode} options={answerModeOptions} onChange={(value) => update({ answerMode: value as AnswerMode })} />
-      <RadioGroup label="How teams are formed" name="group-team-formation" value={participation.teamFormation} options={formationOptions} onChange={(value) => update({ teamFormation: value as TeamFormation })} />
+      <RadioGroup label="How teams answer" name="group-answer-mode" disabled={disabled} value={participation.answerMode} options={answerModeOptions} onChange={(value) => update({ answerMode: value as AnswerMode })} />
+      <RadioGroup label="How teams are formed" name="group-team-formation" disabled={disabled} value={participation.teamFormation} options={formationOptions} onChange={(value) => update({ teamFormation: value as TeamFormation })} />
       <div className="quiz-editor__settings-grid">
         <label className="choice-control">
-          <input type="checkbox" checked={participation.waitForEveryone} onChange={(event) => update({ waitForEveryone: event.target.checked })} />
+          <input type="checkbox" disabled={disabled} checked={participation.waitForEveryone} onChange={(event) => update({ waitForEveryone: event.target.checked })} />
           <span className="choice-control__mark" aria-hidden="true" />
           <span className="choice-control__copy"><strong>Wait for everyone</strong><small>{waitHint(participation)}</small></span>
         </label>
         <label className="choice-control">
           <input
             type="checkbox"
+            disabled={disabled}
             checked={timerOn}
             onChange={(event) => {
               if (event.target.checked) { setTimerText(String(DEFAULT_GROUP_TIMER_SEC)); update({ questionTimeSec: DEFAULT_GROUP_TIMER_SEC }) }
@@ -99,6 +103,7 @@ function GroupFields({ participation, onChange }: { participation: GroupParticip
             inputMode="numeric"
             min={GROUP_LIMITS.minQuestionTimeSec}
             max={GROUP_LIMITS.maxQuestionTimeSec}
+            disabled={disabled}
             value={timerText}
             onChange={(event) => { setTimerText(event.target.value); update({ questionTimeSec: toNumber(event.target.value) }) }}
             error={errors.questionTimeSec}

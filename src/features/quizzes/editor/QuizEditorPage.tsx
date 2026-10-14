@@ -14,7 +14,7 @@ import { Select } from '../../../shared/ui/Select'
 import { useToast } from '../../../shared/ui/useToast'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 import { defaultQuizSettings } from '../schemas/settings'
-import { createQuiz, getQuiz, updateQuiz, watchQuestionPairs, type SavedQuestion } from '../services'
+import { createQuiz, duplicateQuiz, getQuiz, hasQuizAttemptsOrParticipants, updateQuiz, watchQuestionPairs, type SavedQuestion } from '../services'
 import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
 import type { QuizMode, QuizSettings } from '../types'
@@ -59,6 +59,8 @@ export function QuizEditorPage() {
   const [errors, setErrors] = useState<QuizFormErrors>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [hasSubmissions, setHasSubmissions] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved])
   useUnsavedChangesGuard(dirty)
 
@@ -75,6 +77,11 @@ export function QuizEditorPage() {
       if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
       const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, boardKind: quiz.boardKind, settings: quiz.settings }
       setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setResolvedQuizId(quizId)
+      if (quiz.status === 'published') {
+        void hasQuizAttemptsOrParticipants(quizId).then((result) => {
+          if (active) setHasSubmissions(result)
+        })
+      }
     }).catch((reason: unknown) => {
       if (active) { setLoadError(reason instanceof Error ? reason.message : 'This quiz could not be loaded.'); setResolvedQuizId(quizId) }
     })
@@ -158,6 +165,37 @@ export function QuizEditorPage() {
       {saveError && <Alert tone="error" label="Could not save changes">{saveError}</Alert>}
       {quizId && (!form.classId || (classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active'))) && <Alert tone="warning" label="Assign this quiz to a class">Choose an active class below and save to keep this quiz in the classroom catalog.</Alert>}
       {classesLoaded && !classes.some((item) => item.status === 'active') && <Alert tone="warning" label="Create a class first">Quizzes must belong to an active class. <Button to="/instructor" variant="secondary">Create a class</Button></Alert>}
+      {hasSubmissions && (
+        <div className="mb-4">
+          <Alert
+            tone="warning"
+            label="Settings locked"
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={duplicating}
+                onClick={async () => {
+                  setDuplicating(true)
+                  try {
+                    const copyId = await duplicateQuiz(quizId)
+                    showToast('success', 'Quiz duplicated as a draft.')
+                    navigate(`/instructor/quizzes/${copyId}?tab=settings`)
+                  } catch (err) {
+                    showToast('error', err instanceof Error ? err.message : 'Could not duplicate quiz')
+                  } finally {
+                    setDuplicating(false)
+                  }
+                }}
+              >
+                {duplicating ? 'Duplicating…' : 'Duplicate quiz'}
+              </Button>
+            }
+          >
+            This quiz is published and already has student attempts or participants. Timing, participation, and shuffle settings are locked to protect student results. Duplicate this quiz to modify them.
+          </Alert>
+        </div>
+      )}
       <form className="quiz-editor__form" onSubmit={handleSave} noValidate>
         <SectionCard title="Basics" description="Give learners a clear idea of what they’ll practice.">
           <div className="quiz-editor__fields">
@@ -206,8 +244,11 @@ export function QuizEditorPage() {
         <GroupSettingsSection
           mode={form.mode}
           participation={participation}
+          disabled={hasSubmissions}
           // Teams are paced per question by the server, so the whole-quiz time limit does not apply to them.
-          onChange={(next) => updateSettings({ participation: next, ...(next.type === 'group' ? { timeLimitMinutes: null } : {}) })}
+          onChange={(next) => {
+            if (!hasSubmissions) updateSettings({ participation: next, ...(next.type === 'group' ? { timeLimitMinutes: null } : {}) })
+          }}
         />
 
         <SectionCard title="Timing and attempts" description="Set a pace that supports thoughtful practice.">
@@ -215,12 +256,12 @@ export function QuizEditorPage() {
             {isGroupQuiz
               ? <p className="field__hint">Teams are paced per question (see Participation), so there is no whole-quiz time limit.</p>
               : <>
-                <label className="choice-control"><input type="checkbox" checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings({ timeLimitMinutes: event.target.checked ? 10 : null })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit</strong><small>Optional time for the quiz.</small></span></label>
-                {form.settings.timeLimitMinutes !== null && <Input label="Time limit in minutes" name="time-limit" type="number" min={1} value={String(form.settings.timeLimitMinutes)} onChange={(event) => updateSettings({ timeLimitMinutes: Math.max(1, Number(event.target.value) || 1) })} />}
+                <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings({ timeLimitMinutes: event.target.checked ? 10 : null })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit</strong><small>Optional time for the quiz.</small></span></label>
+                {form.settings.timeLimitMinutes !== null && <Input label="Time limit in minutes" name="time-limit" type="number" min={1} disabled={hasSubmissions} value={String(form.settings.timeLimitMinutes)} onChange={(event) => updateSettings({ timeLimitMinutes: Math.max(1, Number(event.target.value) || 1) })} />}
               </>}
             <Select label="Attempts allowed" name="attempts-allowed" value={form.settings.attemptsAllowed === null ? 'unlimited' : String(form.settings.attemptsAllowed)} onChange={(event) => updateSettings({ attemptsAllowed: event.target.value === 'unlimited' ? null : Number(event.target.value) })} options={[{ label: 'Unlimited', value: 'unlimited' }, { label: '1 attempt', value: '1' }, { label: '2 attempts', value: '2' }, { label: '3 attempts', value: '3' }]} />
-            <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleQuestions} onChange={(event) => updateSettings({ shuffleQuestions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle questions</strong></span></label>
-            <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleOptions} onChange={(event) => updateSettings({ shuffleOptions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle answer options</strong></span></label>
+            <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.shuffleQuestions} onChange={(event) => updateSettings({ shuffleQuestions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle questions</strong></span></label>
+            <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.shuffleOptions} onChange={(event) => updateSettings({ shuffleOptions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle answer options</strong></span></label>
           </div>
         </SectionCard>
 

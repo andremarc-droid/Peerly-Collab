@@ -12,7 +12,7 @@ import { SectionCard } from '../../../shared/ui/SectionCard'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { resolveListStatus } from '../../../shared/ui/listState'
 import { useToast } from '../../../shared/ui/useToast'
-import { deleteQuestion, getQuiz, publishQuiz, reorderQuestions, saveQuestionAndKey, watchQuestionPairs, type SavedQuestion } from '../services'
+import { deleteQuestion, duplicateQuiz, getQuiz, hasQuizAttemptsOrParticipants, publishQuiz, reorderQuestions, saveQuestionAndKey, watchQuestionPairs, type SavedQuestion } from '../services'
 import type { QuestionType, QuizMode } from '../types'
 import { QuestionForm, QuestionPreview } from './QuestionForm'
 import { createQuestionDraft, draftFromPair, moveQuestion, toQuestionPair, validateQuestionDraft, type QuestionDraft } from './questionDraft'
@@ -36,6 +36,8 @@ export function QuestionBuilderPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SavedQuestion | null>(null)
   const [publishBusy, setPublishBusy] = useState(false)
+  const [hasSubmissions, setHasSubmissions] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
   const dragId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -56,14 +58,23 @@ export function QuestionBuilderPage() {
   }, [quiz, quizId])
 
   useEffect(() => {
-    if (!quiz || searchParams.get('newQuestion') !== '1' || draft) return
+    if (!quizId || quiz?.status !== 'published') return
+    let active = true
+    hasQuizAttemptsOrParticipants(quizId).then((result) => {
+      if (active) setHasSubmissions(result)
+    }).catch(() => {})
+    return () => { active = false }
+  }, [quizId, quiz?.status])
+
+  useEffect(() => {
+    if (!quiz || searchParams.get('newQuestion') !== '1' || draft || hasSubmissions) return
     setDraft(createQuestionDraft(quiz.mode === 'flashcards' ? 'flashcard' : 'multiple_choice', 0))
     setQuestionId(null); setSavedSignature(null); setSaveStatus('waiting')
     searchParams.delete('newQuestion'); setSearchParams(searchParams, { replace: true })
-  }, [quiz, searchParams, draft, setSearchParams])
+  }, [quiz, searchParams, draft, setSearchParams, hasSubmissions])
 
   useEffect(() => {
-    if (!draft || !quiz || !user) return
+    if (!draft || !quiz || !user || hasSubmissions) return
     const signature = JSON.stringify(draft)
     if (savedSignature === signature) return
     if (Object.keys(validateQuestionDraft(draft, quiz.mode)).length > 0) return
@@ -79,7 +90,7 @@ export function QuestionBuilderPage() {
         })
     }, 650)
     return () => window.clearTimeout(timer)
-  }, [draft, quiz, user, quizId, questionId, questions, savedSignature, showToast])
+  }, [draft, quiz, user, quizId, questionId, questions, savedSignature, showToast, hasSubmissions])
 
   const checklist = useMemo(() => ({
     title: Boolean(quiz?.title.trim()),
@@ -101,11 +112,12 @@ export function QuestionBuilderPage() {
   }
 
   function addQuestion(type: QuestionType) {
+    if (hasSubmissions) return
     setQuestionId(null); setDraft(createQuestionDraft(type, questions.length)); setSavedSignature(null); setSaveStatus('waiting'); setSaveError(null)
   }
 
   function duplicateQuestion(question: SavedQuestion) {
-    if (!question.answerKey) return
+    if (!question.answerKey || hasSubmissions) return
     const next = draftFromPair(question.question, question.answerKey)
     if (next.type === 'multiple_choice' || next.type === 'true_false') next.options = next.options.map((option, index) => ({ ...option, id: `copy-${Date.now()}-${index}` }))
     next.prompt = `${next.prompt} (copy)`
@@ -113,7 +125,7 @@ export function QuestionBuilderPage() {
   }
 
   async function deleteSelectedQuestion() {
-    if (!deleteTarget) return
+    if (!deleteTarget || hasSubmissions) return
     try {
       await deleteQuestion(quizId, deleteTarget.id)
       if (questionId === deleteTarget.id) { setQuestionId(null); setDraft(null); setSavedSignature(null) }
@@ -123,6 +135,7 @@ export function QuestionBuilderPage() {
   }
 
   async function move(id: string, offset: number) {
+    if (hasSubmissions) return
     const from = questions.findIndex((question) => question.id === id)
     const reordered = moveQuestion(questions, from, from + offset)
     if (reordered === questions) return
@@ -149,6 +162,37 @@ export function QuestionBuilderPage() {
     <PageHeader eyebrow={quiz.mode === 'quiz' ? 'QUESTION BUILDER · QUIZ' : 'QUESTION BUILDER · FLASHCARDS'} title="Shape the practice." subtitle="Each question and answer key is saved together as you work." action={<Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary"><ArrowLeft size={17} aria-hidden="true" /> Settings</Button>} />
     <main className="app-shell__content question-builder" id="main-content">
       <nav aria-label="Quiz workspace" className="mb-4 flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} aria-current="page" variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button><Button to={`/instructor/quizzes/${quizId}?tab=preview`} variant="secondary">Preview</Button><Button to={`/instructor/quizzes/${quizId}/results`} variant="ghost">Results</Button></nav>
+      {hasSubmissions && (
+        <div className="mb-4">
+          <Alert
+            tone="warning"
+            label="Questions locked"
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={duplicating}
+                onClick={async () => {
+                  setDuplicating(true)
+                  try {
+                    const copyId = await duplicateQuiz(quizId)
+                    showToast('success', 'Quiz duplicated as a draft.')
+                    navigate(`/instructor/quizzes/${copyId}/questions`)
+                  } catch (err) {
+                    showToast('error', err instanceof Error ? err.message : 'Could not duplicate quiz')
+                  } finally {
+                    setDuplicating(false)
+                  }
+                }}
+              >
+                {duplicating ? 'Duplicating…' : 'Duplicate quiz'}
+              </Button>
+            }
+          >
+            This quiz is published and already has student attempts or participants. Questions cannot be edited, added, or deleted to protect student results. Duplicate this quiz to make changes.
+          </Alert>
+        </div>
+      )}
       <SectionCard title="Publish checklist" description="Your quiz is ready when each item is complete.">
         <ul className="question-checklist">{checklistItems.map(({ complete, label }) => <li key={label}><span aria-hidden="true">{complete ? '✓' : '○'}</span><span>{label}</span></li>)}</ul>
         <Button type="button" disabled={!canPublish || publishBusy || saveStatus === 'saving'} onClick={() => void publish()}>{publishBusy ? 'Publishing…' : 'Publish quiz'}</Button>
@@ -173,18 +217,18 @@ export function QuestionBuilderPage() {
               </div>
             )
           }
-          return <EmptyState title="Start with a question" description={quiz.mode === 'quiz' ? 'Add a question and its answer key. Learners will see only the prompt and choices.' : quiz.mode === 'flashcards' ? 'Add a front and back for each card. Learners will self-rate their recall.' : 'Configure your canvas board.'} action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} />} />
+          return <EmptyState title="Start with a question" description={quiz.mode === 'quiz' ? 'Add a question and its answer key. Learners will see only the prompt and choices.' : quiz.mode === 'flashcards' ? 'Add a front and back for each card. Learners will self-rate their recall.' : 'Configure your canvas board.'} action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} disabled={hasSubmissions} />} />
         }
         return (
           <section className="question-builder__layout" aria-label="Question workspace">
             <SectionCard title={`Questions · ${questions.length}`} description="Drag to reorder, or use the Move up and Move down controls.">
-              <ol className="question-list">{questions.map((item, index) => <li key={item.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!dragId.current) return; const from = questions.findIndex((question) => question.id === dragId.current); const to = questions.findIndex((question) => question.id === item.id); const next = moveQuestion(questions, from, to); dragId.current = null; void reorderQuestions(quizId, next.map((question) => question.id)).catch((reason: unknown) => showToast('error', reason instanceof Error ? reason.message : 'Questions could not be reordered.')) }}>
-                <div className="question-list__row"><span className="question-list__drag-handle" draggable aria-label={`Drag question ${index + 1} to reorder`} title="Drag to reorder" onDragStart={() => { dragId.current = item.id }}><GripVertical size={18} aria-hidden="true" /></span><button type="button" className="question-list__select" aria-pressed={questionId === item.id} onClick={() => selectQuestion(item)}><span><strong>{index + 1}. {item.question.prompt || 'Untitled question'}</strong><small>{item.question.type.replace('_', ' ')} · {item.question.points} {item.question.points === 1 ? 'point' : 'points'}</small></span></button><div className="question-list__actions"><Button type="button" variant="ghost" aria-label={`Move question ${index + 1} up`} disabled={index === 0} onClick={() => void move(item.id, -1)}><ArrowUp size={16} aria-hidden="true" /></Button><Button type="button" variant="ghost" aria-label={`Move question ${index + 1} down`} disabled={index === questions.length - 1} onClick={() => void move(item.id, 1)}><ArrowDown size={16} aria-hidden="true" /></Button></div></div>
+              <ol className="question-list">{questions.map((item, index) => <li key={item.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!dragId.current || hasSubmissions) return; const from = questions.findIndex((question) => question.id === dragId.current); const to = questions.findIndex((question) => question.id === item.id); const next = moveQuestion(questions, from, to); dragId.current = null; void reorderQuestions(quizId, next.map((question) => question.id)).catch((reason: unknown) => showToast('error', reason instanceof Error ? reason.message : 'Questions could not be reordered.')) }}>
+                <div className="question-list__row"><span className="question-list__drag-handle" draggable={!hasSubmissions} aria-label={`Drag question ${index + 1} to reorder`} title={hasSubmissions ? 'Reordering locked' : 'Drag to reorder'} onDragStart={() => { if (!hasSubmissions) dragId.current = item.id }}><GripVertical size={18} aria-hidden="true" /></span><button type="button" className="question-list__select" aria-pressed={questionId === item.id} onClick={() => selectQuestion(item)}><span><strong>{index + 1}. {item.question.prompt || 'Untitled question'}</strong><small>{item.question.type.replace('_', ' ')} · {item.question.points} {item.question.points === 1 ? 'point' : 'points'}</small></span></button><div className="question-list__actions"><Button type="button" variant="ghost" aria-label={`Move question ${index + 1} up`} disabled={index === 0 || hasSubmissions} onClick={() => void move(item.id, -1)}><ArrowUp size={16} aria-hidden="true" /></Button><Button type="button" variant="ghost" aria-label={`Move question ${index + 1} down`} disabled={index === questions.length - 1 || hasSubmissions} onClick={() => void move(item.id, 1)}><ArrowDown size={16} aria-hidden="true" /></Button></div></div>
               </li>)}</ol>
-              <QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} />
+              <QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} disabled={hasSubmissions} />
             </SectionCard>
             <div className="question-builder__editor-column">
-              {draft ? <SectionCard title={questionId ? 'Edit question' : 'New question'} description="Changes save automatically once the fields are valid."><QuestionForm draft={draft} mode={quiz.mode} errors={validateQuestionDraft(draft, quiz.mode)} onChange={(nextDraft) => { setDraft(nextDraft); setSaveStatus('waiting') }} /><div className="question-builder__toolbar"><span className={`question-save-status question-save-status--${saveStatus}`} role="status">{saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Complete valid fields to save'}</span>{questionId && <><Button type="button" variant="secondary" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) duplicateQuestion(selected) }}><Copy size={16} aria-hidden="true" /> Duplicate</Button><Button type="button" variant="secondary" className="button--destructive" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) setDeleteTarget(selected) }}><Trash2 size={16} aria-hidden="true" /> Delete</Button></>}</div>{saveError && <Alert tone="error" label="Question not saved">{saveError}</Alert>}</SectionCard> : <EmptyState title="Choose a question" description="Select a question to edit, or add a new one to this quiz." action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} />} />}
+              {draft ? <SectionCard title={questionId ? 'Edit question' : 'New question'} description="Changes save automatically once the fields are valid."><QuestionForm draft={draft} mode={quiz.mode} errors={validateQuestionDraft(draft, quiz.mode)} onChange={(nextDraft) => { if (!hasSubmissions) { setDraft(nextDraft); setSaveStatus('waiting') } }} /><div className="question-builder__toolbar"><span className={`question-save-status question-save-status--${saveStatus}`} role="status">{hasSubmissions ? 'Editing locked' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Complete valid fields to save'}</span>{questionId && !hasSubmissions && <><Button type="button" variant="secondary" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) duplicateQuestion(selected) }}><Copy size={16} aria-hidden="true" /> Duplicate</Button><Button type="button" variant="secondary" className="button--destructive" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) setDeleteTarget(selected) }}><Trash2 size={16} aria-hidden="true" /> Delete</Button></>}</div>{saveError && <Alert tone="error" label="Question not saved">{saveError}</Alert>}</SectionCard> : <EmptyState title="Choose a question" description="Select a question to edit, or add a new one to this quiz." action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} disabled={hasSubmissions} />} />}
               {draft && <QuestionPreview draft={draft} explanationTiming={quiz.mode === 'quiz' ? quiz.settings.answerReveal : 'never'} />}
             </div>
           </section>
@@ -195,7 +239,7 @@ export function QuestionBuilderPage() {
   </AppShell>
 }
 
-function QuestionTypeButtons({ mode, onAdd }: { mode: QuizMode; onAdd: (type: QuestionType) => void }) {
+function QuestionTypeButtons({ mode, onAdd, disabled }: { mode: QuizMode; onAdd: (type: QuestionType) => void; disabled?: boolean }) {
   if (mode === 'canvas') return null
-  return <div className="question-type-buttons">{mode === 'flashcards' ? <Button type="button" onClick={() => onAdd('flashcard')}><Plus size={17} aria-hidden="true" /> Add flashcard</Button> : <>{(['multiple_choice', 'true_false', 'identification', 'fill_blank'] as const).map((type) => <Button type="button" variant="secondary" key={type} onClick={() => onAdd(type)}><Plus size={16} aria-hidden="true" /> Add {type === 'multiple_choice' ? 'multiple choice' : type === 'true_false' ? 'true/false' : type === 'identification' ? 'identification' : 'fill in the blank'}</Button>)}</>}</div>
+  return <div className="question-type-buttons">{mode === 'flashcards' ? <Button type="button" disabled={disabled} onClick={() => onAdd('flashcard')}><Plus size={17} aria-hidden="true" /> Add flashcard</Button> : <>{(['multiple_choice', 'true_false', 'identification', 'fill_blank'] as const).map((type) => <Button type="button" variant="secondary" key={type} disabled={disabled} onClick={() => onAdd(type)}><Plus size={16} aria-hidden="true" /> Add {type === 'multiple_choice' ? 'multiple choice' : type === 'true_false' ? 'true/false' : type === 'identification' ? 'identification' : 'fill in the blank'}</Button>)}</>}</div>
 }

@@ -6,6 +6,7 @@ import { firestore } from '../../../lib/firebase/firestore'
 import { parseQuiz } from '../schemas'
 import { defaultQuizSettings } from '../schemas/settings'
 import type { NewQuiz, Quiz, QuizPatch, QuizStatus } from '../types'
+import { hasQuizAttemptsOrParticipants } from './attemptService'
 import { quizRef } from './paths'
 
 export type QuizRecord = Quiz & { id: string }
@@ -41,6 +42,18 @@ export async function updateQuiz(quizId: string, patch: QuizPatch, db: Firestore
     if (!snapshot.exists()) throw new Error('Quiz not found')
     const existing = parseQuiz(snapshot.data())
     const settings = cleanFlashcardSettings(existing.mode, patch.settings ?? existing.settings)
+    if (existing.status === 'published' && patch.settings) {
+      const participationChanged = patch.settings.participation !== undefined && JSON.stringify(patch.settings.participation) !== JSON.stringify(existing.settings.participation)
+      const shuffleQChanged = patch.settings.shuffleQuestions !== undefined && patch.settings.shuffleQuestions !== existing.settings.shuffleQuestions
+      const shuffleOChanged = patch.settings.shuffleOptions !== undefined && patch.settings.shuffleOptions !== existing.settings.shuffleOptions
+      const timeLimitChanged = patch.settings.timeLimitMinutes !== undefined && patch.settings.timeLimitMinutes !== existing.settings.timeLimitMinutes
+      if (participationChanged || shuffleQChanged || shuffleOChanged || timeLimitChanged) {
+        const hasSubmissions = await hasQuizAttemptsOrParticipants(quizId, db)
+        if (hasSubmissions) {
+          throw new Error('Cannot change participation, shuffle, or time limit settings on a published quiz with existing attempts or participants. Please duplicate the quiz instead.')
+        }
+      }
+    }
     const existingClassId = existing.classId?.trim() || null
     const requestedClassId = patch.classId?.trim() || null
     const classId = requestedClassId || existingClassId

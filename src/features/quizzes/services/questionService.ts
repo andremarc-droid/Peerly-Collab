@@ -5,6 +5,7 @@ import {
 import { firestore } from '../../../lib/firebase/firestore'
 import { validateQuestionAnswerPair } from '../schemas'
 import { parseQuiz } from '../schemas'
+import { hasQuizAttemptsOrParticipants } from './attemptService'
 import { answerKeyRef, questionRef, questionsRef, quizRef } from './paths'
 
 function stripUndefined<T>(value: T): T {
@@ -39,6 +40,12 @@ export async function saveQuestionAndKey(
     const [parentSnapshot, questionSnapshot] = await Promise.all([transaction.get(parentRef), transaction.get(ref)])
     if (!parentSnapshot.exists()) throw new Error('Quiz not found')
     const parent = parseQuiz(parentSnapshot.data())
+    if (parent.status === 'published') {
+      const hasSubmissions = await hasQuizAttemptsOrParticipants(quizId, db)
+      if (hasSubmissions) {
+        throw new Error('Cannot add or edit questions on a published quiz with existing attempts or participants. Please duplicate the quiz instead.')
+      }
+    }
     const boardKind = options?.boardKind ?? parent.boardKind
     const { question, answerKey } = validateQuestionAnswerPair(questionValue, answerKeyValue, {
       allowLegacyImages: options?.allowLegacyImages,
@@ -66,6 +73,12 @@ export async function deleteQuestion(quizId: string, questionId: string, db: Fir
     if (!parentSnapshot.exists()) throw new Error('Quiz not found')
     const parent = parseQuiz(parentSnapshot.data())
     if (!questionSnapshot.exists()) return
+    if (parent.status === 'published') {
+      const hasSubmissions = await hasQuizAttemptsOrParticipants(quizId, db)
+      if (hasSubmissions) {
+        throw new Error('Cannot delete questions on a published quiz with existing attempts or participants. Please duplicate the quiz instead.')
+      }
+    }
     transaction.delete(question)
     transaction.delete(answerKeyRef(db, quizId, questionId))
     transaction.update(parentRef, { questionCount: Math.max(0, parent.questionCount - 1), updatedAt: Timestamp.now() })
@@ -73,6 +86,13 @@ export async function deleteQuestion(quizId: string, questionId: string, db: Fir
 }
 
 export async function reorderQuestions(quizId: string, orderedIds: string[], db: Firestore = firestore): Promise<void> {
+  const quizSnapshot = await getDoc(quizRef(db, quizId))
+  if (quizSnapshot.exists() && quizSnapshot.data().status === 'published') {
+    const hasSubmissions = await hasQuizAttemptsOrParticipants(quizId, db)
+    if (hasSubmissions) {
+      throw new Error('Cannot reorder questions on a published quiz with existing attempts or participants. Please duplicate the quiz instead.')
+    }
+  }
   const snapshot = await getDocs(query(questionsRef(db, quizId), orderBy('order')))
   const currentIds = snapshot.docs.map(({ id }) => id)
   if (orderedIds.length !== currentIds.length || new Set(orderedIds).size !== orderedIds.length || orderedIds.some((id) => !currentIds.includes(id))) {

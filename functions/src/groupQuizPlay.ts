@@ -174,7 +174,10 @@ export async function advanceTeam(call: CallableRequest<unknown>) {
     return db().runTransaction(async tx => {
       const ctx = await loadPlay(tx, request.quizId, request.teamId)
       const { quiz, team, session, priv } = ctx
-      assertMember(team, uid)
+      const isInstructor = uid === quiz.ownerId
+      if (!isInstructor) {
+        assertMember(team, uid)
+      }
       const now = Date.now()
       const idle = { advanced: false, phase: session.phase, currentIndex: session.currentIndex }
       if (request.questionIndex < session.currentIndex || session.phase === 'finished') return idle
@@ -182,14 +185,14 @@ export async function advanceTeam(call: CallableRequest<unknown>) {
       const question = session.question
       if (!question) return idle
       if (session.phase === 'answering') {
-        if (session.locked || !isTimeUp(session.questionEndsAt, now)) return idle
+        if (!isInstructor && (session.locked || !isTimeUp(session.questionEndsAt, now))) return idle
         const picks = priv.picks[question.id] ?? {}
         const final = quiz.settings.answerMode === 'representative' ? (picks[team.representativeId] ?? null) : autoAnswer(picks, team.memberIds)
-        closeQuestion(tx, ctx, { final, lockedBy: null, auto: true }, now)
+        closeQuestion(tx, ctx, { final, lockedBy: isInstructor ? uid : null, auto: !isInstructor }, now)
         return { advanced: true, phase: 'review' as const, currentIndex: session.currentIndex }
       }
       const ready: Record<string, true> = { ...session.ready, [uid]: true }
-      const allowed = canAdvanceReview({
+      const allowed = isInstructor || canAdvanceReview({
         waitForEveryone: quiz.settings.waitForEveryone, memberCount: team.memberIds.length, readyCount: countOf(team, ready),
         reviewElapsedMs: now - (session.reviewStartedAt ?? now), hasTimer: quiz.settings.questionTimeSec !== null,
       })
@@ -203,8 +206,16 @@ export async function advanceTeam(call: CallableRequest<unknown>) {
         return { advanced: true, phase: 'finished' as const, currentIndex: nextIndex }
       }
       const nextId = priv.questionOrder[nextIndex]
-      if (!nextId) throw new GroupQuizError('This quiz changed while you were playing.', 'failed-precondition')
-      const next = toSessionQuestion(await tx.get(questionDoc(request.quizId, nextId)), nextIndex, priv.optionOrder[nextId])
+      if (!nextId) {
+        tx.set(sessionRef(request.quizId, request.teamId), finishedSessionFields(session.total))
+        return { advanced: true, phase: 'finished' as const, currentIndex: nextIndex }
+      }
+      const nextDoc = await tx.get(questionDoc(request.quizId, nextId))
+      if (!nextDoc.exists) {
+        tx.set(sessionRef(request.quizId, request.teamId), finishedSessionFields(session.total))
+        return { advanced: true, phase: 'finished' as const, currentIndex: nextIndex }
+      }
+      const next = toSessionQuestion(nextDoc, nextIndex, priv.optionOrder[nextId])
       tx.set(sessionRef(request.quizId, request.teamId), openSessionFields(next, session.total, quiz, now))
       return { advanced: true, phase: 'answering' as const, currentIndex: nextIndex }
     })
