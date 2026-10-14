@@ -25,9 +25,10 @@ export function validateGroqEnv(env: EnvSource): GroqConfig {
   return { apiKey, model: env[GROQ_MODEL_VAR]?.trim() || DEFAULT_GROQ_MODEL }
 }
 
-/** Evaluated lazily so a missing key disables the AI tutor instead of crashing the whole app. */
+/** Evaluated lazily so a missing key falls back to the server proxy instead of crashing the app. */
 export function getGroqConfig(env: EnvSource = import.meta.env): GroqConfig {
-  return validateGroqEnv(env)
+  const apiKey = env[GROQ_API_KEY_VAR]?.trim() || ''
+  return { apiKey, model: env[GROQ_MODEL_VAR]?.trim() || DEFAULT_GROQ_MODEL }
 }
 
 /** The model used to write lessons. Everything else uses VITE_GROQ_MODEL. */
@@ -50,9 +51,12 @@ export function getGroqVisionModel(env: EnvSource = import.meta.env): string {
 /** A plain-language problem description, or null when Groq is configured. */
 export function getGroqConfigIssue(env: EnvSource = import.meta.env): string | null {
   try {
-    getGroqConfig(env)
+    validateGroqEnv(env)
     return null
   } catch (error) {
+    if (env === import.meta.env && typeof window !== 'undefined') {
+      return null
+    }
     return error instanceof Error ? error.message : 'The AI tutor is not configured.'
   }
 }

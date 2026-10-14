@@ -63,8 +63,13 @@ function parseWaitFromMessage(message: string): number | null {
 async function toGroqError(response: Response): Promise<GroqError> {
   let detail = ''
   try {
-    const body = (await response.json()) as { error?: { message?: string } }
-    detail = body.error?.message ?? ''
+    const body = (await response.json()) as { error?: { message?: string } | string }
+    detail =
+      typeof body.error === 'object' && body.error?.message
+        ? body.error.message
+        : typeof body.error === 'string'
+        ? body.error
+        : ''
   } catch {
     // The error body was not JSON; the status code is enough.
   }
@@ -104,6 +109,7 @@ async function toGroqError(response: Response): Promise<GroqError> {
 
 /**
  * Sends one chat completion request to Groq and returns the reply text.
+ * When client config.apiKey is not present, proxies through /api/aiChat with Firebase Auth.
  * Qwen models run in fast instruct mode (reasoning_effort "none") to save tokens against the rate limit.
  */
 export async function createChatCompletion(options: ChatCompletionOptions): Promise<string> {
@@ -121,20 +127,40 @@ export async function createChatCompletion(options: ChatCompletionOptions): Prom
     stream: false,
   }
   if (config.model.startsWith('qwen/')) body.reasoning_effort = 'none'
-  // gpt-oss models always reason first, and those tokens count against max_tokens, so keep it short.
-  else if (config.model.startsWith('openai/gpt-oss')) body.reasoning_effort = 'low'
 
   let response: Response
   try {
-    response = await send(GROQ_CHAT_URL, {
-      method: 'POST',
-      signal: options.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    })
+    if (config.apiKey) {
+      response = await send(GROQ_CHAT_URL, {
+        method: 'POST',
+        signal: options.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      })
+    } else {
+      let token: string | undefined
+      try {
+        const { auth } = await import('../firebase/auth')
+        if (typeof auth?.authStateReady === 'function') {
+          await auth.authStateReady()
+        }
+        token = await auth?.currentUser?.getIdToken()
+      } catch {
+        // Firebase client not loaded
+      }
+      response = await send('/api/aiChat', {
+        method: 'POST',
+        signal: options.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      })
+    }
   } catch (error) {
     if (isAbortError(error)) throw error
     throw new GroqError('Could not reach the AI service. Check your connection and try again.')
@@ -142,8 +168,8 @@ export async function createChatCompletion(options: ChatCompletionOptions): Prom
 
   if (!response.ok) throw await toGroqError(response)
 
-  const data = (await response.json()) as ChatCompletionResponse
-  const text = stripThinking(data.choices?.[0]?.message?.content ?? '')
+  const data = (await response.json()) as ChatCompletionResponse & { text?: string }
+  const text = stripThinking(data.text ?? data.choices?.[0]?.message?.content ?? '')
   if (!text) throw new GroqError('The AI returned an empty reply. Please try again.', response.status)
   return text
 }

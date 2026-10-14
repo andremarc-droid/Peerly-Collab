@@ -5,7 +5,6 @@ import type { DecodedIdToken } from 'firebase-admin/auth'
 // Lazy loaded singletons
 let firebaseInitialized = false
 let handlersCache: Record<string, unknown> | null = null
-let currentProjectId = 'collaboration-app-b3c91'
 
 async function getHandlers() {
   if (!handlersCache) {
@@ -29,12 +28,6 @@ async function ensureFirebase() {
     try {
       const jsonStr = clean.startsWith('{') ? clean : Buffer.from(clean, 'base64').toString('utf-8')
       const credentials = JSON.parse(jsonStr) as Record<string, unknown>
-      if (typeof credentials.project_id === 'string' && credentials.project_id) {
-        currentProjectId = credentials.project_id
-      }
-      if (typeof credentials.private_key === 'string') {
-        credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
-      }
       initializeApp({ credential: cert(credentials) })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)

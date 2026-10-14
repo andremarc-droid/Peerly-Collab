@@ -23,10 +23,11 @@ function setup(options: { allowDocuments?: boolean } = {}) {
   return { onSend, box }
 }
 
-/** The document picker's file input is the only file input in the composer. */
 function pickDocuments(files: File[]) {
-  const inputs = document.querySelectorAll<HTMLInputElement>('input[type="file"]')
-  fireEvent.change(inputs[0], { target: { files } })
+  const input =
+    document.querySelector<HTMLInputElement>('input[type="file"][accept*=".pdf"]') ??
+    document.querySelectorAll<HTMLInputElement>('input[type="file"]')[0]
+  if (input) fireEvent.change(input, { target: { files } })
 }
 
 const pdf = () => new File(['%PDF'], 'notes.pdf', { type: 'application/pdf' })

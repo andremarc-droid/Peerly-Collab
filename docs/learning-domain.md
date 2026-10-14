@@ -18,7 +18,7 @@ Personal deck quizzes are generated in memory from embedded deck cards. Multiple
 
 The deck study dialog now supports flashcards, quiz, and practice-test modes. The practice-test setup offers question count, mixed question types, untimed mode, and 5/10/15/30-minute limits; expiry submits automatically. Submitted attempts show per-question review and are retained in per-deck history. The Live game option remains visibly disabled as coming soon. Personal quiz/test question sets are not separate Firestore documents; they are generated from the deck on demand. Streak and XP remain placeholders. Written quiz responses do not block on unavailable AI; learner self-grading is available.
 
-AI calls continue to use the existing Groq client through `src/features/studyEngine/ai.ts`; `VITE_GROQ_API_KEY` remains visible in browser code and should be moved server-side before public launch. No new dependencies were added.
+AI calls continue to use the shared Groq client through `src/features/studyEngine/ai.ts`, proxied through the server endpoint `/api/aiChat` with server-side `GROQ_API_KEY` to keep credentials secure. No new dependencies were added.
 
 ## Phase 3 import pipeline (3A)
 
@@ -78,7 +78,7 @@ Firestore emulator tests for membership privacy, direct-write denial and oversiz
 
 - Live games (Phase 6C UI): host from a deck's study dialog ("Live game") or from a group; join by 6-character code from the Groups tab. The screen is `/learning/games/:gameId` (`src/features/games/GamePage.tsx`). There is no host heartbeat: if the host closes the tab mid-game, players see "Waiting for the host to continue" and can leave, and the game expires after 6 hours. Setting Firestore TTL policies on `games.expiresAt` and `gameCodes.expiresAt` is a manual step. Games need the Cloud Functions deployed (Blaze plan).
 - Progress updates are last-write-wins across devices; simultaneous study sessions can overwrite each other's progress. The device clock and local timezone determine due times and the daily new-card counter.
-- Quiz and test grading run in the browser and are not secure or suitable for stakes. The Groq key configured through `VITE_GROQ_API_KEY` is exposed to browser users; move AI calls behind a server-side function before a public launch.
+- Quiz and test grading run in the browser and are not secure or suitable for stakes. AI calls are routed through the `/api/aiChat` server endpoint which enforces per-user rate limits and verifies Firebase ID tokens, keeping `GROQ_API_KEY` on the server.
 - Rules and collection-group indexes are source changes only until manually deployed. Study-engine rules tests are written but have not been run in the emulator here.
 - The current personal-content schema continues to reuse `classes/{uid}` as a storage container; it is not a class membership relationship.
 - The legacy graph data model and rules remain in Firestore for compatibility, although the app no longer exposes graph views or graph invite acceptance.
