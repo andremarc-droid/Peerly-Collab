@@ -148,7 +148,7 @@ export function QuizTakingPage() {
 
   const submit = useCallback(async (isAutoSubmit = false) => {
     if (submitted.current || !attempt || !quiz) return
-    if (invalidLinkCards.length > 0) {
+    if (!isAutoSubmit && invalidLinkCards.length > 0) {
       showToast('error', 'Link cards must have a valid https:// URL before submitting.')
       return
     }

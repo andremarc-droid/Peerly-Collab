@@ -476,4 +476,52 @@ describe('student quiz pages', () => {
     expect(await screen.findByText('Excellent organization and clear labels.')).toBeInTheDocument()
     expect(await screen.findByText('Cell Wall')).toBeInTheDocument()
   })
+
+  it('timed blank canvas attempt with empty link card auto-submits when timer expires', async () => {
+    const blankQuiz: Quiz & { id: string } = {
+      ...quiz,
+      id: 'quiz-blank-timed',
+      mode: 'canvas',
+      boardKind: 'blank',
+      settings: { ...quiz.settings, timeLimitMinutes: 1 },
+    }
+    const blankQuestion = {
+      id: 'board',
+      type: 'canvas' as const,
+      order: 0,
+      prompt: 'Construct your concept board.',
+      points: 50,
+      cards: [],
+      maxCards: 20,
+      maxConnections: 40,
+      allowedCardTypes: ['note', 'paragraph', 'link'],
+    }
+    const blankAttempt: QuizAttempt & { id: string } = {
+      ...attempt,
+      id: 'attempt-blank-timed',
+      startedAt: Timestamp.fromMillis(Date.now() - 70_000),
+      answers: {
+        board: {
+          cards: [{ id: 'link-1', type: 'link', title: 'Empty link', url: '', content: '', position: { x: 0, y: 0 } }],
+          connections: [],
+        },
+      },
+      questionOrder: ['board'],
+    }
+
+    vi.mocked(getQuiz).mockResolvedValue(blankQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([blankQuestion])
+    vi.mocked(getAttempt).mockResolvedValue(blankAttempt)
+
+    renderRoute('/student/quizzes/quiz-blank-timed/attempts/attempt-blank-timed', <QuizTakingPage />)
+
+    await waitFor(() => {
+      expect(submitAttempt).toHaveBeenCalledWith(
+        'quiz-blank-timed',
+        'attempt-blank-timed',
+        expect.any(Number),
+      )
+    })
+  })
 })
+
