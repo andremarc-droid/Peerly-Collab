@@ -59,9 +59,9 @@ const enrollmentData = (classId: string, uid: string, ownerId: string, codeUsed:
   updatedAt: now,
 })
 
-const quizData = (quizId: string, ownerId: string, classId: string) => ({
-  id: quizId,
+const quizData = (ownerId: string, classId: string) => ({
   ownerId,
+  ownerName: 'Instructor',
   classId,
   title: 'Quiz 1',
   description: 'First quiz',
@@ -69,10 +69,14 @@ const quizData = (quizId: string, ownerId: string, classId: string) => ({
   mode: 'quiz',
   status: 'draft',
   questionCount: 0,
+  publishedAt: null,
   settings: {
     answerReveal: 'after_submit',
     participation: { type: 'individual' },
     scoreVisibility: 'immediate',
+    scoresReleased: false,
+    timeLimitMinutes: null,
+    attemptsAllowed: null,
     shuffleQuestions: false,
     shuffleOptions: false,
   },
@@ -118,8 +122,8 @@ describe('Firestore rules email verification gate', () => {
       }).firestore()
 
       const batch = writeBatch(db)
-      batch.set(doc(db, 'classes/c1'), classData('unverifiedTeacher', 'CODE01'))
-      batch.set(doc(db, 'classCodes/CODE01'), codeData('c1', 'unverifiedTeacher', 'CODE01'))
+      batch.set(doc(db, 'classes/c1'), classData('unverifiedTeacher', 'ABC234'))
+      batch.set(doc(db, 'classCodes/ABC234'), codeData('c1', 'unverifiedTeacher', 'ABC234'))
       await assertFails(batch.commit())
     })
 
@@ -131,8 +135,8 @@ describe('Firestore rules email verification gate', () => {
       }).firestore()
 
       const batch = writeBatch(db)
-      batch.set(doc(db, 'classes/c2'), classData('verifiedTeacher', 'CODE02'))
-      batch.set(doc(db, 'classCodes/CODE02'), codeData('c2', 'verifiedTeacher', 'CODE02'))
+      batch.set(doc(db, 'classes/c2'), classData('verifiedTeacher', 'DEF234'))
+      batch.set(doc(db, 'classCodes/DEF234'), codeData('c2', 'verifiedTeacher', 'DEF234'))
       await assertSucceeds(batch.commit())
     })
 
@@ -144,8 +148,8 @@ describe('Firestore rules email verification gate', () => {
       }).firestore()
 
       const batch = writeBatch(db)
-      batch.set(doc(db, 'classes/c3'), classData('googleTeacher', 'CODE03'))
-      batch.set(doc(db, 'classCodes/CODE03'), codeData('c3', 'googleTeacher', 'CODE03'))
+      batch.set(doc(db, 'classes/c3'), classData('googleTeacher', 'GHJ234'))
+      batch.set(doc(db, 'classCodes/GHJ234'), codeData('c3', 'googleTeacher', 'GHJ234'))
       await assertSucceeds(batch.commit())
     })
   })
@@ -193,7 +197,7 @@ describe('Firestore rules email verification gate', () => {
       await assertFails(
         setDoc(
           doc(db, 'quizzes/q1'),
-          quizData('q1', 'unverifiedTeacher', 'activeClass'),
+          quizData('unverifiedTeacher', 'activeClass'),
         ),
       )
     })
@@ -208,7 +212,7 @@ describe('Firestore rules email verification gate', () => {
       await assertSucceeds(
         setDoc(
           doc(db, 'quizzes/q2'),
-          quizData('q2', 'verifiedTeacher', 'activeClass'),
+          quizData('verifiedTeacher', 'activeClass'),
         ),
       )
     })

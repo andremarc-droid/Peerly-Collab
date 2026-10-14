@@ -119,10 +119,13 @@ describe('personal-workspace partition squatting prevention', () => {
 
   it('(c) normal class creation with an auto id still works', async () => {
     await seedUsers()
-    const teacherDb = environment.authenticatedContext('teacher1').firestore()
+    const teacherDb = environment.authenticatedContext('teacher1', {
+      email_verified: true,
+      firebase: { sign_in_provider: 'password' },
+    }).firestore()
     const batch = writeBatch(teacherDb)
-    batch.set(doc(teacherDb, 'classes/autoClass123'), classData('teacher1', { joinCode: 'AUT123' }))
-    batch.set(doc(teacherDb, 'classCodes/AUT123'), codeData('autoClass123', 'teacher1'))
+    batch.set(doc(teacherDb, 'classes/autoClass123'), classData('teacher1', { joinCode: 'AUT234' }))
+    batch.set(doc(teacherDb, 'classCodes/AUT234'), codeData('autoClass123', 'teacher1'))
     await assertSucceeds(batch.commit())
   })
 
