@@ -1,6 +1,6 @@
 import type { NodeProps } from '@xyflow/react'
 import { BookOpen, HelpCircle, Network, Sparkles, ExternalLink, Trash2, Palette, AlertCircle } from 'lucide-react'
-import { CardHandles } from '../../canvas/shared'
+import { CardHandles } from '../../canvas/components/CardHandles'
 import { CardColorPicker } from './CardColorPicker'
 import { useState } from 'react'
 import type { LearningCanvasColor, LearningCanvasRefType, LearningCanvasNode } from '../types'

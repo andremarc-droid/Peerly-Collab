@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { ExternalLink, Edit2, Trash2, Palette, Check, Globe } from 'lucide-react'
-import { CardHandles } from '../../canvas/shared'
+import { CardHandles } from '../../canvas/components/CardHandles'
 import { CardColorPicker } from './CardColorPicker'
 import { LEARNING_CANVAS_TITLE_MAX, LEARNING_CANVAS_DESCRIPTION_MAX } from '../constants'
 import type { LearningCanvasNode, LearningCanvasColor } from '../types'

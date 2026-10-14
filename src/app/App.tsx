@@ -7,6 +7,7 @@ import { SigninPage } from '../features/auth/SigninPage'
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage'
 import { NotFoundPage } from '../features/misc/NotFoundPage'
 import { ProtectedRoute, PublicRoute, RoleRoute } from './RouteGuards'
+import { RouteErrorBoundary } from './RouteErrorBoundary'
 import { ToastProvider } from '../shared/ui/ToastProvider'
 import { AppShellLoading } from './AppShell'
 
@@ -90,3 +91,17 @@ export function AppRoutes() {
     </Suspense>
   )
 }
+
+export default function App() {
+  return (
+    <>
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
+      <RouteErrorBoundary>
+        <AppRoutes />
+      </RouteErrorBoundary>
+    </>
+  )
+}
+

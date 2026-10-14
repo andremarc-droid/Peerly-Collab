@@ -41,12 +41,12 @@ import { ShortcutsHelpDialog } from './ShortcutsHelpDialog'
 import { LossyImportDialog } from './LossyImportDialog'
 import { VersionConflictDialog } from './VersionConflictDialog'
 
+import { ExpandableCanvasContainer } from '../../canvas/components/ExpandableCanvasContainer'
+import { CanvasControls } from '../../canvas/components/CanvasControls'
 import {
-  ExpandableCanvasContainer,
-  CanvasControls,
   CANVAS_MIN_ZOOM,
   CANVAS_MAX_ZOOM,
-} from '../../canvas/shared'
+} from '../../canvas/constants'
 import { processImageFile } from '../../canvas/imageProcessing'
 import { getOptimalHandles } from '../../canvas/mapping'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'

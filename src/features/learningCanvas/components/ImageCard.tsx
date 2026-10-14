@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import type { NodeProps } from '@xyflow/react'
 import { Edit2, Check, Trash2, Palette, Image as ImageIcon, ImageOff, Upload } from 'lucide-react'
-import { CardHandles } from '../../canvas/shared'
+import { CardHandles } from '../../canvas/components/CardHandles'
 import { processImageFile } from '../../canvas/imageProcessing'
 import { CardColorPicker } from './CardColorPicker'
 import type { LearningCanvasNode, LearningCanvasColor } from '../types'

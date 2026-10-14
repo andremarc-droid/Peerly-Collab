@@ -5,7 +5,7 @@ import { AuthProvider } from './features/auth/AuthProvider'
 import './index.css'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/outfit'
-import App from './App.tsx'
+import App from './app/App'
 import { installStaleBuildRecovery } from './app/staleBuildRecovery'
 
 installStaleBuildRecovery()
