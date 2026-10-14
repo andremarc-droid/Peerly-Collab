@@ -243,4 +243,68 @@ describe('quiz Firestore services', () => {
     await publishQuiz(quizId, owner)
     expect((await getQuiz(quizId, owner))?.status).toBe('published')
   })
+
+  it('locks question and setting editing for a group quiz with a team in_progress but no submitted attempts', async () => {
+    await users()
+    const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
+    const input = {
+      title: 'Group Quiz Lock Test',
+      description: '',
+      tags: ['group'],
+      mode: 'quiz' as const,
+      classId: 'class1',
+      settings: {
+        ...defaultQuizSettings('quiz'),
+        participation: {
+          type: 'group' as const,
+          groupSize: 3,
+          answerMode: 'representative' as const,
+          teamFormation: 'self' as const,
+          waitForEveryone: false,
+          questionTimeSec: null,
+        },
+      },
+    }
+    const quizId = await createQuiz('teacher', 'Teacher', input, owner)
+    const questionId = await saveQuestionAndKey(
+      quizId,
+      null,
+      { type: 'multiple_choice', order: 0, prompt: 'Q1', points: 2, options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] },
+      { type: 'choice', correctOptionId: 'a', explanation: 'A', caseSensitive: false },
+      owner,
+    )
+    await publishQuiz(quizId, owner)
+
+    // Add a team in progress directly into quizzes/{quizId}/teams
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await setDoc(doc(db, `quizzes/${quizId}/teams/t1`), {
+        name: 'Alpha Team',
+        memberIds: ['student'],
+        memberNames: { student: 'Student' },
+        representativeId: 'student',
+        code: 'TEAM12',
+        studyGroupId: null,
+        status: 'in_progress',
+        createdBy: 'student',
+      })
+    })
+
+    // Editing questions must be locked
+    await expect(
+      saveQuestionAndKey(
+        quizId,
+        questionId,
+        { type: 'multiple_choice', order: 0, prompt: 'Modified Q1', points: 5, options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] },
+        { type: 'choice', correctOptionId: 'b', explanation: 'B', caseSensitive: false },
+        owner,
+      ),
+    ).rejects.toThrow(/Cannot add or edit questions on a quiz with existing attempts or participants/)
+
+    // Editing settings must be locked
+    const quiz = await getQuiz(quizId, owner)
+    await expect(
+      updateQuiz(quizId, { settings: { ...quiz!.settings, shuffleQuestions: true } }, owner),
+    ).rejects.toThrow(/Cannot change participation, shuffle, or time limit settings on a quiz with existing attempts or participants/)
+  })
 })

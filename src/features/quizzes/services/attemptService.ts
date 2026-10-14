@@ -130,9 +130,11 @@ export async function listQuizAttempts(quizId: string, db: Firestore = firestore
 }
 
 export async function hasQuizAttemptsOrParticipants(quizId: string, db: Firestore = firestore): Promise<boolean> {
-  const [attSnap, partSnap] = await Promise.all([
+  const [attSnap, partSnap, teamsSnap, sessionsSnap] = await Promise.all([
     getDocs(query(collection(db, 'quizzes', quizId, 'attempts'), limit(1))),
     getDocs(query(collection(db, 'quizzes', quizId, 'participants'), limit(1))),
+    getDocs(query(collection(db, 'quizzes', quizId, 'teams'), limit(1))),
+    getDocs(query(collection(db, 'quizzes', quizId, 'teamSessions'), limit(1))),
   ])
-  return !attSnap.empty || !partSnap.empty
+  return !attSnap.empty || !partSnap.empty || !teamsSnap.empty || !sessionsSnap.empty
 }
