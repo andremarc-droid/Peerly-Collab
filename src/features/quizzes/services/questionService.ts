@@ -111,14 +111,21 @@ export async function listQuestions(quizId: string, db: Firestore = firestore) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
 }
 
-export async function getQuestionWithKey(quizId: string, questionId: string, db: Firestore = firestore) {
+import type { Quiz } from '../types'
+
+export async function getQuestionWithKey(
+  quizId: string,
+  questionId: string,
+  db: Firestore = firestore,
+  cachedQuiz?: Quiz | null,
+) {
   const [questionSnapshot, keySnapshot, quizSnapshot] = await Promise.all([
     getDoc(questionRef(db, quizId, questionId)),
     getDoc(answerKeyRef(db, quizId, questionId)),
-    getDoc(quizRef(db, quizId)),
+    cachedQuiz !== undefined ? Promise.resolve(null) : getDoc(quizRef(db, quizId)),
   ])
   if (!questionSnapshot.exists()) return null
-  const quiz = quizSnapshot.exists() ? parseQuiz(quizSnapshot.data()) : null
+  const quiz = cachedQuiz !== undefined ? cachedQuiz : (quizSnapshot?.exists() ? parseQuiz(quizSnapshot.data()) : null)
   const isBlankCanvas = quiz?.mode === 'canvas' && quiz?.boardKind === 'blank'
   if (!isBlankCanvas && !keySnapshot.exists()) return null
   const pair = validateQuestionAnswerPair(
@@ -137,12 +144,15 @@ export function watchQuestionPairs(
   onError: (error: Error) => void,
   db: Firestore = firestore,
 ) {
-  return onSnapshot(query(questionsRef(db, quizId), orderBy('order')), (snapshot) => {
-    void Promise.all(snapshot.docs.map((item) => getQuestionWithKey(quizId, item.id, db)))
-      .then((questions) => {
-        if (questions.some((question) => !question)) throw new Error('A question is missing its answer key.')
-        onChange(questions as SavedQuestion[])
-      })
-      .catch((reason: unknown) => onError(reason instanceof Error ? reason : new Error('Could not load question answers.')))
+  return onSnapshot(query(questionsRef(db, quizId), orderBy('order')), async (snapshot) => {
+    try {
+      const quizSnap = await getDoc(quizRef(db, quizId))
+      const quiz = quizSnap.exists() ? parseQuiz(quizSnap.data()) : null
+      const questions = await Promise.all(snapshot.docs.map((item) => getQuestionWithKey(quizId, item.id, db, quiz)))
+      if (questions.some((question) => !question)) throw new Error('A question is missing its answer key.')
+      onChange(questions as SavedQuestion[])
+    } catch (reason: unknown) {
+      onError(reason instanceof Error ? reason : new Error('Could not load question answers.'))
+    }
   }, onError)
 }

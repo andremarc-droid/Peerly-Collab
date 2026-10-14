@@ -603,5 +603,39 @@ describe('student quiz pages', () => {
     fireEvent.keyDown(card, { key: 'ArrowRight', code: 'ArrowRight' })
     expect(await screen.findByText('Second question')).toBeInTheDocument()
   })
+
+  it('restores persisted question index from sessionStorage and skips redundant autosave on initial load', async () => {
+    const multiQuestion1 = { id: 'q1', order: 0, type: 'multiple_choice' as const, prompt: 'First question', points: 1, options: [{ id: 'opt1', text: 'Alpha' }, { id: 'opt1b', text: 'Beta' }] }
+    const multiQuestion2 = { id: 'q2', order: 1, type: 'multiple_choice' as const, prompt: 'Second question', points: 1, options: [{ id: 'opt2', text: 'Gamma' }, { id: 'opt2b', text: 'Delta' }] }
+    const multiQuiz: Quiz & { id: string } = { ...quiz, questionCount: 2 }
+    const multiAttempt: QuizAttempt & { id: string } = {
+      ...attempt,
+      id: 'attempt-persisted-index',
+      answers: { q1: 'opt1' },
+      questionOrder: ['q1', 'q2'],
+    }
+    vi.mocked(getQuiz).mockResolvedValue(multiQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([multiQuestion1, multiQuestion2])
+    vi.mocked(getAttempt).mockResolvedValue(multiAttempt)
+    vi.mocked(autosaveAnswers).mockClear()
+
+    sessionStorage.setItem('peerly:questionIndex:attempt-persisted-index', '1')
+
+    const view = renderRoute('/student/quizzes/quiz-1/attempts/attempt-persisted-index', <QuizTakingPage />)
+
+    // Directly renders question index 1 (Second question)
+    expect(await screen.findByText('Second question')).toBeInTheDocument()
+
+    // No redundant autosave write was made for unchanged answers
+    expect(autosaveAnswers).not.toHaveBeenCalled()
+
+    // Changing answer and unmounting flushes pending answers
+    const radio = screen.getByRole('radio', { name: /Gamma/i })
+    await userEvent.click(radio)
+    expect(autosaveAnswers).not.toHaveBeenCalled()
+
+    view.unmount()
+    expect(autosaveAnswers).toHaveBeenCalledWith('quiz-1', 'attempt-persisted-index', expect.objectContaining({ q2: 'opt2' }))
+  })
 })
 

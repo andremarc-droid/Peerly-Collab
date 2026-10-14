@@ -1,6 +1,7 @@
 import { Timestamp } from 'firebase/firestore'
 import { describe, expect, it } from 'vitest'
 import { gradeAttempt } from './grade'
+import { normalizeAnswer } from './normalize'
 import type { AnswerKey, QuizQuestion } from '../types'
 import type { CanvasQuestion } from '../../canvas/types'
 
@@ -290,5 +291,21 @@ describe('gradeAttempt canvas mode', () => {
 
     expect(grade.perQuestion.board?.pointsAwarded).toBe(100)
     expect(grade.perQuestion.board?.correct).toBe(true)
+  })
+})
+
+describe('normalizeAnswer', () => {
+  it('normalizes Unicode strings to NFC', () => {
+    // 'e\u0301' is decomposed (NFD), '\u00e9' is composed (NFC)
+    const decomposed = 'caf\u0065\u0301'
+    const composed = 'caf\u00e9'
+    expect(decomposed).not.toBe(composed)
+    expect(normalizeAnswer(decomposed, true)).toBe(normalizeAnswer(composed, true))
+    expect(normalizeAnswer(decomposed, false)).toBe('café')
+  })
+
+  it('supports optional ignoreDiacritics and ignorePunctuation', () => {
+    expect(normalizeAnswer('Crème brûlée!', false, { ignoreDiacritics: true, ignorePunctuation: true })).toBe('creme brulee')
+    expect(normalizeAnswer('Hello, World!', false, { ignorePunctuation: true })).toBe('hello world')
   })
 })

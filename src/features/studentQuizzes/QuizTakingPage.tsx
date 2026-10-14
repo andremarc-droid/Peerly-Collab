@@ -46,6 +46,17 @@ function readCheckedAnswers(storageKey: string) {
   } catch { return {} }
 }
 
+function readPersistedQuestionIndex(attemptId: string): number {
+  if (!attemptId) return 0
+  try {
+    const raw = sessionStorage.getItem(`peerly:questionIndex:${attemptId}`)
+    const n = Number(raw)
+    return Number.isInteger(n) && n >= 0 ? n : 0
+  } catch {
+    return 0
+  }
+}
+
 export function QuizTakingPage() {
   const { quizId = '', attemptId = '' } = useParams()
   const { user } = useAuth()
@@ -54,7 +65,7 @@ export function QuizTakingPage() {
   const [quiz, setQuiz] = useState<Awaited<ReturnType<typeof getQuiz>>>(null)
   const [attempt, setAttempt] = useState<(QuizAttempt & { id: string }) | null>(null)
   const [questions, setQuestions] = useState<QuestionRecord[]>([])
-  const [index, setIndex] = useState(0)
+  const [index, setIndex] = useState(() => readPersistedQuestionIndex(attemptId))
   const [answers, setAnswers] = useState<Record<string, SubmittedAnswer>>({})
   const checkedStorageKey = `peerly:checkedAnswers:${quizId}:${attemptId}`
   const [checked, setChecked] = useState<Record<string, { correct: boolean | null; explanation: string }>>(() => readCheckedAnswers(checkedStorageKey))
@@ -68,6 +79,8 @@ export function QuizTakingPage() {
   const [loading, setLoading] = useState(true)
   const [membership, setMembership] = useState<{ classId: string; status: 'active' | 'lost' } | null>(null)
   const autosaveTimer = useRef<number | null>(null)
+  const lastSavedAnswers = useRef<string>('')
+  const pendingAnswersRef = useRef<Record<string, SubmittedAnswer> | null>(null)
   const submitted = useRef(false)
   const autoSubmitTriggered = useRef(false)
 
@@ -80,6 +93,15 @@ export function QuizTakingPage() {
   }, [])
 
   useEffect(() => {
+    if (!attemptId) return
+    try {
+      sessionStorage.setItem(`peerly:questionIndex:${attemptId}`, String(index))
+    } catch {
+      // storage unavailable
+    }
+  }, [attemptId, index])
+
+  useEffect(() => {
     if (!user) return undefined
     let live = true
     void Promise.all([getQuiz(quizId), getAttempt(quizId, attemptId), listQuestions(quizId)]).then(([foundQuiz, foundAttempt, rawQuestions]) => {
@@ -87,11 +109,20 @@ export function QuizTakingPage() {
       if (!foundQuiz || !foundAttempt || foundAttempt.userId !== user.uid || foundAttempt.status !== 'in_progress') { setError('This attempt is unavailable.'); setLoading(false); return }
       if (foundQuiz.settings.participation.type === 'group') { navigate(`/student/quizzes/${foundQuiz.id}/team`, { replace: true }); return }
       const records = rawQuestions.map(({ id, ...value }) => ({ ...parseQuestion(value), id }))
+      const ordered = persistedQuestionOrder(foundAttempt, records)
       setQuiz(foundQuiz); setAttempt({ ...foundAttempt, id: attemptId }); setAnswers(foundAttempt.answers)
-      setQuestions(persistedQuestionOrder(foundAttempt, records)); setLoading(false)
+      lastSavedAnswers.current = JSON.stringify(foundAttempt.answers)
+      setQuestions(ordered)
+      const restoredIndex = readPersistedQuestionIndex(attemptId)
+      if (restoredIndex < ordered.length) {
+        setIndex(restoredIndex)
+      } else {
+        setIndex(Math.max(0, ordered.length - 1))
+      }
+      setLoading(false)
     }).catch((reason: unknown) => { if (live) { setError(reason instanceof Error ? reason.message : 'The attempt could not be loaded.'); setLoading(false) } })
     return () => { live = false }
-  }, [quizId, attemptId, user])
+  }, [quizId, attemptId, user, navigate])
 
   useEffect(() => {
     if (!user || !quiz) return undefined
@@ -122,14 +153,36 @@ export function QuizTakingPage() {
     return () => window.clearInterval(timer)
   }, [attempt, quiz, serverOffsetMs])
 
+  const flushPendingAnswers = useCallback(() => {
+    if (pendingAnswersRef.current && JSON.stringify(pendingAnswersRef.current) !== lastSavedAnswers.current && !submitted.current) {
+      const toSave = pendingAnswersRef.current
+      lastSavedAnswers.current = JSON.stringify(toSave)
+      pendingAnswersRef.current = null
+      void autosaveAnswers(quizId, attemptId, toSave).catch((reason: unknown) => {
+        showToast('error', reason instanceof Error ? reason.message : 'Answers could not be saved.')
+      })
+    }
+  }, [quizId, attemptId, showToast])
+
+  useEffect(() => {
+    const onPageHide = () => flushPendingAnswers()
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      window.removeEventListener('pagehide', onPageHide)
+      flushPendingAnswers()
+    }
+  }, [flushPendingAnswers])
+
   useEffect(() => {
     if (!attempt || !Object.keys(answers).length) return undefined
+    if (JSON.stringify(answers) === lastSavedAnswers.current) return undefined
+    pendingAnswersRef.current = answers
     if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current)
     autosaveTimer.current = window.setTimeout(() => {
-      void autosaveAnswers(quizId, attemptId, answers).catch((reason: unknown) => showToast('error', reason instanceof Error ? reason.message : 'Answers could not be saved.'))
+      flushPendingAnswers()
     }, 500)
     return () => { if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current) }
-  }, [answers, attempt, quizId, attemptId, showToast])
+  }, [answers, attempt, flushPendingAnswers])
 
   const invalidLinkCards = useMemo(() => {
     const list: Array<{ questionId: string; questionIndex: number; cardId: string; title: string }> = []
@@ -166,6 +219,7 @@ export function QuizTakingPage() {
       await autosaveAnswers(quizId, attemptId, answers)
       await submitAttempt(quizId, attemptId, quiz.settings.timeLimitMinutes ? Math.max(0, quiz.settings.timeLimitMinutes * 60 - (seconds ?? 0)) : Math.floor((Date.now() + serverOffsetMs - attempt.startedAt.toMillis()) / 1000))
       sessionStorage.removeItem(checkedStorageKey)
+      sessionStorage.removeItem(`peerly:questionIndex:${attemptId}`)
       if (isAutoSubmit || (seconds !== null && shouldAutoSubmit(seconds))) {
         showToast('info', 'Time had run out, so your quiz was submitted.')
       }
@@ -195,7 +249,7 @@ export function QuizTakingPage() {
   async function checkCurrent() {
     if (!question) return
     try {
-      const pair = await getQuestionWithKey(quizId, question.id)
+      const pair = await getQuestionWithKey(quizId, question.id, undefined, quiz)
       if (!pair || !pair.answerKey) throw new Error('Answer key unavailable.')
       const result = gradeAttempt({
         userId: user!.uid,
@@ -310,6 +364,7 @@ export function QuizTakingPage() {
             <Flashcard
               question={question}
               quizId={quizId}
+              quiz={quiz}
               onRate={(rating) => {
                 setAnswer(question.id, rating)
                 if (index < questions.length - 1) go(index + 1)
@@ -400,13 +455,13 @@ function AnswerInput({ question, options, value, disabled, onChange }: { questio
   return null
 }
 
-function Flashcard({ question, quizId, onRate }: { question: QuestionRecord; quizId: string; onRate: (rating: string) => void }) {
+function Flashcard({ question, quizId, quiz, onRate }: { question: QuestionRecord; quizId: string; quiz: Awaited<ReturnType<typeof getQuiz>>; onRate: (rating: string) => void }) {
   const [back, setBack] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   async function flip() {
     setLoading(true)
     try {
-      const pair = await getQuestionWithKey(quizId, question.id)
+      const pair = await getQuestionWithKey(quizId, question.id, undefined, quiz)
       if (!pair || !pair.answerKey || pair.answerKey.type !== 'flashcard') throw new Error('Card unavailable')
       setBack(pair.answerKey.back)
     } finally {

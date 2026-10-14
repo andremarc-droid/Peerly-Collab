@@ -74,7 +74,7 @@ export function QuizResultPage() {
       }
       const questions = persistedQuestionOrder(foundAttempt, raw.map(({ id, ...value }) => ({ ...parseQuestion(value), id })))
       const visibility = resultVisibility(foundQuiz, foundQuiz.settings.answerReveal, foundResult)
-      const items = await Promise.all(questions.map(async (question) => ({ question, key: visibility.showAnswers ? (await getQuestionWithKey(quizId, question.id))?.answerKey ?? null : null })))
+      const items = await Promise.all(questions.map(async (question) => ({ question, key: visibility.showAnswers ? (await getQuestionWithKey(quizId, question.id, undefined, foundQuiz))?.answerKey ?? null : null })))
       if (!live) return
 
       const hasCanvasImages = items.some(
