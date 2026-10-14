@@ -5,7 +5,13 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { EmailVerificationPage } from './EmailVerificationPage'
 
 const mocks = vi.hoisted(() => ({
-  user: { uid: 'user-1', email: 'learner@example.com' },
+  user: {
+    uid: 'user-1',
+    email: 'learner@example.com',
+    emailVerified: false,
+    reload: vi.fn(),
+    getIdToken: vi.fn(),
+  },
   refreshEmailVerification: vi.fn(),
   resendVerificationEmail: vi.fn(),
 }))
@@ -29,6 +35,9 @@ function renderPage(role: 'student' | 'instructor' = 'student') {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.user.emailVerified = false
+  mocks.user.reload.mockResolvedValue(undefined)
+  mocks.user.getIdToken.mockResolvedValue('fresh-token')
   mocks.refreshEmailVerification.mockResolvedValue(false)
   mocks.resendVerificationEmail.mockResolvedValue(undefined)
 })
@@ -60,5 +69,18 @@ describe('EmailVerificationPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Instructor dashboard' })).toBeInTheDocument()
     expect(mocks.refreshEmailVerification).toHaveBeenCalledOnce()
+  })
+
+  it('calls user.reload() and getIdToken(true) after verification so email_verified claim is fresh', async () => {
+    mocks.user.reload.mockImplementation(async () => {
+      mocks.user.emailVerified = true
+    })
+    mocks.refreshEmailVerification.mockResolvedValue(true)
+    renderPage('student')
+    fireEvent.click(screen.getByRole('button', { name: 'I already verified via email' }))
+
+    await waitFor(() => expect(mocks.user.reload).toHaveBeenCalledOnce())
+    expect(mocks.user.getIdToken).toHaveBeenCalledWith(true)
+    expect(await screen.findByRole('heading', { name: 'Student dashboard' })).toBeInTheDocument()
   })
 })

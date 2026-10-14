@@ -6,6 +6,11 @@ import type { DecodedIdToken } from 'firebase-admin/auth'
 let firebaseInitialized = false
 let handlersCache: Record<string, unknown> | null = null
 
+export function _resetFirebaseInitializedForTest() {
+  firebaseInitialized = false
+  handlersCache = null
+}
+
 async function getHandlers() {
   if (!handlersCache) {
     handlersCache = (await import('../functions/src/groupQuizzes.js')) as unknown as Record<string, unknown>
@@ -177,10 +182,14 @@ export default async function handler(
     const rawCode = errorObj?.code || 'internal'
     const code = rawCode.startsWith('functions/') ? rawCode : `functions/${rawCode}`
     const isDev = process.env.NODE_ENV !== 'production'
+    const isInitOrImport = phase === 'initFirebase' || phase === 'importHandlers'
+    const message = (!isDev && isInitOrImport)
+      ? 'Failed to initialize the server service.'
+      : (errorObj?.message || 'Something went wrong.')
     res.statusCode = typeof status === 'number' && status >= 400 && status < 600 ? status : 500
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({
-      error: errorObj?.message || 'Something went wrong.',
+      error: message,
       code,
       ...(isDev ? { phase, details: String(err) } : {}),
     }))

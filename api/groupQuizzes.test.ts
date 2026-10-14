@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { IncomingMessage, ServerResponse } from 'http'
-import handler from './groupQuizzes.js'
+import handler, { _resetFirebaseInitializedForTest } from './groupQuizzes.js'
 
 // Mock firebase-admin/app and firebase-admin/auth
 const mockVerifyIdToken = vi.fn()
@@ -140,5 +140,32 @@ describe('api/groupQuizzes handler', () => {
       }),
     )
     expect(res.getResponseJson()).toEqual({ result: { success: true } })
+  })
+
+  it('does not return raw error messages for init/import failures in production', async () => {
+    _resetFirebaseInitializedForTest()
+    const originalEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    const { getApps, initializeApp } = await import('firebase-admin/app')
+    vi.mocked(getApps).mockReturnValueOnce([])
+    process.env.FIREBASE_SERVICE_ACCOUNT = 'invalid-secret-key-json'
+    vi.mocked(initializeApp).mockImplementationOnce(() => {
+      throw new Error('Sensitive internal crash details')
+    })
+
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: { action: 'testAction' },
+    })
+
+    await handler(req, res)
+    expect(res.statusCode).toBe(500)
+    const json = res.getResponseJson()
+    expect(json.error).toBe('Failed to initialize the server service.')
+    expect(json.error).not.toContain('Sensitive internal crash details')
+    expect(json).not.toHaveProperty('details')
+    process.env.NODE_ENV = originalEnv
+    delete process.env.FIREBASE_SERVICE_ACCOUNT
   })
 })

@@ -148,6 +148,9 @@ export async function resendVerificationEmail(user: User): Promise<void> {
 
 export async function refreshEmailVerificationStatus(user: User): Promise<boolean> {
   await reload(user)
+  if (user.emailVerified) {
+    await user.getIdToken(true)
+  }
   return user.emailVerified
 }
 

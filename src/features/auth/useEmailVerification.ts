@@ -46,7 +46,13 @@ export function useEmailVerification(role: UserRole) {
     setBusyAction('check')
     setMessage(null)
     try {
+      if (user && typeof user.reload === 'function') {
+        await user.reload()
+      }
       if (await refreshEmailVerification()) {
+        if (user && typeof user.getIdToken === 'function') {
+          await user.getIdToken(true)
+        }
         navigate(dashboardPath(role), { replace: true })
       } else {
         setMessage({ tone: 'info', text: 'Your email is not verified yet. Check your inbox, then try again.' })
