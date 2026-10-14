@@ -1,4 +1,4 @@
-# Logs
+# Logs and debug output
 logs
 *.log
 npm-debug.log*
@@ -6,6 +6,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+*-out.txt
+*out.txt
+tatus*
+claude_write_test.txt
 
 node_modules
 dist
