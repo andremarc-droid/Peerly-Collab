@@ -228,7 +228,7 @@ describe('api/aiChat handler', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('rejects total character count exceeding cap with 400', async () => {
+  it('rejects total text character count exceeding 100,000 with 400', async () => {
     mockVerifyIdToken.mockResolvedValueOnce({
       uid: 'valid-user',
       firebase: { sign_in_provider: 'google.com' },
@@ -237,11 +237,92 @@ describe('api/aiChat handler', () => {
       method: 'POST',
       headers: { authorization: 'Bearer valid-token' },
       body: {
-        messages: [{ role: 'user', content: 'a'.repeat(1_500_001) }],
+        messages: [{ role: 'user', content: 'a'.repeat(100_001) }],
       },
     })
     await handler(req, res)
     expect(res.statusCode).toBe(400)
+    expect(res.getResponseJson().error).toMatch(/100000/)
+  })
+
+  it('rejects image_url with invalid prefix with 400', async () => {
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: 'valid-user',
+      firebase: { sign_in_provider: 'google.com' },
+    })
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: {
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'describe this' },
+            { type: 'image_url', image_url: { url: 'https://evil.com/image.jpg' } },
+          ],
+        }],
+      },
+    })
+    await handler(req, res)
+    expect(res.statusCode).toBe(400)
+    expect(res.getResponseJson().error).toMatch(/data:image\/(jpeg|png|webp);base64/)
+  })
+
+  it('rejects image_url exceeding 500,000 characters with 400', async () => {
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: 'valid-user',
+      firebase: { sign_in_provider: 'google.com' },
+    })
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: {
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + 'a'.repeat(500_000) } },
+          ],
+        }],
+      },
+    })
+    await handler(req, res)
+    expect(res.statusCode).toBe(400)
+    expect(res.getResponseJson().error).toMatch(/500000/)
+  })
+
+  it('does not count image_url characters toward text-only cap of 100,000', async () => {
+    process.env.GROQ_API_KEY = 'gsk_test_mock'
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: 'valid-user',
+      firebase: { sign_in_provider: 'google.com' },
+    })
+    // 200,000 chars image URL with valid prefix + 50 chars text
+    const largeImageUrl = 'data:image/png;base64,' + 'a'.repeat(200_000)
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: {
+        model: 'qwen/qwen3.8-27b',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Analyze this chart' },
+            { type: 'image_url', image_url: { url: largeImageUrl } },
+          ],
+        }],
+      },
+    })
+    // Mock global fetch
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      id: 'chat-123',
+      choices: [{ message: { role: 'assistant', content: 'Image analyzed' } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    await handler(req, res)
+    expect(res.statusCode).toBe(200)
+    expect(res.getResponseJson().choices[0].message.content).toBe('Image analyzed')
+    fetchSpy.mockRestore()
+    delete process.env.GROQ_API_KEY
   })
 
   it('rejects invalid max_tokens with 400', async () => {

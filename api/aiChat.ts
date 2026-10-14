@@ -5,8 +5,14 @@ export const ALLOWED_MODELS = ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b'] as cons
 export type AllowedModel = (typeof ALLOWED_MODELS)[number]
 
 export const MAX_MESSAGES = 50
-export const MAX_TOTAL_CHARACTERS = 1_500_000
+export const MAX_TEXT_CHARACTERS = 100_000
+export const MAX_IMAGE_URL_CHARACTERS = 500_000
 export const MAX_TOKENS = 4096
+export const ALLOWED_IMAGE_PREFIXES = [
+  'data:image/jpeg;base64,',
+  'data:image/png;base64,',
+  'data:image/webp;base64,',
+] as const
 
 export interface RateWindow {
   startedAtMs: number
@@ -224,9 +230,9 @@ export default async function handler(
       return
     }
 
-    // Message roles, content types and total character count validation
+    // Message roles, content types and total text character count validation
     const ALLOWED_ROLES = new Set(['system', 'user', 'assistant'])
-    let totalChars = 0
+    let totalTextChars = 0
 
     for (const msg of messages) {
       if (typeof msg !== 'object' || msg === null) {
@@ -250,7 +256,7 @@ export default async function handler(
           res.end(JSON.stringify({ error: 'Message content cannot be empty.', code: 'bad-request' }))
           return
         }
-        totalChars += content.length
+        totalTextChars += content.length
       } else if (Array.isArray(content)) {
         if (content.length === 0) {
           res.statusCode = 400
@@ -274,7 +280,7 @@ export default async function handler(
               res.end(JSON.stringify({ error: 'Text content part must contain a text string.', code: 'bad-request' }))
               return
             }
-            totalChars += text.length
+            totalTextChars += text.length
           } else if (partType === 'image_url') {
             const imageUrl = (part as { image_url?: { url?: unknown } }).image_url
             if (!imageUrl || typeof imageUrl.url !== 'string') {
@@ -283,7 +289,26 @@ export default async function handler(
               res.end(JSON.stringify({ error: 'image_url part must contain a valid URL string.', code: 'bad-request' }))
               return
             }
-            totalChars += imageUrl.url.length
+            const url = imageUrl.url
+            const hasValidPrefix = ALLOWED_IMAGE_PREFIXES.some((prefix) => url.startsWith(prefix))
+            if (!hasValidPrefix) {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({
+                error: 'image_url must start with data:image/jpeg;base64,, data:image/png;base64,, or data:image/webp;base64,.',
+                code: 'bad-request',
+              }))
+              return
+            }
+            if (url.length > MAX_IMAGE_URL_CHARACTERS) {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({
+                error: `image_url exceeds the maximum length of ${MAX_IMAGE_URL_CHARACTERS} characters.`,
+                code: 'bad-request',
+              }))
+              return
+            }
           } else {
             res.statusCode = 400
             res.setHeader('Content-Type', 'application/json')
@@ -299,11 +324,11 @@ export default async function handler(
       }
     }
 
-    if (totalChars > MAX_TOTAL_CHARACTERS) {
+    if (totalTextChars > MAX_TEXT_CHARACTERS) {
       res.statusCode = 400
       res.setHeader('Content-Type', 'application/json')
       res.end(JSON.stringify({
-        error: `Total message characters (${totalChars}) exceed the limit of ${MAX_TOTAL_CHARACTERS}.`,
+        error: `Total message text characters (${totalTextChars}) exceed the limit of ${MAX_TEXT_CHARACTERS}.`,
         code: 'bad-request',
       }))
       return
