@@ -1,7 +1,11 @@
-import { FieldValue, getFirestore } from 'firebase-admin/firestore'
+import { FieldValue, getFirestore, type Firestore } from 'firebase-admin/firestore'
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https'
 
-const db = getFirestore()
+let cachedDb: Firestore | undefined
+function db(): Firestore {
+  if (!cachedDb) cachedDb = getFirestore()
+  return cachedDb
+}
 const codePattern = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/
 const tokenPattern = /^[A-Za-z0-9_-]{32,64}$/
 const memberLimit = 30
@@ -31,9 +35,9 @@ function groupCodeFrom(data: unknown): string {
   if (typeof value !== 'string' || !codePattern.test(value)) throw new HttpsError('invalid-argument', 'Enter a valid 8-character group code.')
   return value
 }
-function stateRef(uid: string) { return db.doc(`users/${uid}/groupState/summary`) }
-function indexRef(uid: string, groupId: string) { return db.doc(`users/${uid}/groupMemberships/${groupId}`) }
-function codeRef(code: string) { return db.doc(`learningInviteCodes/${code}`) }
+function stateRef(uid: string) { return db().doc(`users/${uid}/groupState/summary`) }
+function indexRef(uid: string, groupId: string) { return db().doc(`users/${uid}/groupMemberships/${groupId}`) }
+function codeRef(code: string) { return db().doc(`learningInviteCodes/${code}`) }
 function callableGroup(data: FirebaseFirestore.DocumentData, id: string) {
   return { id, name: data.name, description: data.description, memberCount: data.memberCount, joiningOpen: data.joiningOpen }
 }
@@ -42,7 +46,7 @@ async function groupForCode(code: string) {
   if (!invite.exists || invite.get('kind') !== 'group') throw new HttpsError('not-found', 'That group code was not found.')
   const groupId = invite.get('itemId')
   if (typeof groupId !== 'string') throw new HttpsError('not-found', 'That group code was not found.')
-  const groupRef = db.doc(`groups/${groupId}`)
+  const groupRef = db().doc(`groups/${groupId}`)
   const group = await groupRef.get()
   if (!group.exists || group.get('joinCode') !== code || group.get('ownerId') !== invite.get('ownerId')) throw new HttpsError('not-found', 'That group code is no longer active.')
   return { groupRef, group, inviteRef: invite.ref }
@@ -88,10 +92,10 @@ export async function createStudyGroup(call: CallableRequest<unknown>) {
   const joinCode = data.joinCode
   const inviteToken = data.inviteToken
   if (typeof joinCode !== 'string' || !codePattern.test(joinCode) || typeof inviteToken !== 'string' || !tokenPattern.test(inviteToken)) throw new HttpsError('invalid-argument', 'Group invite data is invalid.')
-  const groupRef = db.collection('groups').doc()
+  const groupRef = db().collection('groups').doc()
   const state = stateRef(uid)
   const invite = codeRef(joinCode)
-  await db.runTransaction(async tx => {
+  await db().runTransaction(async tx => {
     const [stateSnap, inviteSnap] = await Promise.all([tx.get(state), tx.get(invite)])
     const counts = checkCounters(stateSnap.data())
     if (counts.ownedCount >= ownedLimit) throw new HttpsError('resource-exhausted', `You can own up to ${ownedLimit} groups.`)
@@ -126,7 +130,7 @@ export async function joinStudyGroup(call: CallableRequest<unknown>) {
   const { groupRef, inviteRef } = await groupForCode(code)
   const memberRef = groupRef.collection('members').doc(uid)
   const state = stateRef(uid)
-  await db.runTransaction(async tx => {
+  await db().runTransaction(async tx => {
     const [group, invite, member, counters, groupMembers] = await Promise.all([
       tx.get(groupRef), tx.get(inviteRef), tx.get(memberRef), tx.get(state), tx.get(groupRef.collection('members')),
     ])
@@ -147,21 +151,21 @@ export async function joinStudyGroup(call: CallableRequest<unknown>) {
 
 async function deleteUserShares(groupId: string, uid: string): Promise<void> {
   while (true) {
-    const shares = await db.collection(`groups/${groupId}/shares`).where('ownerId', '==', uid).limit(groupPageSize).get()
+    const shares = await db().collection(`groups/${groupId}/shares`).where('ownerId', '==', uid).limit(groupPageSize).get()
     if (shares.empty) return
     for (const share of shares.docs) {
       const snapshotPath = share.get('snapshotPath')
-      if (typeof snapshotPath === 'string' && snapshotPath.startsWith(`groups/${groupId}/sharedContent/`)) await db.recursiveDelete(db.doc(snapshotPath))
+      if (typeof snapshotPath === 'string' && snapshotPath.startsWith(`groups/${groupId}/sharedContent/`)) await db().recursiveDelete(db().doc(snapshotPath))
       await share.ref.delete()
     }
   }
 }
 
 async function removeMember(groupId: string, actorUid: string, targetUid: string, ownerAction: boolean): Promise<void> {
-  const groupRef = db.doc(`groups/${groupId}`)
+  const groupRef = db().doc(`groups/${groupId}`)
   const memberRef = groupRef.collection('members').doc(targetUid)
   const state = stateRef(targetUid)
-  await db.runTransaction(async tx => {
+  await db().runTransaction(async tx => {
     const [group, actor, target, counters, memberCount] = await Promise.all([
       tx.get(groupRef), tx.get(groupRef.collection('members').doc(actorUid)), tx.get(memberRef), tx.get(state), tx.get(groupRef.collection('members')),
     ])
@@ -200,7 +204,7 @@ export async function shareStudyItem(call: CallableRequest<unknown>) {
   const sourceId = data.sourceId
   const sourceClassId = data.sourceClassId
   if (!['lessonPlan', 'deck', 'canvas'].includes(String(kind)) || typeof sourceId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(sourceId)) throw new HttpsError('invalid-argument', 'Choose a valid study item.')
-  const groupRef = db.doc(`groups/${groupId}`)
+  const groupRef = db().doc(`groups/${groupId}`)
   const membership = await groupRef.collection('members').doc(uid).get()
   if (!membership.exists) throw new HttpsError('permission-denied', 'Join the group before sharing study items.')
   const shareRef = groupRef.collection('shares').doc()
@@ -210,7 +214,7 @@ export async function shareStudyItem(call: CallableRequest<unknown>) {
   const childSnapshots: Array<{ path: string; data: FirebaseFirestore.DocumentData }> = []
   let title = ''
   if (kind === 'lessonPlan') {
-    const source = db.doc(`users/${uid}/lessonPlans/${sourceId}`)
+    const source = db().doc(`users/${uid}/lessonPlans/${sourceId}`)
     const plan = await source.get()
     if (!plan.exists) throw new HttpsError('not-found', 'Lesson plan not found.')
     assertLessonPlan(plan.data()!)
@@ -226,19 +230,19 @@ export async function shareStudyItem(call: CallableRequest<unknown>) {
   } else {
     if (typeof sourceClassId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(sourceClassId)) throw new HttpsError('invalid-argument', 'The study item class is invalid.')
     const path = kind === 'deck' ? `classes/${sourceClassId}/flashcardDecks/${sourceId}` : `classes/${sourceClassId}/learningCanvases/${sourceId}`
-    const source = await db.doc(path).get()
+    const source = await db().doc(path).get()
     if (!source.exists || source.get('ownerId') !== uid || source.get('kind') !== 'personal') throw new HttpsError('permission-denied', 'Only your own private study item can be shared.')
     if (kind === 'deck') assertDeck(source.data()!)
     title = String(source.get('title'))
     snapshot = { kind, ownerId: uid, sourceId, sourceClassId, title, data: source.data(), createdAt: now }
     if (kind === 'canvas') {
-      const content = await db.doc(`${path}/content/main`).get()
+      const content = await db().doc(`${path}/content/main`).get()
       if (!content.exists) throw new HttpsError('failed-precondition', 'Canvas content is missing.')
       assertCanvas(source.data()!, content.data()!)
       childSnapshots.push({ path: 'content/main', data: content.data()! })
     }
   }
-  await db.runTransaction(async tx => {
+  await db().runTransaction(async tx => {
     const current = await tx.get(groupRef)
     if (!current.exists || !membership.exists) throw new HttpsError('not-found', 'The group is no longer available.')
     tx.create(shareRef, { kind, ownerId: uid, title: shortText(title, 'Study item title', 1, 120), snapshotPath: snapshotRef.path, sharedAt: now })
@@ -254,21 +258,21 @@ export async function unshareStudyItem(call: CallableRequest<unknown>) {
   const groupId = groupIdFrom(data)
   const shareId = data.shareId
   if (typeof shareId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(shareId)) throw new HttpsError('invalid-argument', 'Choose a valid shared item.')
-  const groupRef = db.doc(`groups/${groupId}`)
+  const groupRef = db().doc(`groups/${groupId}`)
   const shareRef = groupRef.collection('shares').doc(shareId)
   const [member, share] = await Promise.all([groupRef.collection('members').doc(uid).get(), shareRef.get()])
   if (!member.exists || !share.exists) throw new HttpsError('not-found', 'This shared item is no longer available.')
   const group = await groupRef.get()
   if (share.get('ownerId') !== uid && (member.get('role') !== 'owner' || group.get('ownerId') !== uid)) throw new HttpsError('permission-denied', 'Only the sharer or group owner can remove this copy.')
-  await db.recursiveDelete(groupRef.collection('sharedContent').doc(shareId))
+  await db().recursiveDelete(groupRef.collection('sharedContent').doc(shareId))
   await shareRef.delete()
   return { success: true }
 }
 
 export async function deleteStudyGroup(call: CallableRequest<unknown>) {
-  const uid = uidFrom(call); const groupId = groupIdFrom(call.data); const groupRef = db.doc(`groups/${groupId}`)
+  const uid = uidFrom(call); const groupId = groupIdFrom(call.data); const groupRef = db().doc(`groups/${groupId}`)
   const membersRef = groupRef.collection('members')
-  await db.runTransaction(async tx => {
+  await db().runTransaction(async tx => {
     const [group, members] = await Promise.all([tx.get(groupRef), tx.get(membersRef)])
     if (!group.exists) return
     const owner = members.docs.find(member => member.id === uid && member.get('role') === 'owner')
@@ -291,14 +295,14 @@ export async function deleteStudyGroup(call: CallableRequest<unknown>) {
     if (typeof code === 'string') tx.delete(codeRef(code))
     tx.delete(groupRef)
   })
-  try { await db.recursiveDelete(groupRef) } catch { throw new HttpsError('internal', 'The group was closed, but its shared snapshots need cleanup. Try again.') }
+  try { await db().recursiveDelete(groupRef) } catch { throw new HttpsError('internal', 'The group was closed, but its shared snapshots need cleanup. Try again.') }
   return { success: true }
 }
 
 async function deleteOwnedGroup(uid: string, groupId: string): Promise<void> {
-  const groupRef = db.doc(`groups/${groupId}`)
+  const groupRef = db().doc(`groups/${groupId}`)
   const membersRef = groupRef.collection('members')
-  await db.runTransaction(async tx => {
+  await db().runTransaction(async tx => {
     const [group, members] = await Promise.all([tx.get(groupRef), tx.get(membersRef)])
     if (!group.exists) return
     if (group.get('ownerId') !== uid || !members.docs.some(member => member.id === uid && member.get('role') === 'owner')) throw new HttpsError('permission-denied', 'Only the group owner can delete this group.')
@@ -313,19 +317,19 @@ async function deleteOwnedGroup(uid: string, groupId: string): Promise<void> {
     if (typeof code === 'string') tx.delete(codeRef(code))
     tx.delete(groupRef)
   })
-  try { await db.recursiveDelete(groupRef) } catch { throw new HttpsError('internal', 'The group was closed, but its shared snapshots need cleanup. Try again.') }
+  try { await db().recursiveDelete(groupRef) } catch { throw new HttpsError('internal', 'The group was closed, but its shared snapshots need cleanup. Try again.') }
 }
 
 export async function cleanupStudyGroups(call: CallableRequest<unknown>) {
   const uid = uidFrom(call)
-  const memberships = await db.collection(`users/${uid}/groupMemberships`).limit(ownedLimit + joinedLimit).get()
+  const memberships = await db().collection(`users/${uid}/groupMemberships`).limit(ownedLimit + joinedLimit).get()
   for (const index of memberships.docs) {
-    const groupRef = db.doc(`groups/${index.id}`)
+    const groupRef = db().doc(`groups/${index.id}`)
     const group = await groupRef.get()
     if (!group.exists) { await index.ref.delete(); continue }
     if (group.get('ownerId') === uid) await deleteOwnedGroup(uid, group.id)
     else await removeMember(group.id, uid, uid, false)
   }
-  await db.doc(`users/${uid}/groupState/summary`).delete().catch(() => undefined)
+  await db().doc(`users/${uid}/groupState/summary`).delete().catch(() => undefined)
   return { success: true }
 }
