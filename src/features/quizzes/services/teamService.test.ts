@@ -93,18 +93,23 @@ describe('callable wrappers', () => {
 })
 
 describe('describeTeamError', () => {
-  it('shows the server message for expected function errors', () => {
+  it('shows the server message for expected function errors with and without prefix', () => {
     expect(describeTeamError({ code: 'functions/failed-precondition', message: 'This team is full.' })).toBe('This team is full.')
+    expect(describeTeamError({ code: 'failed-precondition', message: 'This team is full.' })).toBe('This team is full.')
+    expect(describeTeamError({ code: 'already-exists', message: 'Team name is already taken.' })).toBe('Team name is already taken.')
   })
   it('hides internal errors and unknown shapes behind a safe default', () => {
     const safe = 'Something went wrong. Please try again.'
     expect(describeTeamError({ code: 'functions/internal', message: 'stack trace here' })).toBe(safe)
+    expect(describeTeamError({ code: 'internal', message: 'stack trace here' })).toBe(safe)
     expect(describeTeamError(new Error('raw'))).toBe(safe)
     expect(describeTeamError(null)).toBe(safe)
     expect(describeTeamError({ code: 'functions/not-found', message: '' })).toBe(safe)
+    expect(describeTeamError({ code: 'not-found', message: '' })).toBe(safe)
   })
   it('explains a lost connection', () => {
     expect(describeTeamError({ code: 'functions/unavailable', message: 'x' })).toMatch(/offline/i)
+    expect(describeTeamError({ code: 'unavailable', message: 'x' })).toMatch(/offline/i)
   })
 })
 

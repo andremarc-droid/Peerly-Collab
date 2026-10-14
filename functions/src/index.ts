@@ -43,6 +43,7 @@ import {
   submitTeamAnswer as submitTeamAnswerHandler,
   submitTeamAttempt as submitTeamAttemptHandler,
 } from './groupQuizzes.js'
+import { wrapGroupQuizHandler } from './groupQuizErrorMapping.js'
 
 initializeApp()
 
@@ -166,17 +167,17 @@ export const deleteGame = onCall({ region: 'us-central1', timeoutSeconds: 120 },
 export const cleanupGames = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, cleanupGamesHandler)
 
 // Group quizzes: the only code that writes team, session and team result data.
-export const createTeam = onCall({ region: 'us-central1' }, createTeamHandler)
-export const addTeamMember = onCall({ region: 'us-central1' }, addTeamMemberHandler)
-export const createSelfTeam = onCall({ region: 'us-central1' }, createSelfTeamHandler)
-export const joinTeam = onCall({ region: 'us-central1' }, joinTeamHandler)
-export const leaveTeam = onCall({ region: 'us-central1' }, leaveTeamHandler)
-export const removeTeamMember = onCall({ region: 'us-central1' }, removeTeamMemberHandler)
-export const setRepresentative = onCall({ region: 'us-central1' }, setRepresentativeHandler)
-export const deleteTeam = onCall({ region: 'us-central1', timeoutSeconds: 120 }, deleteTeamHandler)
-export const startTeamAttempt = onCall({ region: 'us-central1' }, startTeamAttemptHandler)
-export const submitTeamAnswer = onCall({ region: 'us-central1' }, submitTeamAnswerHandler)
-export const lockTeamAnswer = onCall({ region: 'us-central1' }, lockTeamAnswerHandler)
-export const advanceTeam = onCall({ region: 'us-central1' }, advanceTeamHandler)
-export const submitTeamAttempt = onCall({ region: 'us-central1', timeoutSeconds: 120 }, submitTeamAttemptHandler)
-export const cleanupGroupQuizData = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, cleanupGroupQuizDataHandler)
+export const createTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(createTeamHandler))
+export const addTeamMember = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(addTeamMemberHandler))
+export const createSelfTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(createSelfTeamHandler))
+export const joinTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(joinTeamHandler))
+export const leaveTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(leaveTeamHandler))
+export const removeTeamMember = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(removeTeamMemberHandler))
+export const setRepresentative = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(setRepresentativeHandler))
+export const deleteTeam = onCall({ region: 'us-central1', timeoutSeconds: 120 }, wrapGroupQuizHandler(deleteTeamHandler))
+export const startTeamAttempt = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(startTeamAttemptHandler))
+export const submitTeamAnswer = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(submitTeamAnswerHandler))
+export const lockTeamAnswer = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(lockTeamAnswerHandler))
+export const advanceTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(advanceTeamHandler))
+export const submitTeamAttempt = onCall({ region: 'us-central1', timeoutSeconds: 120 }, wrapGroupQuizHandler(submitTeamAttemptHandler))
+export const cleanupGroupQuizData = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, wrapGroupQuizHandler(cleanupGroupQuizDataHandler))

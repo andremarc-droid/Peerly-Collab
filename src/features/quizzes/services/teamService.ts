@@ -53,9 +53,11 @@ async function call<I, O>(name: string, data: I): Promise<O> {
   }
   if (!response.ok) {
     console.error(`[groupQuizzes API Error: ${name}]`, json)
-    const errorMsg = (typeof json.details === 'string' && json.details) || (typeof json.error === 'string' && json.error) || (typeof json.message === 'string' && json.message) || 'Something went wrong.'
+    const errorMsg = (typeof json.error === 'string' && json.error) || (typeof json.message === 'string' && json.message) || (typeof json.details === 'string' && json.details) || 'Something went wrong.'
     const error = new Error(errorMsg)
-    ;(error as { code?: string }).code = (typeof json.code === 'string' && json.code) || 'functions/internal'
+    const rawCode = typeof json.code === 'string' ? json.code : ''
+    const code = rawCode.startsWith('functions/') ? rawCode : rawCode ? `functions/${rawCode}` : 'functions/internal'
+    ;(error as { code?: string }).code = code
     throw error
   }
   return json.result as O
@@ -66,10 +68,11 @@ type Ok = { ok: true }
 
 /** Callable errors already carry a short human message; anything else gets a safe default. */
 export function describeTeamError(error: unknown): string {
-  const code = (error as { code?: unknown } | null)?.code
+  const rawCode = (error as { code?: unknown } | null)?.code
+  const code = typeof rawCode === 'string' ? (rawCode.startsWith('functions/') ? rawCode.slice('functions/'.length) : rawCode) : ''
   const message = (error as { message?: unknown } | null)?.message
-  if (code === 'functions/unavailable' || (typeof navigator !== 'undefined' && navigator.onLine === false)) return 'You seem to be offline. Check your connection and try again.'
-  if (typeof code === 'string' && code.startsWith('functions/') && code !== 'functions/internal' && typeof message === 'string' && message.length > 0) return message
+  if (code === 'unavailable' || (typeof navigator !== 'undefined' && navigator.onLine === false)) return 'You seem to be offline. Check your connection and try again.'
+  if (code && code !== 'internal' && typeof message === 'string' && message.length > 0) return message
   return 'Something went wrong. Please try again.'
 }
 
