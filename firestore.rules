@@ -553,6 +553,9 @@ service cloud.firestore {
       allow get, list: if signedIn() && (resource.data.ownerId == request.auth.uid || isActiveMember(classId));
       allow create: if isInstructor()
         && request.resource.data.ownerId == request.auth.uid
+        && classId != request.auth.uid
+        && !exists(/databases/$(database)/documents/users/$(classId))
+        && !exists(/databases/$(database)/documents/publicProfiles/$(classId))
         && validClass(request.resource.data)
         && existsAfter(/databases/$(database)/documents/classCodes/$(request.resource.data.joinCode))
         && classCodeMatchesClass(getAfter(/databases/$(database)/documents/classCodes/$(request.resource.data.joinCode)).data, request.resource.data.joinCode, classId);
@@ -820,7 +823,7 @@ service cloud.firestore {
 
         allow delete: if signedIn() && (
           (resource.data.kind == 'class' && isClassOwner(classId))
-          || (resource.data.kind == 'personal' && (resource.data.ownerId == request.auth.uid || isClassOwner(classId)))
+          || (resource.data.kind == 'personal' && (resource.data.ownerId == request.auth.uid || (classId != resource.data.ownerId && isClassOwner(classId))))
         );
 
         match /content/{contentId} {
@@ -875,11 +878,11 @@ service cloud.firestore {
             );
 
           allow delete: if signedIn() && (
-            isClassOwner(classId)
-            || (exists(parentPath()) && (
+            (exists(parentPath()) && (
               (get(parentPath()).data.kind == 'class' && isClassOwner(classId))
-              || (get(parentPath()).data.kind == 'personal' && get(parentPath()).data.ownerId == request.auth.uid)
+              || (get(parentPath()).data.kind == 'personal' && (get(parentPath()).data.ownerId == request.auth.uid || (classId != get(parentPath()).data.ownerId && isClassOwner(classId))))
             ))
+            || (!exists(parentPath()) && isClassOwner(classId))
           );
         }
 
@@ -1220,7 +1223,7 @@ service cloud.firestore {
 
       allow delete: if signedIn() && (
         (resource.data.kind == 'class' && isClassOwner(classId))
-        || (resource.data.kind == 'personal' && (resource.data.ownerId == request.auth.uid || isClassOwner(classId)))
+        || (resource.data.kind == 'personal' && (resource.data.ownerId == request.auth.uid || (classId != resource.data.ownerId && isClassOwner(classId))))
       );
 
       match /members/{memberUid} {
