@@ -111,7 +111,7 @@ export const createGame = guarded(async (uid, data) => {
       const expiresAt = Timestamp.fromMillis(now + GAME_LIMITS.ttlMs)
       tx.create(ref, {
         hostId: uid, groupId: request.groupId, code, status: 'lobby', questionIndex: 0, questionCount: questions.length, questionStartedAt: null, questionEndsAt: null,
-        settings: { timeLimitSec: request.timeLimitSec, pacing: request.pacing ?? 'timed' }, playerCount: 0, createdAt: Timestamp.fromMillis(now), expiresAt,
+        settings: { timeLimitSec: request.timeLimitSec, pacing: request.pacing ?? 'timed', speedBonus: request.speedBonus ?? false }, playerCount: 0, createdAt: Timestamp.fromMillis(now), expiresAt,
       })
       tx.create(privateRef(ref.id, 'questions'), { questions: questions.map(({ prompt, options }) => ({ prompt, options })) })
       tx.create(privateRef(ref.id, 'key'), { correct: questions.map(question => question.correctIndex) })

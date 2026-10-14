@@ -14,10 +14,10 @@ import { buildReveal } from './gameReveal'
 
 describe('parseCreateGameRequest', () => {
   const deck = { kind: 'deck', classId: 'class_1', deckId: 'deck-1' }
-  it('accepts a deck, lesson, or quiz source with a valid time limit and pacing', () => {
-    expect(parseCreateGameRequest({ source: deck, timeLimitSec: 20 })).toEqual({ source: deck, timeLimitSec: 20, groupId: null, pacing: 'timed' })
-    expect(parseCreateGameRequest({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1', pacing: 'wait_for_everyone' })).toEqual({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1', pacing: 'wait_for_everyone' })
-    expect(parseCreateGameRequest({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, pacing: 'self_paced' })).toEqual({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, groupId: null, pacing: 'self_paced' })
+  it('accepts a deck, lesson, or quiz source with a valid time limit, pacing, and speedBonus', () => {
+    expect(parseCreateGameRequest({ source: deck, timeLimitSec: 20 })).toEqual({ source: deck, timeLimitSec: 20, groupId: null, pacing: 'timed', speedBonus: false })
+    expect(parseCreateGameRequest({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1', pacing: 'wait_for_everyone', speedBonus: true })).toEqual({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1', pacing: 'wait_for_everyone', speedBonus: true })
+    expect(parseCreateGameRequest({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, pacing: 'self_paced' })).toEqual({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, groupId: null, pacing: 'self_paced', speedBonus: false })
   })
   it('rejects invalid pacing values', () => {
     expect(() => parseCreateGameRequest({ source: deck, timeLimitSec: 20, pacing: 'invalid' })).toThrow(GameInputError)
@@ -90,10 +90,14 @@ describe('buildReveal', () => {
     ['ghost', { optionIndex: 1, answeredAtMs: 0 }],
   ])
   it('scores correct answers, ignores wrong, missing and non-player answers', () => {
-    const result = buildReveal({ correctIndex: 1, startedAtMs: 0, endsAtMs: 20_000, players, answers })
-    expect(result.perPlayerPoints).toEqual({ a: 1500, b: 0, c: 1000, d: 0 })
-    expect(result.scores).toEqual({ a: 1600, b: 0, c: 1050, d: 0 })
-    expect('ghost' in result.perPlayerPoints).toBe(false)
+    const withBonus = buildReveal({ correctIndex: 1, startedAtMs: 0, endsAtMs: 20_000, players, answers, speedBonus: true })
+    expect(withBonus.perPlayerPoints).toEqual({ a: 1500, b: 0, c: 1000, d: 0 })
+    expect(withBonus.scores).toEqual({ a: 1600, b: 0, c: 1050, d: 0 })
+    expect('ghost' in withBonus.perPlayerPoints).toBe(false)
+
+    const defaultNoBonus = buildReveal({ correctIndex: 1, startedAtMs: 0, endsAtMs: 20_000, players, answers })
+    expect(defaultNoBonus.perPlayerPoints).toEqual({ a: 1000, b: 0, c: 1000, d: 0 })
+    expect(defaultNoBonus.scores).toEqual({ a: 1100, b: 0, c: 1050, d: 0 })
   })
   it('gives nothing for late answers', () => {
     const late = new Map([['a', { optionIndex: 1, answeredAtMs: 30_000 }]])

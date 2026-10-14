@@ -111,7 +111,8 @@ export async function readRevealInputs(tx: Transaction, gameId: string, index: n
 export function writeReveal(tx: Transaction, gameId: string, game: GameDoc, players: FirebaseFirestore.QueryDocumentSnapshot[], inputs: RevealInputs): void {
   const startedAtMs = (game.questionStartedAt as Timestamp).toMillis()
   const endsAtMs = (game.questionEndsAt as Timestamp).toMillis()
-  const result = buildReveal({ correctIndex: inputs.correctIndex, startedAtMs, endsAtMs, players: players.map(p => ({ uid: p.id, score: Number(p.get('score')) || 0 })), answers: inputs.answers })
+  const speedBonus = Boolean((game.settings as Record<string, unknown> | undefined)?.speedBonus)
+  const result = buildReveal({ correctIndex: inputs.correctIndex, startedAtMs, endsAtMs, players: players.map(p => ({ uid: p.id, score: Number(p.get('score')) || 0 })), answers: inputs.answers, speedBonus })
   tx.set(stateRef(gameId, 'reveal'), { questionIndex: game.questionIndex, correctOptionIndex: inputs.correctIndex, perPlayerPoints: result.perPlayerPoints })
   for (const player of players) tx.update(player.ref, { score: result.scores[player.id] ?? 0 })
   tx.update(gameRef(gameId), { status: 'reveal' })

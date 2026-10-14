@@ -169,13 +169,20 @@ describe('answer window and scoring', () => {
     expect(() => checkAnswerWindow({ ...open, endsAtMs: null })).toThrow(GameInputError)
   })
   const base = { correct: true, startedAtMs: 0, endsAtMs: 20_000 }
-  it('gives 1500 for an instant answer, 1250 halfway and 1000 at the deadline', () => {
-    expect(scoreAnswer({ ...base, answeredAtMs: 0 })).toBe(1500)
-    expect(scoreAnswer({ ...base, answeredAtMs: 10_000 })).toBe(1250)
+  it('gives 1500 for an instant answer, 1250 halfway and 1000 at the deadline when speedBonus is true', () => {
+    expect(scoreAnswer({ ...base, answeredAtMs: 0, speedBonus: true })).toBe(1500)
+    expect(scoreAnswer({ ...base, answeredAtMs: 10_000, speedBonus: true })).toBe(1250)
+    expect(scoreAnswer({ ...base, answeredAtMs: 20_000, speedBonus: true })).toBe(1000)
+  })
+  it('gives flat base points (1000) regardless of speed when speedBonus is off (default)', () => {
+    expect(scoreAnswer({ ...base, answeredAtMs: 0 })).toBe(1000)
+    expect(scoreAnswer({ ...base, answeredAtMs: 10_000 })).toBe(1000)
     expect(scoreAnswer({ ...base, answeredAtMs: 20_000 })).toBe(1000)
+    expect(scoreAnswer({ ...base, answeredAtMs: 0, speedBonus: false })).toBe(1000)
   })
   it('gives only the base points inside the grace period and nothing after it', () => {
-    expect(scoreAnswer({ ...base, answeredAtMs: 20_500 })).toBe(1000)
+    expect(scoreAnswer({ ...base, answeredAtMs: 20_500, speedBonus: true })).toBe(1000)
+    expect(scoreAnswer({ ...base, answeredAtMs: 20_500, speedBonus: false })).toBe(1000)
     expect(scoreAnswer({ ...base, answeredAtMs: 20_000 + GAME_LIMITS.lateGraceMs + 1 })).toBe(0)
   })
   it('gives nothing for wrong answers, answers before the question started, or a broken window', () => {

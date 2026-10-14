@@ -17,6 +17,7 @@ export interface CreateGameRequest {
   timeLimitSec: number
   groupId: string | null
   pacing?: PacingMode
+  speedBonus?: boolean
 }
 export interface JoinGameRequest { code: string; displayName: string }
 export interface SubmitAnswerRequest { gameId: string; questionIndex: number; optionIndex: number }
@@ -41,7 +42,7 @@ function wholeNumber(value: unknown, min: number, max: number, label: string): n
 }
 
 export function parseCreateGameRequest(data: unknown): CreateGameRequest {
-  const record = exact(data, ['source', 'timeLimitSec'], ['groupId', 'pacing'])
+  const record = exact(data, ['source', 'timeLimitSec'], ['groupId', 'pacing', 'speedBonus'])
   const rawSource = record.source
   if (typeof rawSource !== 'object' || rawSource === null || Array.isArray(rawSource)) throw new GameInputError('Choose a deck, lesson plan, or quiz.')
   const kind = (rawSource as Record<string, unknown>).kind
@@ -65,7 +66,8 @@ export function parseCreateGameRequest(data: unknown): CreateGameRequest {
       throw new GameInputError('Pacing must be timed, wait_for_everyone, or self_paced.')
     }
   }
-  return { source, timeLimitSec: parseTimeLimit(record.timeLimitSec), groupId, pacing }
+  const speedBonus = record.speedBonus === undefined ? false : Boolean(record.speedBonus)
+  return { source, timeLimitSec: parseTimeLimit(record.timeLimitSec), groupId, pacing, speedBonus }
 }
 
 export function parseJoinRequest(data: unknown): JoinGameRequest {

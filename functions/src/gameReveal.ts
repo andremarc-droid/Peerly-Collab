@@ -12,13 +12,20 @@ export function buildReveal(input: {
   endsAtMs: number
   players: ReadonlyArray<{ uid: string; score: number }>
   answers: ReadonlyMap<string, PlayerAnswer>
+  speedBonus?: boolean
 }): { perPlayerPoints: Record<string, number>; scores: Record<string, number> } {
   const perPlayerPoints: Record<string, number> = {}
   const scores: Record<string, number> = {}
   for (const player of input.players) {
     const answer = input.answers.get(player.uid)
     const points = answer
-      ? scoreAnswer({ correct: answer.optionIndex === input.correctIndex, answeredAtMs: answer.answeredAtMs, startedAtMs: input.startedAtMs, endsAtMs: input.endsAtMs })
+      ? scoreAnswer({
+          correct: answer.optionIndex === input.correctIndex,
+          answeredAtMs: answer.answeredAtMs,
+          startedAtMs: input.startedAtMs,
+          endsAtMs: input.endsAtMs,
+          speedBonus: input.speedBonus,
+        })
       : 0
     perPlayerPoints[player.uid] = points
     scores[player.uid] = player.score + points

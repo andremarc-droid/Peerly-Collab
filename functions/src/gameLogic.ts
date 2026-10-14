@@ -193,11 +193,12 @@ export function checkAnswerWindow(input: { status: GameStatus; currentIndex: num
   if (input.endsAtMs === null || input.nowMs > input.endsAtMs + GAME_LIMITS.lateGraceMs) throw new GameInputError('Time is up for this question.', 'failed-precondition')
 }
 
-/** 1000 for a correct answer plus up to 500 for speed. Wrong or too-late answers score nothing. */
-export function scoreAnswer(input: { correct: boolean; answeredAtMs: number; startedAtMs: number; endsAtMs: number }): number {
+/** 1000 base points for a correct answer; optionally adds up to 500 for speed if enabled (default false). */
+export function scoreAnswer(input: { correct: boolean; answeredAtMs: number; startedAtMs: number; endsAtMs: number; speedBonus?: boolean }): number {
   if (!input.correct) return 0
   const total = input.endsAtMs - input.startedAtMs
   if (total <= 0 || input.answeredAtMs < input.startedAtMs || input.answeredAtMs > input.endsAtMs + GAME_LIMITS.lateGraceMs) return 0
+  if (!input.speedBonus) return GAME_LIMITS.basePoints
   const remaining = Math.min(Math.max(input.endsAtMs - input.answeredAtMs, 0), total)
   return GAME_LIMITS.basePoints + Math.round(GAME_LIMITS.maxSpeedBonus * (remaining / total))
 }

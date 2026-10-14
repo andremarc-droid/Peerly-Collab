@@ -63,4 +63,5 @@ export interface CreateGameInput {
   timeLimitSec: number
   groupId?: string | null
   pacing?: PacingMode
+  speedBonus?: boolean
 }
