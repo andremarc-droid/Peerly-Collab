@@ -1,10 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 
+import type { DecodedIdToken } from 'firebase-admin/auth'
+
 // Lazy loaded singletons
 let firebaseInitialized = false
 let handlersCache: Record<string, unknown> | null = null
 let currentProjectId = 'collaboration-app-b3c91'
-let jwksCache: unknown = null
 
 async function getHandlers() {
   if (!handlersCache) {
@@ -44,21 +45,15 @@ async function ensureFirebase() {
   firebaseInitialized = true
 }
 
-async function verifyFirebaseToken(token: string, projectId: string): Promise<string> {
-  const { jwtVerify, createRemoteJWKSet } = await import('jose')
-  if (!jwksCache) {
-    jwksCache = createRemoteJWKSet(
-      new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com')
-    )
+async function verifyFirebaseToken(token: string): Promise<DecodedIdToken> {
+  const { getAuth } = await import('firebase-admin/auth')
+  const decodedToken = await getAuth().verifyIdToken(token, true)
+  if (decodedToken.firebase?.sign_in_provider === 'anonymous') {
+    const err = new Error('Anonymous accounts are not permitted for group quizzes.')
+    ;(err as unknown as { code: string }).code = 'auth/anonymous-not-allowed'
+    throw err
   }
-  const { payload } = await jwtVerify(token, jwksCache as Parameters<typeof jwtVerify>[1], {
-    issuer: `https://securetoken.google.com/${projectId}`,
-    audience: projectId,
-  })
-  if (!payload.sub) {
-    throw new Error('Token payload missing user id (sub claim)')
-  }
-  return payload.sub
+  return decodedToken
 }
 
 async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -145,17 +140,18 @@ export default async function handler(
       return
     }
 
-    let uid: string
+    let decodedToken: DecodedIdToken
     try {
-      uid = await verifyFirebaseToken(token, currentProjectId)
+      decodedToken = await verifyFirebaseToken(token)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.warn('Invalid ID token provided:', msg)
-      res.statusCode = 401
+      console.warn('Invalid, revoked, or anonymous ID token provided:', msg)
+      const isAnon = (err as unknown as { code?: string }).code === 'auth/anonymous-not-allowed'
+      res.statusCode = isAnon ? 403 : 401
       res.setHeader('Content-Type', 'application/json')
       res.end(JSON.stringify({
-        error: 'Authentication failed. Please sign in again.',
-        code: 'functions/unauthenticated',
+        error: isAnon ? 'Anonymous accounts are not permitted for group quizzes.' : 'Authentication failed. Please sign in again.',
+        code: isAnon ? 'functions/permission-denied' : 'functions/unauthenticated',
         ...(isDev ? { phase: 'verifyAuth', details: msg } : {}),
       }))
       return
@@ -171,7 +167,7 @@ export default async function handler(
     }
 
     const call = {
-      auth: { uid, token: {} },
+      auth: { uid: decodedToken.uid, token: decodedToken },
       data,
       rawRequest: req,
     }

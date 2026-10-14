@@ -1,0 +1,144 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { IncomingMessage, ServerResponse } from 'http'
+import handler from './groupQuizzes.js'
+
+// Mock firebase-admin/app and firebase-admin/auth
+const mockVerifyIdToken = vi.fn()
+vi.mock('firebase-admin/app', () => ({
+  getApps: vi.fn(() => [{ name: '[DEFAULT]' }]),
+  initializeApp: vi.fn(),
+  cert: vi.fn(),
+}))
+vi.mock('firebase-admin/auth', () => ({
+  getAuth: vi.fn(() => ({
+    verifyIdToken: mockVerifyIdToken,
+  })),
+}))
+
+// Mock handlers
+const mockTestAction = vi.fn().mockResolvedValue({ success: true })
+vi.mock('../functions/src/groupQuizzes.js', () => ({
+  testAction: (...args: unknown[]) => mockTestAction(...args),
+}))
+
+function createMockReqRes(options: {
+  method?: string
+  headers?: Record<string, string>
+  body?: unknown
+}) {
+  const req = {
+    method: options.method ?? 'POST',
+    headers: options.headers ?? {},
+    body: options.body,
+    on: vi.fn(),
+  } as unknown as IncomingMessage & { body?: unknown }
+
+  let statusCode = 200
+  const headers: Record<string, string> = {}
+  let responseData = ''
+
+  const res = {
+    get statusCode() {
+      return statusCode
+    },
+    set statusCode(code: number) {
+      statusCode = code
+    },
+    setHeader: vi.fn((key: string, val: string) => {
+      headers[key] = val
+    }),
+    end: vi.fn((data?: string) => {
+      if (data) responseData += data
+    }),
+  } as unknown as ServerResponse & { getResponseJson: () => Record<string, unknown> }
+
+  res.getResponseJson = () => (responseData ? JSON.parse(responseData) : {})
+
+  return { req, res }
+}
+
+describe('api/groupQuizzes handler', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('handles OPTIONS preflight with 204', async () => {
+    const { req, res } = createMockReqRes({ method: 'OPTIONS' })
+    await handler(req, res)
+    expect(res.statusCode).toBe(204)
+    expect(res.end).toHaveBeenCalled()
+  })
+
+  it('rejects non-POST requests with 405', async () => {
+    const { req, res } = createMockReqRes({ method: 'GET' })
+    await handler(req, res)
+    expect(res.statusCode).toBe(405)
+    expect(res.getResponseJson()).toEqual({ error: 'Method Not Allowed' })
+  })
+
+  it('rejects missing Authorization header with 401', async () => {
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: {},
+      body: { action: 'testAction' },
+    })
+    await handler(req, res)
+    expect(res.statusCode).toBe(401)
+    expect(res.getResponseJson().code).toBe('functions/unauthenticated')
+  })
+
+  it('rejects revoked or invalid token with 401', async () => {
+    mockVerifyIdToken.mockRejectedValueOnce(new Error('Firebase ID token has been revoked.'))
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer revoked-token' },
+      body: { action: 'testAction' },
+    })
+    await handler(req, res)
+    expect(res.statusCode).toBe(401)
+    expect(res.getResponseJson().code).toBe('functions/unauthenticated')
+    expect(mockVerifyIdToken).toHaveBeenCalledWith('revoked-token', true)
+  })
+
+  it('rejects anonymous provider with 403', async () => {
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: 'anon-123',
+      firebase: { sign_in_provider: 'anonymous' },
+    })
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer anon-token' },
+      body: { action: 'testAction' },
+    })
+    await handler(req, res)
+    expect(res.statusCode).toBe(403)
+    expect(res.getResponseJson().code).toBe('functions/permission-denied')
+    expect(res.getResponseJson().error).toContain('Anonymous accounts are not permitted')
+  })
+
+  it('authenticates valid non-anonymous token and passes decoded token to handler', async () => {
+    const decodedToken = {
+      uid: 'user-456',
+      email: 'student@example.com',
+      firebase: { sign_in_provider: 'password' },
+    }
+    mockVerifyIdToken.mockResolvedValueOnce(decodedToken)
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: { action: 'testAction', data: { test: 123 } },
+    })
+    await handler(req, res)
+    expect(res.statusCode).toBe(200)
+    expect(mockTestAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        auth: {
+          uid: 'user-456',
+          token: decodedToken,
+        },
+        data: { test: 123 },
+      }),
+    )
+    expect(res.getResponseJson()).toEqual({ result: { success: true } })
+  })
+})
