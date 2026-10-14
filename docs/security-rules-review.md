@@ -139,5 +139,5 @@ This document details the security hardening updates applied to `firestore.rules
   - [ ] Verify rotating a class code generates a new lookup and updates the class.
   - [ ] Join the class as a student and confirm enrollment transitions.
   - [ ] Start and submit a timed quiz attempt within the time limit.
-  - [ ] Attempt to submit a quiz attempt after expiration (+ 120s grace) and confirm permission denial.
+  - [ ] Submit a quiz attempt after expiration and confirm the attempt is accepted, flagged as late in results, and non-blocking.
   - [ ] Check Firebase Console / Google Cloud Operations logs for unexpected `PERMISSION_DENIED` errors.

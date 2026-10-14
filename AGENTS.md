@@ -44,13 +44,17 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - The public landing page is `/`. “Get started” opens `/role?mode=signup`; “Sign in” opens `/role?mode=signin`.
 - `/role` supports `signup`, `signin`, and `continue` modes. Let the user choose Student or Instructor with an accessible radio group; Continue is unavailable until a role is selected.
 - Save a typed role intent in sessionStorage under `peerly:roleIntent`, then continue to `/signup` or `/signin` with its mode. Those routes return users without a saved role to `/role` in the corresponding mode.
-- Signup, signin, and unknown routes remain clear, accessible placeholders until their forms and route behavior are implemented. Keep auth and Firebase wiring out of the role-choice flow until explicitly requested.
+- Signup, signin, and password reset routes provide full accessible form handling, validation, error reporting, email verification gates, and Google SSO authentication.
 
 ## QUIZ DOMAIN
 - Quizzes live at `quizzes/{quizId}` with owner identity, title/description/tags, mode (`quiz`, `flashcards`, or `canvas`), status (`draft`, `published`, `archived`), question count, timestamps, and settings for answer reveal, participation, score visibility/release, time limit, attempts, and shuffling.
 - Questions live at `quizzes/{quizId}/questions/{questionId}` and contain prompt, type, order, points, and options where applicable. Never store correct answers in question documents.
-- Answer keys live separately at `quizzes/{quizId}/answerKeys/{questionId}`. Participants may read them only under the access rules in `firestore.rules`; v1 browser grading means participants can inspect those keys.
+- Answer keys live separately at `quizzes/{quizId}/answerKeys/{questionId}`. Participants may read them only under the access rules in `firestore.rules`; v1 browser grading means participants can inspect those keys (see `docs/design-22-retrieval-before-reveal.md` for target server-side grading architecture).
+- Published quizzes with existing participant records or submitted attempts are locked against modification (question edits, deletions, additions, or settings changes) to maintain attempt integrity; instructors are offered "Duplicate quiz" instead.
 - Participants, attempts, and results are separate subcollections. Attempts store responses and ordering but no score; results store grades separately so rules enforce score visibility.
+- Optional mastery round ("Practice missed questions") is available after submitting an instructor quiz to reinforce learning without mutating graded results.
+- Synchronized class-wide pacing for instructor quizzes supports self-paced, timed per question, and wait-for-everyone pacing via live sessions.
+- In live games, host can toggle the speed bonus (default off, rewarding mastery and accuracy over speed). Stuck group quiz teams can be advanced or overridden by the instructor.
 - Support multiple choice, true/false, identification, fill-in-the-blank, flashcards, and concept canvas boards. Flashcard quizzes use neutral reveal/score defaults and flashcards are not graded.
 - Images for canvas image cards live in `quizzes/{quizId}/images/{imageId}`: `{ data, mimeType, width, height, bytes, createdAt }` (data stored without `data:` prefix, mimeType in `image/jpeg` or `image/webp`). Enforced hard cap of <= 700,000 characters of data per image document in Firestore rules.
 - Validate untrusted domain payloads at runtime. Grade with pure functions and expose the service boundary as `gradeAttempt` so grading can move to a Cloud Function later.
