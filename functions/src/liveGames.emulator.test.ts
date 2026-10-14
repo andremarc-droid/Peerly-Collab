@@ -175,4 +175,67 @@ describe.skipIf(!hasEmulator)('live games (emulator)', () => {
     expect(advanced.get('questionIndex')).toBe(1)
     expect(advanced.get('questionEndsAt')).toBeNull()
   })
+
+  it('includes skipped count in failed-precondition error when fewer than 5 MC questions remain', async () => {
+    await db.doc('quizzes/skippedquiz').set({
+      ownerId: 'host',
+      mode: 'quiz',
+      status: 'published',
+      classId: 'c1',
+    })
+    for (let i = 0; i < 3; i++) {
+      const qId = `q_${i}`
+      await db.doc(`quizzes/skippedquiz/questions/${qId}`).set({
+        prompt: `Valid MC Question ${i}`,
+        type: 'multiple_choice',
+        options: [
+          { id: 'opt_a', text: 'Option A' },
+          { id: 'opt_b', text: 'Option B' },
+        ],
+        order: i,
+        points: 10,
+      })
+      await db.doc(`quizzes/skippedquiz/answerKeys/${qId}`).set({
+        type: 'choice',
+        correctOptionId: 'opt_a',
+        explanation: '',
+        caseSensitive: false,
+      })
+    }
+    // Question with more than 4 options (skipped)
+    await db.doc('quizzes/skippedquiz/questions/q_too_many').set({
+      prompt: 'Question with 5 options',
+      type: 'multiple_choice',
+      options: [
+        { id: 'o1', text: '1' },
+        { id: 'o2', text: '2' },
+        { id: 'o3', text: '3' },
+        { id: 'o4', text: '4' },
+        { id: 'o5', text: '5' },
+      ],
+      order: 3,
+      points: 10,
+    })
+    await db.doc('quizzes/skippedquiz/answerKeys/q_too_many').set({
+      type: 'choice',
+      correctOptionId: 'o1',
+      explanation: '',
+      caseSensitive: false,
+    })
+    // Question with missing key (skipped)
+    await db.doc('quizzes/skippedquiz/questions/q_missing_key').set({
+      prompt: 'Question without key',
+      type: 'multiple_choice',
+      options: [
+        { id: 'oa', text: 'A' },
+        { id: 'ob', text: 'B' },
+      ],
+      order: 4,
+      points: 10,
+    })
+
+    await expect(
+      createGame(as('host', { source: { kind: 'quiz', classId: 'c1', quizId: 'skippedquiz' }, timeLimitSec: 20 }))
+    ).rejects.toThrow(/only 3 usable multiple-choice questions.*2 skipped.*needs at least 5/)
+  })
 })

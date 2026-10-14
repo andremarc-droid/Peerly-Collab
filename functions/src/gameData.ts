@@ -57,28 +57,47 @@ export async function loadQuestions(uid: string, source: GameSourceRequest): Pro
     if (typeof correctOptionId === 'string') keysMap.set(d.id, correctOptionId)
   })
   const questions: GameQuestion[] = []
+  let skippedCount = 0
   for (const d of qSnap.docs) {
     const q = d.data()
-    if ((q.type !== 'multiple_choice' && q.type !== 'true_false') || !Array.isArray(q.options) || typeof q.prompt !== 'string') continue
+    const isMc = q.type === 'multiple_choice' || q.type === 'true_false'
+    if (!isMc) continue
+    if (!Array.isArray(q.options) || typeof q.prompt !== 'string') {
+      skippedCount += 1
+      continue
+    }
     const correctOptionId = keysMap.get(d.id)
-    if (!correctOptionId) continue
+    if (!correctOptionId) {
+      skippedCount += 1
+      continue
+    }
     const rawOptions = q.options as unknown[]
-    if (!rawOptions.every(o => o && typeof o === 'object' && typeof (o as Record<string, unknown>).id === 'string' && typeof (o as Record<string, unknown>).text === 'string')) {
+    if (
+      rawOptions.length < 2 ||
+      rawOptions.length > 4 ||
+      !rawOptions.every(o => o && typeof o === 'object' && typeof (o as Record<string, unknown>).id === 'string' && typeof (o as Record<string, unknown>).text === 'string')
+    ) {
+      skippedCount += 1
       continue
     }
     const typedOptions = rawOptions as Array<{ id: string; text: string }>
     const correctIndex = typedOptions.findIndex(o => o.id === correctOptionId)
-    if (correctIndex === -1) continue
+    if (correctIndex === -1) {
+      skippedCount += 1
+      continue
+    }
     const optionTexts = typedOptions.map(o => o.text)
     try {
       questions.push(parseQuestion({ prompt: q.prompt, options: optionTexts, correctIndex }, `Quiz question ${questions.length + 1}`))
     } catch {
+      skippedCount += 1
       continue
     }
     if (questions.length >= GAME_LIMITS.maxQuestions) break
   }
   if (questions.length < GAME_LIMITS.minQuestions) {
-    throw new GameInputError(`This quiz has only ${questions.length} usable multiple-choice questions. A game needs at least ${GAME_LIMITS.minQuestions}.`, 'failed-precondition')
+    const skippedNote = skippedCount > 0 ? ` (${skippedCount} skipped)` : ''
+    throw new GameInputError(`This quiz has only ${questions.length} usable multiple-choice questions${skippedNote}. A game needs at least ${GAME_LIMITS.minQuestions}.`, 'failed-precondition')
   }
   return questions
 }
