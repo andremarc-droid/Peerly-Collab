@@ -135,4 +135,44 @@ describe.skipIf(!hasEmulator)('live games (emulator)', () => {
     expect(loadedQuestions).toHaveLength(6)
     expect(loadedQuestions[0].options).toEqual(['Option A for Q0', 'Option B for Q0', 'Option C for Q0'])
   })
+
+  it('runs a full wait_for_everyone round with null deadline and awards basePoints without crash', async () => {
+    const { gameId, code } = await createGame(as('host', {
+      source: { kind: 'deck', classId: 'c1', deckId: 'd1' },
+      timeLimitSec: 20,
+      pacing: 'wait_for_everyone',
+      speedBonus: false,
+    })) as { gameId: string; code: string }
+    await joinGame(as('p1', { code, displayName: 'P1' }))
+    await joinGame(as('p2', { code, displayName: 'P2' }))
+    await startGame(as('host', { gameId }))
+
+    const gameDoc = await db.doc(`games/${gameId}`).get()
+    expect(gameDoc.get('questionEndsAt')).toBeNull()
+
+    const current = (await db.doc(`games/${gameId}/state/current`).get()).data()!
+    expect(current.endsAt).toBeNull()
+
+    const key = (await db.doc(`games/${gameId}/private/key`).get()).data()!.correct as number[]
+    const first = await submitAnswer(as('p1', { gameId, questionIndex: 0, optionIndex: key[0]! })) as { accepted: boolean; revealed: boolean }
+    expect(first.accepted).toBe(true)
+    expect(first.revealed).toBe(false)
+
+    const second = await submitAnswer(as('p2', { gameId, questionIndex: 0, optionIndex: (key[0]! + 1) % current.options.length })) as { accepted: boolean; revealed: boolean }
+    expect(second.accepted).toBe(true)
+    expect(second.revealed).toBe(true)
+
+    const reveal = (await db.doc(`games/${gameId}/state/reveal`).get()).data()!
+    expect(reveal.perPlayerPoints.p1).toBe(1000)
+    expect(reveal.perPlayerPoints.p2).toBe(0)
+
+    const player1Doc = await db.doc(`games/${gameId}/players/p1`).get()
+    expect(player1Doc.get('score')).toBe(1000)
+
+    await advanceQuestion(as('host', { gameId }))
+    const advanced = await db.doc(`games/${gameId}`).get()
+    expect(advanced.get('status')).toBe('question')
+    expect(advanced.get('questionIndex')).toBe(1)
+    expect(advanced.get('questionEndsAt')).toBeNull()
+  })
 })

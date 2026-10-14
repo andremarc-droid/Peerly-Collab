@@ -9,7 +9,7 @@ export interface PlayerAnswer { optionIndex: number; answeredAtMs: number }
 export function buildReveal(input: {
   correctIndex: number
   startedAtMs: number
-  endsAtMs: number
+  endsAtMs: number | null
   players: ReadonlyArray<{ uid: string; score: number }>
   answers: ReadonlyMap<string, PlayerAnswer>
   speedBonus?: boolean

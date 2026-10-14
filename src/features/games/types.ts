@@ -51,7 +51,7 @@ export interface GamePlayer {
 
 export interface RankedGamePlayer extends GamePlayer { rank: number }
 
-export type PacingMode = 'timed' | 'wait_for_everyone' | 'self_paced'
+export type PacingMode = 'timed' | 'wait_for_everyone'
 
 export type GameSourceChoice =
   | { kind: 'deck'; classId: string; deckId: string }

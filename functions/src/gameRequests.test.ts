@@ -17,10 +17,15 @@ describe('parseCreateGameRequest', () => {
   it('accepts a deck, lesson, or quiz source with a valid time limit, pacing, and speedBonus', () => {
     expect(parseCreateGameRequest({ source: deck, timeLimitSec: 20 })).toEqual({ source: deck, timeLimitSec: 20, groupId: null, pacing: 'timed', speedBonus: false })
     expect(parseCreateGameRequest({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1', pacing: 'wait_for_everyone', speedBonus: true })).toEqual({ source: { kind: 'lesson', planId: 'plan1' }, timeLimitSec: 10, groupId: 'g1', pacing: 'wait_for_everyone', speedBonus: true })
-    expect(parseCreateGameRequest({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, pacing: 'self_paced' })).toEqual({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, groupId: null, pacing: 'self_paced', speedBonus: false })
+    expect(parseCreateGameRequest({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, pacing: 'wait_for_everyone' })).toEqual({ source: { kind: 'quiz', classId: 'c1', quizId: 'q1' }, timeLimitSec: 30, groupId: null, pacing: 'wait_for_everyone', speedBonus: false })
   })
   it('rejects invalid pacing values', () => {
     expect(() => parseCreateGameRequest({ source: deck, timeLimitSec: 20, pacing: 'invalid' })).toThrow(GameInputError)
+    expect(() => parseCreateGameRequest({ source: deck, timeLimitSec: 20, pacing: 'self_paced' })).toThrow(GameInputError)
+  })
+  it('rejects non-boolean speedBonus values', () => {
+    expect(() => parseCreateGameRequest({ source: deck, timeLimitSec: 20, speedBonus: 'true' })).toThrow(GameInputError)
+    expect(() => parseCreateGameRequest({ source: deck, timeLimitSec: 20, speedBonus: 1 })).toThrow(GameInputError)
   })
   it('rejects extra fields at every level', () => {
     expect(() => parseCreateGameRequest({ source: deck, timeLimitSec: 20, hostId: 'x' })).toThrow(GameInputError)

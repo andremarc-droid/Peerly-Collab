@@ -7,7 +7,7 @@ import { randomInt } from 'node:crypto'
 
 export type GameStatus = 'lobby' | 'question' | 'reveal' | 'finished'
 export type GameAction = 'start' | 'reveal' | 'next' | 'end'
-export type PacingMode = 'timed' | 'wait_for_everyone' | 'self_paced'
+export type PacingMode = 'timed' | 'wait_for_everyone'
 export interface GameQuestion { prompt: string; options: string[]; correctIndex: number }
 export interface GameProgress { status: GameStatus; questionIndex: number; questionCount: number; pacing?: PacingMode }
 export interface RankedPlayer { uid: string; displayName: string; score: number; rank: number }
@@ -189,13 +189,16 @@ export function actionForAdvance(status: GameStatus): 'reveal' | 'next' {
 export function checkAnswerWindow(input: { status: GameStatus; currentIndex: number; submittedIndex: number; nowMs: number; endsAtMs: number | null; pacing?: PacingMode }): void {
   if (input.status !== 'question') throw new GameInputError('This question is closed.', 'failed-precondition')
   if (input.submittedIndex !== input.currentIndex) throw new GameInputError('That question is no longer open.', 'failed-precondition')
-  if (input.pacing === 'wait_for_everyone' || input.pacing === 'self_paced') return
+  if (input.pacing === 'wait_for_everyone') return
   if (input.endsAtMs === null || input.nowMs > input.endsAtMs + GAME_LIMITS.lateGraceMs) throw new GameInputError('Time is up for this question.', 'failed-precondition')
 }
 
 /** 1000 base points for a correct answer; optionally adds up to 500 for speed if enabled (default false). */
-export function scoreAnswer(input: { correct: boolean; answeredAtMs: number; startedAtMs: number; endsAtMs: number; speedBonus?: boolean }): number {
+export function scoreAnswer(input: { correct: boolean; answeredAtMs: number; startedAtMs: number; endsAtMs: number | null; speedBonus?: boolean }): number {
   if (!input.correct) return 0
+  if (input.endsAtMs === null) {
+    return input.answeredAtMs >= input.startedAtMs ? GAME_LIMITS.basePoints : 0
+  }
   const total = input.endsAtMs - input.startedAtMs
   if (total <= 0 || input.answeredAtMs < input.startedAtMs || input.answeredAtMs > input.endsAtMs + GAME_LIMITS.lateGraceMs) return 0
   if (!input.speedBonus) return GAME_LIMITS.basePoints

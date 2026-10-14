@@ -38,7 +38,6 @@ export function HostGameButton({ source, groupId, disabled }: Props) {
         <select className="field__control" value={pacing} onChange={event => setPacing(event.target.value as PacingMode)}>
           <option value="wait_for_everyone">Wait until all students answer</option>
           <option value="timed">Timed per question</option>
-          <option value="self_paced">Self-paced</option>
         </select>
       </label>
       {pacing === 'timed' && (

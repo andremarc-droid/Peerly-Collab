@@ -60,13 +60,17 @@ export function parseCreateGameRequest(data: unknown): CreateGameRequest {
   const groupId = record.groupId === undefined || record.groupId === null ? null : id(record.groupId, 'The group')
   let pacing: PacingMode = 'timed'
   if ('pacing' in record && record.pacing !== undefined) {
-    if (record.pacing === 'timed' || record.pacing === 'wait_for_everyone' || record.pacing === 'self_paced') {
+    if (record.pacing === 'timed' || record.pacing === 'wait_for_everyone') {
       pacing = record.pacing
     } else {
-      throw new GameInputError('Pacing must be timed, wait_for_everyone, or self_paced.')
+      throw new GameInputError('Pacing must be timed or wait_for_everyone.')
     }
   }
-  const speedBonus = record.speedBonus === undefined ? false : Boolean(record.speedBonus)
+  let speedBonus = false
+  if ('speedBonus' in record && record.speedBonus !== undefined) {
+    if (typeof record.speedBonus !== 'boolean') throw new GameInputError('Speed bonus must be a boolean.')
+    speedBonus = record.speedBonus
+  }
   return { source, timeLimitSec: parseTimeLimit(record.timeLimitSec), groupId, pacing, speedBonus }
 }
 

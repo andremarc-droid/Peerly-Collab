@@ -180,6 +180,11 @@ describe('answer window and scoring', () => {
     expect(scoreAnswer({ ...base, answeredAtMs: 20_000 })).toBe(1000)
     expect(scoreAnswer({ ...base, answeredAtMs: 0, speedBonus: false })).toBe(1000)
   })
+  it('gives base points for a correct answer when endsAtMs is null and no speed bonus', () => {
+    expect(scoreAnswer({ correct: true, startedAtMs: 100, endsAtMs: null, answeredAtMs: 200, speedBonus: true })).toBe(1000)
+    expect(scoreAnswer({ correct: true, startedAtMs: 100, endsAtMs: null, answeredAtMs: 50 })).toBe(0)
+    expect(scoreAnswer({ correct: false, startedAtMs: 100, endsAtMs: null, answeredAtMs: 200 })).toBe(0)
+  })
   it('gives only the base points inside the grace period and nothing after it', () => {
     expect(scoreAnswer({ ...base, answeredAtMs: 20_500, speedBonus: true })).toBe(1000)
     expect(scoreAnswer({ ...base, answeredAtMs: 20_500, speedBonus: false })).toBe(1000)

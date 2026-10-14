@@ -51,7 +51,7 @@ export function parseGame(data: unknown, id: string): Game {
     timeLimitSec: int(settings.timeLimitSec, GAME_LIMITS.minTimeSec, GAME_LIMITS.maxTimeSec, 'Time limit'),
     playerCount: int(d.playerCount ?? 0, 0, GAME_LIMITS.maxPlayers, 'Player count'),
     expiresAtMs,
-    pacing: typeof settings.pacing === 'string' && ['timed', 'wait_for_everyone', 'self_paced'].includes(settings.pacing) ? settings.pacing as Game['pacing'] : 'timed',
+    pacing: typeof settings.pacing === 'string' && ['timed', 'wait_for_everyone'].includes(settings.pacing) ? settings.pacing as Game['pacing'] : 'timed',
   }
 }
 
