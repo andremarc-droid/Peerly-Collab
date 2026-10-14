@@ -88,8 +88,8 @@ export async function submitAttempt(quizId: string, attemptId: string, timeSpent
     if (!participantSnapshot.exists()) throw new Error('Participant record not found')
     const participantData = parseQuizParticipant(participantSnapshot.data())
     if (participantData.activeAttemptId !== attemptId) throw new Error('Attempt is no longer active')
-    const computedTimeSpent = attempt.startedAt ? Math.max(0, Math.floor((Date.now() - attempt.startedAt.toMillis()) / 1000)) : (timeSpentSeconds ?? 0)
-    const spentSeconds = timeSpentSeconds ?? computedTimeSpent
+    const serverElapsed = attempt.startedAt ? Math.max(0, Math.floor((Date.now() - attempt.startedAt.toMillis()) / 1000)) : 0
+    const spentSeconds = attempt.startedAt ? serverElapsed : (timeSpentSeconds ?? 0)
     const isBlankCanvas = quiz.mode === 'canvas' && quiz.boardKind === 'blank'
     let graded: QuizResult
     if (isBlankCanvas) {

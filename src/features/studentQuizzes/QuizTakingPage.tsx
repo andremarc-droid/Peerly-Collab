@@ -17,7 +17,7 @@ import { Input } from '../../shared/ui/Input'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
-import { optionOrderForQuestion, persistedQuestionOrder, remainingSeconds, shouldAutoSubmit } from './quizLogic'
+import { estimateServerOffset, optionOrderForQuestion, persistedQuestionOrder, remainingSeconds, shouldAutoSubmit } from './quizLogic'
 import { CanvasPlayPage } from './CanvasPlayPage'
 import { BlankCanvasPlayPage } from './BlankCanvasPlayPage'
 import type { CanvasQuestion } from '../canvas/types'
@@ -59,6 +59,7 @@ export function QuizTakingPage() {
   const checkedStorageKey = `peerly:checkedAnswers:${quizId}:${attemptId}`
   const [checked, setChecked] = useState<Record<string, { correct: boolean | null; explanation: string }>>(() => readCheckedAnswers(checkedStorageKey))
   const [seconds, setSeconds] = useState<number | null>(null)
+  const [serverOffsetMs, setServerOffsetMs] = useState(0)
   const [busy, setBusy] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false)
@@ -69,6 +70,14 @@ export function QuizTakingPage() {
   const autosaveTimer = useRef<number | null>(null)
   const submitted = useRef(false)
   const autoSubmitTriggered = useRef(false)
+
+  useEffect(() => {
+    let active = true
+    void estimateServerOffset().then((offset) => {
+      if (active) setServerOffsetMs(offset)
+    })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     if (!user) return undefined
@@ -107,11 +116,11 @@ export function QuizTakingPage() {
   useEffect(() => {
     if (!attempt || !quiz?.settings.timeLimitMinutes) return undefined
     const started = attempt.startedAt.toMillis()
-    const update = () => setSeconds(remainingSeconds(started, quiz.settings.timeLimitMinutes!, Date.now()))
+    const update = () => setSeconds(remainingSeconds(started, quiz.settings.timeLimitMinutes!, Date.now() + serverOffsetMs))
     update()
     const timer = window.setInterval(update, 1000)
     return () => window.clearInterval(timer)
-  }, [attempt, quiz])
+  }, [attempt, quiz, serverOffsetMs])
 
   useEffect(() => {
     if (!attempt || !Object.keys(answers).length) return undefined
@@ -155,7 +164,7 @@ export function QuizTakingPage() {
     submitted.current = true; setBusy(true); setError('')
     try {
       await autosaveAnswers(quizId, attemptId, answers)
-      await submitAttempt(quizId, attemptId, quiz.settings.timeLimitMinutes ? Math.max(0, quiz.settings.timeLimitMinutes * 60 - (seconds ?? 0)) : Math.floor((Date.now() - attempt.startedAt.toMillis()) / 1000))
+      await submitAttempt(quizId, attemptId, quiz.settings.timeLimitMinutes ? Math.max(0, quiz.settings.timeLimitMinutes * 60 - (seconds ?? 0)) : Math.floor((Date.now() + serverOffsetMs - attempt.startedAt.toMillis()) / 1000))
       sessionStorage.removeItem(checkedStorageKey)
       if (isAutoSubmit || (seconds !== null && shouldAutoSubmit(seconds))) {
         showToast('info', 'Time had run out, so your quiz was submitted.')
@@ -167,7 +176,7 @@ export function QuizTakingPage() {
       showToast('error', 'Your quiz could not be submitted.')
       setBusy(false)
     }
-  }, [attempt, quiz, quizId, attemptId, answers, seconds, navigate, showToast, checkedStorageKey, invalidLinkCards])
+  }, [attempt, quiz, quizId, attemptId, answers, seconds, navigate, showToast, checkedStorageKey, invalidLinkCards, serverOffsetMs])
 
   useEffect(() => {
     if (seconds !== null && shouldAutoSubmit(seconds) && !submitted.current && !autoSubmitTriggered.current) {

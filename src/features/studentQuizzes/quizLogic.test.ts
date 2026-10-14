@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createQuestionOrder, optionOrderForQuestion, remainingAttempts, remainingSeconds, resultVisibility, shouldAutoSubmit } from './quizLogic'
+import { createQuestionOrder, estimateServerOffset, optionOrderForQuestion, remainingAttempts, remainingSeconds, resultVisibility, shouldAutoSubmit } from './quizLogic'
 import type { Quiz, QuizAttempt, QuizResult } from '../quizzes/types'
 import { Timestamp } from 'firebase/firestore'
 
@@ -60,5 +60,27 @@ describe('student quiz logic', () => {
     expect(remainingAttempts(quiz(), 1)).toBe(1)
     expect(remainingAttempts(quiz(), 2)).toBe(0)
     expect(remainingAttempts(quiz({ attemptsAllowed: null }), 99)).toBeNull()
+  })
+
+  it('estimates server offset from date header and falls back safely on failure', async () => {
+    // 1. Successful date header parsing
+    const serverDate = new Date(Date.now() + 5000).toUTCString()
+    const mockFetch = async () => ({
+      headers: { get: (name: string) => (name.toLowerCase() === 'date' ? serverDate : null) },
+    } as unknown as Response)
+
+    const offset = await estimateServerOffset(mockFetch as unknown as typeof fetch)
+    expect(offset).toBeGreaterThanOrEqual(4000)
+    expect(offset).toBeLessThanOrEqual(6000)
+
+    // 2. Fallback on fetch rejection
+    const failingFetch = async () => { throw new Error('Network error') }
+    expect(await estimateServerOffset(failingFetch as unknown as typeof fetch)).toBe(0)
+
+    // 3. Fallback when date header is missing
+    const noHeaderFetch = async () => ({
+      headers: { get: () => null },
+    } as unknown as Response)
+    expect(await estimateServerOffset(noHeaderFetch as unknown as typeof fetch)).toBe(0)
   })
 })

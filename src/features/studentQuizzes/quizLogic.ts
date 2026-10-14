@@ -41,3 +41,24 @@ export function optionOrderForQuestion(questionId: string, attempt: QuizAttempt,
   const stored = attempt.optionOrder[questionId] ?? []
   return [...stored.filter((id) => options.includes(id)), ...options.filter((id) => !stored.includes(id))]
 }
+
+export async function estimateServerOffset(fetchFn: typeof fetch = fetch): Promise<number> {
+  try {
+    const origin = typeof window !== 'undefined' && window.location ? window.location.origin : ''
+    if (!origin) return 0
+    const start = Date.now()
+    const res = await fetchFn(origin, { method: 'HEAD', cache: 'no-store' })
+    const dateHeader = res.headers.get('date')
+    if (dateHeader) {
+      const end = Date.now()
+      const serverMs = new Date(dateHeader).getTime()
+      if (!Number.isNaN(serverMs)) {
+        const roundTrip = Math.max(0, (end - start) / 2)
+        return Math.round((serverMs + roundTrip) - end)
+      }
+    }
+  } catch {
+    // Return 0 if fetch fails or running in offline/mock environment
+  }
+  return 0
+}
