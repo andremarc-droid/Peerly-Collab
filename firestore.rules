@@ -1333,11 +1333,6 @@ service cloud.firestore {
       allow list: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
-    // A student finds their own assignment turn-ins across classes (query must filter on studentId == their uid).
-    match /{path=**}/turnIns/{turnInId} {
-      allow list: if signedIn() && resource.data.studentId == request.auth.uid;
-    }
-
     match /classCodes/{code} {
       allow get: if signedIn();
       allow list: if false;
