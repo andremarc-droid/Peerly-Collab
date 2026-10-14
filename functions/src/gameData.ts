@@ -47,23 +47,31 @@ export async function loadQuestions(uid: string, source: GameSourceRequest): Pro
   }
   const quizDoc = await db.doc(`quizzes/${source.quizId}`).get()
   if (!quizDoc.exists || quizDoc.get('ownerId') !== uid) throw new GameInputError('Only your own quizzes can be played live.', 'permission-denied')
+  if (quizDoc.get('mode') !== 'quiz') throw new GameInputError('Only quizzes in mode "quiz" can be played live.', 'failed-precondition')
   const qSnap = await db.collection(`quizzes/${source.quizId}/questions`).get()
   const kSnap = await db.collection(`quizzes/${source.quizId}/answerKeys`).get()
   const keysMap = new Map<string, string>()
   kSnap.docs.forEach(d => {
-    const ans = d.get('answer')
-    if (typeof ans === 'string') keysMap.set(d.id, ans)
+    if (d.get('type') !== 'choice') return
+    const correctOptionId = d.get('correctOptionId')
+    if (typeof correctOptionId === 'string') keysMap.set(d.id, correctOptionId)
   })
   const questions: GameQuestion[] = []
   for (const d of qSnap.docs) {
     const q = d.data()
-    if (q.type !== 'multiple_choice' || !Array.isArray(q.options) || typeof q.prompt !== 'string') continue
-    const ans = keysMap.get(d.id)
-    if (!ans) continue
-    const correctIndex = (q.options as string[]).indexOf(ans)
+    if ((q.type !== 'multiple_choice' && q.type !== 'true_false') || !Array.isArray(q.options) || typeof q.prompt !== 'string') continue
+    const correctOptionId = keysMap.get(d.id)
+    if (!correctOptionId) continue
+    const rawOptions = q.options as unknown[]
+    if (!rawOptions.every(o => o && typeof o === 'object' && typeof (o as Record<string, unknown>).id === 'string' && typeof (o as Record<string, unknown>).text === 'string')) {
+      continue
+    }
+    const typedOptions = rawOptions as Array<{ id: string; text: string }>
+    const correctIndex = typedOptions.findIndex(o => o.id === correctOptionId)
     if (correctIndex === -1) continue
+    const optionTexts = typedOptions.map(o => o.text)
     try {
-      questions.push(parseQuestion({ prompt: q.prompt, options: q.options, correctIndex }, `Quiz question ${questions.length + 1}`))
+      questions.push(parseQuestion({ prompt: q.prompt, options: optionTexts, correctIndex }, `Quiz question ${questions.length + 1}`))
     } catch {
       continue
     }

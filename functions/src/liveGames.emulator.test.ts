@@ -72,4 +72,67 @@ describe.skipIf(!hasEmulator)('live games (emulator)', () => {
     expect((await db.doc(`gameCodes/${code}`).get()).exists).toBe(false)
     await expect(deleteGame(as('host', { gameId }))).resolves.toEqual({ success: true })
   })
+
+  it('loads real-shaped quiz questions and maps option ids and choice answer keys', async () => {
+    await db.doc('quizzes/realquiz').set({
+      ownerId: 'host',
+      classId: 'c1',
+      mode: 'quiz',
+      title: 'Real Quiz',
+      status: 'published',
+    })
+    for (let i = 0; i < 6; i += 1) {
+      const qId = `q${i}`
+      const type = i % 2 === 0 ? 'multiple_choice' : 'true_false'
+      const options = type === 'multiple_choice'
+        ? [
+            { id: `opt_${i}_a`, text: `Option A for Q${i}` },
+            { id: `opt_${i}_b`, text: `Option B for Q${i}` },
+            { id: `opt_${i}_c`, text: `Option C for Q${i}` },
+          ]
+        : [
+            { id: `opt_${i}_true`, text: 'True' },
+            { id: `opt_${i}_false`, text: 'False' },
+          ]
+      const correctOptionId = type === 'multiple_choice' ? `opt_${i}_b` : `opt_${i}_true`
+      await db.doc(`quizzes/realquiz/questions/${qId}`).set({
+        prompt: `Question prompt ${i}`,
+        type,
+        options,
+        order: i,
+        points: 10,
+      })
+      await db.doc(`quizzes/realquiz/answerKeys/${qId}`).set({
+        type: 'choice',
+        correctOptionId,
+        explanation: 'Explanation',
+        caseSensitive: false,
+      })
+    }
+    // Also seed a question with non-choice key to ensure it is skipped
+    await db.doc('quizzes/realquiz/questions/q_invalid').set({
+      prompt: 'Invalid question',
+      type: 'multiple_choice',
+      options: [{ id: 'opt_x', text: 'X' }, { id: 'opt_y', text: 'Y' }],
+      order: 99,
+      points: 10,
+    })
+    await db.doc(`quizzes/realquiz/answerKeys/q_invalid`).set({
+      type: 'identification',
+      answer: 'X',
+    })
+
+    const { gameId } = await createGame(as('host', { source: { kind: 'quiz', classId: 'c1', quizId: 'realquiz' }, timeLimitSec: 20 })) as { gameId: string }
+    const keyDoc = (await db.doc(`games/${gameId}/private/key`).get()).data()!
+    const correctIndices = keyDoc.correct as number[]
+    expect(correctIndices).toHaveLength(6)
+    // For multiple choice (even index), correct option is opt_i_b which is index 1
+    // For true_false (odd index), correct option is opt_i_true which is index 0
+    expect(correctIndices).toEqual([1, 0, 1, 0, 1, 0])
+
+    const questionsDoc = (await db.doc(`games/${gameId}/private/questions`).get()).data()!
+    const loadedQuestions = questionsDoc.questions as Array<{ prompt: string; options: string[] }>
+    expect(loadedQuestions).toHaveLength(6)
+    expect(loadedQuestions[0].options).toEqual(['Option A for Q0', 'Option B for Q0', 'Option C for Q0'])
+  })
 })
