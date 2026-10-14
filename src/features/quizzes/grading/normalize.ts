@@ -9,7 +9,7 @@ export function normalizeAnswer(value: string, caseSensitive: boolean, options?:
     normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '').normalize('NFC')
   }
   if (options?.ignorePunctuation) {
-    normalized = normalized.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'’“”]/g, '')
+    normalized = normalized.replace(/[.,/#!$%^&*;:{}=\-_`~()?"'’“”]/g, '')
   }
   return caseSensitive ? normalized : normalized.toLocaleLowerCase('en-US')
 }

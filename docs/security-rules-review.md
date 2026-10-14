@@ -76,7 +76,13 @@ This document details the security hardening updates applied to `firestore.rules
   * Mode Immutability: Quiz update rules require `request.resource.data.mode == resource.data.mode`, preventing any modification to `mode` after quiz creation.
 * **List Iteration Architectural Limit**:
   * Firestore security rules cannot loop over lists. Consequently, rules enforce list-level caps (`cards.size() <= 50`, `connections.size() <= 80`, `answers.board.size() <= 80`, `answers.layout.size() <= 50`) and top-level scalar fields.
-  * Per-card attributes (types, lengths, positions, Google Drive file IDs) and per-connection endpoints are validated client-side by domain schemas (`validateCanvasDefinition`, `validateCanvasKey`), and all card URLs are validated against domain allowlists upon rendering.
+### 1.8 Email Verification Enforcement on Key Write Paths
+* **Rule Change**:
+  * Added `isEmailVerified()` helper (`request.auth.token.firebase.sign_in_provider != 'password' || request.auth.token.email_verified == true`).
+  * Enforced on `classes/{classId}` create, `enrollments/{enrollmentId}` create, and `quizzes/{quizId}` create.
+* **Attacks Prevented**:
+  * **Unverified Password Account Spam**: Previously, email verification was solely a client-side routing gate. Malicious actors or scripts creating disposable email/password accounts could directly issue Firestore write operations to create classes, join rosters, or create quizzes without verifying their email address.
+  * **Google Sign-In Compatibility**: Federated identity providers (such as Google OAuth) whose emails are already verified by the identity provider continue unimpeded.
 
 ---
 

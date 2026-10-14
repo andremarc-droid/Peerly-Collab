@@ -488,6 +488,11 @@ service cloud.firestore {
         && request.auth.token.get('firebase', {}).get('sign_in_provider', '') != 'anonymous';
     }
 
+    function isEmailVerified() {
+      return request.auth.token.get('firebase', {}).get('sign_in_provider', '') != 'password'
+        || request.auth.token.get('email_verified', false) == true;
+    }
+
     function isInstructor() {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', null) == 'instructor';
@@ -552,6 +557,7 @@ service cloud.firestore {
     match /classes/{classId} {
       allow get, list: if signedIn() && (resource.data.ownerId == request.auth.uid || isActiveMember(classId));
       allow create: if isInstructor()
+        && isEmailVerified()
         && request.resource.data.ownerId == request.auth.uid
         && classId != request.auth.uid
         && !exists(/databases/$(database)/documents/users/$(classId))
@@ -1353,6 +1359,7 @@ service cloud.firestore {
           || resource.data.uid == request.auth.uid || resource.data.ownerId == request.auth.uid);
       allow list: if signedIn() && (resource.data.uid == request.auth.uid || resource.data.ownerId == request.auth.uid);
       allow create: if isStudent()
+        && isEmailVerified()
         && request.resource.data.uid == request.auth.uid
         && enrollmentId == request.resource.data.classId + '_' + request.auth.uid
         && !exists(/databases/$(database)/documents/enrollments/$(enrollmentId))
@@ -1697,6 +1704,7 @@ service cloud.firestore {
         || (isStudent() && resource.data.status == 'published'
           && resource.data.get('classId', null) is string && isActiveMember(resource.data.classId)));
       allow create: if isInstructor()
+        && isEmailVerified()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.classId is string && isClassOwner(request.resource.data.classId)
         && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.status == 'active'
