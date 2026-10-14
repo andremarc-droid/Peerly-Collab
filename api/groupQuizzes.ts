@@ -120,7 +120,7 @@ export default async function handler(
     const action = typeof body?.action === 'string' ? body.action : ''
     const data = body?.data
 
-    phase = 'verifyAuth'
+    const isDev = process.env.NODE_ENV !== 'production'
     const authHeader = req.headers.authorization
     if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
       res.statusCode = 401
@@ -128,8 +128,7 @@ export default async function handler(
       res.end(JSON.stringify({
         error: 'Missing Authorization header. Please sign in.',
         code: 'functions/unauthenticated',
-        phase: 'verifyAuth',
-        details: 'No Bearer token provided in request headers.',
+        ...(isDev ? { phase: 'verifyAuth', details: 'No Bearer token provided in request headers.' } : {}),
       }))
       return
     }
@@ -141,8 +140,7 @@ export default async function handler(
       res.end(JSON.stringify({
         error: 'Empty Bearer token provided.',
         code: 'functions/unauthenticated',
-        phase: 'verifyAuth',
-        details: 'Bearer token string was empty.',
+        ...(isDev ? { phase: 'verifyAuth', details: 'Bearer token string was empty.' } : {}),
       }))
       return
     }
@@ -156,10 +154,9 @@ export default async function handler(
       res.statusCode = 401
       res.setHeader('Content-Type', 'application/json')
       res.end(JSON.stringify({
-        error: `Authentication failed: ${msg}`,
+        error: 'Authentication failed. Please sign in again.',
         code: 'functions/unauthenticated',
-        phase: 'verifyAuth',
-        details: msg,
+        ...(isDev ? { phase: 'verifyAuth', details: msg } : {}),
       }))
       return
     }
@@ -190,13 +187,13 @@ export default async function handler(
     const status = errorObj?.httpErrorCode?.status || 500
     const rawCode = errorObj?.code || 'internal'
     const code = rawCode.startsWith('functions/') ? rawCode : `functions/${rawCode}`
+    const isDev = process.env.NODE_ENV !== 'production'
     res.statusCode = typeof status === 'number' && status >= 400 && status < 600 ? status : 500
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({
       error: errorObj?.message || 'Something went wrong.',
       code,
-      phase,
-      details: String(err),
+      ...(isDev ? { phase, details: String(err) } : {}),
     }))
   }
 }
