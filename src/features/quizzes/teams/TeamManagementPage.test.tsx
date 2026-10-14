@@ -26,7 +26,8 @@ vi.mock('../services/quizService', () => ({ getQuiz: vi.fn() }))
 vi.mock('../../classes/services/classService', () => ({ getClass: vi.fn() }))
 vi.mock('../../classes/services/enrollmentService', () => ({ listEnrollments: vi.fn() }))
 vi.mock('../services/teamService', () => ({
-  watchQuizTeams: vi.fn(), addTeamMember: vi.fn(), createTeam: vi.fn(), deleteTeam: vi.fn(), overrideTeamQuestion: vi.fn(), removeTeamMember: vi.fn(), setRepresentative: vi.fn(),
+  watchQuizTeams: vi.fn(), watchTeamSession: vi.fn((_q, _t, cb) => { cb?.({ phase: 'answering', currentIndex: 0 }); return () => {} }),
+  addTeamMember: vi.fn(), createTeam: vi.fn(), deleteTeam: vi.fn(), overrideTeamQuestion: vi.fn(), removeTeamMember: vi.fn(), setRepresentative: vi.fn(),
   describeTeamError: (reason: unknown) => (reason instanceof Error ? reason.message : 'Something went wrong.'),
 }))
 
@@ -196,6 +197,6 @@ describe('team management page: changing teams', () => {
     const advanceBtn = await screen.findByRole('button', { name: 'Advance stuck team Red Team' })
     expect(advanceBtn).toBeInTheDocument()
     await user.click(advanceBtn)
-    await waitFor(() => expect(overrideTeamQuestion).toHaveBeenCalledWith('quiz-1', 'team-1'))
+    await waitFor(() => expect(overrideTeamQuestion).toHaveBeenCalledWith('quiz-1', 'team-1', 0, 'answering'))
   })
 })

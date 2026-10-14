@@ -20,8 +20,8 @@ import { useToast } from '../../../shared/ui/useToast'
 import { getClass } from '../../classes/services/classService'
 import { listEnrollments } from '../../classes/services/enrollmentService'
 import { getQuiz, type QuizRecord } from '../services/quizService'
-import { addTeamMember, createTeam, deleteTeam, describeTeamError, overrideTeamQuestion, removeTeamMember, setRepresentative, watchQuizTeams } from '../services/teamService'
-import type { Team } from '../types/team'
+import { addTeamMember, createTeam, deleteTeam, describeTeamError, overrideTeamQuestion, removeTeamMember, setRepresentative, watchQuizTeams, watchTeamSession } from '../services/teamService'
+import type { Team, TeamSession } from '../types/team'
 import {
   MAX_TEAMS_PER_QUIZ, TEAM_NAME_MAX, autoAssignDrafts, isDuplicateTeamName, isTeamEditable, memberLabel, rosterFromEnrollments,
   teamHint, teamStatusLabel, unassignedStudents, validateTeamDraft, type RosterStudent, type TeamDraft,
@@ -138,12 +138,12 @@ export function TeamManagementPage() {
       {!teamsLoaded ? <Skeleton label="Loading teams" className="h-40 rounded-3xl" />
         : teams.length === 0 ? <EmptyState title="No teams yet" description={assigned ? 'Create a team or use Auto-assign to split the class into balanced teams.' : 'Teams appear here as students create them.'} />
         : <ul className="m-0 grid list-none gap-4 p-0" aria-label="Teams">{teams.map(team => <li key={team.id}>
-          <TeamCard team={team} groupSize={group.groupSize} roster={roster} waiting={waiting} busy={busy} onRun={run}
+          <TeamCard quizId={quiz.id} team={team} groupSize={group.groupSize} roster={roster} waiting={waiting} busy={busy} onRun={run}
             onAdd={memberId => run(`add-${team.id}`, () => addTeamMember(quiz.id, team.id, memberId), 'Student added.')}
             onRemove={memberId => run(`remove-${team.id}-${memberId}`, () => removeTeamMember(quiz.id, team.id, memberId), 'Student removed.')}
             onRepresentative={memberId => run(`rep-${team.id}`, () => setRepresentative(quiz.id, team.id, memberId), 'Representative changed.')}
             onDelete={() => setDeleting(team)}
-            onOverride={() => run(`override-${team.id}`, () => overrideTeamQuestion(quiz.id, team.id), `${team.name} was advanced.`)} />
+            onOverride={(questionIndex, expectedPhase) => run(`override-${team.id}`, () => overrideTeamQuestion(quiz.id, team.id, questionIndex, expectedPhase), `${team.name} was advanced.`)} />
         </li>)}</ul>}
     </main>
 
@@ -156,6 +156,7 @@ export function TeamManagementPage() {
 }
 
 interface TeamCardProps {
+  quizId: string
   team: Team
   groupSize: number
   roster: RosterStudent[]
@@ -166,11 +167,16 @@ interface TeamCardProps {
   onRemove: (memberId: string) => Promise<boolean>
   onRepresentative: (memberId: string) => Promise<boolean>
   onDelete: () => void
-  onOverride: () => void
+  onOverride: (questionIndex: number, expectedPhase: 'answering' | 'review') => void
 }
 
-function TeamCard({ team, groupSize, roster, waiting, busy, onAdd, onRemove, onRepresentative, onDelete, onOverride }: TeamCardProps) {
+function TeamCard({ quizId, team, groupSize, roster, waiting, busy, onAdd, onRemove, onRepresentative, onDelete, onOverride }: TeamCardProps) {
   const [toAdd, setToAdd] = useState('')
+  const [session, setSession] = useState<TeamSession | null>(null)
+  useEffect(() => {
+    if (team.status !== 'in_progress') return undefined
+    return watchTeamSession(quizId, team.id, setSession, () => undefined)
+  }, [quizId, team.id, team.status])
   const editable = isTeamEditable(team.status)
   const room = team.memberIds.length < groupSize
   const working = busy !== null
@@ -179,7 +185,13 @@ function TeamCard({ team, groupSize, roster, waiting, busy, onAdd, onRemove, onR
       <Badge>{teamStatusLabel(team.status)}</Badge>
       {team.code && <Badge>Code {team.code}</Badge>}
       {team.status === 'in_progress' && (
-        <Button type="button" variant="secondary" disabled={working} onClick={onOverride} aria-label={`Advance stuck team ${team.name}`}>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={working}
+          onClick={() => onOverride(session?.currentIndex ?? 0, session?.phase === 'review' ? 'review' : 'answering')}
+          aria-label={`Advance stuck team ${team.name}`}
+        >
           <FastForward size={16} aria-hidden="true" /> Advance team
         </Button>
       )}

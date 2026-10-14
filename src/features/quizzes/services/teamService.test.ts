@@ -22,7 +22,7 @@ vi.mock('firebase/firestore', () => ({
 }))
 
 import {
-  addTeamMember, advanceTeam, cleanupGroupQuizData, createSelfTeam, createTeam, deleteTeam, describeTeamError, joinTeam, leaveTeam, lockTeamAnswer, removeTeamMember,
+  addTeamMember, advanceTeam, cleanupGroupQuizData, createSelfTeam, createTeam, deleteTeam, describeTeamError, joinTeam, leaveTeam, lockTeamAnswer, overrideTeamQuestion, removeTeamMember,
   setRepresentative, startTeamAttempt, submitTeamAnswer, submitTeamAttempt, watchMyTeamId, watchQuizTeams, watchReveals, watchTeam, watchTeamSession,
 } from './teamService'
 
@@ -80,6 +80,8 @@ describe('callable wrappers', () => {
     expect(h.callable).toHaveBeenLastCalledWith('lockTeamAnswer', { quizId: 'q', teamId: 't', questionIndex: 2, answer: ['x', 'y'] })
     await advanceTeam('q', 't', 2)
     expect(h.callable).toHaveBeenLastCalledWith('advanceTeam', { quizId: 'q', teamId: 't', questionIndex: 2 })
+    await overrideTeamQuestion('q', 't', 2, 'answering')
+    expect(h.callable).toHaveBeenLastCalledWith('overrideTeamQuestion', { quizId: 'q', teamId: 't', questionIndex: 2, expectedPhase: 'answering' })
     await submitTeamAttempt('q', 't')
     expect(h.callable).toHaveBeenLastCalledWith('submitTeamAttempt', { quizId: 'q', teamId: 't' })
     await cleanupGroupQuizData()

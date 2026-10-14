@@ -7,6 +7,7 @@ import {
   parseCreateSelfTeam,
   parseEmptyRequest,
   parseJoinTeam,
+  parseOverrideTeamQuestion,
   parseQuestionStep,
   parseQuizRequest,
   parseRemoveMember,
@@ -138,6 +139,16 @@ describe('parseQuestionStep and parseEmptyRequest', () => {
     expect(parseQuestionStep({ quizId: 'q', teamId: 't', questionIndex: 3 })).toEqual({ quizId: 'q', teamId: 't', questionIndex: 3 })
     throwsGroupError(() => parseQuestionStep({ quizId: 'q', teamId: 't' }))
     throwsGroupError(() => parseQuestionStep({ quizId: 'q', teamId: 't', questionIndex: 3, force: true }))
+  })
+  it('validates overrideTeamQuestion with questionIndex and expectedPhase', () => {
+    expect(parseOverrideTeamQuestion({ quizId: 'q', teamId: 't', questionIndex: 2, expectedPhase: 'answering' }))
+      .toEqual({ quizId: 'q', teamId: 't', questionIndex: 2, expectedPhase: 'answering' })
+    expect(parseOverrideTeamQuestion({ quizId: 'q', teamId: 't', questionIndex: 0, expectedPhase: 'review' }))
+      .toEqual({ quizId: 'q', teamId: 't', questionIndex: 0, expectedPhase: 'review' })
+    throwsGroupError(() => parseOverrideTeamQuestion({ quizId: 'q', teamId: 't' }))
+    throwsGroupError(() => parseOverrideTeamQuestion({ quizId: 'q', teamId: 't', questionIndex: 0, expectedPhase: 'finished' }))
+    throwsGroupError(() => parseOverrideTeamQuestion({ quizId: 'q', teamId: 't', questionIndex: -1, expectedPhase: 'answering' }))
+    throwsGroupError(() => parseOverrideTeamQuestion({ quizId: 'q', teamId: 't', questionIndex: 0, expectedPhase: 'answering', extra: 1 }))
   })
   it('allows an empty request and rejects anything else', () => {
     expect(() => parseEmptyRequest(undefined)).not.toThrow()

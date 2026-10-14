@@ -77,6 +77,19 @@ export function parseQuestionStep(data: unknown) {
   return { quizId: id(r.quizId, 'The quiz'), teamId: id(r.teamId, 'The team'), questionIndex: questionIndex(r.questionIndex) }
 }
 
+export function parseOverrideTeamQuestion(data: unknown) {
+  const r = exact(data, ['quizId', 'teamId', 'questionIndex', 'expectedPhase'])
+  if (r.expectedPhase !== 'answering' && r.expectedPhase !== 'review') {
+    throw new GroupQuizError('The expected phase is invalid.')
+  }
+  return {
+    quizId: id(r.quizId, 'The quiz'),
+    teamId: id(r.teamId, 'The team'),
+    questionIndex: questionIndex(r.questionIndex),
+    expectedPhase: r.expectedPhase as 'answering' | 'review',
+  }
+}
+
 export function parseRemoveMember(data: unknown) {
   const r = exact(data, ['quizId', 'teamId', 'memberId'])
   return { quizId: id(r.quizId, 'The quiz'), teamId: id(r.teamId, 'The team'), memberId: uid(r.memberId, 'The member') }
