@@ -73,9 +73,7 @@ export function QuizResultPage() {
         return
       }
       const questions = persistedQuestionOrder(foundAttempt, raw.map(({ id, ...value }) => ({ ...parseQuestion(value), id })))
-      const visibility = foundResult
-        ? resultVisibility(foundQuiz, foundQuiz.settings.answerReveal, foundResult)
-        : { showScore: false, showAnswers: false }
+      const visibility = resultVisibility(foundQuiz, foundQuiz.settings.answerReveal, foundResult)
       const items = await Promise.all(questions.map(async (question) => ({ question, key: visibility.showAnswers ? (await getQuestionWithKey(quizId, question.id))?.answerKey ?? null : null })))
       if (!live) return
 
@@ -164,6 +162,13 @@ export function QuizResultPage() {
           <SectionCard title={visibility.showScore && result ? 'Your score' : 'Submitted'} description={visibility.showScore && result ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
             {quiz.mode === 'flashcards' ? <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p> : visibility.showScore && result ? <div className="quiz-score-summary"><ScoreRing percent={result.maxScore > 0 ? Math.round(result.score / result.maxScore * 100) : 0} /><strong>{result.score} / {result.maxScore} points</strong></div> : <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>}
           </SectionCard>
+          {!visibility.showAnswers && quiz.mode !== 'flashcards' && quiz.settings.answerReveal !== 'never' && (
+            <Alert tone="info" label="Answers hidden">
+              {quiz.settings.scoreVisibility === 'after_release' && !quiz.settings.scoresReleased
+                ? 'Answers and explanations will appear after your instructor releases results.'
+                : 'Answers and explanations are not shown for this quiz.'}
+            </Alert>
+          )}
           {visibility.showAnswers && result && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {
             const grade = result.perQuestion[question.id]
             return <SectionCard key={question.id} title={`Question ${index + 1}`} description={question.prompt}>

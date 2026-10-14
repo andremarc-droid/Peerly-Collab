@@ -33,12 +33,26 @@ describe('student quiz logic', () => {
       for (const answerReveal of revealSettings) {
         const matrixQuiz = quiz({ scoreVisibility, answerReveal, scoresReleased: false })
         const actual = resultVisibility(matrixQuiz, answerReveal, result)
-        expect(actual.showScore).toBe(scoreVisibility === 'immediate')
-        expect(actual.showAnswers).toBe(answerReveal !== 'never')
+        const expectedScore = scoreVisibility === 'immediate'
+        expect(actual.showScore).toBe(expectedScore)
+        // Answers are only readable/shown when result is accessible (showScore is true) and reveal !== 'never'
+        expect(actual.showAnswers).toBe(expectedScore && answerReveal !== 'never')
       }
     }
+    // When released, after_release becomes visible
     for (const answerReveal of revealSettings) {
-      expect(resultVisibility(quiz({ scoreVisibility: 'after_release', scoresReleased: true }), answerReveal, result).showScore).toBe(true)
+      const releasedQuiz = quiz({ scoreVisibility: 'after_release', scoresReleased: true })
+      const actual = resultVisibility(releasedQuiz, answerReveal, result)
+      expect(actual.showScore).toBe(true)
+      expect(actual.showAnswers).toBe(answerReveal !== 'never')
+    }
+    // When result is null, showAnswers is always false
+    for (const scoreVisibility of scoreSettings) {
+      for (const answerReveal of revealSettings) {
+        const nullResultQuiz = quiz({ scoreVisibility, answerReveal, scoresReleased: true })
+        const actual = resultVisibility(nullResultQuiz, answerReveal, null)
+        expect(actual.showAnswers).toBe(false)
+      }
     }
   })
 

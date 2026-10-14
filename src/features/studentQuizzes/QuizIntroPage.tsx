@@ -146,7 +146,11 @@ export function QuizIntroPage() {
                   : quiz.settings.answerReveal === 'after_each'
                     ? 'You can check each answer and see its explanation before moving on.'
                     : quiz.settings.answerReveal === 'after_submit'
-                      ? 'Answers and explanations appear after you submit.'
+                      ? quiz.settings.scoreVisibility === 'immediate' || quiz.settings.scoresReleased
+                        ? 'Answers and explanations appear after you submit.'
+                        : quiz.settings.scoreVisibility === 'after_release'
+                          ? 'Answers and explanations will appear after your instructor releases results.'
+                          : 'Answers and explanations are not shown for this quiz.'
                       : 'Correct answers are not revealed.'}
               </span>
             </li>

@@ -98,6 +98,9 @@ This document details the security hardening updates applied to `firestore.rules
    * *Status*: Users choose `student` or `instructor` during onboarding, and this role is written to `publicProfiles` and `users/{uid}`.
    * *Risk*: Students can sign up as instructors to create arbitrary classes and quizzes.
    * *Mitigation Plan*: Verify instructor roles via Firebase Auth custom claims set by administrative approval or single sign-on (SSO) email domain checks.
+5. **Answer Reveal Coupled to Score Visibility**:
+   * *Status*: Firestore rules permit students to read `results/{attemptId}` only when `scoreVisibility == 'immediate'` or `('after_release' && scoresReleased)`. When scores are hidden or delayed, the entire result document is unreadable to students.
+   * *Resolution (Option A)*: In `src/features/studentQuizzes/quizLogic.ts`, `resultVisibility` couples `showAnswers` to `showScore` and result document presence. `QuizIntroPage` accurately informs students whether answers will appear immediately, upon instructor release, or remain hidden. When results are unreleased or hidden, `QuizResultPage` renders an informative notice explaining why question reviews are withheld.
 
 ---
 

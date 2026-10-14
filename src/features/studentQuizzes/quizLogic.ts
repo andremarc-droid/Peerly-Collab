@@ -25,10 +25,14 @@ export function persistedQuestionOrder(attempt: QuizAttempt, questions: Array<Qu
   return attempt.questionOrder.map((id) => byId.get(id)).filter((item): item is QuizQuestion & { id: string } => Boolean(item))
 }
 
-export function resultVisibility(quiz: Quiz, reveal: AnswerReveal, result: QuizResult): { showScore: boolean; showAnswers: boolean } {
+export function resultVisibility(quiz: Quiz, reveal: AnswerReveal, result: QuizResult | null): { showScore: boolean; showAnswers: boolean } {
+  const showScore = quiz.settings.scoreVisibility === 'immediate' || (quiz.settings.scoreVisibility === 'after_release' && Boolean(quiz.settings.scoresReleased))
+  // When score/result document is hidden or unreleased, students cannot read results.
+  // Answers after submit can only be shown when the result document is readable.
+  const showAnswers = Boolean(result) && showScore && reveal !== 'never' && Object.keys(result?.perQuestion ?? {}).length > 0
   return {
-    showScore: quiz.settings.scoreVisibility === 'immediate' || (quiz.settings.scoreVisibility === 'after_release' && quiz.settings.scoresReleased),
-    showAnswers: reveal !== 'never' && Object.keys(result.perQuestion).length > 0,
+    showScore,
+    showAnswers,
   }
 }
 
