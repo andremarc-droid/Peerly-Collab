@@ -112,12 +112,6 @@ export function QuizResultsPage() {
     { isBlankCanvas },
   )
 
-  const needsGradingCount = useMemo(() => {
-    return attempts.filter(
-      (item) => item.status === 'submitted' && item.result?.reviewStatus !== 'graded',
-    ).length
-  }, [attempts])
-
   async function releaseScores(value: boolean) {
     if (!quiz) return
     try {
@@ -148,7 +142,7 @@ export function QuizResultsPage() {
       <StatRow>
         <StatTile variant="navy" label="Submissions" value={String(summary.submissions)} hint={`${summary.inProgress} in progress · ${summary.submitted} submitted`} />
         {isBlankCanvas ? (
-          <StatTile label="Needs grading" value={String(needsGradingCount)} hint="Ungraded blank canvas submissions" />
+          <StatTile label="Needs grading" value={String(summary.needsGradingCount)} hint="Ungraded blank canvas submissions" />
         ) : (
           <StatTile label="Late submissions" value={String(summary.lateSubmissions)} hint={quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} min limit` : 'No time limit'} />
         )}
