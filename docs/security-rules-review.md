@@ -82,7 +82,13 @@ This document details the security hardening updates applied to `firestore.rules
   * Enforced on `classes/{classId}` create, `enrollments/{enrollmentId}` create, and `quizzes/{quizId}` create.
 * **Attacks Prevented**:
   * **Unverified Password Account Spam**: Previously, email verification was solely a client-side routing gate. Malicious actors or scripts creating disposable email/password accounts could directly issue Firestore write operations to create classes, join rosters, or create quizzes without verifying their email address.
-  * **Google Sign-In Compatibility**: Federated identity providers (such as Google OAuth) whose emails are already verified by the identity provider continue unimpeded.
+### 1.9 Stats XP Rate Limiting & Daily Cap (`users/{uid}/stats/summary`)
+* **Rule Enforcement**:
+  * Per-write cap: `request.resource.data.xp - resource.data.xp <= 25` and `request.resource.data.totalReviews - resource.data.totalReviews <= 25`.
+  * Daily cap: `data.today.xp <= 2000` (enforcing `XP_AWARDS.maxPerDay` at the rules level) coupled with `request.resource.data.today.xp - resource.data.today.xp == request.resource.data.xp - resource.data.xp` so that all same-day total XP gains are strictly tracked against the daily bucket.
+  * Day rollover: On date rollover, `request.resource.data.lastActiveDay > resource.data.lastActiveDay && request.resource.data.today.xp <= 25`.
+* **Attacks Prevented**:
+  * **XP Inflation / Leaderboard Tampering**: Prevents malicious clients or scripts from inflating XP beyond 25 per interaction or accumulating more than 2,000 XP in any single UTC calendar day.
 
 ---
 
