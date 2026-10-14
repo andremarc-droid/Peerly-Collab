@@ -12,13 +12,29 @@ function cleanPatch(patch: AssignmentPatch): AssignmentPatch {
   return patch.title === undefined ? patch : { ...patch, title: patch.title.trim().slice(0, MAX_TITLE_LENGTH) }
 }
 
-/** Creates an empty draft so the instructor can start with just a title and fill in the rest next. */
-export async function createAssignment(classId: string, ownerId: string, title = 'Untitled assignment', db: Firestore = firestore): Promise<string> {
+/** Defaults to today at 11:59 PM local time. */
+export function defaultAssignmentDueAt(now = new Date()): Timestamp {
+  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 0, 0)
+  return Timestamp.fromDate(endOfDay)
+}
+
+/** Creates an empty draft so the instructor can start with just a title and fill in the rest next. Defaults due date to today at 11:59 PM. */
+export async function createAssignment(
+  classId: string,
+  ownerId: string,
+  title = 'Untitled assignment',
+  dueAtOrDb?: Timestamp | null | Firestore,
+  dbArg?: Firestore,
+): Promise<string> {
+  const isDueAt = dueAtOrDb === null || (dueAtOrDb && typeof (dueAtOrDb as Timestamp).toMillis === 'function')
+  const dueAt = isDueAt ? (dueAtOrDb as Timestamp | null) : defaultAssignmentDueAt()
+  const db = (isDueAt ? dbArg : (dueAtOrDb as Firestore | undefined)) ?? firestore
+
   const ref = doc(assignmentsRef(db, classId))
   const now = Timestamp.now()
   const value: AssignmentRecord = {
     ownerId, title: title.trim().slice(0, MAX_TITLE_LENGTH) || 'Untitled assignment', instructions: '', status: 'draft',
-    dueAt: null, points: null, acceptsTurnIn: true, collectorEmail: null, attachments: [],
+    dueAt, points: null, acceptsTurnIn: true, collectorEmail: null, attachments: [],
     createdAt: now, updatedAt: now, publishedAt: null,
   }
   await setDoc(ref, parseAssignment(value))

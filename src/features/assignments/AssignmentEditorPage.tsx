@@ -16,7 +16,7 @@ import { AttachmentsSection } from './AttachmentsSection'
 import { DueDateTimeField } from './DueDateTimeField'
 import { fromLocalInputValue, parsePoints, toLocalInputValue } from './format'
 import { getPublishIssue } from './schemas'
-import { publishAssignment, subscribeToAssignment, unpublishAssignment, updateAssignment } from './services'
+import { defaultAssignmentDueAt, publishAssignment, subscribeToAssignment, unpublishAssignment, updateAssignment } from './services'
 import { TurnInSettings } from './TurnInSettings'
 import { TurnInsPanel } from './TurnInsPanel'
 import { MAX_INSTRUCTIONS_LENGTH, MAX_POINTS, MAX_TITLE_LENGTH, type AssignmentPatch, type AssignmentWithId } from './types'
@@ -43,6 +43,7 @@ export function AssignmentEditorPage() {
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [saveRetry, setSaveRetry] = useState(0)
   const dirtyRef = useRef(false)
+  const clearedDueRef = useRef(false)
   const parsedPoints = parsePoints(points)
   const pointsError = parsedPoints === undefined ? `Enter a whole number from 0 to ${MAX_POINTS}, or leave it blank.` : undefined
   const backTo = `/instructor/classes/${classId}?tab=assignments`
@@ -59,7 +60,11 @@ export function AssignmentEditorPage() {
       setLoadError(found ? '' : 'This assignment could not be found or you do not have access.')
       if (found && !dirtyRef.current) {
         setTitle(found.title); setInstructions(found.instructions)
-        setDue(toLocalInputValue(found.dueAt)); setPoints(found.points === null ? '' : String(found.points))
+        const initialDue = found.dueAt
+          ? toLocalInputValue(found.dueAt)
+          : (found.status === 'draft' && !clearedDueRef.current ? toLocalInputValue(defaultAssignmentDueAt()) : '')
+        setDue(initialDue)
+        setPoints(found.points === null ? '' : String(found.points))
       }
     }, (reason) => { setLoadError(reason.message); setLoading(false) })
   }, [classId, assignmentId, retry])
@@ -76,7 +81,13 @@ export function AssignmentEditorPage() {
     return () => window.clearTimeout(timer)
   }, [title, instructions, due, parsedPoints, assignment?.id, classId, assignmentId, saveRetry])
 
-  function edit(setter: (value: string) => void, value: string) { dirtyRef.current = true; setter(value) }
+  function edit(setter: (value: string) => void, value: string) {
+    dirtyRef.current = true
+    if (setter === setDue && !value) {
+      clearedDueRef.current = true
+    }
+    setter(value)
+  }
   const patch = useCallback((value: AssignmentPatch) => updateAssignment(classId, assignmentId, value), [classId, assignmentId])
 
   async function togglePublished() {
