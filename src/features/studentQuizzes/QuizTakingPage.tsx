@@ -232,8 +232,16 @@ export function QuizTakingPage() {
         className="quiz-taking__card grid gap-5 rounded-3xl bg-white p-5 sm:p-8"
         aria-labelledby="question-title"
         onKeyDown={(event) => {
-          const isCanvas = quiz.mode === 'canvas' || question.type === 'canvas'
           const target = event.target as HTMLElement | null
+          const isInput =
+            target instanceof HTMLInputElement ||
+            target instanceof HTMLTextAreaElement ||
+            target instanceof HTMLSelectElement ||
+            Boolean(target?.isContentEditable)
+
+          if (isInput && event.key !== 'Enter') return
+
+          const isCanvas = quiz.mode === 'canvas' || question.type === 'canvas'
           const isInsideCanvasOrDialog = Boolean(
             target?.closest(
               '[data-testid="canvas-board"], .canvas-board-wrapper, .canvas-play-page, [role="dialog"], .dialog, .react-flow',
@@ -251,14 +259,16 @@ export function QuizTakingPage() {
               return
             }
           }
-          if (event.key === 'ArrowLeft') go(index - 1)
-          if (event.key === 'ArrowRight' && !checkedCurrent) go(index + 1)
+          if (event.key === 'ArrowLeft' && index > 0) go(index - 1)
+          const canGoNext = index < questions.length - 1 && (!revealEach || Boolean(checkedCurrent))
+          if (event.key === 'ArrowRight' && canGoNext) go(index + 1)
           if (/^[1-6]$/.test(event.key) && options[Number(event.key) - 1] && !checkedCurrent) {
             setAnswer(question.id, options[Number(event.key) - 1].id)
           }
           if (
             event.key === 'Enter' &&
             !(event.target instanceof HTMLButtonElement) &&
+            !(event.target instanceof HTMLTextAreaElement) &&
             quiz.mode !== 'flashcards'
           ) {
             event.preventDefault()

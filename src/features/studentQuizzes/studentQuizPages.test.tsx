@@ -523,5 +523,85 @@ describe('student quiz pages', () => {
       )
     })
   })
+
+  it('arrow keys inside text input do not jump between questions', async () => {
+    const identQuestion1 = { id: 'q1', order: 0, type: 'identification' as const, prompt: 'What is H2O?', points: 1 }
+    const identQuestion2 = { id: 'q2', order: 1, type: 'multiple_choice' as const, prompt: 'Second question', points: 1, options: [{ id: 'opt1', text: 'Option 1' }, { id: 'opt2', text: 'Option 2' }] }
+    const identQuiz: Quiz & { id: string } = { ...quiz, id: 'quiz-ident', questionCount: 2 }
+    const identAttempt: QuizAttempt & { id: string } = {
+      ...attempt,
+      id: 'attempt-ident',
+      questionOrder: ['q1', 'q2'],
+      optionOrder: { q2: ['opt1', 'opt2'] },
+    }
+
+    vi.mocked(getQuiz).mockResolvedValue(identQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([identQuestion1, identQuestion2])
+    vi.mocked(getAttempt).mockResolvedValue(identAttempt)
+
+    renderRoute('/student/quizzes/quiz-ident/attempts/attempt-ident', <QuizTakingPage />)
+
+    const input = await screen.findByLabelText('Your answer')
+    expect(input).toBeInTheDocument()
+    expect(screen.getByText('What is H2O?')).toBeInTheDocument()
+
+    // Press ArrowRight inside input
+    fireEvent.keyDown(input, { key: 'ArrowRight', code: 'ArrowRight' })
+    // Must remain on question 1
+    expect(screen.getByText('What is H2O?')).toBeInTheDocument()
+    expect(screen.queryByText('Second question')).not.toBeInTheDocument()
+
+    // Press ArrowLeft inside input
+    fireEvent.keyDown(input, { key: 'ArrowLeft', code: 'ArrowLeft' })
+    expect(screen.getByText('What is H2O?')).toBeInTheDocument()
+  })
+
+  it('ArrowRight follows Next button rules in after_each reveal mode', async () => {
+    const multiQuestion1 = { id: 'q1', order: 0, type: 'multiple_choice' as const, prompt: 'First question', points: 1, options: [{ id: 'opt1', text: 'Alpha' }, { id: 'opt1b', text: 'Beta' }] }
+    const multiQuestion2 = { id: 'q2', order: 1, type: 'multiple_choice' as const, prompt: 'Second question', points: 1, options: [{ id: 'opt2', text: 'Gamma' }, { id: 'opt2b', text: 'Delta' }] }
+    const revealQuiz: Quiz & { id: string } = {
+      ...quiz,
+      id: 'quiz-reveal-each',
+      questionCount: 2,
+      settings: { ...quiz.settings, answerReveal: 'after_each' },
+    }
+    const revealAttempt: QuizAttempt & { id: string } = {
+      ...attempt,
+      id: 'attempt-reveal-each',
+      questionOrder: ['q1', 'q2'],
+      optionOrder: { q1: ['opt1', 'opt1b'], q2: ['opt2', 'opt2b'] },
+    }
+
+    vi.mocked(getQuiz).mockResolvedValue(revealQuiz)
+    vi.mocked(listQuestions).mockResolvedValue([multiQuestion1, multiQuestion2])
+    vi.mocked(getAttempt).mockResolvedValue(revealAttempt)
+    vi.mocked(getQuestionWithKey).mockResolvedValue({
+      id: 'q1',
+      question: multiQuestion1,
+      answerKey: { type: 'choice', correctOptionId: 'opt1', explanation: 'Alpha is correct', caseSensitive: false },
+    })
+
+    const { container } = renderRoute('/student/quizzes/quiz-reveal-each/attempts/attempt-reveal-each', <QuizTakingPage />)
+
+    expect(await screen.findByText('First question')).toBeInTheDocument()
+
+    // 1. ArrowRight before checking must NOT advance
+    const card = container.querySelector('.quiz-taking__card')!
+    fireEvent.keyDown(card, { key: 'ArrowRight', code: 'ArrowRight' })
+    expect(screen.getByText('First question')).toBeInTheDocument()
+    expect(screen.queryByText('Second question')).not.toBeInTheDocument()
+
+    // 2. Select option and check answer
+    const radio = screen.getByRole('radio', { name: /Alpha/i })
+    await userEvent.click(radio)
+    const checkBtn = screen.getByRole('button', { name: /Check answer/i })
+    await userEvent.click(checkBtn)
+
+    expect(await screen.findByText('Alpha is correct')).toBeInTheDocument()
+
+    // 3. ArrowRight after checking SHOULD advance
+    fireEvent.keyDown(card, { key: 'ArrowRight', code: 'ArrowRight' })
+    expect(await screen.findByText('Second question')).toBeInTheDocument()
+  })
 })
 
