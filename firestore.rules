@@ -779,8 +779,15 @@ service cloud.firestore {
         function isCanvasOwner() {
           return signedIn() && exists(canvasPath()) && get(canvasPath()).data.ownerId == request.auth.uid;
         }
+        // A personal canvas kept in its owner's uid-scoped workspace (classId == ownerId) has no class, so invite
+        // holders are allowed there instead. A personal canvas inside a real class still requires class membership.
+        function personalPartition() {
+          return exists(canvasPath())
+            && get(canvasPath()).data.get('kind', '') == 'personal'
+            && get(canvasPath()).data.get('ownerId', '') == classId;
+        }
         function stillInClass() {
-          return isClassOwner(classId) || isActiveMember(classId);
+          return isClassOwner(classId) || isActiveMember(classId) || personalPartition();
         }
         function memberRole() {
           return exists(memberPath(request.auth.uid)) ? get(memberPath(request.auth.uid)).data.get('role', '') : '';

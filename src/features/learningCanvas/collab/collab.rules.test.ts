@@ -137,4 +137,73 @@ describe('Canvas collaboration security rules', () => {
       updatedAt: serverTimestamp(),
     }))
   })
+
+  const personalCanvas = (ownerId: string, classId: string) => ({
+    ownerId,
+    classId,
+    kind: 'personal',
+    title: 'Personal canvas',
+    description: '',
+    status: 'private',
+    nodeCount: 0,
+    edgeCount: 0,
+    refs: [],
+    sourceCanvasId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })
+
+  it('lets an invite holder join a personal canvas kept in its owner\'s own workspace', async () => {
+    const soloPath = 'classes/solo-owner/learningCanvases/solo-canvas'
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await db.doc(soloPath).set(personalCanvas('solo-owner', 'solo-owner'))
+      await db.doc(`${soloPath}/content/main`).set({ version: 1, nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } })
+    })
+    const owner = environment.authenticatedContext('solo-owner').firestore()
+    const friend = environment.authenticatedContext('friend').firestore()
+    await assertSucceeds(setDoc(doc(owner, `${soloPath}/invites/${token}`), {
+      createdBy: 'solo-owner',
+      role: 'viewer',
+      active: true,
+      createdAt: serverTimestamp(),
+      expiresAt: null,
+    }))
+    await assertSucceeds(setDoc(doc(friend, `${soloPath}/members/friend`), {
+      uid: 'friend',
+      role: 'viewer',
+      displayName: 'Friend',
+      invitedBy: 'solo-owner',
+      grantedByToken: token,
+      joinedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }))
+    await assertSucceeds(getDoc(doc(friend, `${soloPath}/content/main`)))
+    await assertFails(updateDoc(doc(friend, `${soloPath}/content/main`), { nodes: [{ id: 'friend-card' }] }))
+  })
+
+  it('still requires class membership for a personal canvas inside a real class', async () => {
+    const inClassPath = 'classes/class-a/learningCanvases/personal-in-class'
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(inClassPath).set(personalCanvas('student-a', 'class-a'))
+    })
+    const owner = environment.authenticatedContext('student-a').firestore()
+    const outsider = environment.authenticatedContext('outsider').firestore()
+    await assertSucceeds(setDoc(doc(owner, `${inClassPath}/invites/${token}`), {
+      createdBy: 'student-a',
+      role: 'viewer',
+      active: true,
+      createdAt: serverTimestamp(),
+      expiresAt: null,
+    }))
+    await assertFails(setDoc(doc(outsider, `${inClassPath}/members/outsider`), {
+      uid: 'outsider',
+      role: 'viewer',
+      displayName: 'Outsider',
+      invitedBy: 'student-a',
+      grantedByToken: token,
+      joinedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }))
+  })
 })
