@@ -62,9 +62,12 @@ const reason = (error: unknown): LessonGenerationFailure => error instanceof AiE
 const retryAfter = (error: unknown): number | undefined => error instanceof AiError && error.retryAfterSeconds ? error.retryAfterSeconds : undefined
 
 /** Gap between lesson requests so a plan stays inside Groq's per-minute token budget. Skipped when a custom `complete` is supplied (tests). */
-// Groq counts the prompt plus max_tokens (about 3,000 per lesson) against the model's per-minute budget (8,000 on the free tier),
-// so roughly 20 seconds between lessons stays inside it. Lower this if the account moves to a paid Groq tier.
-const PAUSE_MS = 20_000
+// Groq counts the prompt plus max_tokens (about 2,300 per lesson) against the model's per-minute budget (8,000 on the free tier),
+// and what earlier lessons already used stays in that minute. About 18 seconds between lessons keeps a plan inside it.
+// Lower this if the account moves to a paid Groq tier.
+const PAUSE_MS = 18_000
+/** Output limit for one lesson (about 1,500 tokens of JSON plus the model's short reasoning). Groq counts this against the budget up front. */
+const LESSON_MAX_TOKENS = 2_000
 /** Longest rate-limit wait that is retried automatically; longer waits are reported to the user instead. */
 const MAX_AUTO_WAIT_SECONDS = 60
 const DEFAULT_AUTO_WAIT_SECONDS = 20
@@ -111,7 +114,7 @@ export async function generateLessonPlan(options: GenerateLessonPlanOptions): Pr
     const sourceChunk = sourceChunks.length ? sourceChunks[Math.min(sourceChunks.length - 1, Math.floor(index * sourceChunks.length / outline.lessons.length))]! : ''
     try {
       if (index > 0 && !options.complete) await wait(PAUSE_MS, options.signal)
-      const result = await generateOne(() => aiJson(buildLessonPrompt(outline, item.id, options.level, sourceChunk), generatedLesson, { complete, signal: options.signal, maxTokens: 2400, temperature: 0.4 }), !options.complete, options.signal)
+      const result = await generateOne(() => aiJson(buildLessonPrompt(outline, item.id, options.level, sourceChunk), generatedLesson, { complete, signal: options.signal, maxTokens: LESSON_MAX_TOKENS, temperature: 0.4 }), !options.complete, options.signal)
       lessons[item.id] = result
     } catch (error) {
       if (isAbortError(error) || options.signal?.aborted) return { outline, lessons, failedLessonIds: outline.lessons.slice(index).map(entry => entry.id), status: 'partial', cancelled: true, sourceCapped: source.capped }
@@ -138,7 +141,7 @@ export async function generateRemainingLessons(options: GenerateLessonPlanOption
     const sourceChunk = source.chunks.length ? source.chunks[Math.min(source.chunks.length - 1, Math.floor(index * source.chunks.length / options.lessonIds.length))]! : ''
     try {
       if (index > 0 && !options.complete) await wait(PAUSE_MS, options.signal)
-      lessons[lessonId] = await generateOne(() => aiJson(buildLessonPrompt(options.outline, lessonId, options.level, sourceChunk), generatedLesson, { complete, signal: options.signal, maxTokens: 2400, temperature: 0.4 }), !options.complete, options.signal)
+      lessons[lessonId] = await generateOne(() => aiJson(buildLessonPrompt(options.outline, lessonId, options.level, sourceChunk), generatedLesson, { complete, signal: options.signal, maxTokens: LESSON_MAX_TOKENS, temperature: 0.4 }), !options.complete, options.signal)
     }
     catch (error) {
       if (isAbortError(error) || options.signal?.aborted) return { outline: options.outline, lessons, failedLessonIds: options.lessonIds.slice(index), status: 'partial', cancelled: true, sourceCapped: source.capped }
