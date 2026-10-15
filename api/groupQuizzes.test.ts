@@ -142,6 +142,46 @@ describe('api/groupQuizzes handler', () => {
     expect(res.getResponseJson()).toEqual({ result: { success: true } })
   })
 
+  it('falls back to non-revocation verification when service account lacks Identity Toolkit permission', async () => {
+    const permErr = Object.assign(new Error('Identity Toolkit API has not been used in project before or it is disabled.'), {
+      code: 'auth/insufficient-permission',
+    })
+    const decodedToken = {
+      uid: 'instructor-1',
+      firebase: { sign_in_provider: 'google.com' },
+    }
+    // First call (with true) fails with permission error; second call (with false) succeeds
+    mockVerifyIdToken.mockRejectedValueOnce(permErr).mockResolvedValueOnce(decodedToken)
+
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token-perm' },
+      body: { action: 'testAction', data: {} },
+    })
+    await handler(req, res)
+    expect(res.statusCode).toBe(200)
+    expect(mockVerifyIdToken).toHaveBeenNthCalledWith(1, 'valid-token-perm', true)
+    expect(mockVerifyIdToken).toHaveBeenNthCalledWith(2, 'valid-token-perm', false)
+  })
+
+  it('includes diagnostic reason code in 401 responses', async () => {
+    const expiredErr = Object.assign(new Error('Firebase ID token has expired.'), {
+      code: 'auth/id-token-expired',
+    })
+    mockVerifyIdToken.mockRejectedValueOnce(expiredErr)
+
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer expired-token' },
+      body: { action: 'testAction' },
+    })
+    await handler(req, res)
+    expect(res.statusCode).toBe(401)
+    const json = res.getResponseJson()
+    expect(json.code).toBe('functions/unauthenticated')
+    expect(json.reason).toBe('token-expired')
+  })
+
   it('does not return raw error messages for init/import failures in production', async () => {
     _resetFirebaseInitializedForTest()
     const originalEnv = process.env.NODE_ENV

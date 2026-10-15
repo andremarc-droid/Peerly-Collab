@@ -2,12 +2,19 @@ import type { IncomingMessage, ServerResponse } from 'http'
 
 import type { DecodedIdToken } from 'firebase-admin/auth'
 
+import {
+  authFailureReason,
+  ensureFirebase,
+  getServerProjectId,
+  resetFirebaseInitializedForTest,
+  verifyAuthToken,
+} from './tokenVerification.js'
+
 // Lazy loaded singletons
-let firebaseInitialized = false
 let handlersCache: Record<string, unknown> | null = null
 
 export function _resetFirebaseInitializedForTest() {
-  firebaseInitialized = false
+  resetFirebaseInitializedForTest()
   handlersCache = null
 }
 
@@ -16,42 +23,6 @@ async function getHandlers() {
     handlersCache = (await import('../functions/src/groupQuizzes.js')) as unknown as Record<string, unknown>
   }
   return handlersCache
-}
-
-async function ensureFirebase() {
-  if (firebaseInitialized) return
-  const { getApps, initializeApp, cert } = await import('firebase-admin/app')
-  if (getApps().length === 0) {
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT?.trim()
-    if (!raw) {
-      throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is missing on Vercel.')
-    }
-    let clean = raw
-    if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
-      clean = clean.slice(1, -1).trim()
-    }
-    try {
-      const jsonStr = clean.startsWith('{') ? clean : Buffer.from(clean, 'base64').toString('utf-8')
-      const credentials = JSON.parse(jsonStr) as Record<string, unknown>
-      initializeApp({ credential: cert(credentials) })
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT:', err)
-      throw new Error(`FIREBASE_SERVICE_ACCOUNT invalid: ${msg}`)
-    }
-  }
-  firebaseInitialized = true
-}
-
-async function verifyFirebaseToken(token: string): Promise<DecodedIdToken> {
-  const { getAuth } = await import('firebase-admin/auth')
-  const decodedToken = await getAuth().verifyIdToken(token, true)
-  if (decodedToken.firebase?.sign_in_provider === 'anonymous') {
-    const err = new Error('Anonymous accounts are not permitted for group quizzes.')
-    ;(err as unknown as { code: string }).code = 'auth/anonymous-not-allowed'
-    throw err
-  }
-  return decodedToken
 }
 
 async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -121,6 +92,9 @@ export default async function handler(
       res.end(JSON.stringify({
         error: 'Missing Authorization header. Please sign in.',
         code: 'functions/unauthenticated',
+        reason: 'missing-authorization-header',
+        serverProject: getServerProjectId(),
+        serverNode: process.version,
         ...(isDev ? { phase: 'verifyAuth', details: 'No Bearer token provided in request headers.' } : {}),
       }))
       return
@@ -133,6 +107,9 @@ export default async function handler(
       res.end(JSON.stringify({
         error: 'Empty Bearer token provided.',
         code: 'functions/unauthenticated',
+        reason: 'empty-bearer-token',
+        serverProject: getServerProjectId(),
+        serverNode: process.version,
         ...(isDev ? { phase: 'verifyAuth', details: 'Bearer token string was empty.' } : {}),
       }))
       return
@@ -140,7 +117,9 @@ export default async function handler(
 
     let decodedToken: DecodedIdToken
     try {
-      decodedToken = await verifyFirebaseToken(token)
+      decodedToken = await verifyAuthToken(token, {
+        anonymousErrorMsg: 'Anonymous accounts are not permitted for group quizzes.',
+      })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.warn('Invalid, revoked, or anonymous ID token provided:', msg)
@@ -150,6 +129,9 @@ export default async function handler(
       res.end(JSON.stringify({
         error: isAnon ? 'Anonymous accounts are not permitted for group quizzes.' : 'Authentication failed. Please sign in again.',
         code: isAnon ? 'functions/permission-denied' : 'functions/unauthenticated',
+        reason: isAnon ? 'anonymous' : authFailureReason(err),
+        serverProject: getServerProjectId(),
+        serverNode: process.version,
         ...(isDev ? { phase: 'verifyAuth', details: msg } : {}),
       }))
       return

@@ -36,7 +36,7 @@ async function call<I, O>(name: string, data: I): Promise<O> {
   if (!token) {
     console.warn(`[teamService: ${name}] No active auth token (currentUser: ${auth.currentUser?.uid || 'null'})`)
   }
-  const response = await fetch(getApiEndpoint(), {
+  let response = await fetch(getApiEndpoint(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -44,6 +44,20 @@ async function call<I, O>(name: string, data: I): Promise<O> {
     },
     body: JSON.stringify({ action: name, data }),
   })
+  // If the server rejected the token with 401, force-refresh the Firebase ID token once and retry
+  if (response.status === 401 && auth.currentUser) {
+    const freshToken = await auth.currentUser.getIdToken(true).catch(() => undefined)
+    if (freshToken && freshToken !== token) {
+      response = await fetch(getApiEndpoint(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${freshToken}`,
+        },
+        body: JSON.stringify({ action: name, data }),
+      })
+    }
+  }
   let json: Record<string, unknown> = {}
   try {
     json = await response.json()
@@ -57,7 +71,10 @@ async function call<I, O>(name: string, data: I): Promise<O> {
     const error = new Error(errorMsg)
     const rawCode = typeof json.code === 'string' ? json.code : ''
     const code = rawCode.startsWith('functions/') ? rawCode : rawCode ? `functions/${rawCode}` : 'functions/internal'
-    ;(error as { code?: string }).code = code
+    ;(error as { code?: string; reason?: string }).code = code
+    if (typeof json.reason === 'string') {
+      ;(error as { reason?: string }).reason = json.reason
+    }
     throw error
   }
   return json.result as O
