@@ -342,9 +342,36 @@ describe('api/aiChat handler', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('does not fall back to VITE_GROQ_API_KEY when GROQ_API_KEY is missing and removes details on 500', async () => {
+  it('uses the older VITE_GROQ_API_KEY when GROQ_API_KEY is not set', async () => {
     delete process.env.GROQ_API_KEY
-    process.env.VITE_GROQ_API_KEY = 'should-not-be-used'
+    process.env.VITE_GROQ_API_KEY = 'legacy-vite-key'
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: 'valid-user',
+      firebase: { sign_in_provider: 'google.com' },
+    })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok' } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: { messages: [{ role: 'user', content: 'hello' }] },
+    })
+    await handler(req, res)
+    expect(res.statusCode).toBe(200)
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.groq.com/openai/v1/chat/completions',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer legacy-vite-key' }),
+      }),
+    )
+    fetchSpy.mockRestore()
+    delete process.env.VITE_GROQ_API_KEY
+  })
+
+  it('reports not-configured, without details, when no Groq key is set at all', async () => {
+    delete process.env.GROQ_API_KEY
+    delete process.env.VITE_GROQ_API_KEY
     mockVerifyIdToken.mockResolvedValueOnce({
       uid: 'valid-user',
       firebase: { sign_in_provider: 'google.com' },

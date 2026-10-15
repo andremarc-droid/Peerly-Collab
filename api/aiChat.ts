@@ -316,7 +316,8 @@ export default async function handler(
       body = await parseBody(req)
     }
 
-    const groqApiKey = process.env.GROQ_API_KEY?.trim()
+    // GROQ_API_KEY is preferred; the older VITE_GROQ_API_KEY name is still accepted so existing Vercel settings keep working.
+    const groqApiKey = process.env.GROQ_API_KEY?.trim() || process.env.VITE_GROQ_API_KEY?.trim()
     if (!groqApiKey) {
       res.statusCode = 500
       res.setHeader('Content-Type', 'application/json')

@@ -107,7 +107,8 @@ async function logAiChatFailure(input: string, init: RequestInit, response: Resp
     const clientProject = (import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined) ?? '(VITE_FIREBASE_PROJECT_ID not set)'
 
     let diagnosis: string
-    if (response.status !== 401 && response.status !== 403) diagnosis = `The AI proxy answered ${response.status}. See the server response below.`
+    if (json?.code === 'server/not-configured') diagnosis = 'The server has no GROQ_API_KEY. In Vercel open Settings > Environment Variables, add GROQ_API_KEY (exactly that name, no VITE_ prefix) for Production, then redeploy.'
+    else if (response.status !== 401 && response.status !== 403) diagnosis = `The AI proxy answered ${response.status}. See the server response below.`
     else if (!tokenInfo.present) diagnosis = 'No sign-in token was sent. This tab thinks you are signed out: sign out and sign in again.'
     else if (tokenInfo.expired) diagnosis = 'The token is already expired. Reload the page or sign in again.'
     else if (!json) diagnosis = 'The 401 did not come from the aiChat handler (its body is not the handler JSON). Check the endpoint URL below and Vercel Deployment Protection.'
