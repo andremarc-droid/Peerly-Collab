@@ -113,7 +113,7 @@ describe('quick create and quiz deletion confirmation', () => {
     expect(screen.queryByRole('radio', { name: /flashcard deck/i })).not.toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Quiz title'), { target: { value: 'Updated Title' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
     expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.not.objectContaining({ mode: expect.anything() }))
     expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.objectContaining({ title: 'Updated Title' }))
   })
@@ -130,7 +130,7 @@ describe('quick create and quiz deletion confirmation', () => {
 
     expect(await screen.findByDisplayValue('Practice')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Quiz title'), { target: { value: 'Edited without assignment' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
 
     expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.objectContaining({ title: 'Edited without assignment' }))
     expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.not.objectContaining({ classId: expect.anything() }))
@@ -182,13 +182,13 @@ describe('quick create and quiz deletion confirmation', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('CANVAS BUILDER', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(await screen.findByText('STEP 1 OF 3 · CANVAS BOARD', {}, { timeout: 4000 })).toBeInTheDocument()
     const workspaceNav = await screen.findByRole('navigation', { name: 'Quiz workspace' })
     expect(workspaceNav).toBeInTheDocument()
     expect(workspaceNav).toHaveTextContent('Questions')
     expect(workspaceNav).toHaveTextContent('Settings')
-    expect(workspaceNav).toHaveTextContent('Preview')
-    expect(workspaceNav).toHaveTextContent('Results')
+    expect(workspaceNav).toHaveTextContent('Preview & publish')
+    expect(workspaceNav).toHaveTextContent('Next: Settings')
   })
 
   it('guards in-app links when quiz settings are dirty', async () => {
@@ -265,6 +265,31 @@ describe('quick create and quiz deletion confirmation', () => {
     expect(await screen.findByText('Settings locked')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Duplicate quiz' })).toBeInTheDocument()
     expect(screen.getByLabelText('Shuffle questions')).toBeDisabled()
+  })
+
+  it('opens the Preview & publish step for the old ?tab=preview link', async () => {
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-1?tab=preview']}>
+        <Routes>
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('PREVIEW & PUBLISH')).toBeInTheDocument()
+  })
+
+  it('blocks publishing and lists what is missing when the quiz has no questions', async () => {
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-1?tab=publish']}>
+        <Routes>
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Add at least one question.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Publish quiz' })).toBeDisabled()
   })
 })
 

@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  ArrowLeft,
   CheckCircle2,
   Edit3,
   FileText,
@@ -62,6 +61,8 @@ import type {
   CanvasWrongPenalty,
 } from '../../canvas/types'
 import { Badge } from '../../../shared/ui/Badge'
+import { QuizWorkflowNav } from '../editor/QuizWorkflowNav'
+import { QuizTitleField } from '../editor/QuizTitleField'
 import { BlankCanvasBuilder } from './BlankCanvasBuilder'
 import { getQuestionWithKey, getQuiz, saveQuestionAndKey, updateQuiz, type QuizRecord } from '../services'
 
@@ -797,55 +798,15 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
   return (
     <AppShell>
       <PageHeader
-        eyebrow="CANVAS BUILDER"
+        eyebrow="STEP 1 OF 3 · CANVAS BOARD"
         title={quizTitle || 'Canvas board'}
         subtitle="Place cards and draw connections to define the student challenge and answer key."
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>Auto-graded</Badge>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => handleNavigateWithGuard(`/instructor/quizzes/${quizId}?tab=settings`)}
-            >
-              <ArrowLeft size={17} aria-hidden="true" /> Settings
-            </Button>
-          </div>
-        }
+        action={<Badge>Auto-graded</Badge>}
       />
       <main className="app-shell__content canvas-builder-main" id="main-content">
-        {/* Workspace navigation */}
-        <nav aria-label="Quiz workspace" className="mb-4 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            aria-current="page"
-            onClick={() => handleNavigateWithGuard(`/instructor/quizzes/${quizId}?tab=questions`)}
-          >
-            Questions
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => handleNavigateWithGuard(`/instructor/quizzes/${quizId}?tab=settings`)}
-          >
-            Settings
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => handleNavigateWithGuard(`/instructor/quizzes/${quizId}?tab=preview`)}
-          >
-            Preview
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => handleNavigateWithGuard(`/instructor/quizzes/${quizId}/results`)}
-          >
-            Results
-          </Button>
-        </nav>
+        <QuizTitleField quizId={quizId} title={quizTitle} onSaved={setQuizTitle} />
+        {/* One shared step bar. Leaving with unsaved board changes still asks first. */}
+        <QuizWorkflowNav quizId={quizId} current="questions" nextStep="settings" nextLabel="Next: Settings" onNavigate={handleNavigateWithGuard} />
 
         {/* Builder Toolbar & Status Header */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-navy-900-12 shadow-sm">

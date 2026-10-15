@@ -388,7 +388,7 @@ describe('Canvas Tab and Class Page Integration', () => {
     expect(screen.getByText('Empty description')).toBeInTheDocument()
   })
 
-  it('ClassActivityList supports row actions: Duplicate, Copy to another class, Publish, and Delete', async () => {
+  it('ClassActivityList shows one primary button per card and keeps every other action in the menu', async () => {
     const canvasQuiz = makeQuiz('c-1', 'Cell Structure Canvas', 'canvas', 'draft', 1)
     renderWithProviders(
       <ClassActivityList
@@ -403,23 +403,37 @@ describe('Canvas Tab and Class Page Integration', () => {
       />,
     )
 
+    const openMenu = () => {
+      if (!screen.queryByRole('menuitem', { name: /Duplicate/i })) {
+        fireEvent.click(screen.getByRole('button', { name: 'More actions for Cell Structure Canvas' }))
+      }
+    }
+
+    // A draft leads with Continue editing and has no loose action buttons on the card
+    expect(screen.getByRole('link', { name: 'Continue editing' })).toHaveAttribute('href', '/instructor/quizzes/c-1')
+    expect(screen.queryByRole('button', { name: /^Publish/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Duplicate/i })).not.toBeInTheDocument()
+
+    // Publishing goes through the Preview & publish step, never straight from the card
+    openMenu()
+    expect(screen.getByRole('menuitem', { name: /Preview and publish/i })).toHaveAttribute('href', '/instructor/quizzes/c-1?tab=publish')
+    expect(mocked.publishQuiz).not.toHaveBeenCalled()
+
     // Duplicate action
-    fireEvent.click(screen.getByRole('button', { name: /Duplicate/i }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Duplicate/i }))
     await waitFor(() => expect(mocked.duplicateQuiz).toHaveBeenCalledWith('c-1'))
 
-    // Publish action
-    fireEvent.click(screen.getByRole('button', { name: /Publish/i }))
-    await waitFor(() => expect(mocked.publishQuiz).toHaveBeenCalledWith('c-1'))
-
     // Copy to another class
-    fireEvent.click(screen.getByRole('button', { name: /Copy to another class/i }))
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: /Copy to another class/i }))
     const dialog = await screen.findByRole('dialog', { name: 'Copy canvas to another class' })
     expect(dialog).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Copy canvas' }))
     await waitFor(() => expect(mocked.copyQuizToClass).toHaveBeenCalledWith('c-1', 'class-2'))
 
     // Delete action with submissions confirmation
-    fireEvent.click(screen.getByRole('button', { name: /Delete/i }))
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: /Delete/i }))
     const confirmDialog = await screen.findByRole('dialog', { name: 'Delete this canvas?' })
     expect(confirmDialog).toBeInTheDocument()
     expect(screen.getByText(/3 student submissions and all canvas content/i)).toBeInTheDocument()

@@ -1,21 +1,26 @@
-import { ArrowLeft, ArrowDown, ArrowUp, Copy, GripVertical, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, ArrowDown, ArrowUp, ClipboardPaste, Copy, GripVertical, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
 import { Alert } from '../../../shared/ui/Alert'
 import { Button } from '../../../shared/ui/Button'
-import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
+import { Dialog } from '../../../shared/ui/Dialog'
 import { EmptyState } from '../../../shared/ui/EmptyState'
 import { PageHeader } from '../../../shared/ui/PageHeader'
 import { SectionCard } from '../../../shared/ui/SectionCard'
+import { Textarea } from '../../../shared/ui/Textarea'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { resolveListStatus } from '../../../shared/ui/listState'
 import { useToast } from '../../../shared/ui/useToast'
-import { deleteQuestion, duplicateQuiz, getQuiz, hasQuizAttemptsOrParticipants, publishQuiz, reorderQuestions, saveQuestionAndKey, watchQuestionPairs, type SavedQuestion } from '../services'
+import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
+import { deleteQuestion, duplicateQuiz, getQuiz, hasQuizAttemptsOrParticipants, reorderQuestions, saveQuestionAndKey, watchQuestionPairs, type SavedQuestion } from '../services'
 import type { QuestionType, QuizMode } from '../types'
 import { QuestionForm, QuestionPreview } from './QuestionForm'
 import { createQuestionDraft, draftFromPair, moveQuestion, toQuestionPair, validateQuestionDraft, type QuestionDraft } from './questionDraft'
+import { QuizWorkflowNav } from '../editor/QuizWorkflowNav'
+import { QuizTitleField } from '../editor/QuizTitleField'
+import { parseQuestionsFromText } from '../authoring/textParser'
 
 type SaveStatus = 'saved' | 'waiting' | 'saving' | 'error'
 
@@ -34,8 +39,9 @@ export function QuestionBuilderPage() {
   const [savedSignature, setSavedSignature] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<SavedQuestion | null>(null)
-  const [publishBusy, setPublishBusy] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importBusy, setImportBusy] = useState(false)
   const [hasSubmissions, setHasSubmissions] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
   const dragId = useRef<string | null>(null)
@@ -92,18 +98,9 @@ export function QuestionBuilderPage() {
     return () => window.clearTimeout(timer)
   }, [draft, quiz, user, quizId, questionId, questions, savedSignature, showToast, hasSubmissions])
 
-  const checklist = useMemo(() => ({
-    title: Boolean(quiz?.title.trim()),
-    question: questions.length > 0,
-    valid: questions.length > 0 && questions.every(({ question, answerKey }) => Boolean(answerKey && Object.keys(validateQuestionDraft(draftFromPair(question, answerKey), quiz?.mode ?? 'quiz')).length === 0)),
-  }), [quiz, questions])
-  const hasPendingQuestion = Boolean(draft && (savedSignature !== JSON.stringify(draft) || saveStatus !== 'saved'))
-  const canPublish = checklist.title && checklist.question && checklist.valid && !hasPendingQuestion && !loadError
-  const checklistItems = [
-    { complete: checklist.title, label: 'Quiz title added' },
-    { complete: checklist.question, label: 'At least one question' },
-    { complete: checklist.valid, label: 'All questions valid' },
-  ]
+  // Warn before leaving with a question that has content but is not saved yet. A blank new question is not worth a warning.
+  const hasUnsavedQuestion = Boolean(draft && draft.prompt.trim() && !hasSubmissions && (savedSignature !== JSON.stringify(draft) || saveStatus !== 'saved'))
+  useUnsavedChangesGuard(hasUnsavedQuestion)
 
   function selectQuestion(question: SavedQuestion) {
     if (!question.answerKey) return
@@ -124,14 +121,43 @@ export function QuestionBuilderPage() {
     setQuestionId(null); setDraft(next); setSavedSignature(null); setSaveStatus('waiting')
   }
 
-  async function deleteSelectedQuestion() {
-    if (!deleteTarget || hasSubmissions) return
+  // Deleting is immediate and reversible: the toast offers Undo, which saves the question and its answer key back.
+  async function removeQuestion(target: SavedQuestion) {
+    if (hasSubmissions) return
+    const { question, answerKey } = target
     try {
-      await deleteQuestion(quizId, deleteTarget.id)
-      if (questionId === deleteTarget.id) { setQuestionId(null); setDraft(null); setSavedSignature(null) }
-      showToast('success', 'Question deleted.')
+      await deleteQuestion(quizId, target.id)
+      if (questionId === target.id) { setQuestionId(null); setDraft(null); setSavedSignature(null) }
+      showToast('success', 'Question deleted.', answerKey
+        ? { label: 'Undo', onClick: () => { void saveQuestionAndKey(quizId, null, question, answerKey).catch((reason: unknown) => showToast('error', reason instanceof Error ? reason.message : 'Question could not be restored.')) } }
+        : undefined)
     } catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Question could not be deleted.') }
-    setDeleteTarget(null)
+  }
+
+  const parsedImport = parseQuestionsFromText(importText)
+  const importProblems = parsedImport.filter((item) => item.error).length
+
+  async function importQuestions() {
+    if (!quiz || hasSubmissions || parsedImport.length === 0 || importProblems > 0) return
+    setImportBusy(true)
+    try {
+      for (const [index, item] of parsedImport.entries()) {
+        const order = questions.length + index
+        const draft: QuestionDraft = {
+          ...createQuestionDraft(item.type, order),
+          prompt: item.prompt,
+          options: item.options.map((option, optionIndex) => ({ id: `option-${Date.now()}-${index}-${optionIndex}`, text: option.text, correct: option.correct })),
+          acceptedAnswers: item.answer,
+        }
+        if (Object.keys(validateQuestionDraft(draft, quiz.mode)).length > 0) throw new Error(`Question ${index + 1} is not valid yet.`)
+        const pair = toQuestionPair(draft, order)
+        await saveQuestionAndKey(quizId, null, pair.question, pair.answerKey)
+      }
+      showToast('success', `${parsedImport.length} ${parsedImport.length === 1 ? 'question' : 'questions'} added.`)
+      setImportOpen(false)
+      setImportText('')
+    } catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Questions could not be imported.') }
+    finally { setImportBusy(false) }
   }
 
   async function move(id: string, offset: number) {
@@ -143,25 +169,15 @@ export function QuestionBuilderPage() {
     catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Questions could not be reordered.') }
   }
 
-  async function publish() {
-    if (!canPublish || !quiz) return
-    setPublishBusy(true)
-    try {
-      await publishQuiz(quizId)
-      showToast('success', 'Quiz published and ready for students.')
-      navigate(quiz.classId ? `/instructor/classes/${quiz.classId}?tab=${quiz.mode === 'canvas' ? 'canvas' : 'quizzes'}` : '/instructor/quizzes')
-    }
-    catch (reason) { showToast('error', reason instanceof Error ? reason.message : 'Quiz could not be published.') }
-    finally { setPublishBusy(false) }
-  }
-
   if (loading) return <AppShell><PageHeader eyebrow="QUESTION BUILDER" title="Loading quiz…" subtitle="" /><main className="app-shell__content question-builder"><Skeleton label="Loading quiz questions" className="question-builder__skeleton" /></main></AppShell>
   if (loadError || !quiz) return <AppShell><PageHeader eyebrow="QUESTION BUILDER" title="Quiz unavailable" subtitle="We couldn’t open these questions." /><main className="app-shell__content question-builder"><Alert tone="error" label="Questions unavailable">{loadError ?? 'This quiz could not be found.'}</Alert><Button to="/instructor/quizzes"><ArrowLeft size={17} aria-hidden="true" /> Back to all quizzes</Button></main></AppShell>
 
   return <AppShell>
-    <PageHeader eyebrow={quiz.mode === 'quiz' ? 'QUESTION BUILDER · QUIZ' : 'QUESTION BUILDER · FLASHCARDS'} title="Shape the practice." subtitle="Each question and answer key is saved together as you work." action={<Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary"><ArrowLeft size={17} aria-hidden="true" /> Settings</Button>} />
+    <PageHeader eyebrow={quiz.mode === 'quiz' ? 'STEP 1 OF 3 · QUESTIONS' : 'STEP 1 OF 3 · FLASHCARDS'} title={quiz.title || 'Untitled quiz'} subtitle="Add your questions and answer keys. Each one saves automatically once it is complete." />
     <main className="app-shell__content question-builder" id="main-content">
-      <nav aria-label="Quiz workspace" className="mb-4 flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} aria-current="page" variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button><Button to={`/instructor/quizzes/${quizId}?tab=preview`} variant="secondary">Preview</Button><Button to={`/instructor/quizzes/${quizId}/results`} variant="ghost">Results</Button></nav>
+      <QuizTitleField quizId={quizId} title={quiz.title} onSaved={(title) => setQuiz({ ...quiz, title })} />
+      <QuizWorkflowNav quizId={quizId} current="questions" hasTeams={quiz.mode === 'quiz' && quiz.settings.participation.type === 'group'} nextStep="settings" nextLabel="Next: Settings" />
+      {quiz.mode === 'quiz' && !hasSubmissions && <div className="mb-4"><Button type="button" variant="secondary" onClick={() => setImportOpen(true)}><ClipboardPaste size={16} aria-hidden="true" /> Paste questions</Button></div>}
       {hasSubmissions && (
         <div className="mb-4">
           <Alert
@@ -177,7 +193,7 @@ export function QuestionBuilderPage() {
                   try {
                     const copyId = await duplicateQuiz(quizId)
                     showToast('success', 'Quiz duplicated as a draft.')
-                    navigate(`/instructor/quizzes/${copyId}/questions`)
+                    navigate(`/instructor/quizzes/${copyId}?tab=questions`)
                   } catch (err) {
                     showToast('error', err instanceof Error ? err.message : 'Could not duplicate quiz')
                   } finally {
@@ -189,14 +205,10 @@ export function QuestionBuilderPage() {
               </Button>
             }
           >
-            This quiz is published and already has student attempts or participants. Questions cannot be edited, added, or deleted to protect student results. Duplicate this quiz to make changes.
+            This quiz already has student attempts or participants. Questions cannot be edited, added, or deleted to protect student results. Duplicate this quiz to make changes.
           </Alert>
         </div>
       )}
-      <SectionCard title="Publish checklist" description="Your quiz is ready when each item is complete.">
-        <ul className="question-checklist">{checklistItems.map(({ complete, label }) => <li key={label}><span aria-hidden="true">{complete ? '✓' : '○'}</span><span>{label}</span></li>)}</ul>
-        <Button type="button" disabled={!canPublish || publishBusy || saveStatus === 'saving'} onClick={() => void publish()}>{publishBusy ? 'Publishing…' : 'Publish quiz'}</Button>
-      </SectionCard>
       {(() => {
         const listStatus = resolveListStatus({ loading: false, error: loadError, count: questions.length })
         if (listStatus === 'error') {
@@ -228,14 +240,23 @@ export function QuestionBuilderPage() {
               <QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} disabled={hasSubmissions} />
             </SectionCard>
             <div className="question-builder__editor-column">
-              {draft ? <SectionCard title={questionId ? 'Edit question' : 'New question'} description="Changes save automatically once the fields are valid."><QuestionForm draft={draft} mode={quiz.mode} errors={validateQuestionDraft(draft, quiz.mode)} onChange={(nextDraft) => { if (!hasSubmissions) { setDraft(nextDraft); setSaveStatus('waiting') } }} /><div className="question-builder__toolbar"><span className={`question-save-status question-save-status--${saveStatus}`} role="status">{hasSubmissions ? 'Editing locked' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Complete valid fields to save'}</span>{questionId && !hasSubmissions && <><Button type="button" variant="secondary" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) duplicateQuestion(selected) }}><Copy size={16} aria-hidden="true" /> Duplicate</Button><Button type="button" variant="secondary" className="button--destructive" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) setDeleteTarget(selected) }}><Trash2 size={16} aria-hidden="true" /> Delete</Button></>}</div>{saveError && <Alert tone="error" label="Question not saved">{saveError}</Alert>}</SectionCard> : <EmptyState title="Choose a question" description="Select a question to edit, or add a new one to this quiz." action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} disabled={hasSubmissions} />} />}
+              {draft ? <SectionCard title={questionId ? 'Edit question' : 'New question'} description="Changes save automatically once the fields are valid."><QuestionForm draft={draft} mode={quiz.mode} errors={validateQuestionDraft(draft, quiz.mode)} onChange={(nextDraft) => { if (!hasSubmissions) { setDraft(nextDraft); setSaveStatus('waiting') } }} /><div className="question-builder__toolbar"><span className={`question-save-status question-save-status--${saveStatus}`} role="status">{hasSubmissions ? 'Editing locked' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Complete valid fields to save'}</span>{questionId && !hasSubmissions && <><Button type="button" variant="secondary" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) duplicateQuestion(selected) }}><Copy size={16} aria-hidden="true" /> Duplicate</Button><Button type="button" variant="secondary" className="button--destructive" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) void removeQuestion(selected) }}><Trash2 size={16} aria-hidden="true" /> Delete</Button></>}</div>{saveError && <Alert tone="error" label="Question not saved">{saveError}</Alert>}</SectionCard> : <EmptyState title="Choose a question" description="Select a question to edit, or add a new one to this quiz." action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} disabled={hasSubmissions} />} />}
               {draft && <QuestionPreview draft={draft} explanationTiming={quiz.mode === 'quiz' ? quiz.settings.answerReveal : 'never'} />}
             </div>
           </section>
         )
       })()}
     </main>
-    <ConfirmDialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} onConfirm={() => void deleteSelectedQuestion()} title="Delete this question?" description={`Delete “${deleteTarget?.question.prompt ?? ''}” and its answer key? This cannot be undone.`} confirmLabel="Delete question" />
+    <Dialog open={importOpen} onClose={() => setImportOpen(false)} title="Paste questions" description="Separate questions with a blank line. Mark the correct choice with *, or add an Answer: line for typed answers.">
+      <div className="grid gap-4">
+        <Textarea label="Questions" name="paste-questions" value={importText} onChange={(event) => setImportText(event.target.value)} rows={10} hint={'Example:  1. Capital of France?  a) Berlin  *b) Paris  c) Rome'} />
+        {parsedImport.length > 0 && <p className="field__hint" role="status">{importProblems > 0 ? `${importProblems} of ${parsedImport.length} need fixing: ${parsedImport.find((item) => item.error)?.error}` : `${parsedImport.length} ${parsedImport.length === 1 ? 'question' : 'questions'} ready to add.`}</p>}
+        <div className="dialog__actions">
+          <Button type="button" variant="secondary" onClick={() => setImportOpen(false)}>Cancel</Button>
+          <Button type="button" disabled={importBusy || parsedImport.length === 0 || importProblems > 0} onClick={() => void importQuestions()}>{importBusy ? 'Adding…' : 'Add questions'}</Button>
+        </div>
+      </div>
+    </Dialog>
   </AppShell>
 }
 

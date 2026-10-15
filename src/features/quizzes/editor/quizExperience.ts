@@ -1,0 +1,42 @@
+import type { BoardKind, QuizMode, QuizSettings } from '../types'
+import { describeGroupExperience } from './groupSettingsLogic'
+
+interface ExperienceInput {
+  mode: QuizMode
+  boardKind?: BoardKind
+  title: string
+  settings: QuizSettings
+}
+
+/**
+ * One plain-language paragraph describing what students will go through.
+ * Shown on the Settings step and again on the final Preview & publish step so the instructor
+ * confirms the experience right before it goes live.
+ */
+export function describeQuizExperience({ mode, boardKind, title, settings }: ExperienceInput): string {
+  const participation = settings.participation
+  const revealSentence = settings.answerReveal === 'after_each'
+    ? 'Explanations appear after each question.'
+    : settings.answerReveal === 'after_submit'
+      ? 'Explanations appear after the team submits.'
+      : 'Answers stay hidden.'
+
+  if (mode === 'flashcards') return `Students will review ${title.trim() || 'this set'} as flashcards and self-rate their recall.`
+  if (mode === 'canvas') {
+    return boardKind === 'blank'
+      ? 'Students will create their own concept board from a blank canvas. You will review and grade their submissions.'
+      : 'Students will connect cards on the canvas board individually.'
+  }
+  if (participation.type === 'group') return `${describeGroupExperience(participation)} ${revealSentence}`
+
+  const time = settings.timeLimitMinutes ? ` with ${settings.timeLimitMinutes} minutes` : ''
+  const attempts = settings.attemptsAllowed
+    ? ` and ${settings.attemptsAllowed} ${settings.attemptsAllowed === 1 ? 'attempt' : 'attempts'}`
+    : ' with unlimited attempts'
+  const reveal = settings.answerReveal === 'after_each'
+    ? ', seeing explanations after each answer.'
+    : settings.answerReveal === 'after_submit'
+      ? ', reviewing explanations after they submit.'
+      : ', with answers hidden.'
+  return `Students will answer ${title.trim() || 'this quiz'} individually${time}${attempts}${reveal}`
+}

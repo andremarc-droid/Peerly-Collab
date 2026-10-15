@@ -1,4 +1,4 @@
-import { Archive, BarChart3, Copy, Ellipsis, RotateCcw, Send, Trash2 } from 'lucide-react'
+import { Archive, BarChart3, Copy, Ellipsis, Pencil, RotateCcw, Send, Trash2 } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
@@ -18,7 +18,6 @@ import {
   countQuizAttempts,
   deleteQuizCascade,
   duplicateQuiz,
-  publishQuiz,
   restoreQuiz,
   unpublishQuiz,
   type QuizRecord,
@@ -143,6 +142,12 @@ export function ClassActivityList({
             : `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}`
           const updatedDate = quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })
           const meta = `${metaStatus} · Updated ${updatedDate}`
+          const busy = busyId === quiz.id
+          const editPath = `/instructor/quizzes/${quiz.id}`
+          const resultsPath = `/instructor/quizzes/${quiz.id}/results`
+          const isDraft = quiz.status === 'draft'
+          const isPublished = quiz.status === 'published'
+          const isArchived = quiz.status === 'archived'
 
           return (
             <DataCard
@@ -187,18 +192,51 @@ export function ClassActivityList({
                 </p>
               )}
 
-              {/* Phone and tablet: Edit stays visible, everything else lives in a three-dot menu. */}
-              <div className="flex w-full items-center justify-between gap-2 lg:hidden">
-                <Button to={`/instructor/quizzes/${quiz.id}`}>Edit</Button>
+              {/* One primary action per card, the same on every screen size. Everything else lives in the menu. */}
+              <div className="flex w-full items-center justify-between gap-2">
+                {isDraft && <Button to={editPath}>Continue editing</Button>}
+                {isPublished && <Button to={resultsPath}><BarChart3 size={15} aria-hidden="true" /> View results</Button>}
+                {isArchived && (
+                  <Button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void action(quiz.id, isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}
+                  >
+                    <RotateCcw size={15} aria-hidden="true" /> Restore
+                  </Button>
+                )}
                 <DropdownMenu label={`More actions for ${quiz.title || 'Untitled quiz'}`} iconOnly trigger={<Ellipsis size={20} aria-hidden="true" />}>
-                  <Link role="menuitem" to={`/instructor/quizzes/${quiz.id}/results`}>
-                    <BarChart3 size={16} aria-hidden="true" /> Results
-                  </Link>
-                  <button type="button" role="menuitem" disabled={busyId === quiz.id || deleteBusy} onClick={() => void action(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}>
+                  {isPublished && (
+                    <Link role="menuitem" to={editPath}>
+                      <Pencil size={16} aria-hidden="true" /> Edit
+                    </Link>
+                  )}
+                  {isDraft && (
+                    <Link role="menuitem" to={resultsPath}>
+                      <BarChart3 size={16} aria-hidden="true" /> Results
+                    </Link>
+                  )}
+                  {isArchived && (
+                    <Link role="menuitem" to={resultsPath}>
+                      <BarChart3 size={16} aria-hidden="true" /> Results
+                    </Link>
+                  )}
+                  {isDraft && classroom.status === 'active' && (
+                    // Publishing always goes through the review step so the instructor sees what students will get.
+                    <Link role="menuitem" to={`${editPath}?tab=publish`}>
+                      <Send size={16} aria-hidden="true" /> Preview and publish
+                    </Link>
+                  )}
+                  {isPublished && (
+                    <button type="button" role="menuitem" disabled={busy} onClick={() => void action(quiz.id, isCanvas ? 'Canvas returned to draft.' : 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}>
+                      <Send size={16} aria-hidden="true" /> Unpublish
+                    </button>
+                  )}
+                  <button type="button" role="menuitem" disabled={busy || deleteBusy} onClick={() => void action(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}>
                     <Copy size={16} aria-hidden="true" /> Duplicate
                   </button>
                   {targets.length ? (
-                    <button type="button" role="menuitem" disabled={busyId === quiz.id || deleteBusy} onClick={() => { setCopySelection(quiz); setTargetClass(targets[0].id) }}>
+                    <button type="button" role="menuitem" disabled={busy || deleteBusy} onClick={() => { setCopySelection(quiz); setTargetClass(targets[0].id) }}>
                       <Copy size={16} aria-hidden="true" /> Copy to another class
                     </button>
                   ) : (
@@ -206,143 +244,15 @@ export function ClassActivityList({
                       <Copy size={16} aria-hidden="true" /> Create a class to copy to
                     </Link>
                   )}
-                  {quiz.status === 'published' ? (
-                    <button type="button" role="menuitem" disabled={busyId === quiz.id} onClick={() => void action(quiz.id, isCanvas ? 'Canvas returned to draft.' : 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}>
-                      <Send size={16} aria-hidden="true" /> Unpublish
-                    </button>
-                  ) : (
-                    <button type="button" role="menuitem" disabled={busyId === quiz.id || classroom.status !== 'active' || quiz.questionCount < 1 || !quiz.title.trim()} onClick={() => void action(quiz.id, isCanvas ? 'Canvas published.' : 'Quiz published.', () => publishQuiz(quiz.id))}>
-                      <Send size={16} aria-hidden="true" /> Publish
-                    </button>
-                  )}
-                  {quiz.status === 'archived' ? (
-                    <button type="button" role="menuitem" disabled={busyId === quiz.id} onClick={() => void action(quiz.id, isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}>
-                      <RotateCcw size={16} aria-hidden="true" /> Restore
-                    </button>
-                  ) : (
-                    <button type="button" role="menuitem" disabled={busyId === quiz.id} onClick={() => void action(quiz.id, isCanvas ? 'Canvas archived.' : 'Quiz archived.', () => archiveQuiz(quiz.id))}>
+                  {!isArchived && (
+                    <button type="button" role="menuitem" disabled={busy} onClick={() => void action(quiz.id, isCanvas ? 'Canvas archived.' : 'Quiz archived.', () => archiveQuiz(quiz.id))}>
                       <Archive size={16} aria-hidden="true" /> Archive
                     </button>
                   )}
-                  <button type="button" role="menuitem" className="is-danger" disabled={deleteBusy || busyId === quiz.id} onClick={() => void startDelete(quiz)}>
+                  <button type="button" role="menuitem" className="is-danger" disabled={deleteBusy || busy} onClick={() => void startDelete(quiz)}>
                     <Trash2 size={16} aria-hidden="true" /> Delete
                   </button>
                 </DropdownMenu>
-              </div>
-
-              <div className="hidden flex-wrap gap-2 lg:flex">
-                <Button to={`/instructor/quizzes/${quiz.id}`}>Edit</Button>
-                <Button to={`/instructor/quizzes/${quiz.id}/results`} variant="secondary">
-                  <BarChart3 size={15} aria-hidden="true" /> Results
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={busyId === quiz.id || deleteBusy}
-                  onClick={() => void action(quiz.id, 'Draft copy created.', () => duplicateQuiz(quiz.id))}
-                >
-                  <Copy size={15} aria-hidden="true" /> Duplicate
-                </Button>
-                {targets.length ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={busyId === quiz.id || deleteBusy}
-                    onClick={() => {
-                      setCopySelection(quiz)
-                      setTargetClass(targets[0].id)
-                    }}
-                  >
-                    <Copy size={15} aria-hidden="true" /> Copy to another class
-                  </Button>
-                ) : (
-                  <Link
-                    to="/instructor"
-                    className="inline-flex min-h-11 items-center gap-2 rounded-full border border-navy-900-12 px-4 text-sm font-semibold text-navy-800 no-underline"
-                  >
-                    Create another active class to copy
-                  </Link>
-                )}
-                {quiz.status === 'published' ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={busyId === quiz.id}
-                    onClick={() =>
-                      void action(
-                        quiz.id,
-                        isCanvas ? 'Canvas returned to draft.' : 'Quiz returned to draft.',
-                        () => unpublishQuiz(quiz.id),
-                      )
-                    }
-                  >
-                    <Send size={15} aria-hidden="true" /> Unpublish
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={busyId === quiz.id || classroom.status !== 'active' || quiz.questionCount < 1 || !quiz.title.trim()}
-                    title={
-                      classroom.status !== 'active'
-                        ? 'Restore this class first'
-                        : quiz.questionCount < 1 || !quiz.title.trim()
-                        ? isCanvas
-                          ? 'Add a title and save your board first'
-                          : 'Add a title and at least one question first'
-                        : undefined
-                    }
-                    onClick={() =>
-                      void action(
-                        quiz.id,
-                        isCanvas ? 'Canvas published.' : 'Quiz published.',
-                        () => publishQuiz(quiz.id),
-                      )
-                    }
-                  >
-                    <Send size={15} aria-hidden="true" /> Publish
-                  </Button>
-                )}
-                {quiz.status === 'archived' ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={busyId === quiz.id}
-                    onClick={() =>
-                      void action(
-                        quiz.id,
-                        isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.',
-                        () => restoreQuiz(quiz.id),
-                      )
-                    }
-                  >
-                    <RotateCcw size={15} aria-hidden="true" /> Restore
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={busyId === quiz.id}
-                    onClick={() =>
-                      void action(
-                        quiz.id,
-                        isCanvas ? 'Canvas archived.' : 'Quiz archived.',
-                        () => archiveQuiz(quiz.id),
-                      )
-                    }
-                  >
-                    <Archive size={15} aria-hidden="true" /> Archive
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="button--destructive"
-                  disabled={deleteBusy || busyId === quiz.id}
-                  onClick={() => void startDelete(quiz)}
-                >
-                  <Trash2 size={15} aria-hidden="true" /> Delete
-                </Button>
               </div>
             </DataCard>
           )

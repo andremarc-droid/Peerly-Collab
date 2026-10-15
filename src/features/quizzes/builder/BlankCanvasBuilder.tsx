@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Eye, LayoutGrid, Loader2, Save, AlertCircle } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { CheckCircle2, Eye, LayoutGrid, Loader2, Save, AlertCircle } from 'lucide-react'
 import { AppShell } from '../../../app/AppShell'
 import { Alert } from '../../../shared/ui/Alert'
 import { Badge } from '../../../shared/ui/Badge'
@@ -16,13 +15,14 @@ import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuar
 import type { CanvasAllowedCardType, CanvasQuestion } from '../../canvas/types'
 import { getQuestionWithKey, saveQuestionAndKey } from '../services/questionService'
 import { getQuiz, type QuizRecord } from '../services/quizService'
+import { QuizWorkflowNav } from '../editor/QuizWorkflowNav'
+import { QuizTitleField } from '../editor/QuizTitleField'
 
 interface Props {
   quizId: string
 }
 
 export function BlankCanvasBuilder({ quizId }: Props) {
-  const navigate = useNavigate()
   const { showToast } = useToast()
 
   const [loading, setLoading] = useState(true)
@@ -213,51 +213,16 @@ export function BlankCanvasBuilder({ quizId }: Props) {
   return (
     <AppShell>
       <PageHeader
-        eyebrow="CANVAS BUILDER"
+        eyebrow="STEP 1 OF 3 · CANVAS BOARD"
         title={quiz.title || 'Blank canvas board'}
         subtitle="Students build their own boards. You check their work and provide a manual grade."
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>You grade</Badge>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => navigate(`/instructor/quizzes/${quizId}?tab=settings`)}
-            >
-              <ArrowLeft size={17} aria-hidden="true" /> Settings
-            </Button>
-          </div>
-        }
+        action={<Badge>You grade</Badge>}
       />
 
       <main className="app-shell__content grid gap-6" id="main-content">
-        {/* Workspace navigation */}
-        <nav aria-label="Quiz workspace" className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" aria-current="page">
-            Questions
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => navigate(`/instructor/quizzes/${quizId}?tab=settings`)}
-          >
-            Settings
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => navigate(`/instructor/quizzes/${quizId}?tab=preview`)}
-          >
-            Preview
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => navigate(`/instructor/quizzes/${quizId}/results`)}
-          >
-            Results
-          </Button>
-        </nav>
+        <QuizTitleField quizId={quizId} title={quiz.title} onSaved={(title) => setQuiz({ ...quiz, title })} />
+        {/* One shared step bar. Links are watched by the unsaved-changes guard above. */}
+        <QuizWorkflowNav quizId={quizId} current="questions" nextStep="settings" nextLabel="Next: Settings" />
 
         {/* Action and status bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-navy-900-12 shadow-sm">

@@ -1,5 +1,5 @@
-import { ArrowLeft, Plus, Save } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { ArrowLeft, ArrowRight, Plus, Save } from 'lucide-react'
+import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
@@ -14,20 +14,18 @@ import { Select } from '../../../shared/ui/Select'
 import { useToast } from '../../../shared/ui/useToast'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 import { defaultQuizSettings } from '../schemas/settings'
-import { createQuiz, duplicateQuiz, getQuiz, hasQuizAttemptsOrParticipants, updateQuiz, watchQuestionPairs, type SavedQuestion } from '../services'
+import { createQuiz, duplicateQuiz, getQuiz, hasQuizAttemptsOrParticipants, updateQuiz } from '../services'
 import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
-import type { QuizMode, QuizSettings } from '../types'
+import type { QuizSettings, QuizStatus } from '../types'
 import { validateQuizForm, type QuizFormErrors, type QuizFormValues } from './validation'
 import { GroupSettingsSection } from './GroupSettingsSection'
-import { describeGroupExperience } from './groupSettingsLogic'
+import { describeQuizExperience } from './quizExperience'
+import { QuizPublishTab } from './QuizPublishTab'
+import { QuizWorkflowNav, quizStepPath } from './QuizWorkflowNav'
 import { QuickCreateQuiz } from '../authoring/QuickCreateQuiz'
 const QuestionBuilderPage = lazy(() => import('../builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
 const CanvasBuilderPage = lazy(() => import('../builder/CanvasBuilderPage'))
-const CanvasBoard = lazy(() => import('../../canvas/components/CanvasBoard'))
-import { ExpandableCanvasContainer } from '../../canvas/components/ExpandableCanvasContainer'
-import { toDataUrl } from '../../canvas/imageProcessing'
-import { listImages } from '../../canvas/imageService'
 
 const revealOptions = [
   { value: 'after_each', label: 'After each question', hint: 'See the answer and explanation right after responding.' },
@@ -40,6 +38,10 @@ const scoreOptions = [
   { value: 'hidden', label: 'Students never see scores', hint: 'Only you can see results for this quiz.' },
 ]
 
+/**
+ * Making a quiz is one path: Create, then Questions, then Settings, then Preview & publish.
+ * This page owns the routing between those steps and the Settings step itself.
+ */
 export function QuizEditorPage() {
   const { quizId } = useParams()
   const [searchParams] = useSearchParams()
@@ -53,6 +55,7 @@ export function QuizEditorPage() {
   const [classes, setClasses] = useState<ClassWithId[]>([])
   const [classesLoaded, setClassesLoaded] = useState(false)
   const [questionCount, setQuestionCount] = useState(0)
+  const [status, setStatus] = useState<QuizStatus>('draft')
   const [resolvedQuizId, setResolvedQuizId] = useState<string | null>(null)
   const loading = Boolean(quizId && resolvedQuizId !== quizId)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -76,7 +79,7 @@ export function QuizEditorPage() {
       if (!active) return
       if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
       const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, boardKind: quiz.boardKind, settings: quiz.settings }
-      setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setResolvedQuizId(quizId)
+      setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setStatus(quiz.status); setResolvedQuizId(quizId)
       void hasQuizAttemptsOrParticipants(quizId).then((result) => {
         if (active) setHasSubmissions(result)
       })
@@ -94,6 +97,9 @@ export function QuizEditorPage() {
   function leaveEditor() {
     if (!dirty || window.confirm('You have unsaved changes. Leave without saving?')) navigate(backPath)
   }
+
+  // A draft moves straight on to Preview & publish after its settings are saved. Published or locked quizzes just save.
+  const continueToPublish = status === 'draft' && !hasSubmissions
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -115,6 +121,7 @@ export function QuizEditorPage() {
         setForm(savedForm)
         setSaved(savedForm)
         showToast('success', 'Quiz settings saved.')
+        if (continueToPublish) navigate(quizStepPath(quizId, 'publish'))
       } else {
         const created = await createQuiz(user.uid, profile?.name || user.displayName || 'Instructor', { ...input, mode: form.mode })
         setSaved(form); showToast('success', 'Draft quiz created.')
@@ -141,25 +148,18 @@ export function QuizEditorPage() {
     }
     return <QuestionBuilderPage />
   }
-  if (activeTab === 'preview') return <QuizPreviewTab quizId={quizId} />
+  // "preview" is the old name of the final step; old links keep working.
+  if (activeTab === 'publish' || activeTab === 'preview') return <QuizPublishTab quizId={quizId} />
 
   const participation = form.settings.participation
   const isGroupQuiz = form.mode === 'quiz' && participation.type === 'group'
-  const revealSentence = form.settings.answerReveal === 'after_each' ? 'Explanations appear after each question.' : form.settings.answerReveal === 'after_submit' ? 'Explanations appear after the team submits.' : 'Answers stay hidden.'
-  const experience = form.mode === 'flashcards'
-    ? `Students will review ${form.title.trim() || 'this set'} as flashcards and self-rate their recall.`
-    : form.mode === 'canvas'
-    ? form.boardKind === 'blank'
-      ? `Students will create their own concept board from a blank canvas. You will review and grade their submissions.`
-      : `Students will connect cards on the canvas board individually.`
-    : participation.type === 'group'
-    ? `${describeGroupExperience(participation)} ${revealSentence}`
-    : `Students will answer ${form.title.trim() || 'this quiz'} individually${form.settings.timeLimitMinutes ? ` with ${form.settings.timeLimitMinutes} minutes` : ''}${form.settings.attemptsAllowed ? ` and ${form.settings.attemptsAllowed} ${form.settings.attemptsAllowed === 1 ? 'attempt' : 'attempts'}` : ' with unlimited attempts'}${form.settings.answerReveal === 'after_each' ? ', seeing explanations after each answer.' : form.settings.answerReveal === 'after_submit' ? ', reviewing explanations after they submit.' : ', with answers hidden.'}`
+  const experience = describeQuizExperience({ mode: form.mode, boardKind: form.boardKind, title: form.title, settings: form.settings })
+  const saveLabel = saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : continueToPublish ? 'Save and continue' : 'Save settings'
 
   return <AppShell>
-    <PageHeader eyebrow={quizId ? 'EDIT QUIZ' : 'NEW QUIZ'} title={quizId ? 'Quiz settings.' : 'Create a quiz.'} subtitle="Set up the practice experience. Questions can be added in the next step." action={<Button type="button" variant="secondary" onClick={leaveEditor}><ArrowLeft size={17} aria-hidden="true" /> Back</Button>} />
+    <PageHeader eyebrow={quizId ? 'EDIT QUIZ' : 'NEW QUIZ'} title={quizId ? 'Quiz settings.' : 'Create a quiz.'} subtitle={continueToPublish ? 'Choose how students take this quiz. Next you will preview and publish it.' : 'Choose how students take this quiz.'} action={<Button type="button" variant="secondary" onClick={leaveEditor}><ArrowLeft size={17} aria-hidden="true" /> Back</Button>} />
     <main className="app-shell__content quiz-editor" id="main-content">
-      <nav aria-label="Quiz workspace" className="mb-4 flex flex-wrap gap-2"><Button to={`/instructor/quizzes/${quizId}?tab=questions`} variant="secondary">Questions</Button><Button to={`/instructor/quizzes/${quizId}?tab=settings`} aria-current="page" variant="secondary">Settings</Button><Button to={`/instructor/quizzes/${quizId}?tab=preview`} variant="secondary">Preview</Button>{isGroupQuiz && <Button to={`/instructor/quizzes/${quizId}/teams`} variant="secondary">Teams</Button>}<Button to={`/instructor/quizzes/${quizId}/results`} variant="ghost">Results</Button></nav>
+      <QuizWorkflowNav quizId={quizId} current="settings" hasTeams={isGroupQuiz} />
       {saveError && <Alert tone="error" label="Could not save changes">{saveError}</Alert>}
       {quizId && (!form.classId || (classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active'))) && <Alert tone="warning" label="Assign this quiz to a class">Choose an active class below and save to keep this quiz in the classroom catalog.</Alert>}
       {classesLoaded && !classes.some((item) => item.status === 'active') && <Alert tone="warning" label="Create a class first">Quizzes must belong to an active class. <Button to="/instructor" variant="secondary">Create a class</Button></Alert>}
@@ -190,7 +190,7 @@ export function QuizEditorPage() {
               </Button>
             }
           >
-            This quiz is published and already has student attempts or participants. Timing, participation, and shuffle settings are locked to protect student results. Duplicate this quiz to modify them.
+            This quiz already has student attempts or participants. Timing, participation, and shuffle settings are locked to protect student results. Duplicate this quiz to modify them.
           </Alert>
         </div>
       )}
@@ -263,126 +263,13 @@ export function QuizEditorPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Questions" description="Build questions and answer keys after saving these settings.">
+        <SectionCard title="Questions" description="Add or edit the questions and answer keys for this quiz.">
           <div className="quiz-question-placeholder"><strong>{questionCount} {questionCount === 1 ? 'question' : 'questions'} added</strong>{quizId ? <Button to={`/instructor/quizzes/${quizId}/questions`} variant="secondary">{questionCount > 0 ? 'Edit questions' : 'Add questions'}</Button> : <div className="grid justify-items-start gap-2"><Button type="button" variant="secondary" disabled>Add questions</Button><span className="field__hint">Save your settings first.</span></div>}</div>
         </SectionCard>
 
         <SectionCard title="How students will experience this quiz"><p className="quiz-experience-summary" aria-live="polite">{experience}</p></SectionCard>
-        <div className="quiz-editor__save">{quizId ? <Button type="submit" name="intent" value="save" disabled={saving || !classesLoaded}><Save size={17} aria-hidden="true" />{saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : 'Save settings'}</Button> : <><Button type="submit" name="intent" value="save-and-add-questions" disabled={saving || !classesLoaded}><Plus size={17} aria-hidden="true" />{saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : 'Save and add questions'}</Button><Button type="submit" name="intent" value="save" variant="secondary" disabled={saving || !classesLoaded}><Save size={17} aria-hidden="true" />Save</Button></>}{dirty && <span role="status">Unsaved changes</span>}</div>
+        <div className="quiz-editor__save">{quizId ? <Button type="submit" name="intent" value="save" disabled={saving || !classesLoaded}>{continueToPublish && !saving && classesLoaded ? <ArrowRight size={17} aria-hidden="true" /> : <Save size={17} aria-hidden="true" />}{saveLabel}</Button> : <><Button type="submit" name="intent" value="save-and-add-questions" disabled={saving || !classesLoaded}><Plus size={17} aria-hidden="true" />{saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : 'Save and add questions'}</Button><Button type="submit" name="intent" value="save" variant="secondary" disabled={saving || !classesLoaded}><Save size={17} aria-hidden="true" />Save</Button></>}{dirty && <span role="status">Unsaved changes</span>}</div>
       </form>
     </main>
   </AppShell>
-}
-
-function QuizPreviewTab({ quizId }: { quizId: string }) {
-  const [title, setTitle] = useState('Quiz preview')
-  const [mode, setMode] = useState<QuizMode>('quiz')
-  const [items, setItems] = useState<SavedQuestion[]>([])
-  const [canvasImages, setCanvasImages] = useState<Record<string, { dataUrl: string; alt?: string }>>({})
-  const [canvasImagesError, setCanvasImagesError] = useState(false)
-
-  const loadCanvasImages = useCallback(async () => {
-    if (!quizId) return
-    setCanvasImagesError(false)
-    try {
-      const imgList = await listImages(quizId)
-      const rec: Record<string, { dataUrl: string; alt?: string }> = {}
-      imgList.forEach((img) => {
-        rec[img.id] = { dataUrl: toDataUrl(img.mimeType, img.data) }
-      })
-      setCanvasImages(rec)
-    } catch {
-      setCanvasImagesError(true)
-    }
-  }, [quizId])
-
-  useEffect(() => {
-    let active = true
-    void getQuiz(quizId).then((quiz) => {
-      if (active && quiz) {
-        setTitle(quiz.title || 'Quiz preview')
-        setMode(quiz.mode)
-      }
-    })
-    const stop = watchQuestionPairs(
-      quizId,
-      (questions) => {
-        if (active) {
-          setItems(questions)
-          const cq = questions.find((item) => item.question.type === 'canvas')?.question as import('../../canvas/types').CanvasQuestion | undefined
-          if (cq?.cards?.some((c) => c.type === 'image' && c.imageId)) {
-            void loadCanvasImages()
-          }
-        }
-      },
-      () => undefined,
-    )
-    return () => { active = false; stop() }
-  }, [quizId, loadCanvasImages])
-
-  const canvasQuestion = items.find((item) => item.question.type === 'canvas')?.question as import('../../canvas/types').CanvasQuestion | undefined
-
-  return (
-    <AppShell>
-      <PageHeader
-        eyebrow="QUIZ PREVIEW"
-        title={title}
-        subtitle={mode === 'canvas' ? 'A student-facing preview of the canvas board.' : 'A student-facing preview of your current questions.'}
-        action={<Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button>}
-      />
-      <main className="app-shell__content quiz-editor">
-        <nav aria-label="Quiz workspace" className="flex flex-wrap gap-2">
-          <Button to={`/instructor/quizzes/${quizId}?tab=questions`} variant="secondary">Questions</Button>
-          <Button to={`/instructor/quizzes/${quizId}?tab=settings`} variant="secondary">Settings</Button>
-          <span className="section-kicker">Preview</span>
-          <Button to={`/instructor/quizzes/${quizId}/results`} variant="secondary">Results</Button>
-        </nav>
-        {mode === 'canvas' ? (
-          <div className="mt-4 grid gap-4">
-            <p className="text-sm text-navy-800-72">{canvasQuestion?.prompt || 'Connect the cards according to the activity instructions.'}</p>
-            <ExpandableCanvasContainer title="Canvas preview">
-              <div className="w-full h-full rounded-2xl border border-navy-900-12 overflow-hidden bg-navy-50">
-                <Suspense fallback={<div className="quiz-editor-skeleton" aria-label="Loading canvas preview" />}>
-                  <CanvasBoard
-                    cards={canvasQuestion?.cards ?? []}
-                    connections={[]}
-                    mode="play"
-                    directed={canvasQuestion?.directed ?? true}
-                    images={canvasImages}
-                    className="w-full h-full"
-                  />
-                </Suspense>
-              </div>
-            </ExpandableCanvasContainer>
-            {canvasImagesError && (
-              <div className="flex items-center gap-2 text-sm text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
-                <span>Some board images could not be loaded.</span>
-                <button
-                  type="button"
-                  onClick={() => void loadCanvasImages()}
-                  className="underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
-            <p>Students answer {items.length} {items.length === 1 ? 'question' : 'questions'} with answers {items.length ? 'according to the quiz settings' : 'once you add them'}.</p>
-            <ol className="grid gap-4">
-              {items.map(({ id, question }) => (
-                <li key={id} className="rounded-2xl border border-navy-200 p-4">
-                  <strong>{question.prompt}</strong>
-                  {'options' in question && (
-                    <ul>{question.options.map((option) => <li key={option.id}>{option.text}</li>)}</ul>
-                  )}
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
-      </main>
-    </AppShell>
-  )
 }
