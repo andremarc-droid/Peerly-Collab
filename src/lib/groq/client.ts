@@ -89,8 +89,17 @@ async function toGroqError(response: Response): Promise<GroqError> {
 
   switch (response.status) {
     case 401:
+      return new GroqError(
+        detail && !detail.toLowerCase().includes('key')
+          ? detail
+          : 'Authentication failed for the AI service. Please sign in again.',
+        response.status,
+      )
     case 403:
-      return new GroqError('Authentication failed for the AI service. Please sign in again.', response.status)
+      return new GroqError(
+        detail || 'You do not have permission to access the AI service.',
+        response.status,
+      )
     case 413:
       return new GroqError('This message is too large for the AI service. Try a shorter message or fewer images.', response.status)
     case 429:
@@ -108,9 +117,10 @@ async function toGroqError(response: Response): Promise<GroqError> {
       )
     default:
       return new GroqError(
-        response.status >= 500
-          ? 'The AI service is having trouble. Try again shortly.'
-          : `The AI request failed (${response.status}).`,
+        detail ||
+          (response.status >= 500
+            ? 'The AI service is having trouble. Try again shortly.'
+            : `The AI request failed (${response.status}).`),
         response.status,
       )
   }
@@ -157,6 +167,29 @@ export async function createChatCompletion(options: ChatCompletionOptions): Prom
       },
       body: JSON.stringify(body),
     })
+
+    // If rejected with 401 (e.g. expired token), force-refresh the ID token and retry once
+    if (!response.ok && response.status === 401) {
+      try {
+        const { auth } = await import('../firebase/auth')
+        if (auth?.currentUser) {
+          const freshToken = await auth.currentUser.getIdToken(true)
+          if (freshToken && freshToken !== token) {
+            response = await send(getAiChatEndpoint(), {
+              method: 'POST',
+              signal: options.signal,
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${freshToken}`,
+              },
+              body: JSON.stringify(body),
+            })
+          }
+        }
+      } catch {
+        // Fall through to error handler
+      }
+    }
   } catch (error) {
     if (isAbortError(error)) throw error
     throw new GroqError('Could not reach the AI service. Check your connection and try again.')

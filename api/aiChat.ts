@@ -370,12 +370,16 @@ export default async function handler(
       let groqErr: { error?: { message?: string } } = {}
       try { groqErr = JSON.parse(errText) } catch {}
       const retryHeader = groqRes.headers.get('retry-after')
-      res.statusCode = groqRes.status
+      const isUpstreamAuth = groqRes.status === 401 || groqRes.status === 403
+      const mappedStatus = isUpstreamAuth ? 502 : groqRes.status
+      res.statusCode = mappedStatus
       if (retryHeader) res.setHeader('Retry-After', retryHeader)
       res.setHeader('Content-Type', 'application/json')
       res.end(JSON.stringify({
-        error: groqErr.error?.message || `AI service error (${groqRes.status})`,
-        status: groqRes.status,
+        error: isUpstreamAuth
+          ? 'AI provider authentication failed on the server. Please check GROQ_API_KEY.'
+          : (groqErr.error?.message || `AI service error (${groqRes.status})`),
+        status: mappedStatus,
       }))
       return
     }
