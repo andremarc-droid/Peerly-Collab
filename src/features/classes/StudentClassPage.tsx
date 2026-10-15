@@ -14,7 +14,7 @@ import { resolveListStatus } from '../../shared/ui/listState'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { getClassCodePreview, leaveClass, listMyEnrollments } from './services/joinService'
-import { quizModeLabel } from '../quizzes/types'
+import { QuizTypeBadge } from '../quizzes/QuizTypeBadge'
 import { watchClass } from './services/classService'
 import { watchPublishedQuizzesForClass } from './services/quizService'
 import { ClassInitialBadge } from './ClassInitialBadge'
@@ -313,7 +313,7 @@ function StudentClassDetail({ classId }: { classId: string }) {
                     meta={meta}
                     badge={
                       <div className="flex flex-wrap gap-2">
-                        <Badge>{quizModeLabel(quiz.mode)}</Badge>
+                        <QuizTypeBadge mode={quiz.mode} />
                         {quiz.mode === 'canvas' && quiz.boardKind === 'blank' && (
                           <Badge>Graded by instructor</Badge>
                         )}

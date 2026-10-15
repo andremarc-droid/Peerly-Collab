@@ -14,6 +14,7 @@ import { resolveListStatus } from '../../shared/ui/listState'
 import { useToast } from '../../shared/ui/useToast'
 import type { ClassWithId } from '../classes/types'
 import { formatDue, formatPoints } from './format'
+import { AssignmentTypeBadge } from '../quizzes/QuizTypeBadge'
 import { createAssignment, deleteAssignmentCascade, publishAssignment, subscribeToAssignments, unpublishAssignment } from './services'
 import { MAX_TITLE_LENGTH, type AssignmentWithId } from './types'
 import '../modules/modules.css'
@@ -78,7 +79,7 @@ export function AssignmentsTab({ classroom }: { classroom: ClassWithId }) {
       <DataCard
         title={item.title}
         meta={`${formatDue(item.dueAt)} · ${formatPoints(item.points)} · ${item.attachments.length} ${item.attachments.length === 1 ? 'file' : 'files'}`}
-        badge={<span className="flex flex-wrap gap-2"><Badge>{item.status === 'published' ? 'Published' : 'Draft'}</Badge>{!item.acceptsTurnIn && <Badge>No turn-in</Badge>}</span>}
+        badge={<span className="flex flex-wrap gap-2"><Badge>{item.status === 'published' ? 'Published' : 'Draft'}</Badge><AssignmentTypeBadge />{!item.acceptsTurnIn && <Badge>No turn-in</Badge>}</span>}
         actions={<div className="assignment-actions">
           <Button to={`${base}/${item.id}`} variant="secondary"><ClipboardList size={16} aria-hidden="true" /> Open<span className="sr-only"> {item.title}</span></Button>
           {item.status === 'published'

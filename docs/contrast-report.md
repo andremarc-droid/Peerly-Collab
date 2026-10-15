@@ -76,6 +76,14 @@ Stripes are strictly restricted to the right 40% of the `PageHeader` band, maske
 | Module publish bar copy | `--color-white-72` / `--color-navy-900` | 9.14:1 | AAA |
 | Resource embed fallback text | `--color-navy-800-72` / `--color-white` | 7.36:1 | AAA |
 | Resource embed fallback link | `--color-navy-800` / `--color-white` | 16.52:1 | AAA |
+| Quiz type badge text | `--color-kind-quiz-fg` / `--color-kind-quiz-bg` | 8.69:1 | AAA |
+| Quiz type badge border | `--color-kind-quiz-border` / `--color-white` | 5.93:1 | AAA (UI component) |
+| Flashcards type badge text | `--color-kind-flashcards-fg` / `--color-kind-flashcards-bg` | 8.33:1 | AAA |
+| Flashcards type badge border | `--color-kind-flashcards-border` / `--color-white` | 5.47:1 | AAA (UI component) |
+| Canvas type badge text | `--color-kind-canvas-fg` / `--color-kind-canvas-bg` | 10.13:1 | AAA |
+| Canvas type badge border | `--color-kind-canvas-border` / `--color-white` | 7.94:1 | AAA (UI component) |
+| Assignment type badge text | `--color-kind-assignment-fg` / `--color-kind-assignment-bg` | 8.01:1 | AAA |
+| Assignment type badge border | `--color-kind-assignment-border` / `--color-white` | 5.17:1 | AAA (UI component) |
 
 Feedback states pair each color with an icon and a visible text label. No navy element is placed on a navy background.
 

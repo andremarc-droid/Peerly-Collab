@@ -7,6 +7,7 @@ import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { resolveListStatus } from '../../shared/ui/listState'
 import { formatDue, formatGrade, formatPoints, turnInState, turnInStateLabel } from './format'
+import { AssignmentTypeBadge } from '../quizzes/QuizTypeBadge'
 import { subscribeToAssignments, subscribeToMyTurnIns } from './services'
 import type { AssignmentWithId, TurnInWithId } from './types'
 import '../modules/modules.css'
@@ -44,7 +45,7 @@ export function StudentAssignmentsSection({ classId, studentId }: { classId: str
         <DataCard
           title={item.title}
           meta={`${formatDue(item.dueAt)} · ${formatPoints(item.points)}${item.attachments.length ? ` · ${item.attachments.length} ${item.attachments.length === 1 ? 'file' : 'files'}` : ''}`}
-          badge={<Badge>{label}</Badge>}
+          badge={<div className="flex flex-wrap gap-2"><AssignmentTypeBadge /><Badge>{label}</Badge></div>}
           actions={<Button to={`/student/classes/${classId}/assignments/${item.id}`} variant="secondary">{state === 'assigned' || state === 'missing' ? 'Open and turn in' : 'Open'}<span className="sr-only"> {item.title}</span></Button>}
         >
           {item.instructions ? <p className="m-0 text-sm text-navy-800-72 line-clamp-2">{item.instructions}</p> : null}

@@ -23,7 +23,7 @@ import {
   unpublishQuiz,
   type QuizRecord,
 } from '../quizzes/services'
-import { quizModeLabel } from '../quizzes/types'
+import { QuizTypeBadge } from '../quizzes/QuizTypeBadge'
 import type { ClassWithId } from './types'
 import { copyQuizToClass } from './services/quizService'
 import { canvasBoardStatus } from './classActivities'
@@ -150,9 +150,9 @@ export function ClassActivityList({
               title={quiz.title || 'Untitled quiz'}
               meta={meta}
               badge={
-                <div className="flex gap-2">
-                  <Badge>{quiz.status}</Badge>
-                  <Badge>{quizModeLabel(quiz.mode)}</Badge>
+                <div className="flex flex-wrap gap-2">
+                  <Badge>{quiz.status[0].toUpperCase() + quiz.status.slice(1)}</Badge>
+                  <QuizTypeBadge mode={quiz.mode} />
                   {isCanvas && (
                     <Badge>{quiz.boardKind === 'blank' ? 'You grade' : 'Auto-graded'}</Badge>
                   )}

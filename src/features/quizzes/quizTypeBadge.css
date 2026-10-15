@@ -24,3 +24,9 @@
   background: var(--color-kind-canvas-bg);
   border-color: var(--color-kind-canvas-border);
 }
+
+.badge.badge--kind-assignment {
+  color: var(--color-kind-assignment-fg);
+  background: var(--color-kind-assignment-bg);
+  border-color: var(--color-kind-assignment-border);
+}

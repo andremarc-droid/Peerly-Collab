@@ -4,7 +4,6 @@ import { Link, useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
 import { Alert } from '../../shared/ui/Alert'
-import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { DataCard } from '../../shared/ui/DataCard'
 import { EmptyState } from '../../shared/ui/EmptyState'
@@ -15,8 +14,8 @@ import { watchClass } from '../classes/services/classService'
 import { listMyEnrollments } from '../classes/services/joinService'
 import { watchPublishedQuizzesForClass } from '../classes/services/quizService'
 import type { ClassWithId, EnrollmentWithId } from '../classes/types'
+import { QuizTypeBadge } from '../quizzes/QuizTypeBadge'
 import type { QuizRecord } from '../quizzes/services/quizService'
-import { quizModeLabel } from '../quizzes/types'
 import { ResourceEmbed } from './ResourceEmbed'
 import { buildDriveEmbedUrl, buildDriveOpenUrl, buildYouTubeEmbedUrl } from './links'
 import { subscribeToModule, subscribeToResources } from './services'
@@ -405,7 +404,7 @@ function StudentModuleDetail({ classId, moduleId }: { classId: string; moduleId:
                   key={quiz.id}
                   title={quiz.title}
                   meta={`${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}`}
-                  badge={<Badge>{quizModeLabel(quiz.mode)}</Badge>}
+                  badge={<QuizTypeBadge mode={quiz.mode} />}
                   actions={
                     <Button to={`/student/quizzes/${quiz.id}`} variant="secondary">
                       Start quiz

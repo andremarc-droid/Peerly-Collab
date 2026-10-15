@@ -209,7 +209,7 @@ describe('Canvas Tab and Class Page Integration', () => {
     vi.clearAllMocks()
   })
 
-  it('renders tabs in order Modules, Quizzes, Canvas, People, Settings with count badges', async () => {
+  it('renders tabs in order Modules, Assignments, Quizzes, Canvas, People, Settings with count badges', async () => {
     renderWithProviders(
       <Routes>
         <Route path="/instructor/classes/:classId" element={<ClassPage />} />
@@ -223,10 +223,11 @@ describe('Canvas Tab and Class Page Integration', () => {
 
     // 1 quiz + 1 flashcard = 2 quizzes; 2 canvas activities
     expect(labels[0]).toMatch(/Modules/)
-    expect(labels[1]).toMatch(/Quizzes\s*2\s*2 items/)
-    expect(labels[2]).toMatch(/Canvas\s*2\s*2 items/)
-    expect(labels[3]).toMatch(/People\s*12\s*12 items/)
-    expect(labels[4]).toMatch(/Settings/)
+    expect(labels[1]).toMatch(/Assignments/)
+    expect(labels[2]).toMatch(/Quizzes\s*2\s*2 items/)
+    expect(labels[3]).toMatch(/Canvas\s*2\s*2 items/)
+    expect(labels[4]).toMatch(/People\s*12\s*12 items/)
+    expect(labels[5]).toMatch(/Settings/)
 
     // Stat tile should show honest combined activities count
     expect(screen.getByText('Activities')).toBeInTheDocument()
