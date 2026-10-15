@@ -31,7 +31,7 @@ describe('QuizTypeBadge', () => {
     const classes = (['quiz', 'flashcards', 'canvas', 'assignment'] as const).map((mode) => {
       const { unmount } = render(<QuizTypeBadge mode={mode} />)
       const label = mode === 'assignment' ? 'Assignment' : quizModeLabel(mode)
-      const found = [...screen.getByText(label).classList].find((name) => name.startsWith('badge--kind-'))
+      const found = Array.from(screen.getByText(label).classList).find((name) => name.startsWith('badge--kind-'))
       unmount()
       return found
     })
