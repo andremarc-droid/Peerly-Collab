@@ -62,7 +62,9 @@ const reason = (error: unknown): LessonGenerationFailure => error instanceof AiE
 const retryAfter = (error: unknown): number | undefined => error instanceof AiError && error.retryAfterSeconds ? error.retryAfterSeconds : undefined
 
 /** Gap between lesson requests so a plan stays inside Groq's per-minute token budget. Skipped when a custom `complete` is supplied (tests). */
-const PAUSE_MS = 6_000
+// Groq counts the prompt plus max_tokens (about 3,000 per lesson) against the model's per-minute budget (8,000 on the free tier),
+// so roughly 20 seconds between lessons stays inside it. Lower this if the account moves to a paid Groq tier.
+const PAUSE_MS = 20_000
 /** Longest rate-limit wait that is retried automatically; longer waits are reported to the user instead. */
 const MAX_AUTO_WAIT_SECONDS = 60
 const DEFAULT_AUTO_WAIT_SECONDS = 20
@@ -79,16 +81,17 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
 /** Lessons are written by their own text-only model (VITE_GROQ_LESSON_MODEL); every other AI feature keeps VITE_GROQ_MODEL. */
 const lessonComplete: AiComplete = (prompt, signal, settings) => aiComplete(prompt, { signal, maxTokens: settings?.maxTokens, temperature: settings?.temperature, model: getGroqLessonModel() })
 
+/** How many times one lesson is retried after a rate limit. Each retry waits as long as the AI service asked. */
+const MAX_RATE_LIMIT_RETRIES = 4
+
 async function generateOne(run: () => Promise<Omit<LessonRecord, 'updatedAt'>>, paced: boolean, signal?: AbortSignal): Promise<Omit<LessonRecord, 'updatedAt'>> {
-  try { return await run() } catch (error) {
-    if (paced && error instanceof AiError && error.reason === 'rate-limit') {
-      const seconds = error.retryAfterSeconds ?? DEFAULT_AUTO_WAIT_SECONDS
-      if (seconds <= MAX_AUTO_WAIT_SECONDS) {
-        await wait((seconds + 1) * 1000, signal)
-        return run()
-      }
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await run() } catch (error) {
+      const limited = paced && error instanceof AiError && error.reason === 'rate-limit' && attempt < MAX_RATE_LIMIT_RETRIES
+      const seconds = error instanceof AiError ? (error.retryAfterSeconds ?? DEFAULT_AUTO_WAIT_SECONDS) : 0
+      if (!limited || seconds > MAX_AUTO_WAIT_SECONDS || signal?.aborted) throw error
+      await wait((seconds + 1) * 1000, signal)
     }
-    throw error
   }
 }
 
