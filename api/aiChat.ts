@@ -103,6 +103,21 @@ async function verifyAuthToken(token: string): Promise<DecodedIdToken> {
   return decodedToken
 }
 
+/**
+ * Why a Firebase ID token was rejected, in a form that is safe to show: a fixed label, never the raw error message.
+ * 'wrong-firebase-project' means the server's service account belongs to a different Firebase project than the web app.
+ */
+export function authFailureReason(err: unknown): string {
+  const code = typeof (err as { code?: unknown } | null)?.code === 'string' ? (err as { code: string }).code : ''
+  const message = err instanceof Error ? err.message : ''
+  if (/incorrect "(aud|iss)"/i.test(message)) return 'wrong-firebase-project'
+  if (code === 'auth/id-token-expired') return 'token-expired'
+  if (code === 'auth/id-token-revoked') return 'token-revoked'
+  if (code === 'auth/user-disabled') return 'user-disabled'
+  if (code === 'auth/insufficient-permission' || /permission|identitytoolkit|not been used|disabled/i.test(message)) return 'service-account-permission'
+  return code.replace(/^auth\//, '') || 'unknown'
+}
+
 async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
     let data = ''
@@ -170,6 +185,8 @@ export default async function handler(
       res.end(JSON.stringify({
         error: isAnon ? 'Anonymous accounts are not permitted for AI services.' : 'Authentication failed. Please sign in again.',
         code: isAnon ? 'auth/permission-denied' : 'auth/unauthenticated',
+        // A short machine-readable cause (never the raw error text) so a rejected sign-in can be diagnosed from the browser's Network tab.
+        reason: isAnon ? 'anonymous' : authFailureReason(err),
       }))
       return
     }
