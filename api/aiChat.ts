@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import type { DecodedIdToken } from 'firebase-admin/auth'
+import { X509Certificate, createPublicKey, createVerify } from 'node:crypto'
 
 export const ALLOWED_MODELS = ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b'] as const
 export type AllowedModel = (typeof ALLOWED_MODELS)[number]
@@ -95,9 +96,104 @@ async function ensureFirebase() {
   firebaseInitialized = true
 }
 
+/** Errors that mean a library could not be LOADED on this server (as opposed to the token being bad). */
+function isModuleLoadError(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code
+  return code === 'ERR_REQUIRE_ESM' || code === 'ERR_REQUIRE_ASYNC_MODULE' || code === 'ERR_MODULE_NOT_FOUND' || code === 'ERR_PACKAGE_PATH_NOT_EXPORTED'
+}
+
+/** A token that failed verification. `reason` is a fixed label that is safe to send to the browser. */
+export class TokenError extends Error {
+  readonly reason: string
+  constructor(reason: string, message: string) {
+    super(message)
+    this.name = 'TokenError'
+    this.reason = reason
+  }
+}
+
+const GOOGLE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
+let certCache: { keys: Record<string, string>; expiresAtMs: number } | null = null
+
+async function googleCerts(nowMs: number): Promise<Record<string, string>> {
+  if (certCache && certCache.expiresAtMs > nowMs) return certCache.keys
+  const response = await fetch(GOOGLE_CERTS_URL)
+  if (!response.ok) throw new TokenError('certs-unavailable', `Google signing keys could not be fetched (${response.status}).`)
+  const keys = (await response.json()) as Record<string, string>
+  const maxAge = Number(/max-age=(\d+)/.exec(response.headers.get('cache-control') ?? '')?.[1] ?? 3600)
+  certCache = { keys, expiresAtMs: nowMs + maxAge * 1000 }
+  return keys
+}
+
+/**
+ * Checks a Firebase ID token the way Firebase documents it: RS256 signature against Google's published keys, then the
+ * expiry, audience (this project), issuer and subject claims. Uses only Node's built-in crypto, no extra libraries.
+ */
+export function verifyFirebaseTokenWithKeys(
+  token: string,
+  keys: Record<string, string>,
+  projectId: string,
+  nowMs: number,
+): Record<string, unknown> & { uid: string } {
+  const [headerPart, payloadPart, signaturePart, extra] = token.split('.')
+  if (!headerPart || !payloadPart || !signaturePart || extra !== undefined) throw new TokenError('malformed-token', 'The token is not a JWT.')
+  let header: { alg?: unknown; kid?: unknown }
+  let claims: Record<string, unknown>
+  try {
+    header = JSON.parse(Buffer.from(headerPart, 'base64url').toString('utf8')) as { alg?: unknown; kid?: unknown }
+    claims = JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8')) as Record<string, unknown>
+  } catch {
+    throw new TokenError('malformed-token', 'The token could not be decoded.')
+  }
+  if (header.alg !== 'RS256') throw new TokenError('bad-algorithm', 'The token is not signed with RS256.')
+  const pem = typeof header.kid === 'string' ? keys[header.kid] : undefined
+  if (!pem) throw new TokenError('unknown-signing-key', 'The token was signed with an unknown key.')
+  let signatureValid = false
+  try {
+    const publicKey = pem.includes('BEGIN CERTIFICATE') ? new X509Certificate(pem).publicKey : createPublicKey(pem)
+    signatureValid = createVerify('RSA-SHA256').update(`${headerPart}.${payloadPart}`).verify(publicKey, Buffer.from(signaturePart, 'base64url'))
+  } catch {
+    signatureValid = false
+  }
+  if (!signatureValid) throw new TokenError('bad-signature', 'The token signature is not valid.')
+
+  const nowSec = Math.floor(nowMs / 1000)
+  if (typeof claims.exp !== 'number' || claims.exp <= nowSec) throw new TokenError('token-expired', 'The token has expired.')
+  if (typeof claims.iat !== 'number' || claims.iat > nowSec + 60) throw new TokenError('token-not-yet-valid', 'The token was issued in the future.')
+  if (typeof claims.auth_time !== 'number' || claims.auth_time > nowSec + 60) throw new TokenError('token-not-yet-valid', 'The token auth_time is in the future.')
+  if (claims.aud !== projectId || claims.iss !== `https://securetoken.google.com/${projectId}`) throw new TokenError('wrong-firebase-project', 'The token belongs to a different Firebase project.')
+  if (typeof claims.sub !== 'string' || claims.sub.length === 0 || claims.sub.length > 128) throw new TokenError('bad-subject', 'The token has no valid subject.')
+  return { ...claims, uid: claims.sub }
+}
+
+async function verifyFirebaseIdTokenDirect(token: string): Promise<DecodedIdToken> {
+  const projectId = serverProjectId ?? process.env.FIREBASE_PROJECT_ID?.trim() ?? process.env.VITE_FIREBASE_PROJECT_ID?.trim()
+  if (!projectId) throw new TokenError('server-project-unknown', 'The server does not know its Firebase project id.')
+  const nowMs = Date.now()
+  try {
+    return verifyFirebaseTokenWithKeys(token, await googleCerts(nowMs), projectId, nowMs) as unknown as DecodedIdToken
+  } catch (err) {
+    // Google rotates its signing keys: if this key id is new, fetch the list once more.
+    if (err instanceof TokenError && err.reason === 'unknown-signing-key' && certCache) {
+      certCache = null
+      return verifyFirebaseTokenWithKeys(token, await googleCerts(nowMs), projectId, nowMs) as unknown as DecodedIdToken
+    }
+    throw err
+  }
+}
+
 async function verifyAuthToken(token: string): Promise<DecodedIdToken> {
-  const { getAuth } = await import('firebase-admin/auth')
-  const decodedToken = await getAuth().verifyIdToken(token, true)
+  let decodedToken: DecodedIdToken
+  try {
+    const { getAuth } = await import('firebase-admin/auth')
+    decodedToken = await getAuth().verifyIdToken(token, true)
+  } catch (err) {
+    // firebase-admin's token checker failed to LOAD on this server (not a bad token), so check the signature directly.
+    // This path cannot detect tokens revoked after they were issued; they stay valid until they expire (at most an hour).
+    if (!isModuleLoadError(err)) throw err
+    console.warn('firebase-admin/auth could not load; verifying the ID token directly:', err instanceof Error ? err.message : String(err))
+    decodedToken = await verifyFirebaseIdTokenDirect(token)
+  }
   if (decodedToken.firebase?.sign_in_provider === 'anonymous') {
     const err = new Error('Anonymous accounts are not permitted for AI services.')
     ;(err as unknown as { code: string }).code = 'auth/anonymous-not-allowed'
@@ -111,6 +207,7 @@ async function verifyAuthToken(token: string): Promise<DecodedIdToken> {
  * 'wrong-firebase-project' means the server's service account belongs to a different Firebase project than the web app.
  */
 export function authFailureReason(err: unknown): string {
+  if (err instanceof TokenError) return err.reason
   const code = typeof (err as { code?: unknown } | null)?.code === 'string' ? (err as { code: string }).code : ''
   const message = err instanceof Error ? err.message : ''
   if (/incorrect "(aud|iss)"/i.test(message)) return 'wrong-firebase-project'
@@ -191,6 +288,7 @@ export default async function handler(
         // A short machine-readable cause (never the raw error text) so a rejected sign-in can be diagnosed from the browser's Network tab.
         reason: isAnon ? 'anonymous' : authFailureReason(err),
         serverProject: serverProjectId,
+        serverNode: process.version,
       }))
       return
     }
@@ -417,6 +515,11 @@ export default async function handler(
     console.error('[aiChat error]:', err)
     res.statusCode = 500
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Internal server error' }))
+    res.end(JSON.stringify({
+      error: 'Internal server error',
+      // Fixed labels only, so a failing server can be diagnosed from the browser without leaking details.
+      reason: typeof (err as { code?: unknown } | null)?.code === 'string' ? (err as { code: string }).code : 'unknown',
+      serverNode: process.version,
+    }))
   }
 }
