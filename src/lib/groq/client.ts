@@ -69,6 +69,66 @@ function parseWaitFromMessage(message: string): number | null {
   return seconds > 0 ? Math.ceil(seconds) : null
 }
 
+/** Reads the visible claims of a Firebase ID token for debugging. The token itself and its signature are never logged. */
+function describeToken(token: string | null): { present: boolean; projectAud?: string; issuer?: string; signInProvider?: string; expiresAt?: string; expired?: boolean; unreadable?: true } {
+  if (!token) return { present: false }
+  try {
+    const part = (token.split('.')[1] ?? '').replace(/-/g, '+').replace(/_/g, '/')
+    const claims = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))) as { aud?: unknown; iss?: unknown; exp?: unknown; firebase?: { sign_in_provider?: unknown } }
+    const expMs = typeof claims.exp === 'number' ? claims.exp * 1000 : null
+    return {
+      present: true,
+      projectAud: typeof claims.aud === 'string' ? claims.aud : undefined,
+      issuer: typeof claims.iss === 'string' ? claims.iss : undefined,
+      signInProvider: typeof claims.firebase?.sign_in_provider === 'string' ? claims.firebase.sign_in_provider : undefined,
+      expiresAt: expMs ? new Date(expMs).toISOString() : undefined,
+      expired: expMs ? expMs < Date.now() : undefined,
+    }
+  } catch {
+    return { present: true, unreadable: true }
+  }
+}
+
+/**
+ * Prints one console group whenever the AI proxy rejects a request, with everything needed to see why:
+ * where the request went, which Firebase project the sign-in token belongs to, what the server answered, and a diagnosis.
+ */
+async function logAiChatFailure(input: string, init: RequestInit, response: Response): Promise<void> {
+  try {
+    const header = new Headers(init.headers as HeadersInit).get('Authorization')
+    const token = header?.startsWith('Bearer ') ? header.slice(7) : null
+    const tokenInfo = describeToken(token)
+    const raw = await response.clone().text()
+    let body: unknown = raw.slice(0, 500)
+    try { body = JSON.parse(raw) } catch { /* Not JSON: probably not our handler. */ }
+    const json = typeof body === 'object' && body !== null ? (body as { reason?: unknown; serverProject?: unknown; code?: unknown }) : null
+    const reason = typeof json?.reason === 'string' ? json.reason : null
+    const serverProject = typeof json?.serverProject === 'string' ? json.serverProject : null
+    const clientProject = (import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined) ?? '(VITE_FIREBASE_PROJECT_ID not set)'
+
+    let diagnosis: string
+    if (response.status !== 401 && response.status !== 403) diagnosis = `The AI proxy answered ${response.status}. See the server response below.`
+    else if (!tokenInfo.present) diagnosis = 'No sign-in token was sent. This tab thinks you are signed out: sign out and sign in again.'
+    else if (tokenInfo.expired) diagnosis = 'The token is already expired. Reload the page or sign in again.'
+    else if (!json) diagnosis = 'The 401 did not come from the aiChat handler (its body is not the handler JSON). Check the endpoint URL below and Vercel Deployment Protection.'
+    else if (tokenInfo.projectAud && serverProject && tokenInfo.projectAud !== serverProject) diagnosis = `PROJECT MISMATCH: your token is for "${tokenInfo.projectAud}" but the server's service account is for "${serverProject}". Put a service account key from "${tokenInfo.projectAud}" into FIREBASE_SERVICE_ACCOUNT on Vercel and redeploy.`
+    else if (reason === 'wrong-firebase-project') diagnosis = `The server's service account belongs to another Firebase project than "${tokenInfo.projectAud ?? clientProject}". Replace FIREBASE_SERVICE_ACCOUNT on Vercel and redeploy.`
+    else if (reason === 'service-account-permission') diagnosis = 'The server service account may not check sign-ins: enable the Identity Toolkit API and give it a Firebase Authentication role.'
+    else if (reason) diagnosis = `The server rejected the token (reason: ${reason}).`
+    else diagnosis = 'The server gave no reason, so the deployed server is probably older than this code. Redeploy the latest commit and try again.'
+
+    console.group(`[aiChat debug] HTTP ${response.status} from the AI proxy`)
+    console.log('DIAGNOSIS:', diagnosis)
+    console.log('endpoint:', input, '| page origin:', typeof window !== 'undefined' ? window.location.origin : '(none)')
+    console.log('client Firebase project:', clientProject)
+    console.log('sign-in token:', tokenInfo)
+    console.log('server response:', body)
+    console.groupEnd()
+  } catch {
+    // Debug output must never break the request itself.
+  }
+}
+
 async function toGroqError(response: Response): Promise<GroqError> {
   let detail = ''
   try {
@@ -135,7 +195,17 @@ export async function createChatCompletion(options: ChatCompletionOptions): Prom
   const hasImages = options.messages.some((message) => Array.isArray(message.content) && message.content.some((part) => part.type === 'image_url'))
   // A text-only model (such as gpt-oss) cannot read images, so requests that contain images use the vision model.
   const config = hasImages && !modelReadsImages(configured.model) ? { ...configured, model: getGroqVisionModel() } : configured
-  const send: GroqFetch = options.fetchImpl ?? ((input, init) => fetch(input, init))
+  const send: GroqFetch = options.fetchImpl ?? (async (input, init) => {
+    let response: Response
+    try {
+      response = await fetch(input, init)
+    } catch (error) {
+      if (!isAbortError(error)) console.error('[aiChat debug] The request never reached the AI proxy:', input, error)
+      throw error
+    }
+    if (!response.ok) await logAiChatFailure(input, init, response)
+    return response
+  })
 
   const body: Record<string, unknown> = {
     model: config.model,

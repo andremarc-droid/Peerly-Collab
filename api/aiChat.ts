@@ -63,6 +63,8 @@ export async function checkUserRateLimit(
 }
 
 let firebaseInitialized = false
+/** The Firebase project of the service account this server started with. Reported on a rejected sign-in so a mismatch is obvious. */
+let serverProjectId: string | null = null
 
 async function ensureFirebase() {
   if (firebaseInitialized) return
@@ -79,6 +81,7 @@ async function ensureFirebase() {
     try {
       const jsonStr = clean.startsWith('{') ? clean : Buffer.from(clean, 'base64').toString('utf-8')
       const credentials = JSON.parse(jsonStr) as Record<string, unknown>
+      serverProjectId = typeof credentials.project_id === 'string' ? credentials.project_id : null
       if (typeof credentials.private_key === 'string') {
         credentials.private_key = credentials.private_key.replace(/\\n/g, '\n')
       }
@@ -187,6 +190,7 @@ export default async function handler(
         code: isAnon ? 'auth/permission-denied' : 'auth/unauthenticated',
         // A short machine-readable cause (never the raw error text) so a rejected sign-in can be diagnosed from the browser's Network tab.
         reason: isAnon ? 'anonymous' : authFailureReason(err),
+        serverProject: serverProjectId,
       }))
       return
     }
