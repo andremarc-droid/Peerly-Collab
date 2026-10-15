@@ -1165,12 +1165,20 @@ service cloud.firestore {
           ? get(deckMemberPath(request.auth.uid)).data.get('role', '')
           : '';
       }
+      // Class decks stay limited to the class owner and active members. A personal deck kept in its owner's
+      // uid-scoped workspace (classId == ownerId) has no class, so invite holders are allowed there instead.
+      function deckClassOk() {
+        return isClassOwner(classId) || isActiveMember(classId)
+          || (exists(deckPath())
+            && get(deckPath()).data.get('kind', '') == 'personal'
+            && get(deckPath()).data.get('ownerId', '') == classId);
+      }
       function isDeckMember() {
-        return signedIn() && exists(deckPath()) && (isClassOwner(classId) || isActiveMember(classId))
+        return signedIn() && exists(deckPath()) && deckClassOk()
           && deckMemberRole() in ['viewer', 'editor'];
       }
       function isDeckEditor() {
-        return signedIn() && (isClassOwner(classId) || isActiveMember(classId))
+        return signedIn() && deckClassOk()
           && deckMemberRole() == 'editor';
       }
 
@@ -1256,7 +1264,7 @@ service cloud.firestore {
           && memberUid == request.auth.uid
           && exists(deckPath())
           && !isDeckOwner()
-          && (isClassOwner(classId) || isActiveMember(classId))
+          && deckClassOk()
           && validDeckMember(request.resource.data);
         allow update: if isDeckOwner()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
@@ -1278,7 +1286,7 @@ service cloud.firestore {
         }
 
         allow get: if signedIn() && exists(deckPath()) && token.size() >= 32
-          && (isClassOwner(classId) || isActiveMember(classId));
+          && deckClassOk();
         allow list: if isDeckOwner();
         allow create: if isDeckOwner() && token.size() >= 32 && validDeckInvite(request.resource.data);
         allow update: if isDeckOwner()
