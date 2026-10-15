@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Layout, Plus, StickyNote } from 'lucide-react'
+import { Layout, Plus, StickyNote, Trash2 } from 'lucide-react'
 import { AppShell } from '../../app/AppShell'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Tabs } from '../../shared/ui/Tabs'
 import { Button } from '../../shared/ui/Button'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Alert } from '../../shared/ui/Alert'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -50,6 +51,8 @@ export function LearningHubPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [canvasToDelete, setCanvasToDelete] = useState<LearningCanvasWithId | null>(null)
+  const [deletingCanvas, setDeletingCanvas] = useState(false)
   const [createDeckOpen, setCreateDeckOpen] = useState(false)
   const [createSeed, setCreateSeed] = useState<CreateSeed | null>(null)
   const [studyTarget, setStudyTarget] = useState<{ deck: FlashcardDeckWithId; mode: 'flashcards' | 'quiz' | 'test' } | null>(null)
@@ -97,6 +100,19 @@ export function LearningHubPage() {
     showToast('success', 'Study canvas created.')
     navigate(`/${role}/classes/${encodeURIComponent(user.uid)}/learning/${encodeURIComponent(id)}`)
   }
+  const removeCanvas = async () => {
+    if (!canvasToDelete) return
+    setDeletingCanvas(true)
+    try {
+      await deleteCanvas(canvasToDelete.classId, canvasToDelete.id)
+      showToast('success', `“${canvasToDelete.title}” was deleted.`)
+      setCanvasToDelete(null)
+    } catch (cause) {
+      showToast('error', cause instanceof Error ? cause.message : 'The canvas could not be deleted.')
+    } finally {
+      setDeletingCanvas(false)
+    }
+  }
   const createNote = async ({ title, content }: { classId: string; title: string; content: string }) => {
     if (!user) return undefined
     const id = await createCanvas(user.uid, user.uid, { kind: 'personal', title, description: noteDescription(content), sourceCanvasId: 'note', initialContent: { nodes: [{ id: NOTE_NODE_ID, type: 'text', x: 0, y: 0, width: 380, height: 240, color: 'none', text: content.slice(0, NOTE_CONTENT_MAX) }] } })
@@ -123,11 +139,11 @@ export function LearningHubPage() {
     </div>
     if (tab === 'decks') return <>{deckError && <Alert tone="error" label="Could not load decks">{deckError}</Alert>}<FlashcardsTab decks={decks} classes={workspaceId ? [{ id: workspaceId, name: 'Personal workspace', isPersonalWorkspace: true }] : []} selectedClassId="all" role="student" error={deckError} onCreateDeck={() => setCreateDeckOpen(true)}/></>
     if (tab === 'notes') return <NotesTabContent notes={notes} classes={workspaceId ? [{ id: workspaceId, name: 'Personal workspace' }] : []} selectedClassId="all" role={role} onCreateNote={createNote} onDeleteNote={async (item) => { await deleteCanvas(item.classId, item.id) }} onViewInGraph={() => changeTab('canvases')} onMakeStudyMaterial={makeFromNote} sharedError={shared.error}/>
-    if (tab === 'canvases') return <div className="grid gap-4"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="m-0 text-xl font-bold text-navy-900">Your study canvases</h2><Button variant="primary" onClick={() => setCreateOpen(true)}><Plus size={16} aria-hidden="true"/>New canvas</Button></div>{loading ? <Skeleton className="h-24 rounded-2xl"/> : error ? <Alert tone="error" label="Could not load canvases">{error}</Alert> : boards.length ? <div className="grid gap-3">{boards.map((item) => <article key={`${item.classId}/${item.id}`} className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm"><h3 className="m-0 text-lg font-bold text-navy-900">{item.title}</h3><p className="mt-2 mb-4 text-base text-navy-900">{item.description || 'Study canvas'}</p><Button to={`/${role}/classes/${encodeURIComponent(item.classId)}/learning/${encodeURIComponent(item.id)}`} variant="secondary">Open canvas</Button></article>)}</div> : <EmptyState title="No canvases yet" description="Create a visual board to connect ideas and study materials." action={<Button variant="primary" onClick={() => setCreateOpen(true)}>Create canvas</Button>}/>}<SharedCanvasList items={shared.items} error={shared.error} role={role} selectedClassId="all"/></div>
+    if (tab === 'canvases') return <div className="grid gap-4"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="m-0 text-xl font-bold text-navy-900">Your study canvases</h2><Button variant="primary" onClick={() => setCreateOpen(true)}><Plus size={16} aria-hidden="true"/>New canvas</Button></div>{loading ? <Skeleton className="h-24 rounded-2xl"/> : error ? <Alert tone="error" label="Could not load canvases">{error}</Alert> : boards.length ? <div className="grid gap-3">{boards.map((item) => <article key={`${item.classId}/${item.id}`} className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm"><h3 className="m-0 text-lg font-bold text-navy-900">{item.title}</h3><p className="mt-2 mb-4 text-base text-navy-900">{item.description || 'Study canvas'}</p><div className="flex flex-wrap gap-2"><Button to={`/${role}/classes/${encodeURIComponent(item.classId)}/learning/${encodeURIComponent(item.id)}`} variant="secondary">Open canvas</Button>{item.ownerId === user?.uid && <Button type="button" variant="secondary" aria-label={`Delete ${item.title}`} disabled={deletingCanvas} onClick={() => setCanvasToDelete(item)}><Trash2 size={16} aria-hidden="true"/> Delete</Button>}</div></article>)}</div> : <EmptyState title="No canvases yet" description="Create a visual board to connect ideas and study materials." action={<Button variant="primary" onClick={() => setCreateOpen(true)}>Create canvas</Button>}/>}<SharedCanvasList items={shared.items} error={shared.error} role={role} selectedClassId="all"/></div>
     if (tab === 'lessons') return <Suspense fallback={<Skeleton className="h-40 rounded-2xl"/>}><LessonsTab/></Suspense>
     if (tab === 'games') return <Suspense fallback={<Skeleton className="h-40 rounded-2xl"/>}><GamesTab/></Suspense>
     return <Suspense fallback={<Skeleton className="h-40 rounded-2xl"/>}><GroupsTab/></Suspense>
   }
 
-  return <TutorFocusProvider><AppShell><PageHeader eyebrow="STUDY & KNOWLEDGE" title="Learning" subtitle="Build a library and keep your learning moving." action={<LearningInviteCodeInput/>}/><main className="app-shell__content"><Tabs key={activeTab} label="Learning sections" tabs={tabNames.map((tab) => ({ label: labels[tab], content: tabContent(tab) }))} defaultIndex={tabNames.indexOf(activeTab)} onChange={(index) => changeTab(tabNames[index] ?? 'home')}/></main><TutorDock defaultOpen={params.get('tab') === 'tutor' || params.has('thread')}><ChatbotTab compact/></TutorDock><CreateLearningCanvasDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={createCanvasItem} classes={workspaceId ? [{ id: workspaceId, name: 'Personal workspace' }] : []} defaultClassId={workspaceId}/>{createDeckOpen && <Suspense fallback={<div role="status" className="text-base text-navy-900">Loading create flow…</div>}><CreateLearningFlow seed={createSeed ?? undefined} onClose={() => setCreateDeckOpen(false)} onOpenLesson={(plan) => { setCreateDeckOpen(false); navigate(`/${role}/learning?tab=lessons&plan=${encodeURIComponent(plan.id)}`) }} onStudy={(deck, mode) => { setCreateDeckOpen(false); setStudyTarget({ deck, mode }) }}/></Suspense>}{studyTarget && <FlashcardStudyDialog deck={studyTarget.deck} initialMode={studyTarget.mode} onClose={() => setStudyTarget(null)}/>}</AppShell></TutorFocusProvider>
+  return <TutorFocusProvider><AppShell><PageHeader eyebrow="STUDY & KNOWLEDGE" title="Learning" subtitle="Build a library and keep your learning moving." action={<LearningInviteCodeInput/>}/><main className="app-shell__content"><Tabs key={activeTab} label="Learning sections" tabs={tabNames.map((tab) => ({ label: labels[tab], content: tabContent(tab) }))} defaultIndex={tabNames.indexOf(activeTab)} onChange={(index) => changeTab(tabNames[index] ?? 'home')}/></main><TutorDock defaultOpen={params.get('tab') === 'tutor' || params.has('thread')}><ChatbotTab compact/></TutorDock><CreateLearningCanvasDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreate={createCanvasItem} classes={workspaceId ? [{ id: workspaceId, name: 'Personal workspace' }] : []} defaultClassId={workspaceId}/><ConfirmDialog open={canvasToDelete !== null} onClose={() => setCanvasToDelete(null)} onConfirm={() => void removeCanvas()} title="Delete this canvas?" description={canvasToDelete ? `“${canvasToDelete.title}” and everything on it will be permanently deleted, including any sharing links and collaborators.` : ''} confirmLabel="Delete canvas" busy={deletingCanvas} closeOnConfirm={false}/>{createDeckOpen && <Suspense fallback={<div role="status" className="text-base text-navy-900">Loading create flow…</div>}><CreateLearningFlow seed={createSeed ?? undefined} onClose={() => setCreateDeckOpen(false)} onOpenLesson={(plan) => { setCreateDeckOpen(false); navigate(`/${role}/learning?tab=lessons&plan=${encodeURIComponent(plan.id)}`) }} onStudy={(deck, mode) => { setCreateDeckOpen(false); setStudyTarget({ deck, mode }) }}/></Suspense>}{studyTarget && <FlashcardStudyDialog deck={studyTarget.deck} initialMode={studyTarget.mode} onClose={() => setStudyTarget(null)}/>}</AppShell></TutorFocusProvider>
 }

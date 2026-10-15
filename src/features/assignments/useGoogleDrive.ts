@@ -14,7 +14,7 @@ export interface GoogleDriveApi {
   connect: (selectAccount?: boolean) => Promise<DriveAccount>
   /** True when a valid Google token is already held in memory, so no sign-in window is needed. */
   hasSession: () => boolean
-  pick: (max: number) => Promise<DriveFile[]>
+  pick: (max: number, mode?: 'browse' | 'upload') => Promise<DriveFile[]>
   /** Saves files from the person's computer into their own Google Drive and returns the stored references. */
   upload: (files: File[]) => Promise<UploadResult>
   shareWithAnyone: (files: DriveFile[]) => Promise<ShareFailure[]>
@@ -46,7 +46,7 @@ export function useGoogleDrive(): GoogleDriveApi {
       busy: pending > 0,
       connect: (selectAccount = false) => track(() => connectDriveAccount(config(), selectAccount)),
       hasSession: () => getCachedToken() !== null,
-      pick: (max) => track(() => pickDriveFiles(config(), max)),
+      pick: (max, mode) => track(() => pickDriveFiles(config(), max, mode)),
       upload: (files) => track(() => uploadDriveFiles(config(), files)),
       shareWithAnyone: (files) => track(() => shareFilesWithAnyone(config(), files)),
       shareWithUser: (files, email) => track(() => shareFilesWithUser(config(), files, email)),

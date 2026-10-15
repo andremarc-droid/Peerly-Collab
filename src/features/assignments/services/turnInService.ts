@@ -26,7 +26,7 @@ export interface TurnInInput {
 /** Creates or replaces the student's single turn-in. The time is stamped by the server so it cannot be backdated. */
 export async function submitTurnIn(input: TurnInInput, db: Firestore = firestore): Promise<void> {
   const files = parseDriveFiles(input.files, MAX_TURN_IN_FILES)
-  if (files.length < 1) throw new Error('Add at least one file to turn in.')
+  // An empty list is allowed: the student confirmed they want to turn in without attaching anything.
   await setDoc(turnInRef(db, input.classId, input.assignmentId, input.studentId), {
     studentId: input.studentId,
     studentName: input.studentName.trim().slice(0, 120) || 'Student',

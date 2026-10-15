@@ -60,7 +60,7 @@ export function AttachmentsSection({ files, drive, disabled = false, onChange }:
     {error && <Alert tone="error" label="Could not add files">{error}</Alert>}
     {warning && <Alert tone="warning" label="Some files are not shared">{warning} Open the file in Drive, choose Share, and allow “Anyone with the link” to view.</Alert>}
     {files.length > 0
-      ? <FileList files={files} label="Assignment materials" onRemove={(file) => void remove(file)} disabled={disabled || busy} />
+      ? <FileList files={files} label="Assignment materials" preview onRemove={(file) => void remove(file)} disabled={disabled || busy} />
       : <EmptyState title="No materials yet" description="Upload Word, PDF, Excel or slide files from your computer, or choose them from Google Drive. Students open them right inside the assignment." />}
     <p className="m-0 text-sm text-navy-800-72">Anyone with the link can view these files, so don’t attach anything private.</p>
   </SectionCard>

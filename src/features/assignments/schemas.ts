@@ -79,7 +79,6 @@ export function parseTurnIn(value: unknown): TurnInRecord {
   if (typeof v.studentName !== 'string' || v.studentName.length < 1 || v.studentName.length > 120) throw new Error('Invalid student name.')
   if (typeof v.classId !== 'string' || !v.classId) throw new Error('Invalid class.')
   const files = parseDriveFiles(v.files, MAX_TURN_IN_FILES)
-  if (files.length < 1) throw new Error('A turn-in needs at least one file.')
   if (!isTimestamp(v.turnedInAt)) throw new Error('Invalid turn-in time.')
   // Grading fields are absent until the instructor grades the work, so missing means "not graded".
   const grade = v.grade ?? null

@@ -8,21 +8,25 @@ import type { PickerInstance } from './googleTypes'
  * Opens Google's own file picker. Choosing a file in it is what grants this app access to that one file
  * (the drive.file scope), so we never list or read anything else in a person's Drive.
  */
-export async function pickDocuments(config: DriveConfig, token: string, options: { multiple: boolean }): Promise<PickerDocument[]> {
+export async function pickDocuments(config: DriveConfig, token: string, options: { multiple: boolean; mode?: 'browse' | 'upload' }): Promise<PickerDocument[]> {
   await loadGooglePicker()
   const picker = window.google?.picker
   if (!picker) throw new DriveError('script')
   return new Promise<PickerDocument[]>((resolve) => {
-    const browse = new picker.DocsView(picker.ViewId.DOCS).setIncludeFolders(true)
-    browse.setSelectFolderEnabled?.(false)
     const upload = new picker.DocsUploadView().setIncludeFolders(true)
     let builder = new picker.PickerBuilder()
-      .addView(browse)
-      .addView(upload)
+    if (options.mode === 'upload') {
+      // Upload-only: the picker opens straight on "upload from your computer", so no second click or file window is needed.
+      builder = builder.addView(upload).setTitle('Upload from your device')
+    } else {
+      const browse = new picker.DocsView(picker.ViewId.DOCS).setIncludeFolders(true)
+      browse.setSelectFolderEnabled?.(false)
+      builder = builder.addView(browse).addView(upload).setTitle('Choose files from Google Drive')
+    }
+    builder = builder
       .setOAuthToken(token)
       .setDeveloperKey(config.apiKey)
       .setAppId(config.appId)
-      .setTitle('Choose files from Google Drive')
     if (options.multiple) builder = builder.enableFeature(picker.Feature.MULTISELECT_ENABLED)
     const instance: PickerInstance = builder.setCallback((data) => {
       const action = data[picker.Response.ACTION]

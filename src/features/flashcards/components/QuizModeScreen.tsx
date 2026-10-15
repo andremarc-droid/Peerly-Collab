@@ -23,6 +23,8 @@ export function QuizModeScreen({ deck, progressKey, onComplete }: Props) {
   const [written, setWritten] = useState('')
   const [grading, setGrading] = useState(false)
   const [aiReason, setAiReason] = useState<string | null>(null)
+  // The summary only shows once the learner moves on, so the last answer and its feedback stay on screen until then.
+  const [showSummary, setShowSummary] = useState(false)
   const recordedRounds = useRef(new Set<string>())
   const cards = useMemo(() => deck.cards.map(({ id, front, back }) => ({ id, front, back })), [deck.cards])
   const key = progressKey ?? deckProgressKey(deck.classId, deck.id)
@@ -80,10 +82,15 @@ export function QuizModeScreen({ deck, progressKey, onComplete }: Props) {
   if (loading) return <p role="status" className="m-0 text-base text-navy-900">Preparing your quiz…</p>
   if (error) return <p role="alert" className="m-0 text-base text-navy-900">{error}</p>
   if (!session || session.questions.length === 0) return <p className="m-0 text-base text-navy-900">Add at least one card to this deck to start a quiz.</p>
-  if (quizSessionComplete(session)) return <section className="grid gap-3" aria-live="polite">
+  const isLast = session.index >= session.questions.length - 1
+  const advance = () => {
+    if (session.verdict === null || session.verdict === 'unsure') return
+    void markCard(session.verdict).then(() => { if (isLast) setShowSummary(true); else setSession(nextQuestion(session)) })
+  }
+  if (showSummary && quizSessionComplete(session)) return <section className="grid gap-3" aria-live="polite">
     <h3 className="m-0 text-lg font-bold text-navy-900">Quiz complete</h3>
     <p className="m-0 text-base text-navy-900">{session.correct} correct of {session.questions.length} · {session.missed.length} missed.</p>
-    {session.missed.length > 0 && <Button variant="primary" onClick={() => setSession(retryMissed(session))}>Retry missed</Button>}
+    {session.missed.length > 0 && <Button variant="primary" onClick={() => { setShowSummary(false); setSession(retryMissed(session)) }}>Retry missed</Button>}
     {onComplete && <Button variant="secondary" onClick={() => onComplete(session.correct, session.questions.length)}>Finish lesson quiz</Button>}
   </section>
 
@@ -91,11 +98,12 @@ export function QuizModeScreen({ deck, progressKey, onComplete }: Props) {
     {notice && <p className="m-0 rounded-xl border border-navy-900-30 bg-white p-3 text-base text-navy-900" role="status">{notice}</p>}
     <p className="m-0 text-sm text-navy-900">Round {session.round} · Question {session.index + 1} of {session.questions.length}</p>
     <h3 className="m-0 text-lg font-bold text-navy-900">{current?.prompt}</h3>
-    {current?.kind === 'multiple-choice' ? current.options?.map((option, index) => <Button key={`${current.id}-${option}`} variant="secondary" disabled={session.verdict !== null || grading} onClick={() => void submit(index)}>{option}</Button>) : <label className="grid gap-2 text-base text-navy-900">Your answer<textarea className="min-h-24 rounded-xl border border-navy-900-30 p-3 text-base focus:outline-none focus:ring-2 focus:ring-navy-800" value={written} onChange={event => setWritten(event.target.value)} disabled={session.verdict !== null || grading}/></label>}
+    {current?.kind === 'multiple-choice' ? current.options?.map((option, index) => <Button key={`${current.id}-${option}`} variant="secondary" disabled={session.verdict !== null || grading} onClick={() => void submit(index)}>{option}</Button>) : <label className="grid gap-2 text-base text-navy-900">Your answer<textarea className="min-h-24 rounded-xl border border-navy-900-30 p-3 text-base focus:outline-none focus:ring-2 focus:ring-navy-800" value={session.verdict !== null && typeof session.answer === 'string' ? session.answer : written} onChange={event => setWritten(event.target.value)} disabled={session.verdict !== null || grading}/></label>}
     {current?.kind === 'written' && session.verdict === null && <Button variant="primary" disabled={grading || written.trim().length === 0} onClick={() => void submit(written)}>{grading ? 'Checking…' : 'Check answer'}</Button>}
     {session.verdict && <div className="grid gap-3 rounded-2xl border border-navy-900-15 bg-white p-4" aria-live="polite">
       <p className="m-0 text-base font-semibold text-navy-900">{session.verdict === 'unsure' ? 'Needs self-grading' : session.verdict === 'correct' ? 'Correct' : 'Not quite'} · {current?.explanation}</p>
-      {session.verdict === 'unsure' ? <div className="grid gap-2"><p className="m-0 text-sm text-navy-900" role="status">AI grading {aiReason ?? 'unavailable'}; compare with the reference answer and self-grade.</p><div className="flex flex-wrap gap-2"><Button variant="primary" onClick={() => setSession(resolveSelfGrade(session, 'correct'))}>My answer was correct</Button><Button variant="secondary" onClick={() => setSession(resolveSelfGrade(session, 'incorrect'))}>My answer was incorrect</Button></div></div> : <Button variant="primary" onClick={() => { void markCard(session.verdict === 'correct' ? 'correct' : 'incorrect').then(() => setSession(nextQuestion(session))) }}>Next question</Button>}
+      {current?.kind === 'written' && typeof session.answer === 'string' && <div className="grid gap-1 text-base text-navy-900"><p className="m-0"><strong>Your answer:</strong> {session.answer}</p><p className="m-0"><strong>Reference answer:</strong> {current.answer}</p></div>}
+      {session.verdict === 'unsure' ? <div className="grid gap-2"><p className="m-0 text-sm text-navy-900" role="status">AI grading {aiReason ?? 'unavailable'}; compare with the reference answer and self-grade.</p><div className="flex flex-wrap gap-2"><Button variant="primary" onClick={() => setSession(resolveSelfGrade(session, 'correct'))}>My answer was correct</Button><Button variant="secondary" onClick={() => setSession(resolveSelfGrade(session, 'incorrect'))}>My answer was incorrect</Button></div></div> : <Button variant="primary" onClick={advance}>{isLast ? 'See results' : 'Next question'}</Button>}
     </div>}
   </section>
 }

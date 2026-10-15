@@ -38,10 +38,10 @@ export async function connectDriveAccount(config: DriveConfig, selectAccount = f
   return account
 }
 
-export async function pickDriveFiles(config: DriveConfig, max: number): Promise<DriveFile[]> {
+export async function pickDriveFiles(config: DriveConfig, max: number, mode: 'browse' | 'upload' = 'browse'): Promise<DriveFile[]> {
   if (max < 1) return []
   return withToken(config, async (token) => {
-    const documents = await pickDocuments(config, token, { multiple: max > 1 })
+    const documents = await pickDocuments(config, token, { multiple: max > 1, mode })
     return documents.slice(0, max).map(toDriveFile)
   })
 }

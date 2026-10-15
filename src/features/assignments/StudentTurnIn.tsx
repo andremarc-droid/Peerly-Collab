@@ -4,6 +4,7 @@ import { Alert } from '../../shared/ui/Alert'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
+import { Dialog } from '../../shared/ui/Dialog'
 import { SectionCard } from '../../shared/ui/SectionCard'
 import { useToast } from '../../shared/ui/useToast'
 import { AddFileButtons } from './AddFileButtons'
@@ -32,6 +33,7 @@ export function StudentTurnIn({ assignment, turnIn, studentId, studentName, driv
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [withdrawOpen, setWithdrawOpen] = useState(false)
+  const [emptyOpen, setEmptyOpen] = useState(false)
   const [replacing, setReplacing] = useState(false)
   const state = turnInState(assignment, turnIn)
   const collector = assignment.collectorEmail
@@ -46,13 +48,15 @@ export function StudentTurnIn({ assignment, turnIn, studentId, studentName, driv
   }
 
   async function turnInNow() {
-    if (!collector || draft.length === 0) return
+    if (!collector) return
+    setEmptyOpen(false)
     setError(''); setSaving(true)
     try {
-      await drive.shareWithUser(draft, collector)
+      // Nothing to share when the student turns in without files, so no Google sign-in is needed either.
+      if (draft.length > 0) await drive.shareWithUser(draft, collector)
       await submitTurnIn({ classId: assignment.classId, assignmentId: assignment.id, studentId, studentName, files: draft })
       setDraft([]); setReplacing(false)
-      showToast('success', 'Turned in. Your instructor can now open your files.')
+      showToast('success', draft.length > 0 ? 'Turned in. Your instructor can now open your files.' : 'Turned in without any files.')
     } catch (reason) {
       const { message, silent } = describeDriveError(reason, 'Your work could not be turned in. Nothing was submitted.')
       if (!silent) setError(message)
@@ -87,7 +91,7 @@ export function StudentTurnIn({ assignment, turnIn, studentId, studentName, driv
       <AddFileButtons remaining={MAX_TURN_IN_FILES - draft.length} drive={drive} disabled={saving} onAdded={added} onError={setError} />
       {draft.length > 0 && <FileList files={draft} label="Files ready to turn in" onRemove={(file) => setDraft((items) => items.filter((item) => item.fileId !== file.fileId))} disabled={busy} />}
       <div className="assignment-actions">
-        <Button type="button" disabled={busy || draft.length === 0} onClick={() => void turnInNow()}><Upload size={16} aria-hidden="true" /> {saving ? 'Turning in…' : turnIn ? 'Turn in again' : 'Turn in'}</Button>
+        <Button type="button" disabled={busy} onClick={() => { if (draft.length === 0) setEmptyOpen(true); else void turnInNow() }}><Upload size={16} aria-hidden="true" /> {saving ? 'Turning in…' : turnIn ? 'Turn in again' : 'Turn in'}</Button>
         {replacing && <Button type="button" variant="tertiary" disabled={busy} onClick={() => { setReplacing(false); setDraft([]) }}>Cancel</Button>}
       </div>
     </div>}
@@ -96,6 +100,15 @@ export function StudentTurnIn({ assignment, turnIn, studentId, studentName, driv
       <Button type="button" variant="secondary" disabled={busy} onClick={() => setReplacing(true)}>Replace files</Button>
       <Button type="button" variant="secondary" disabled={busy} onClick={() => setWithdrawOpen(true)}><Undo2 size={16} aria-hidden="true" /> Withdraw</Button>
     </div>}
+    <Dialog open={emptyOpen} onClose={() => setEmptyOpen(false)} title="Turn in without any files?" description="There’s no document attached for you to turn in. Are you sure you want to proceed?">
+      <Alert tone="warning" label="No attachment">{turnIn && turnIn.files.length > 0
+        ? 'This replaces the files you turned in before, so your instructor will see an empty turn-in. You can use “Replace files” afterwards to add work until it is graded.'
+        : 'Your instructor will see an empty turn-in. You can use “Replace files” afterwards to add work until it is graded.'}</Alert>
+      <div className="dialog__actions">
+        <Button type="button" variant="secondary" disabled={busy} onClick={() => setEmptyOpen(false)}>Go back and add files</Button>
+        <Button type="button" variant="primary" disabled={busy} onClick={() => void turnInNow()}>Turn in anyway</Button>
+      </div>
+    </Dialog>
     <ConfirmDialog open={withdrawOpen} onClose={() => setWithdrawOpen(false)} onConfirm={() => void withdraw()} title="Withdraw your turn-in?" description="Your instructor will no longer see this turn-in. Your files stay in your Google Drive, and your instructor’s account keeps view access until you remove it in Drive’s Share settings." confirmLabel="Withdraw" />
   </SectionCard>
 }

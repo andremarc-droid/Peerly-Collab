@@ -705,7 +705,7 @@ service cloud.firestore {
               && data.studentId == request.auth.uid
               && data.classId == classId
               && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 120
-              && validDriveFiles(data.files, 5) && data.files.size() >= 1
+              && validDriveFiles(data.files, 5)
               && data.turnedInAt == request.time;
           }
 

@@ -39,6 +39,10 @@ describe('parseTurnIn grading fields', () => {
     expect(parseTurnIn(baseTurnIn)).toMatchObject({ grade: null, feedback: '', gradedAt: null })
   })
 
+  it('accepts a turn-in submitted without any files', () => {
+    expect(parseTurnIn({ ...baseTurnIn, files: [] }).files).toEqual([])
+  })
+
   it('reads a saved grade and feedback', () => {
     const gradedAt = Timestamp.fromMillis(2000)
     expect(parseTurnIn({ ...baseTurnIn, grade: 90, feedback: 'Great', gradedAt })).toMatchObject({ grade: 90, feedback: 'Great', gradedAt })
