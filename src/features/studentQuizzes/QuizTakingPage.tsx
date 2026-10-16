@@ -17,7 +17,8 @@ import { Input } from '../../shared/ui/Input'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
-import { estimateServerOffset, optionOrderForQuestion, persistedQuestionOrder, remainingSeconds, shouldAutoSubmit } from './quizLogic'
+import { estimateServerOffset, optionOrderForQuestion, persistedQuestionOrder, secondsUntil, attemptEndMs, shouldAutoSubmit } from './quizLogic'
+import { effectiveTimeLimitSeconds, formatClock } from '../quizzes/quizTiming'
 import { CanvasPlayPage } from './CanvasPlayPage'
 import { BlankCanvasPlayPage } from './BlankCanvasPlayPage'
 import type { CanvasQuestion } from '../canvas/types'
@@ -145,9 +146,11 @@ export function QuizTakingPage() {
   }, [quiz, user, showToast, navigate])
 
   useEffect(() => {
-    if (!attempt || !quiz?.settings.timeLimitMinutes) return undefined
-    const started = attempt.startedAt.toMillis()
-    const update = () => setSeconds(remainingSeconds(started, quiz.settings.timeLimitMinutes!, Date.now() + serverOffsetMs))
+    if (!attempt || !quiz) return undefined
+    // The countdown ends at the time limit or at the quiz deadline, whichever comes first.
+    const endMs = attemptEndMs(attempt.startedAt.toMillis(), effectiveTimeLimitSeconds(quiz.settings), quiz.settings.closesAt?.toMillis() ?? null)
+    if (endMs === null) return undefined
+    const update = () => setSeconds(secondsUntil(endMs, Date.now() + serverOffsetMs))
     update()
     const timer = window.setInterval(update, 1000)
     return () => window.clearInterval(timer)
@@ -217,7 +220,7 @@ export function QuizTakingPage() {
     submitted.current = true; setBusy(true); setError('')
     try {
       await autosaveAnswers(quizId, attemptId, answers)
-      await submitAttempt(quizId, attemptId, quiz.settings.timeLimitMinutes ? Math.max(0, quiz.settings.timeLimitMinutes * 60 - (seconds ?? 0)) : Math.floor((Date.now() + serverOffsetMs - attempt.startedAt.toMillis()) / 1000))
+      await submitAttempt(quizId, attemptId, Math.max(0, Math.floor((Date.now() + serverOffsetMs - attempt.startedAt.toMillis()) / 1000)))
       sessionStorage.removeItem(checkedStorageKey)
       sessionStorage.removeItem(`peerly:questionIndex:${attemptId}`)
       if (isAutoSubmit || (seconds !== null && shouldAutoSubmit(seconds))) {
@@ -271,7 +274,7 @@ export function QuizTakingPage() {
   const revealEach = quiz.settings.answerReveal === 'after_each'
   const checkedCurrent = revealEach ? checked[question.id] : undefined
   const options = 'options' in question ? optionOrderForQuestion(question.id, attempt, question).map((id) => question.options.find((option) => option.id === id)!).filter(Boolean) : []
-  const timeText = seconds === null ? null : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+  const timeText = seconds === null ? null : formatClock(seconds)
 
   return <AppShell><PageHeader eyebrow={quiz.mode === 'flashcards' ? 'FLASHCARDS' : quiz.mode === 'canvas' ? 'CANVAS PRACTICE' : 'QUIZ IN PROGRESS'} title={quiz.title} subtitle={`${index + 1} of ${questions.length}${timeText ? ` · ${timeText} remaining` : ''}`} />
     <main className="app-shell__content grid gap-5" id="main-content">

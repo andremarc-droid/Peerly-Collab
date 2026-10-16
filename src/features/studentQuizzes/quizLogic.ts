@@ -4,6 +4,21 @@ export function remainingSeconds(startedAtMs: number, limitMinutes: number, nowM
   return Math.max(0, Math.ceil((startedAtMs + limitMinutes * 60_000 - nowMs) / 1000))
 }
 
+/** Seconds left until `endMs`, never below zero. */
+export function secondsUntil(endMs: number, nowMs: number): number {
+  return Math.max(0, Math.ceil((endMs - nowMs) / 1000))
+}
+
+/**
+ * When an attempt must end: the time limit counted from the start, or the quiz deadline, whichever comes first.
+ * null means neither applies, so the attempt has no countdown.
+ */
+export function attemptEndMs(startedAtMs: number, limitSeconds: number | null, closesAtMs: number | null): number | null {
+  const byLimit = limitSeconds === null ? null : startedAtMs + limitSeconds * 1000
+  if (byLimit === null) return closesAtMs
+  return closesAtMs === null ? byLimit : Math.min(byLimit, closesAtMs)
+}
+
 export function shouldAutoSubmit(seconds: number): boolean { return seconds <= 0 }
 
 export function remainingAttempts(quiz: Quiz, attempts: number): number | null {

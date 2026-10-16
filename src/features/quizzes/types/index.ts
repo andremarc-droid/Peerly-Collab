@@ -29,7 +29,14 @@ export interface QuizSettings {
   participation: Participation
   scoreVisibility: ScoreVisibility
   scoresReleased: boolean
+  /** Whole minutes (rounded up from timeLimitSeconds). Kept so older screens and records keep working. */
   timeLimitMinutes: number | null
+  /** Exact limit in seconds. When absent (older quizzes) the limit is timeLimitMinutes * 60. */
+  timeLimitSeconds?: number | null
+  /** Students can start the quiz from this moment. null means it is open as soon as it is published. */
+  opensAt?: Timestamp | null
+  /** Deadline: students cannot start the quiz after this moment, and an attempt in progress is submitted at it. */
+  closesAt?: Timestamp | null
   attemptsAllowed: number | null
   shuffleQuestions: boolean
   shuffleOptions: boolean

@@ -1,4 +1,4 @@
-import { AlertCircle, BarChart3, Clock3, Eye, Layers, Repeat2, Share2 } from 'lucide-react'
+import { AlertCircle, BarChart3, CalendarClock, Clock3, Eye, Layers, Repeat2, Share2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
@@ -14,6 +14,7 @@ import { PageHeader } from '../../shared/ui/PageHeader'
 import { SectionCard } from '../../shared/ui/SectionCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { remainingAttempts } from './quizLogic'
+import { describeWindow, effectiveTimeLimitSeconds, formatDuration, quizWindowState } from '../quizzes/quizTiming'
 
 export function QuizIntroPage() {
   const { quizId = '' } = useParams()
@@ -35,6 +36,8 @@ export function QuizIntroPage() {
       if (!found || found.status !== 'published') { setError('This quiz is no longer available.'); setLoading(false); return }
       // Group quizzes are played through the team flow. Students may not read the question list of a group quiz, so go there before loading it.
       if (found.settings.participation.type === 'group') { navigate(`/student/quizzes/${found.id}/team`, { replace: true }); return }
+      // Before the opening time the server refuses to show the questions, so only show the details.
+      if (quizWindowState(found.settings, Date.now()) === 'not_open_yet') { setQuiz(found); setLoading(false); return }
       const [questions, attempts] = await Promise.all([listQuestions(quizId), listUserAttempts(quizId, user.uid)])
       if (!live) return
       if (questions.length === 0) { setError('This quiz does not have any questions yet.'); setLoading(false); return }
@@ -64,6 +67,10 @@ export function QuizIntroPage() {
   if (loading) return <AppShell><main className="app-shell__content"><Skeleton className="h-72 rounded-3xl" label="Loading quiz" /></main></AppShell>
   if (!quiz) return <AppShell><PageHeader eyebrow="QUIZ" title="Quiz unavailable." subtitle="This quiz may have been unpublished." /><main className="app-shell__content grid gap-4">{error && <Alert tone="error" label="Quiz unavailable">{error}</Alert>}<Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
   const remaining = remainingAttempts(quiz, attemptCount)
+  const windowState = quizWindowState(quiz.settings, Date.now())
+  const windowText = describeWindow(quiz.settings)
+  const limitSeconds = effectiveTimeLimitSeconds(quiz.settings)
+  const blockedByWindow = windowState === 'not_open_yet' || (windowState === 'closed' && !active)
   const isCanvas = quiz.mode === 'canvas'
   const isBlankCanvas = isCanvas && quiz.boardKind === 'blank'
   const cardCount = canvasQuestion?.cards?.length ?? 0
@@ -131,8 +138,14 @@ export function QuizIntroPage() {
           ) : null}
           <li>
             <Clock3 size={20} aria-hidden="true" />
-            <span>{quiz.settings.timeLimitMinutes ? `You have ${quiz.settings.timeLimitMinutes} minutes once you start.` : 'There is no time limit.'}</span>
+            <span>{limitSeconds !== null ? `You have ${formatDuration(limitSeconds)} once you start.` : 'There is no time limit.'}</span>
           </li>
+          {windowText && (
+            <li>
+              <CalendarClock size={20} aria-hidden="true" />
+              <span>{windowText}{quiz.settings.closesAt ? ' If you are still working at the deadline, your quiz is submitted automatically.' : ''}</span>
+            </li>
+          )}
           <li>
             <Repeat2 size={20} aria-hidden="true" />
             <span>{remaining === null ? 'You can make unlimited attempts.' : `${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`}</span>
@@ -169,9 +182,11 @@ export function QuizIntroPage() {
           </li>
         </ul>
         {remaining === 0 && !active && <Alert tone="warning" label="No attempts left">You have used all attempts allowed for this quiz.</Alert>}
+        {windowState === 'not_open_yet' && <Alert tone="info" label="Not open yet">{windowText ?? 'This quiz has not opened yet.'} Come back when it opens.</Alert>}
+        {windowState === 'closed' && <Alert tone="warning" label="Deadline passed">{active ? 'The deadline has passed. Open your attempt to submit what you have.' : `${windowText ?? ''} You can no longer start this quiz.`.trim()}</Alert>}
         {error && <Alert tone="error" label="Could not start quiz">{error}</Alert>}
         <div className="mt-5 flex flex-wrap gap-3">
-          <Button type="button" disabled={busy || (remaining === 0 && !active)} onClick={() => void begin()}>
+          <Button type="button" disabled={busy || blockedByWindow || (remaining === 0 && !active)} onClick={() => void begin()}>
             {busy ? 'Opening…' : active ? 'Resume quiz' : 'Start quiz'}
           </Button>
           <Button to="/student" variant="secondary">Back to practice</Button>

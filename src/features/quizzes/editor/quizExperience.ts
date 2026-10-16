@@ -1,5 +1,6 @@
 import type { BoardKind, QuizMode, QuizSettings } from '../types'
 import { describeGroupExperience } from './groupSettingsLogic'
+import { describeWindow, effectiveTimeLimitSeconds, formatDuration } from '../quizTiming'
 
 interface ExperienceInput {
   mode: QuizMode
@@ -29,7 +30,8 @@ export function describeQuizExperience({ mode, boardKind, title, settings }: Exp
   }
   if (participation.type === 'group') return `${describeGroupExperience(participation)} ${revealSentence}`
 
-  const time = settings.timeLimitMinutes ? ` with ${settings.timeLimitMinutes} minutes` : ''
+  const limitSeconds = effectiveTimeLimitSeconds(settings)
+  const time = limitSeconds !== null ? ` with ${formatDuration(limitSeconds)}` : ''
   const attempts = settings.attemptsAllowed
     ? ` and ${settings.attemptsAllowed} ${settings.attemptsAllowed === 1 ? 'attempt' : 'attempts'}`
     : ' with unlimited attempts'
@@ -38,5 +40,6 @@ export function describeQuizExperience({ mode, boardKind, title, settings }: Exp
     : settings.answerReveal === 'after_submit'
       ? ', reviewing explanations after they submit.'
       : ', with answers hidden.'
-  return `Students will answer ${title.trim() || 'this quiz'} individually${time}${attempts}${reveal}`
+  const windowText = describeWindow(settings)
+  return `Students will answer ${title.trim() || 'this quiz'} individually${time}${attempts}${reveal}${windowText ? ` ${windowText}` : ''}`
 }

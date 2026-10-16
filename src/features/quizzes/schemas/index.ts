@@ -4,6 +4,7 @@ import type {
 } from '../types'
 import { ANSWER_MODES, GROUP_LIMITS, TEAM_FORMATIONS } from '../types/group'
 import { validateCanvasDefinition, validateCanvasKey } from '../../canvas/schemas'
+import { MAX_TIME_LIMIT_SECONDS, MIN_TIME_LIMIT_SECONDS } from '../quizTiming'
 
 export class DomainValidationError extends Error {
   constructor(message: string) {
@@ -42,7 +43,7 @@ const oneOf = <T extends string>(value: unknown, values: readonly T[], name: str
 }
 
 const quizKeys = ['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'boardKind', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings']
-const settingsKeys = ['answerReveal', 'participation', 'scoreVisibility', 'scoresReleased', 'timeLimitMinutes', 'attemptsAllowed', 'shuffleQuestions', 'shuffleOptions']
+const settingsKeys = ['answerReveal', 'participation', 'scoreVisibility', 'scoresReleased', 'timeLimitMinutes', 'timeLimitSeconds', 'opensAt', 'closesAt', 'attemptsAllowed', 'shuffleQuestions', 'shuffleOptions']
 const groupKeys = ['type', 'groupSize', 'answerMode', 'teamFormation', 'waitForEveryone', 'questionTimeSec']
 
 export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSettings {
@@ -79,10 +80,24 @@ export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSetti
   const attemptsAllowed = settings.attemptsAllowed
   if (timeLimitMinutes !== null && (!Number.isInteger(timeLimitMinutes) || (timeLimitMinutes as number) < 1)) throw new DomainValidationError('timeLimitMinutes must be null or a positive integer')
   if (attemptsAllowed !== null && (!Number.isInteger(attemptsAllowed) || (attemptsAllowed as number) < 1)) throw new DomainValidationError('attemptsAllowed must be null or a positive integer')
+  // Older quizzes have none of the newer timing fields, so each one defaults to "not set".
+  const rawSeconds = settings.timeLimitSeconds === undefined ? null : settings.timeLimitSeconds
+  if (rawSeconds !== null) {
+    if (!Number.isInteger(rawSeconds) || (rawSeconds as number) < MIN_TIME_LIMIT_SECONDS) throw new DomainValidationError(`The time limit must be at least ${MIN_TIME_LIMIT_SECONDS} seconds`)
+    if ((rawSeconds as number) > MAX_TIME_LIMIT_SECONDS) throw new DomainValidationError('The time limit cannot be longer than 24 hours')
+  }
+  // Without a whole-minute limit there is no limit at all, so a stray seconds value is ignored.
+  const timeLimitSeconds = timeLimitMinutes === null ? null : (rawSeconds as number | null)
+  const opensAt = settings.opensAt === undefined || settings.opensAt === null ? null : timestamp(settings.opensAt, 'opensAt')
+  const closesAt = settings.closesAt === undefined || settings.closesAt === null ? null : timestamp(settings.closesAt, 'closesAt')
+  if (opensAt && closesAt && closesAt.toMillis() <= opensAt.toMillis()) throw new DomainValidationError('The deadline must be after the time the quiz opens')
   return {
     answerReveal, participation: parsedParticipation, scoreVisibility,
     scoresReleased: bool(settings.scoresReleased, 'scoresReleased'),
     timeLimitMinutes: timeLimitMinutes as number | null,
+    timeLimitSeconds,
+    opensAt,
+    closesAt,
     attemptsAllowed: attemptsAllowed as number | null,
     shuffleQuestions: bool(settings.shuffleQuestions, 'shuffleQuestions'),
     shuffleOptions: bool(settings.shuffleOptions, 'shuffleOptions'),

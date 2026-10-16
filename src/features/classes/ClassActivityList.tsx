@@ -26,6 +26,12 @@ import { QuizTypeBadge } from '../quizzes/QuizTypeBadge'
 import type { ClassWithId } from './types'
 import { copyQuizToClass } from './services/quizService'
 import { canvasBoardStatus } from './classActivities'
+import { effectiveTimeLimitSeconds, formatDuration, formatWindowDate } from '../quizzes/quizTiming'
+
+function timeLimitLabel(quiz: QuizRecord): string {
+  const seconds = effectiveTimeLimitSeconds(quiz.settings)
+  return seconds === null ? 'Untimed' : formatDuration(seconds)
+}
 
 export interface ClassActivityListProps {
   classroom: ClassWithId
@@ -172,7 +178,8 @@ export function ClassActivityList({
                       ? `Group of ${quiz.settings.participation.groupSize}`
                       : 'Individual'}
                   </span>
-                  <span>{quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} minutes` : 'Untimed'}</span>
+                  <span>{timeLimitLabel(quiz)}</span>
+                  {quiz.settings.closesAt && <span>Deadline {formatWindowDate(quiz.settings.closesAt)}</span>}
                 </p>
               ) : (
                 <p className="m-0 flex flex-wrap gap-2 text-sm text-navy-800-72">
@@ -188,7 +195,8 @@ export function ClassActivityList({
                       ? 'Answers after each question'
                       : 'Answers after submission'}
                   </span>
-                  <span>{quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} minutes` : 'Untimed'}</span>
+                  <span>{timeLimitLabel(quiz)}</span>
+                  {quiz.settings.closesAt && <span>Deadline {formatWindowDate(quiz.settings.closesAt)}</span>}
                 </p>
               )}
 

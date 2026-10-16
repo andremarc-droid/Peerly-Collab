@@ -1417,6 +1417,18 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.participation.type == 'group';
     }
 
+    // Availability window set by the instructor. Before it opens, students cannot read the questions; after the
+    // deadline they cannot start a new attempt (an attempt already in progress can still be saved and submitted).
+    function quizHasOpened(quizId) {
+      let settings = get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings;
+      return settings.get('opensAt', null) == null || request.time >= settings.opensAt;
+    }
+    function quizAcceptsNewAttempts(quizId) {
+      let settings = get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings;
+      return quizHasOpened(quizId)
+        && (settings.get('closesAt', null) == null || request.time <= settings.closesAt);
+    }
+
     // True for a signed-in member of the team. get() fails when the team does not exist, which denies access.
     function isQuizTeamMember(quizId, teamId) {
       return quizSignedIn()
@@ -1429,12 +1441,18 @@ service cloud.firestore {
 
     function validQuizSettings(settings, mode) {
       return settings is map
-        && settings.keys().hasOnly(['answerReveal', 'participation', 'scoreVisibility', 'scoresReleased', 'timeLimitMinutes', 'attemptsAllowed', 'shuffleQuestions', 'shuffleOptions'])
+        && settings.keys().hasOnly(['answerReveal', 'participation', 'scoreVisibility', 'scoresReleased', 'timeLimitMinutes', 'timeLimitSeconds', 'opensAt', 'closesAt', 'attemptsAllowed', 'shuffleQuestions', 'shuffleOptions'])
         && settings.keys().hasAll(['answerReveal', 'participation', 'scoreVisibility', 'scoresReleased', 'timeLimitMinutes', 'attemptsAllowed', 'shuffleQuestions', 'shuffleOptions'])
         && settings.answerReveal in ['after_each', 'after_submit', 'never']
         && settings.scoreVisibility in ['immediate', 'after_release', 'hidden']
         && settings.scoresReleased is bool
         && (settings.timeLimitMinutes == null || (settings.timeLimitMinutes is int && settings.timeLimitMinutes > 0))
+        && (settings.get('timeLimitSeconds', null) == null
+          || (settings.timeLimitSeconds is int && settings.timeLimitSeconds >= 10 && settings.timeLimitSeconds <= 86400))
+        && (settings.get('opensAt', null) == null || settings.opensAt is timestamp)
+        && (settings.get('closesAt', null) == null || settings.closesAt is timestamp)
+        && (settings.get('opensAt', null) == null || settings.get('closesAt', null) == null
+          || settings.closesAt > settings.opensAt)
         && (settings.attemptsAllowed == null || (settings.attemptsAllowed is int && settings.attemptsAllowed > 0))
         && settings.shuffleQuestions is bool
         && settings.shuffleOptions is bool
@@ -1741,7 +1759,7 @@ service cloud.firestore {
 
       match /questions/{questionId} {
         // Group quizzes serve one question at a time through the team session, so students never read this collection.
-        allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId) && !quizIsGroup(quizId));
+        allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId) && !quizIsGroup(quizId) && quizHasOpened(quizId));
         allow create, update: if quizOwner(quizId)
           && validQuestionForQuiz(quizId, questionId, request.resource.data);
         allow delete: if quizOwner(quizId);
@@ -1801,6 +1819,7 @@ service cloud.firestore {
       match /attempts/{attemptId} {
         allow get, list: if quizOwner(quizId) || (isStudent() && quizPublished(quizId) && resource.data.userId == request.auth.uid);
         allow create: if isStudent() && quizPublished(quizId)
+          && quizAcceptsNewAttempts(quizId)
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.status == 'in_progress'
           && !quizIsGroup(quizId)

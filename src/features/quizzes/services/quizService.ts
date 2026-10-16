@@ -4,6 +4,7 @@ import {
 } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
 import { parseQuiz } from '../schemas'
+import { effectiveTimeLimitSeconds } from '../quizTiming'
 import { defaultQuizSettings } from '../schemas/settings'
 import type { NewQuiz, Quiz, QuizPatch, QuizStatus } from '../types'
 import { hasQuizAttemptsOrParticipants } from './attemptService'
@@ -27,7 +28,7 @@ export type QuizRecord = Quiz & { id: string }
 const asRecord = (id: string, value: unknown): QuizRecord => ({ ...parseQuiz(value), id })
 
 function cleanFlashcardSettings(mode: Quiz['mode'], settings: Quiz['settings']) {
-  return mode === 'flashcards' ? { ...settings, ...defaultQuizSettings('flashcards'), participation: settings.participation, timeLimitMinutes: settings.timeLimitMinutes, attemptsAllowed: settings.attemptsAllowed, shuffleQuestions: settings.shuffleQuestions, shuffleOptions: settings.shuffleOptions } : settings
+  return mode === 'flashcards' ? { ...settings, ...defaultQuizSettings('flashcards'), participation: settings.participation, timeLimitMinutes: settings.timeLimitMinutes, timeLimitSeconds: settings.timeLimitSeconds ?? null, opensAt: settings.opensAt ?? null, closesAt: settings.closesAt ?? null, attemptsAllowed: settings.attemptsAllowed, shuffleQuestions: settings.shuffleQuestions, shuffleOptions: settings.shuffleOptions } : settings
 }
 
 export async function createQuiz(ownerId: string, ownerName: string, input: NewQuiz, db: Firestore = firestore): Promise<string> {
@@ -60,7 +61,8 @@ export async function updateQuiz(quizId: string, patch: QuizPatch, db: Firestore
       const participationChanged = patch.settings.participation !== undefined && !deepEqual(patch.settings.participation, existing.settings.participation)
       const shuffleQChanged = patch.settings.shuffleQuestions !== undefined && patch.settings.shuffleQuestions !== existing.settings.shuffleQuestions
       const shuffleOChanged = patch.settings.shuffleOptions !== undefined && patch.settings.shuffleOptions !== existing.settings.shuffleOptions
-      const timeLimitChanged = patch.settings.timeLimitMinutes !== undefined && patch.settings.timeLimitMinutes !== existing.settings.timeLimitMinutes
+      const timeLimitChanged = (patch.settings.timeLimitMinutes !== undefined && patch.settings.timeLimitMinutes !== existing.settings.timeLimitMinutes)
+        || effectiveTimeLimitSeconds(patch.settings) !== effectiveTimeLimitSeconds(existing.settings)
       if (participationChanged || shuffleQChanged || shuffleOChanged || timeLimitChanged) {
         const hasSubmissions = await hasQuizAttemptsOrParticipants(quizId, db)
         if (hasSubmissions) {

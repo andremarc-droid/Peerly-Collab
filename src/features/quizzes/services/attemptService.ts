@@ -6,6 +6,7 @@ import { firestore } from '../../../lib/firebase/firestore'
 import { parseAnswerKey, parseQuestion, parseQuiz, parseQuizAttempt, parseQuizParticipant } from '../schemas'
 import type { QuizAttempt, QuizQuestion, QuizResult, SubmittedAnswer } from '../types'
 import { gradeAttempt } from '../grading/grade'
+import { describeWindow, quizWindowState } from '../quizTiming'
 import { answerKeysRef, attemptRef, participantRef, questionsRef, quizRef, resultRef } from './paths'
 
 function shuffle<T>(items: T[]): T[] {
@@ -28,6 +29,9 @@ export async function startAttempt(quizId: string, userId: string, userName: str
     const quiz = parseQuiz(parent.data())
     if (quiz.status !== 'published') throw new Error('Only published quizzes can be started')
     if (quiz.settings.participation.type !== 'individual') throw new Error('Group quizzes are played with your team.')
+    const windowState = quizWindowState(quiz.settings, Date.now())
+    if (windowState === 'not_open_yet') throw new Error(`This quiz is not open yet. ${describeWindow(quiz.settings) ?? ''}`.trim())
+    if (windowState === 'closed') throw new Error(`The deadline for this quiz has passed. ${describeWindow(quiz.settings) ?? ''}`.trim())
     if (questions.length === 0) throw new Error('This quiz has no questions')
     const priorParticipant = participantSnapshot.exists() ? parseQuizParticipant(participantSnapshot.data()) : null
     const attemptCount = priorParticipant?.attemptCount ?? 0

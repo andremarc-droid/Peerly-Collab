@@ -14,6 +14,8 @@ import { Select } from '../../../shared/ui/Select'
 import { useToast } from '../../../shared/ui/useToast'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
 import { defaultQuizSettings } from '../schemas/settings'
+import { DueDateTimeField } from '../../assignments/DueDateTimeField'
+import { effectiveTimeLimitSeconds, fromDateTimeLocal, splitSeconds, timeLimitFields, timingProblem, toDateTimeLocal } from '../quizTiming'
 import { createQuiz, duplicateQuiz, getQuiz, hasQuizAttemptsOrParticipants, updateQuiz } from '../services'
 import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
@@ -153,6 +155,10 @@ export function QuizEditorPage() {
 
   const participation = form.settings.participation
   const isGroupQuiz = form.mode === 'quiz' && participation.type === 'group'
+  const limitSeconds = effectiveTimeLimitSeconds(form.settings)
+  const limitParts = splitSeconds(limitSeconds ?? 0)
+  const limitProblem = limitSeconds === null ? null : timingProblem({ timeLimitMinutes: form.settings.timeLimitMinutes, timeLimitSeconds: limitSeconds })
+  const windowProblem = timingProblem({ timeLimitMinutes: null, opensAt: form.settings.opensAt, closesAt: form.settings.closesAt })
   const experience = describeQuizExperience({ mode: form.mode, boardKind: form.boardKind, title: form.title, settings: form.settings })
   const saveLabel = saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : continueToPublish ? 'Save and continue' : 'Save settings'
 
@@ -245,7 +251,7 @@ export function QuizEditorPage() {
           disabled={hasSubmissions}
           // Teams are paced per question by the server, so the whole-quiz time limit does not apply to them.
           onChange={(next) => {
-            if (!hasSubmissions) updateSettings({ participation: next, ...(next.type === 'group' ? { timeLimitMinutes: null } : {}) })
+            if (!hasSubmissions) updateSettings({ participation: next, ...(next.type === 'group' ? { ...timeLimitFields(null), opensAt: null, closesAt: null } : {}) })
           }}
         />
 
@@ -254,14 +260,28 @@ export function QuizEditorPage() {
             {isGroupQuiz
               ? <p className="field__hint">Teams are paced per question (see Participation), so there is no whole-quiz time limit.</p>
               : <>
-                <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings({ timeLimitMinutes: event.target.checked ? 10 : null })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit</strong><small>Optional time for the quiz.</small></span></label>
-                {form.settings.timeLimitMinutes !== null && <Input label="Time limit in minutes" name="time-limit" type="number" min={1} disabled={hasSubmissions} value={String(form.settings.timeLimitMinutes)} onChange={(event) => updateSettings({ timeLimitMinutes: Math.max(1, Number(event.target.value) || 1) })} />}
+                <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings(timeLimitFields(event.target.checked ? 600 : null))} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit</strong><small>Optional time for the quiz.</small></span></label>
+                {limitSeconds !== null && <fieldset className="grid min-w-0 gap-2 border-0 p-0" disabled={hasSubmissions}>
+                  <legend className="field__label mb-2">Time limit</legend>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="Minutes" name="time-limit-minutes" type="number" min={0} value={String(limitParts.minutes)} onChange={(event) => updateSettings(timeLimitFields(Math.max(0, Math.floor(Number(event.target.value) || 0)) * 60 + limitParts.seconds))} />
+                    <Input label="Seconds" name="time-limit-seconds" type="number" min={0} max={59} value={String(limitParts.seconds)} error={limitProblem ?? undefined} onChange={(event) => updateSettings(timeLimitFields(limitParts.minutes * 60 + Math.min(59, Math.max(0, Math.floor(Number(event.target.value) || 0)))))} />
+                  </div>
+                </fieldset>}
               </>}
             <Select label="Attempts allowed" name="attempts-allowed" value={form.settings.attemptsAllowed === null ? 'unlimited' : String(form.settings.attemptsAllowed)} onChange={(event) => updateSettings({ attemptsAllowed: event.target.value === 'unlimited' ? null : Number(event.target.value) })} options={[{ label: 'Unlimited', value: 'unlimited' }, { label: '1 attempt', value: '1' }, { label: '2 attempts', value: '2' }, { label: '3 attempts', value: '3' }]} />
             <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.shuffleQuestions} onChange={(event) => updateSettings({ shuffleQuestions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle questions</strong></span></label>
             <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.shuffleOptions} onChange={(event) => updateSettings({ shuffleOptions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle answer options</strong></span></label>
           </div>
         </SectionCard>
+
+        {!isGroupQuiz && <SectionCard title="Availability and deadline" description="Choose when students can open this quiz. Leave both blank to keep it open whenever it is published.">
+          <div className="quiz-editor__settings-grid">
+            <DueDateTimeField legend="Opens" name="quiz-opens" defaultTime="00:00" hint="Optional · local time. Students cannot open the quiz before this. Clear the date to remove it." value={toDateTimeLocal(form.settings.opensAt)} onChange={(value) => updateSettings({ opensAt: fromDateTimeLocal(value) })} />
+            <DueDateTimeField legend="Deadline" name="quiz-closes" hint="Optional · local time; a new date defaults to 11:59 PM. Students cannot start after this, and an attempt in progress is submitted automatically." value={toDateTimeLocal(form.settings.closesAt)} onChange={(value) => updateSettings({ closesAt: fromDateTimeLocal(value) })} />
+          </div>
+          {windowProblem && <Alert tone="error" label="Check these dates">{windowProblem}</Alert>}
+        </SectionCard>}
 
         <SectionCard title="Questions" description="Add or edit the questions and answer keys for this quiz.">
           <div className="quiz-question-placeholder"><strong>{questionCount} {questionCount === 1 ? 'question' : 'questions'} added</strong>{quizId ? <Button to={`/instructor/quizzes/${quizId}/questions`} variant="secondary">{questionCount > 0 ? 'Edit questions' : 'Add questions'}</Button> : <div className="grid justify-items-start gap-2"><Button type="button" variant="secondary" disabled>Add questions</Button><span className="field__hint">Save your settings first.</span></div>}</div>

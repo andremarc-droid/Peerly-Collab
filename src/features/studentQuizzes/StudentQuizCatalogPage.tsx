@@ -7,6 +7,7 @@ import type { EnrollmentWithId } from '../classes/types'
 import { listUserAttempts } from '../quizzes/services/attemptService'
 import type { QuizAttempt } from '../quizzes/types'
 import { QuizTypeBadge } from '../quizzes/QuizTypeBadge'
+import { effectiveTimeLimitSeconds, formatDuration, formatWindowDate, quizWindowState } from '../quizzes/quizTiming'
 import { Alert } from '../../shared/ui/Alert'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
@@ -96,8 +97,14 @@ function CatalogCard({ quiz }: { quiz: CatalogQuiz }) {
   const questionsLabel = quiz.mode === 'canvas' ? '1 canvas board' : `${quiz.questionCount} question${quiz.questionCount === 1 ? '' : 's'}`
   const to = isGroup ? `/student/quizzes/${quiz.id}/team` : latest ? `/student/quizzes/${quiz.id}/attempts/${latest.id}` : `/student/quizzes/${quiz.id}`
   const label = isGroup ? 'Play with team' : latest ? 'Resume' : 'View quiz'
-  const disabled = !isGroup && remaining === 0 && !latest
-  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${questionsLabel}${quiz.settings.timeLimitMinutes ? ` · ${quiz.settings.timeLimitMinutes} min` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><QuizTypeBadge mode={quiz.mode} />{quiz.mode === 'canvas' && quiz.boardKind === 'blank' && <Badge>Graded by instructor</Badge>}<Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={to} disabled={disabled} variant="secondary">{disabled ? 'No attempts left' : label}</Button></DataCard>
+  const windowState = isGroup ? 'open' : quizWindowState(quiz.settings, Date.now())
+  const windowBadge = windowState === 'closed' ? 'Closed'
+    : windowState === 'not_open_yet' && quiz.settings.opensAt ? `Opens ${formatWindowDate(quiz.settings.opensAt)}`
+      : quiz.settings.closesAt && !isGroup ? `Due ${formatWindowDate(quiz.settings.closesAt)}` : null
+  const limitSeconds = effectiveTimeLimitSeconds(quiz.settings)
+  const closed = windowState === 'closed' && !latest
+  const disabled = !isGroup && ((remaining === 0 && !latest) || closed)
+  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${questionsLabel}${limitSeconds !== null ? ` · ${formatDuration(limitSeconds)}` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><QuizTypeBadge mode={quiz.mode} />{windowBadge && <Badge>{windowBadge}</Badge>}{quiz.mode === 'canvas' && quiz.boardKind === 'blank' && <Badge>Graded by instructor</Badge>}<Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={to} disabled={disabled} variant="secondary">{closed ? 'Closed' : disabled ? 'No attempts left' : label}</Button></DataCard>
 }
 
 function QuizCard({ quiz, attempt, action }: { quiz: CatalogQuiz; attempt: QuizAttempt & { id: string }; action: string }) {

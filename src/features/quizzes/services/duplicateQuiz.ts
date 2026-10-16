@@ -28,7 +28,8 @@ export async function duplicateQuiz(quizId: string, db: Firestore = firestore, c
     createdAt: now,
     updatedAt: now,
     publishedAt: null,
-    settings: { ...source.settings, scoresReleased: false },
+    // A copy starts without dates: the old deadline would usually already have passed.
+    settings: { ...source.settings, scoresReleased: false, opensAt: null, closesAt: null },
   }
 
   // 1. Commit the copied quiz document first
