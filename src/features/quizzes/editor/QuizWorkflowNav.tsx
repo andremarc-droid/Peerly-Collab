@@ -40,30 +40,38 @@ export function QuizWorkflowNav({ quizId, current, hasTeams = false, nextStep, n
   const go = (path: string) => (onNavigate ? onNavigate(path) : navigate(path))
 
   return (
-    <nav aria-label="Quiz workspace" className="mb-4 flex flex-wrap items-center gap-2">
-      {STEPS.map((step, index) => {
-        const isCurrent = step.key === current
-        const className = `button ${isCurrent ? 'button--secondary font-bold' : 'button--ghost'}`
-        const content = (
-          <>
-            <span aria-hidden="true">{index + 1}</span>
-            {step.label}
-          </>
-        )
-        const path = quizStepPath(quizId, step.key)
-        return onNavigate
-          ? <button key={step.key} type="button" className={className} aria-current={isCurrent ? 'step' : undefined} onClick={() => go(path)}>{content}</button>
-          : <Link key={step.key} className={className} to={path} aria-current={isCurrent ? 'step' : undefined}>{content}</Link>
-      })}
-      <DropdownMenu label="More quiz options" trigger={<><MoreHorizontal size={16} aria-hidden="true" /> More</>}>
-        <button type="button" role="menuitem" onClick={() => go(`/instructor/quizzes/${quizId}/results`)}>Results</button>
-        {hasTeams && <button type="button" role="menuitem" onClick={() => go(`/instructor/quizzes/${quizId}/teams`)}>Teams</button>}
-      </DropdownMenu>
-      {nextStep && nextLabel && (
-        onNavigate
-          ? <Button type="button" onClick={() => go(quizStepPath(quizId, nextStep))}>{nextLabel} <ArrowRight size={16} aria-hidden="true" /></Button>
-          : <Button to={quizStepPath(quizId, nextStep)}>{nextLabel} <ArrowRight size={16} aria-hidden="true" /></Button>
-      )}
+    <nav aria-label="Quiz workspace" className="quiz-workflow-nav mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="quiz-workflow-nav__steps flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+        {STEPS.map((step, index) => {
+          const isCurrent = step.key === current
+          const className = `quiz-workflow-nav__step ${isCurrent ? 'is-active' : ''}`
+          const content = (
+            <>
+              <span className="quiz-workflow-nav__step-number" aria-hidden="true">{index + 1}</span>
+              <span className="quiz-workflow-nav__step-label">{step.label}</span>
+            </>
+          )
+          const path = quizStepPath(quizId, step.key)
+          return onNavigate
+            ? <button key={step.key} type="button" className={className} aria-current={isCurrent ? 'step' : undefined} onClick={() => go(path)}>{content}</button>
+            : <Link key={step.key} className={className} to={path} aria-current={isCurrent ? 'step' : undefined}>{content}</Link>
+        })}
+      </div>
+      <div className="quiz-workflow-nav__actions flex items-center gap-2">
+        <DropdownMenu
+          label="More quiz options"
+          className="quiz-workflow-nav__dropdown"
+          trigger={<><MoreHorizontal size={16} aria-hidden="true" /> More</>}
+        >
+          <button type="button" role="menuitem" onClick={() => go(`/instructor/quizzes/${quizId}/results`)}>Results</button>
+          {hasTeams && <button type="button" role="menuitem" onClick={() => go(`/instructor/quizzes/${quizId}/teams`)}>Teams</button>}
+        </DropdownMenu>
+        {nextStep && nextLabel && (
+          onNavigate
+            ? <Button type="button" className="quiz-workflow-nav__next" onClick={() => go(quizStepPath(quizId, nextStep))}>{nextLabel} <ArrowRight size={16} aria-hidden="true" /></Button>
+            : <Button to={quizStepPath(quizId, nextStep)} className="quiz-workflow-nav__next">{nextLabel} <ArrowRight size={16} aria-hidden="true" /></Button>
+        )}
+      </div>
     </nav>
   )
 }
