@@ -13,7 +13,7 @@ import { SectionCard } from '../../../shared/ui/SectionCard'
 import { Select } from '../../../shared/ui/Select'
 import { useToast } from '../../../shared/ui/useToast'
 import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuard'
-import { defaultQuizSettings } from '../schemas/settings'
+import { defaultQuizSettings, currentMinute } from '../schemas/settings'
 import { DueDateTimeField } from '../../assignments/DueDateTimeField'
 import { effectiveTimeLimitSeconds, fromDateTimeLocal, splitSeconds, timeLimitFields, timingProblem, toDateTimeLocal } from '../quizTiming'
 import { createQuiz, duplicateQuiz, getQuiz, hasQuizAttemptsOrParticipants, updateQuiz } from '../services'
@@ -277,7 +277,10 @@ export function QuizEditorPage() {
 
         {!isGroupQuiz && <SectionCard title="Availability and deadline" description="Choose when students can open this quiz. Leave both blank to keep it open whenever it is published.">
           <div className="quiz-editor__settings-grid">
-            <DueDateTimeField legend="Opens" name="quiz-opens" defaultTime="00:00" hint="Optional · local time. Students cannot open the quiz before this. Clear the date to remove it." value={toDateTimeLocal(form.settings.opensAt)} onChange={(value) => updateSettings({ opensAt: fromDateTimeLocal(value) })} />
+            <div className="grid content-start gap-2">
+              <DueDateTimeField legend="Opens" name="quiz-opens" defaultTime="00:00" hint="Optional · local time. Students cannot open the quiz before this. Clear the date to remove it." value={toDateTimeLocal(form.settings.opensAt)} onChange={(value) => updateSettings({ opensAt: fromDateTimeLocal(value) })} />
+              <div><Button type="button" variant="secondary" onClick={() => updateSettings({ opensAt: currentMinute() })}>Set to now</Button></div>
+            </div>
             <DueDateTimeField legend="Deadline" name="quiz-closes" hint="Optional · local time; a new date defaults to 11:59 PM. Students cannot start after this, and an attempt in progress is submitted automatically." value={toDateTimeLocal(form.settings.closesAt)} onChange={(value) => updateSettings({ closesAt: fromDateTimeLocal(value) })} />
           </div>
           {windowProblem && <Alert tone="error" label="Check these dates">{windowProblem}</Alert>}
