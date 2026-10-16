@@ -276,12 +276,56 @@ export function QuizEditorPage() {
         </SectionCard>
 
         {!isGroupQuiz && <SectionCard title="Availability and deadline" description="Choose when students can open this quiz. Leave both blank to keep it open whenever it is published.">
-          <div className="quiz-editor__settings-grid">
-            <div className="grid content-start gap-2">
-              <DueDateTimeField legend="Opens" name="quiz-opens" defaultTime="00:00" hint="Optional · local time. Students cannot open the quiz before this. Clear the date to remove it." value={toDateTimeLocal(form.settings.opensAt)} onChange={(value) => updateSettings({ opensAt: fromDateTimeLocal(value) })} />
-              <div><Button type="button" variant="secondary" onClick={() => updateSettings({ opensAt: currentMinute() })}>Set to now</Button></div>
-            </div>
-            <DueDateTimeField legend="Deadline" name="quiz-closes" hint="Optional · local time; a new date defaults to 11:59 PM. Students cannot start after this, and an attempt in progress is submitted automatically." value={toDateTimeLocal(form.settings.closesAt)} onChange={(value) => updateSettings({ closesAt: fromDateTimeLocal(value) })} />
+          <div className="quiz-editor__settings-grid quiz-editor__settings-grid--availability">
+            <DueDateTimeField
+              legend="Opens"
+              name="quiz-opens"
+              defaultTime="00:00"
+              hint="Optional · local time. Students cannot open the quiz before this. Clear the date to remove it."
+              value={toDateTimeLocal(form.settings.opensAt)}
+              onChange={(value) => updateSettings({ opensAt: fromDateTimeLocal(value) })}
+              action={
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex min-h-[44px] items-center text-sm font-semibold text-navy-800 underline underline-offset-4 hover:text-navy-950 focus-visible:outline-3 focus-visible:outline-navy-700 cursor-pointer"
+                    onClick={() => updateSettings({ opensAt: currentMinute() })}
+                  >
+                    Set to now
+                  </button>
+                  {form.settings.opensAt && (
+                    <>
+                      <span className="text-navy-800-72 text-sm" aria-hidden="true">·</span>
+                      <button
+                        type="button"
+                        className="inline-flex min-h-[44px] items-center text-sm font-semibold text-navy-800 underline underline-offset-4 hover:text-navy-950 focus-visible:outline-3 focus-visible:outline-navy-700 cursor-pointer"
+                        onClick={() => updateSettings({ opensAt: null })}
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                </div>
+              }
+            />
+            <DueDateTimeField
+              legend="Deadline"
+              name="quiz-closes"
+              hint="Optional · local time; a new date defaults to 11:59 PM. Students cannot start after this, and an attempt in progress is submitted automatically."
+              value={toDateTimeLocal(form.settings.closesAt)}
+              onChange={(value) => updateSettings({ closesAt: fromDateTimeLocal(value) })}
+              action={
+                form.settings.closesAt ? (
+                  <button
+                    type="button"
+                    className="inline-flex min-h-[44px] items-center text-sm font-semibold text-navy-800 underline underline-offset-4 hover:text-navy-950 focus-visible:outline-3 focus-visible:outline-navy-700 cursor-pointer"
+                    onClick={() => updateSettings({ closesAt: null })}
+                  >
+                    Clear
+                  </button>
+                ) : undefined
+              }
+            />
           </div>
           {windowProblem && <Alert tone="error" label="Check these dates">{windowProblem}</Alert>}
         </SectionCard>}

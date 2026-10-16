@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Input } from '../../shared/ui/Input'
 import { Select } from '../../shared/ui/Select'
 
@@ -13,6 +14,7 @@ interface DueDateTimeFieldProps {
   /** Time used when a date is picked before a time ("HH:mm", 24-hour). */
   defaultTime?: string
   disabled?: boolean
+  action?: ReactNode
 }
 
 const hours = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'))
@@ -20,7 +22,7 @@ const minutes = Array.from({ length: 60 }, (_, index) => String(index).padStart(
 
 /** Date and local time controls with an explicit 12-hour clock and AM/PM. */
 export function DueDateTimeField({
-  value, onChange, legend = 'Due date', name = 'assignment-due', hint = 'Optional · local time; a new date defaults to 11:59 PM', defaultTime = '23:59', disabled = false,
+  value, onChange, legend = 'Due date', name = 'assignment-due', hint = 'Optional · local time; a new date defaults to 11:59 PM', defaultTime = '23:59', disabled = false, action,
 }: DueDateTimeFieldProps) {
   const [date, time] = value.split('T')
   const [hour24 = '', minute = ''] = (time ?? '').split(':')
@@ -43,7 +45,12 @@ export function DueDateTimeField({
   }
 
   return <fieldset className="grid min-w-0 gap-3 border-0 p-0" disabled={disabled}>
-    <legend className="field__label mb-2">{legend}</legend>
+    <legend className="field__label mb-2 w-full">
+      <span className="flex min-h-[44px] items-center justify-between gap-2">
+        <span>{legend}</span>
+        {action}
+      </span>
+    </legend>
     <Input label="Date" name={`${name}-date`} type="date" aria-describedby={hintId} value={date ?? ''} onChange={(event) => changeDate(event.target.value)} />
     <div className="grid grid-cols-3 gap-2">
       <Select label="Hour" name={`${name}-hour`} aria-describedby={hintId} value={hour12} disabled={!date} onChange={(event) => changeTime(event.target.value)} options={[{ label: '—', value: '' }, ...hours.map((hour) => ({ label: hour.replace(/^0/, ''), value: hour }))]} />
