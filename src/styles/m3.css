@@ -294,6 +294,17 @@
   align-items: stretch;
 }
 
+/* In a column, the desktop `flex: 1 1 280px` becomes a 280px minimum HEIGHT, which left big empty gaps around the
+   search box. Size the search and filters to their content instead. */
+.app-shell--m3 .toolbar { gap: 12px; }
+.app-shell--m3 .toolbar__search,
+.app-shell--m3 .toolbar__filters {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+}
+.app-shell--m3 .toolbar__filters > * { width: 100%; }
+
 .app-shell--m3 .m3-nav {
   color: var(--color-navy-900);
   background: var(--color-white);
