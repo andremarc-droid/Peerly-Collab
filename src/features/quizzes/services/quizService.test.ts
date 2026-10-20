@@ -201,11 +201,11 @@ describe('quiz Firestore services', () => {
     expect(copyQuiz?.status).toBe('draft')
   })
 
-  it('enforces quiz edit lock after unpublish when attempts exist and prevents bypass', async () => {
+  it('allows quiz question and settings editing after unpublish even when attempts exist', async () => {
     await users()
     const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
     const student = environment.authenticatedContext('student').firestore() as unknown as Firestore
-    const input = quizInput('Unpublish Lock Test')
+    const input = quizInput('Unpublish Edit Test')
     const quizId = await createQuiz('teacher', 'Teacher', input, owner)
     const questionId = await saveQuestionAndKey(quizId, null,
       { type: 'multiple_choice', order: 0, prompt: 'Q1', points: 2, options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] },
@@ -221,30 +221,25 @@ describe('quiz Firestore services', () => {
     const draftQuiz = await getQuiz(quizId, owner)
     expect(draftQuiz?.status).toBe('draft')
 
-    // Editing questions on draft must still be locked
+    // Editing questions on draft succeeds
     await expect(saveQuestionAndKey(quizId, questionId,
       { type: 'multiple_choice', order: 0, prompt: 'Modified Q1', points: 5, options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }] },
       { type: 'choice', correctOptionId: 'b', explanation: 'B', caseSensitive: false }, owner)
-    ).rejects.toThrow(/attempts or participants/)
+    ).resolves.toBe(questionId)
 
-    // Deleting questions on draft must still be locked
-    await expect(deleteQuestion(quizId, questionId, owner)).rejects.toThrow(/attempts or participants/)
-
-    // Changing settings (shuffle/timeLimit/participation) on draft must still be locked
+    // Changing settings (shuffle/timeLimit/participation) on draft succeeds
     await expect(updateQuiz(quizId, { settings: { ...draftQuiz!.settings, shuffleQuestions: true } }, owner))
-      .rejects.toThrow(/attempts or participants/)
-
-    // Deep equality: passing same participation with different key order must NOT be treated as a change
-    const sameParticipationReordered = { ...draftQuiz!.settings, participation: JSON.parse('{"type":"individual"}') }
-    await expect(updateQuiz(quizId, { description: 'Updated description', settings: sameParticipationReordered }, owner))
       .resolves.toBeUndefined()
+
+    // Deleting questions on draft succeeds
+    await expect(deleteQuestion(quizId, questionId, owner)).resolves.toBeUndefined()
 
     // Republish succeeds
     await publishQuiz(quizId, owner)
     expect((await getQuiz(quizId, owner))?.status).toBe('published')
   })
 
-  it('locks question and setting editing for a group quiz with a team in_progress but no submitted attempts', async () => {
+  it('allows question and setting editing once unpublished even if a group quiz had teams in_progress', async () => {
     await users()
     const owner = environment.authenticatedContext('teacher').firestore() as unknown as Firestore
     const input = {
@@ -290,7 +285,10 @@ describe('quiz Firestore services', () => {
       })
     })
 
-    // Editing questions must be locked
+    // Unpublishing allows editing
+    await unpublishQuiz(quizId, owner)
+
+    // Editing questions succeeds
     await expect(
       saveQuestionAndKey(
         quizId,
@@ -299,12 +297,12 @@ describe('quiz Firestore services', () => {
         { type: 'choice', correctOptionId: 'b', explanation: 'B', caseSensitive: false },
         owner,
       ),
-    ).rejects.toThrow(/Cannot add or edit questions on a quiz with existing attempts or participants/)
+    ).resolves.toBe(questionId)
 
-    // Editing settings must be locked
+    // Editing settings succeeds
     const quiz = await getQuiz(quizId, owner)
     await expect(
       updateQuiz(quizId, { settings: { ...quiz!.settings, shuffleQuestions: true } }, owner),
-    ).rejects.toThrow(/Cannot change participation, shuffle, or time limit settings on a quiz with existing attempts or participants/)
+    ).resolves.toBeUndefined()
   })
 })

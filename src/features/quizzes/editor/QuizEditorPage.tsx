@@ -16,7 +16,7 @@ import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuar
 import { defaultQuizSettings, currentMinute } from '../schemas/settings'
 import { DueDateTimeField } from '../../assignments/DueDateTimeField'
 import { effectiveTimeLimitSeconds, fromDateTimeLocal, splitSeconds, timeLimitFields, timingProblem, toDateTimeLocal } from '../quizTiming'
-import { createQuiz, duplicateQuiz, getQuiz, hasQuizAttemptsOrParticipants, updateQuiz } from '../services'
+import { createQuiz, getQuiz, unpublishQuiz, updateQuiz } from '../services'
 import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
 import type { QuizSettings, QuizStatus } from '../types'
@@ -64,8 +64,6 @@ export function QuizEditorPage() {
   const [errors, setErrors] = useState<QuizFormErrors>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [hasSubmissions, setHasSubmissions] = useState(false)
-  const [duplicating, setDuplicating] = useState(false)
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved])
   useUnsavedChangesGuard(dirty)
 
@@ -82,14 +80,19 @@ export function QuizEditorPage() {
       if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
       const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, boardKind: quiz.boardKind, settings: quiz.settings }
       setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setStatus(quiz.status); setResolvedQuizId(quizId)
-      void hasQuizAttemptsOrParticipants(quizId).then((result) => {
-        if (active) setHasSubmissions(result)
-      })
+      if (quiz.status === 'published') {
+        void Promise.resolve(unpublishQuiz(quizId)).then(() => {
+          if (active) {
+            setStatus('draft')
+            showToast('info', 'Quiz automatically unpublished for editing. Changes will reflect to students once re-published.')
+          }
+        }).catch(() => {})
+      }
     }).catch((reason: unknown) => {
       if (active) { setLoadError(reason instanceof Error ? reason.message : 'This quiz could not be loaded.'); setResolvedQuizId(quizId) }
     })
     return () => { active = false }
-  }, [quizId])
+  }, [quizId, showToast])
 
   function updateSettings(patch: Partial<QuizSettings>) {
     setForm((current) => ({ ...current, settings: { ...current.settings, ...patch } }))
@@ -100,8 +103,8 @@ export function QuizEditorPage() {
     if (!dirty || window.confirm('You have unsaved changes. Leave without saving?')) navigate(backPath)
   }
 
-  // A draft moves straight on to Preview & publish after its settings are saved. Published or locked quizzes just save.
-  const continueToPublish = status === 'draft' && !hasSubmissions
+  // A draft moves straight on to Preview & publish after its settings are saved.
+  const continueToPublish = status === 'draft'
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -169,37 +172,6 @@ export function QuizEditorPage() {
       {saveError && <Alert tone="error" label="Could not save changes">{saveError}</Alert>}
       {quizId && (!form.classId || (classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active'))) && <Alert tone="warning" label="Assign this quiz to a class">Choose an active class below and save to keep this quiz in the classroom catalog.</Alert>}
       {classesLoaded && !classes.some((item) => item.status === 'active') && <Alert tone="warning" label="Create a class first">Quizzes must belong to an active class. <Button to="/instructor" variant="secondary">Create a class</Button></Alert>}
-      {hasSubmissions && (
-        <div className="mb-4">
-          <Alert
-            tone="warning"
-            label="Settings locked"
-            action={
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={duplicating}
-                onClick={async () => {
-                  setDuplicating(true)
-                  try {
-                    const copyId = await duplicateQuiz(quizId)
-                    showToast('success', 'Quiz duplicated as a draft.')
-                    navigate(`/instructor/quizzes/${copyId}?tab=settings`)
-                  } catch (err) {
-                    showToast('error', err instanceof Error ? err.message : 'Could not duplicate quiz')
-                  } finally {
-                    setDuplicating(false)
-                  }
-                }}
-              >
-                {duplicating ? 'Duplicating…' : 'Duplicate quiz'}
-              </Button>
-            }
-          >
-            This quiz already has student attempts or participants. Timing, participation, and shuffle settings are locked to protect student results. Duplicate this quiz to modify them.
-          </Alert>
-        </div>
-      )}
       <form className="quiz-editor__form" onSubmit={handleSave} noValidate>
         <SectionCard title="Basics" description="Give learners a clear idea of what they’ll practice.">
           <div className="quiz-editor__fields">
@@ -248,10 +220,9 @@ export function QuizEditorPage() {
         <GroupSettingsSection
           mode={form.mode}
           participation={participation}
-          disabled={hasSubmissions}
           // Teams are paced per question by the server, so the whole-quiz time limit does not apply to them.
           onChange={(next) => {
-            if (!hasSubmissions) updateSettings({ participation: next, ...(next.type === 'group' ? { ...timeLimitFields(null), opensAt: null, closesAt: null } : {}) })
+            updateSettings({ participation: next, ...(next.type === 'group' ? { ...timeLimitFields(null), opensAt: null, closesAt: null } : {}) })
           }}
         />
 
@@ -260,8 +231,8 @@ export function QuizEditorPage() {
             {isGroupQuiz
               ? <p className="field__hint">Teams are paced per question (see Participation), so there is no whole-quiz time limit.</p>
               : <>
-                <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings(timeLimitFields(event.target.checked ? 60 : null))} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit for each question</strong><small>Every question gets its own countdown. Students move on automatically when it runs out.</small></span></label>
-                {limitSeconds !== null && <fieldset className="grid min-w-0 gap-2 border-0 p-0" disabled={hasSubmissions}>
+                <label className="choice-control"><input type="checkbox" checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings(timeLimitFields(event.target.checked ? 60 : null))} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit for each question</strong><small>Every question gets its own countdown. Students move on automatically when it runs out.</small></span></label>
+                {limitSeconds !== null && <fieldset className="grid min-w-0 gap-2 border-0 p-0">
                   <legend className="field__label mb-2">Time for each question</legend>
                   <div className="grid grid-cols-2 gap-3">
                     <Input label="Minutes" name="time-limit-minutes" type="number" min={0} value={String(limitParts.minutes)} onChange={(event) => updateSettings(timeLimitFields(Math.max(0, Math.floor(Number(event.target.value) || 0)) * 60 + limitParts.seconds))} />
@@ -270,8 +241,8 @@ export function QuizEditorPage() {
                 </fieldset>}
               </>}
             <Select label="Attempts allowed" name="attempts-allowed" value={form.settings.attemptsAllowed === null ? 'unlimited' : String(form.settings.attemptsAllowed)} onChange={(event) => updateSettings({ attemptsAllowed: event.target.value === 'unlimited' ? null : Number(event.target.value) })} options={[{ label: 'Unlimited', value: 'unlimited' }, { label: '1 attempt', value: '1' }, { label: '2 attempts', value: '2' }, { label: '3 attempts', value: '3' }]} />
-            <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.shuffleQuestions} onChange={(event) => updateSettings({ shuffleQuestions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle questions</strong></span></label>
-            <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.shuffleOptions} onChange={(event) => updateSettings({ shuffleOptions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle answer options</strong></span></label>
+            <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleQuestions} onChange={(event) => updateSettings({ shuffleQuestions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle questions</strong></span></label>
+            <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleOptions} onChange={(event) => updateSettings({ shuffleOptions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle answer options</strong></span></label>
           </div>
         </SectionCard>
 

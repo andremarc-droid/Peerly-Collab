@@ -1,6 +1,6 @@
 import { Archive, BarChart3, Copy, Ellipsis, Pencil, RotateCcw, Send, Trash2 } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
@@ -59,6 +59,7 @@ export function ClassActivityList({
   errorLabel = 'Activities unavailable',
 }: ClassActivityListProps) {
   const { showToast } = useToast()
+  const navigate = useNavigate()
   const [busyId, setBusyId] = useState<string | null>(null)
   const [copySelection, setCopySelection] = useState<QuizRecord | null>(null)
   const [targetClass, setTargetClass] = useState('')
@@ -203,7 +204,22 @@ export function ClassActivityList({
               {/* One primary action per card, the same on every screen size. Everything else lives in the menu. */}
               <div className="flex w-full items-center justify-between gap-2">
                 {isDraft && <Button to={editPath}>Continue editing</Button>}
-                {isPublished && <Button to={resultsPath}><BarChart3 size={15} aria-hidden="true" /> View results</Button>}
+                {isPublished && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button to={resultsPath}><BarChart3 size={15} aria-hidden="true" /> View results</Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => void action(quiz.id, isCanvas ? 'Canvas unpublished for editing.' : 'Quiz unpublished for editing.', async () => {
+                        await unpublishQuiz(quiz.id)
+                        navigate(editPath)
+                      })}
+                    >
+                      <Pencil size={15} aria-hidden="true" /> Edit
+                    </Button>
+                  </div>
+                )}
                 {isArchived && (
                   <Button
                     type="button"
@@ -215,9 +231,17 @@ export function ClassActivityList({
                 )}
                 <DropdownMenu label={`More actions for ${quiz.title || 'Untitled quiz'}`} iconOnly trigger={<Ellipsis size={20} aria-hidden="true" />}>
                   {isPublished && (
-                    <Link role="menuitem" to={editPath}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={busy}
+                      onClick={() => void action(quiz.id, isCanvas ? 'Canvas unpublished for editing.' : 'Quiz unpublished for editing.', async () => {
+                        await unpublishQuiz(quiz.id)
+                        navigate(editPath)
+                      })}
+                    >
                       <Pencil size={16} aria-hidden="true" /> Edit
-                    </Link>
+                    </button>
                   )}
                   {isDraft && (
                     <Link role="menuitem" to={resultsPath}>

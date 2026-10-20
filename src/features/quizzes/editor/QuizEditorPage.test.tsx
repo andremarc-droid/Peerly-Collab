@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   createQuiz: vi.fn(),
   getQuiz: vi.fn(),
   updateQuiz: vi.fn(),
+  unpublishQuiz: vi.fn(),
   saveQuestionAndKey: vi.fn(),
   watchQuestionPairs: vi.fn(),
   getQuestionWithKey: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('../services', () => ({
   createQuiz: mocks.createQuiz,
   getQuiz: mocks.getQuiz,
   updateQuiz: mocks.updateQuiz,
+  unpublishQuiz: mocks.unpublishQuiz,
   saveQuestionAndKey: mocks.saveQuestionAndKey,
   watchQuestionPairs: mocks.watchQuestionPairs,
   getQuestionWithKey: mocks.getQuestionWithKey,
@@ -39,7 +41,7 @@ vi.mock('../services/quizService', () => ({
   hasQuizAttemptsOrParticipants: mocks.hasQuizAttemptsOrParticipants,
   deleteQuizCascade: vi.fn(),
   publishQuiz: vi.fn(),
-  unpublishQuiz: vi.fn(),
+  unpublishQuiz: mocks.unpublishQuiz,
   archiveQuiz: vi.fn(),
 }))
 vi.mock('../services/questionService', () => ({
@@ -67,6 +69,7 @@ beforeEach(() => {
   mocks.createQuiz.mockReset().mockResolvedValue('new-quiz')
   mocks.getQuiz.mockReset().mockImplementation(async (id: string) => ({ ...savedQuiz, id }))
   mocks.updateQuiz.mockReset().mockResolvedValue(undefined)
+  mocks.unpublishQuiz.mockReset().mockResolvedValue(undefined)
   mocks.saveQuestionAndKey.mockReset().mockResolvedValue('question-1')
   mocks.watchQuestionPairs.mockReset().mockImplementation((_id: string, onChange: (items: never[]) => void) => { onChange([]); return vi.fn() })
   mocks.getQuestionWithKey.mockReset().mockResolvedValue(null)
@@ -167,12 +170,12 @@ describe('quick create and quiz deletion confirmation', () => {
   })
 
   it('renders CanvasBuilderPage when quiz mode is canvas and tab is questions', async () => {
-    mocks.getQuiz.mockResolvedValueOnce({
+    mocks.getQuiz.mockImplementation(async (id: string) => ({
       ...savedQuiz,
-      id: 'quiz-canvas',
-      mode: 'canvas',
-      title: 'Neural Networks',
-    })
+      id,
+      mode: id === 'quiz-canvas' ? 'canvas' : 'quiz',
+      title: id === 'quiz-canvas' ? 'Neural Networks' : 'Practice',
+    }))
 
     render(
       <MemoryRouter initialEntries={['/instructor/quizzes/quiz-canvas?tab=questions']}>
@@ -219,14 +222,13 @@ describe('quick create and quiz deletion confirmation', () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
-  it('locks settings and offers duplicate quiz when published quiz has submissions', async () => {
-    mocks.getQuiz.mockResolvedValueOnce({
+  it('automatically unpublishes a published quiz on load and allows editing settings', async () => {
+    mocks.getQuiz.mockImplementation(async (id: string) => ({
       ...savedQuiz,
-      id: 'quiz-pub',
+      id,
       status: 'published',
       publishedAt: Timestamp.fromMillis(2),
-    })
-    mocks.hasQuizAttemptsOrParticipants.mockResolvedValueOnce(true)
+    }))
 
     render(
       <MemoryRouter initialEntries={['/instructor/quizzes/quiz-pub?tab=settings']}>
@@ -236,35 +238,33 @@ describe('quick create and quiz deletion confirmation', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('Settings locked')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Duplicate quiz' })).toBeInTheDocument()
+    expect(await screen.findByLabelText('Shuffle questions')).toBeInTheDocument()
+    expect(mocks.unpublishQuiz).toHaveBeenCalledWith('quiz-pub')
 
-    // Shuffle checkboxes are disabled
+    // Shuffle checkboxes are enabled
     const shuffleQ = screen.getByLabelText('Shuffle questions') as HTMLInputElement
     const shuffleO = screen.getByLabelText('Shuffle answer options') as HTMLInputElement
-    expect(shuffleQ).toBeDisabled()
-    expect(shuffleO).toBeDisabled()
+    expect(shuffleQ).not.toBeDisabled()
+    expect(shuffleO).not.toBeDisabled()
   })
 
-  it('locks settings and offers duplicate quiz on an unpublished draft quiz with submissions', async () => {
+  it('allows editing settings on a draft quiz', async () => {
     mocks.getQuiz.mockResolvedValueOnce({
       ...savedQuiz,
-      id: 'quiz-draft-with-attempts',
+      id: 'quiz-draft',
       status: 'draft',
     })
-    mocks.hasQuizAttemptsOrParticipants.mockResolvedValueOnce(true)
 
     render(
-      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-draft-with-attempts?tab=settings']}>
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-draft?tab=settings']}>
         <Routes>
           <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
         </Routes>
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('Settings locked')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Duplicate quiz' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Shuffle questions')).toBeDisabled()
+    expect(await screen.findByLabelText('Shuffle questions')).toBeInTheDocument()
+    expect(screen.getByLabelText('Shuffle questions')).not.toBeDisabled()
   })
 
   it('opens the Preview & publish step for the old ?tab=preview link', async () => {

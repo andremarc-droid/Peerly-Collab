@@ -4,25 +4,9 @@ import {
 } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
 import { parseQuiz } from '../schemas'
-import { effectiveTimeLimitSeconds } from '../quizTiming'
 import { defaultQuizSettings } from '../schemas/settings'
 import type { NewQuiz, Quiz, QuizPatch, QuizStatus } from '../types'
-import { hasQuizAttemptsOrParticipants } from './attemptService'
 import { quizRef } from './paths'
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true
-  if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) return false
-  const keysA = Object.keys(a)
-  const keysB = Object.keys(b)
-  if (keysA.length !== keysB.length) return false
-  const recordB = b as Record<string, unknown>
-  for (const key of keysA) {
-    if (!Object.prototype.hasOwnProperty.call(b, key)) return false
-    if (!deepEqual((a as Record<string, unknown>)[key], recordB[key])) return false
-  }
-  return true
-}
 
 export type QuizRecord = Quiz & { id: string }
 const asRecord = (id: string, value: unknown): QuizRecord => ({ ...parseQuiz(value), id })
@@ -57,19 +41,6 @@ export async function updateQuiz(quizId: string, patch: QuizPatch, db: Firestore
     if (!snapshot.exists()) throw new Error('Quiz not found')
     const existing = parseQuiz(snapshot.data())
     const settings = cleanFlashcardSettings(existing.mode, patch.settings ?? existing.settings)
-    if (patch.settings) {
-      const participationChanged = patch.settings.participation !== undefined && !deepEqual(patch.settings.participation, existing.settings.participation)
-      const shuffleQChanged = patch.settings.shuffleQuestions !== undefined && patch.settings.shuffleQuestions !== existing.settings.shuffleQuestions
-      const shuffleOChanged = patch.settings.shuffleOptions !== undefined && patch.settings.shuffleOptions !== existing.settings.shuffleOptions
-      const timeLimitChanged = (patch.settings.timeLimitMinutes !== undefined && patch.settings.timeLimitMinutes !== existing.settings.timeLimitMinutes)
-        || effectiveTimeLimitSeconds(patch.settings) !== effectiveTimeLimitSeconds(existing.settings)
-      if (participationChanged || shuffleQChanged || shuffleOChanged || timeLimitChanged) {
-        const hasSubmissions = await hasQuizAttemptsOrParticipants(quizId, db)
-        if (hasSubmissions) {
-          throw new Error('Cannot change participation, shuffle, or time limit settings on a quiz with existing attempts or participants. Please duplicate the quiz instead.')
-        }
-      }
-    }
     const existingClassId = existing.classId?.trim() || null
     const requestedClassId = patch.classId?.trim() || null
     const classId = requestedClassId || existingClassId

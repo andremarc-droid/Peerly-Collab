@@ -1,6 +1,6 @@
 import { Archive, BarChart3, Copy, MoreVertical, Pencil, Plus, RotateCcw, Send, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
 import { Alert } from '../../../shared/ui/Alert'
@@ -137,6 +137,7 @@ export function InstructorQuizzesPage() {
  * Publishing always goes through the Preview & publish step so it is never done blind.
  */
 function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRecord; classLabel: string; busy: boolean; onAction: (id: string, label: string, action: () => Promise<unknown>) => void; onDelete: () => void }) {
+  const navigate = useNavigate()
   const statusLabel = quiz.status[0].toUpperCase() + quiz.status.slice(1)
   const isCanvas = quiz.mode === 'canvas'
   const isDraft = quiz.status === 'draft'
@@ -155,14 +156,26 @@ function QuizCard({ quiz, classLabel, busy, onAction, onDelete }: { quiz: QuizRe
       : 'Add cards and connections'
     : `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}`
 
+  const handleEditPublished = () => {
+    onAction(quiz.id, isCanvas ? 'Canvas unpublished for editing.' : 'Quiz unpublished for editing.', async () => {
+      await unpublishQuiz(quiz.id)
+      navigate(editPath)
+    })
+  }
+
   return <DataCard title={quiz.title || 'Untitled quiz'} meta={`${metaStatus} · Updated ${updated}`} badge={<div className="quiz-card__badges"><Badge>{statusLabel}</Badge><QuizTypeBadge mode={quiz.mode} />{isCanvas && <Badge>{quiz.boardKind === 'blank' ? 'You grade' : 'Auto-graded'}</Badge>}<Badge>{classLabel}</Badge></div>}>
     <div className="quiz-settings-badges">{settingBadges(quiz).map((label) => <span key={label}>{label}</span>)}</div>
     <div className="quiz-card__actions">
       {isDraft && <Button to={editPath}><Pencil size={15} aria-hidden="true" /> Continue editing</Button>}
-      {isPublished && <Button to={resultsPath}><BarChart3 size={15} aria-hidden="true" /> View results</Button>}
+      {isPublished && (
+        <>
+          <Button to={resultsPath}><BarChart3 size={15} aria-hidden="true" /> View results</Button>
+          <Button type="button" variant="secondary" disabled={busy} onClick={handleEditPublished}><Pencil size={15} aria-hidden="true" /> Edit</Button>
+        </>
+      )}
       {isArchived && <Button type="button" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}><RotateCcw size={15} aria-hidden="true" /> Restore</Button>}
       <DropdownMenu label={`Actions for ${quiz.title || 'Untitled quiz'}`} iconOnly trigger={<MoreVertical size={20} aria-hidden="true" />}>
-        {isPublished && <Link role="menuitem" to={editPath}><Pencil size={16} aria-hidden="true" /> Edit</Link>}
+        {isPublished && <button type="button" role="menuitem" disabled={busy} onClick={handleEditPublished}><Pencil size={16} aria-hidden="true" /> Edit</button>}
         {!isPublished && <Link role="menuitem" to={resultsPath}><BarChart3 size={16} aria-hidden="true" /> Results</Link>}
         {isDraft && <Link role="menuitem" to={`${editPath}?tab=publish`}><Send size={16} aria-hidden="true" /> Preview and publish</Link>}
         {isPublished && <button type="button" role="menuitem" disabled={busy} onClick={() => onAction(quiz.id, isCanvas ? 'Canvas returned to draft.' : 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}><Send size={16} aria-hidden="true" /> Unpublish</button>}

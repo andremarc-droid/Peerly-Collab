@@ -82,10 +82,11 @@ describe('InstructorQuizzesPage cards', () => {
     renderPage()
 
     expect(screen.getByRole('link', { name: /View results/ })).toHaveAttribute('href', '/instructor/quizzes/quiz-1/results')
+    expect(screen.getByRole('button', { name: /Edit/ })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Biology quiz' }))
 
-    expect(screen.getByRole('menuitem', { name: /Edit/ })).toHaveAttribute('href', '/instructor/quizzes/quiz-1')
+    expect(screen.getByRole('menuitem', { name: /Edit/ })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: /Unpublish/ })).toBeInTheDocument()
   })
 })
