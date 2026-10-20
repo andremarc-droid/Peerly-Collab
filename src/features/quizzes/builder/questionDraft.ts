@@ -1,4 +1,23 @@
 import type { AnswerKey, QuizMode, QuizQuestion, QuestionType } from '../types'
+import { normalizeAnswer } from '../grading/normalize'
+
+/**
+ * Trims, drops blanks, and removes entries that grading would treat as the same answer
+ * (for example "Syntax error" and "SYNTAX ERROR" when answers are not case-sensitive).
+ */
+export function dedupeAnswers(answers: string[], caseSensitive: boolean): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const answer of answers) {
+    const trimmed = answer.trim()
+    if (!trimmed) continue
+    const key = normalizeAnswer(trimmed, caseSensitive)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    result.push(trimmed)
+  }
+  return result
+}
 
 export interface QuestionDraft {
   type: QuestionType
@@ -58,10 +77,10 @@ export function toQuestionPair(draft: QuestionDraft, order: number): { question:
     return { question, answerKey }
   }
   if (draft.type === 'identification') {
-    return { question: { ...questionBase, type: draft.type }, answerKey: { type: draft.type, acceptedAnswers: draft.acceptedAnswers.split('\n').map((answer) => answer.trim()).filter(Boolean), explanation, caseSensitive } }
+    return { question: { ...questionBase, type: draft.type }, answerKey: { type: draft.type, acceptedAnswers: dedupeAnswers(draft.acceptedAnswers.split('\n'), caseSensitive), explanation, caseSensitive } }
   }
   if (draft.type === 'fill_blank') {
-    return { question: { ...questionBase, type: draft.type }, answerKey: { type: draft.type, blanks: draft.blankAnswers.map((answer) => answer.split('\n').map((item) => item.trim()).filter(Boolean)), explanation, caseSensitive } }
+    return { question: { ...questionBase, type: draft.type }, answerKey: { type: draft.type, blanks: draft.blankAnswers.map((answer) => dedupeAnswers(answer.split('\n'), caseSensitive)), explanation, caseSensitive } }
   }
   return { question: { ...questionBase, type: 'flashcard' }, answerKey: { type: 'flashcard', back: draft.back.trim(), explanation, caseSensitive: false } }
 }

@@ -1,9 +1,10 @@
-import { collection, getDoc, getDocs, orderBy, query, runTransaction, Timestamp, where, type Firestore } from 'firebase/firestore'
+import { collection, getDoc, getDocs, orderBy, query, runTransaction, Timestamp, where, writeBatch, type Firestore } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
 import { parseAnswerKey, parseQuestion, parseQuizAttempt, parseQuizResult } from '../schemas'
 import type { QuizResult } from '../types'
-import { answerKeyRef, attemptRef, questionRef, resultRef } from './paths'
-import { applyQuestionOverride, recalculateAutomaticGrade } from '../results/resultLogic'
+import { answerKeyRef, answerKeysRef, attemptRef, attemptsRef, questionRef, questionsRef, resultRef } from './paths'
+import { applyQuestionOverride, recalculateAutomaticGrade, regradeAutomaticAttempt } from '../results/resultLogic'
+import type { QuizQuestionRecord } from '../grading/grade'
 
 export async function getQuizResult(quizId: string, attemptId: string, db: Firestore = firestore): Promise<QuizResult | null> {
   const snapshot = await getDoc(resultRef(db, quizId, attemptId))
@@ -69,6 +70,43 @@ export async function setQuestionGradeOverride(
       : applyQuestionOverride(result, questionId, pointsAwarded, question.points)
     transaction.update(resultRef(db, quizId, attemptId), { perQuestion: next.perQuestion, score: next.score, gradedAt: Timestamp.now() })
   })
+}
+
+export interface RegradeSummary { checked: number; updated: number }
+
+/**
+ * Regrades every submitted attempt of a quiz against the answer keys as they are NOW, so a key fix reaches
+ * attempts that were graded earlier. Hand overrides, blank-board reviews and team attempts are left alone.
+ * Only the quiz owner may write results (firestore.rules), and only changed results are written.
+ */
+export async function regradeQuizAttempts(quizId: string, db: Firestore = firestore): Promise<RegradeSummary> {
+  const [questionSnapshot, keySnapshot, attemptSnapshot, resultSnapshot] = await Promise.all([
+    getDocs(query(questionsRef(db, quizId), orderBy('order'))),
+    getDocs(answerKeysRef(db, quizId)),
+    getDocs(attemptsRef(db, quizId)),
+    getDocs(collection(db, 'quizzes', quizId, 'results')),
+  ])
+  const questions = questionSnapshot.docs.map((item) => ({ ...parseQuestion(item.data()), id: item.id })) as QuizQuestionRecord[]
+  const answerKeys = Object.fromEntries(keySnapshot.docs.map((item) => [item.id, parseAnswerKey(item.data())]))
+  const results = new Map(resultSnapshot.docs.map((item) => [item.id, parseQuizResult(item.data())]))
+  const updates: Array<{ attemptId: string; result: QuizResult }> = []
+  let checked = 0
+  for (const item of attemptSnapshot.docs) {
+    const attempt = parseQuizAttempt(item.data())
+    const result = results.get(item.id)
+    if (attempt.status !== 'submitted' || attempt.teamId || !result || result.reviewStatus !== undefined) continue
+    checked += 1
+    const next = regradeAutomaticAttempt({ result, questions, answerKeys, attempt })
+    if (next) updates.push({ attemptId: item.id, result: next })
+  }
+  for (let start = 0; start < updates.length; start += 400) {
+    const batch = writeBatch(db)
+    for (const { attemptId, result } of updates.slice(start, start + 400)) {
+      batch.update(resultRef(db, quizId, attemptId), { perQuestion: result.perQuestion, score: result.score, gradedAt: Timestamp.now() })
+    }
+    await batch.commit()
+  }
+  return { checked, updated: updates.length }
 }
 
 export async function gradeBlankCanvasAttempt(

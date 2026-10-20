@@ -126,6 +126,39 @@ export function recalculateAutomaticGrade(input: {
   return { ...input.result, perQuestion, score: Math.round((input.result.score - previous.pointsAwarded + recalculated.pointsAwarded) * 100) / 100 }
 }
 
+/**
+ * Regrades every automatically graded question of one attempt against the CURRENT answer keys.
+ * Questions an instructor overrode by hand keep their points. Returns null when nothing changed,
+ * so callers only write results that actually differ.
+ */
+export function regradeAutomaticAttempt(input: {
+  result: QuizResult
+  questions: QuizQuestionRecord[]
+  answerKeys: Record<string, AnswerKey>
+  attempt: QuizAttempt
+}): QuizResult | null {
+  const { result, questions, answerKeys, attempt } = input
+  const perQuestion = { ...result.perQuestion }
+  let score = result.score
+  let changed = false
+  for (const question of questions) {
+    if (question.type === 'flashcard' || question.type === 'canvas') continue
+    const previous = result.perQuestion[question.id]
+    const key = answerKeys[question.id]
+    if (!previous || !key || previous.overridden) continue
+    const next = gradeAttempt({
+      userId: result.userId, questions: [question], answerKeys: { [question.id]: key },
+      answers: attempt.answers as Record<string, string | string[]>,
+    }).perQuestion[question.id]
+    if (next.correct === previous.correct && next.pointsAwarded === previous.pointsAwarded) continue
+    perQuestion[question.id] = next
+    score += next.pointsAwarded - previous.pointsAwarded
+    changed = true
+  }
+  if (!changed) return null
+  return { ...result, perQuestion, score: Math.max(0, Math.round(score * 100) / 100) }
+}
+
 export function typedWrongAnswerCounts(input: {
   question: QuizQuestionRecord; key: AnswerKey; attempts: AttemptResult[]
 }): Array<{ answer: string; count: number }> {

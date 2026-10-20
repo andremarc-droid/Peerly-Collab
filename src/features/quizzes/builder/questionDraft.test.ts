@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { validateQuestionAnswerPair } from '../schemas'
-import { createQuestionDraft, detectBlankCount, moveQuestion, validateQuestionDraft } from './questionDraft'
+import { createQuestionDraft, dedupeAnswers, detectBlankCount, moveQuestion, validateQuestionDraft } from './questionDraft'
+import { normalizeAnswer } from '../grading/normalize'
+import { isCorrect } from '../grading/grade'
 import { toQuestionPair } from './questionDraft'
 
 describe('question drafts', () => {
@@ -48,6 +50,25 @@ describe('question drafts', () => {
     expect(validateQuestionDraft(draft, 'quiz')).toEqual({})
     draft.blankAnswers[1] = ''
     expect(validateQuestionDraft(draft, 'quiz').blanks).toBe('Add at least one accepted answer for each blank.')
+  })
+
+  it('removes answers that grading treats as duplicates', () => {
+    expect(dedupeAnswers(['Syntax error', 'syntax error', 'SYNTAX ERROR', ' '], false)).toEqual(['Syntax error'])
+    expect(dedupeAnswers(['Syntax error', 'syntax error', 'SYNTAX ERROR'], true)).toEqual(['Syntax error', 'syntax error', 'SYNTAX ERROR'])
+    const draft = createQuestionDraft('identification')
+    Object.assign(draft, { prompt: 'Name the error', acceptedAnswers: 'Syntax error\nsyntax error\nSYNTAX ERROR' })
+    const { answerKey } = toQuestionPair(draft, 0)
+    expect(answerKey.type === 'identification' && answerKey.acceptedAnswers).toEqual(['Syntax error'])
+  })
+
+  it('ignores invisible and lookalike characters when matching identification answers', () => {
+    expect(normalizeAnswer('Syntax\u200B error', false)).toBe('syntax error')
+    expect(normalizeAnswer('Syntax\u00A0error', false)).toBe('syntax error')
+    expect(normalizeAnswer('\uFEFFSyntax error\u200D', true)).toBe('Syntax error')
+    const draft = createQuestionDraft('identification')
+    Object.assign(draft, { prompt: 'Name the error', points: '2', acceptedAnswers: 'Syntax\u200B error' })
+    const { question, answerKey } = toQuestionPair(draft, 0)
+    expect(isCorrect(question, answerKey, 'Syntax error')).toBe(true)
   })
 
   it('moves questions in either direction without mutating the source', () => {

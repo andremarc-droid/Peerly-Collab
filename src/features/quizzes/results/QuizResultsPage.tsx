@@ -1,4 +1,4 @@
-import { Clock3, Download, Eye, Users } from 'lucide-react'
+import { Clock3, Download, Eye, RefreshCw, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
@@ -23,7 +23,7 @@ import { listEnrollments } from '../../classes/services/enrollmentService'
 import type { ClassWithId, EnrollmentWithId } from '../../classes/types'
 import { getQuiz, updateQuiz } from '../services/quizService'
 import { listQuizAttempts } from '../services/attemptService'
-import { listResults } from '../services/resultService'
+import { listResults, regradeQuizAttempts } from '../services/resultService'
 import { watchQuestionPairs, type SavedQuestion } from '../services/questionService'
 import type { QuizRecord } from '../services/quizService'
 import type { QuizResult } from '../types'
@@ -47,7 +47,8 @@ export function QuizResultsPage() {
   const [sort, setSort] = useState<SortMode>('recent')
   const [selected, setSelected] = useState<AttemptResult | null>(null)
   const [releasePrompt, setReleasePrompt] = useState<boolean | null>(null)
-
+  const [regradePrompt, setRegradePrompt] = useState(false)
+  const [regrading, setRegrading] = useState(false)
   const load = useCallback(async () => {
     if (!user) return null
     const found = await getQuiz(quizId)
@@ -122,6 +123,22 @@ export function QuizResultsPage() {
     finally { setReleasePrompt(null) }
   }
 
+  async function regradeAll() {
+    if (regrading) return
+    setRegrading(true)
+    try {
+      const { checked, updated } = await regradeQuizAttempts(quizId)
+      const data = await load()
+      if (data) { setQuiz(data.quiz); setAttempts(data.attempts); setQuestions(data.questions) }
+      showToast('success', updated === 0 ? `Checked ${checked} attempts. Every grade already matches the current answer keys.` : `Regraded ${updated} of ${checked} attempts using the current answer keys.`)
+    } catch (reason) {
+      showToast('error', reason instanceof Error ? reason.message : 'Attempts could not be regraded.')
+    } finally {
+      setRegrading(false)
+      setRegradePrompt(false)
+    }
+  }
+
   function exportCsv() {
     try {
       const blob = new Blob([resultsCsv(attempts, quiz?.mode === 'flashcards', classroom?.name ?? 'Unassigned', quiz?.settings.timeLimitMinutes)], { type: 'text/csv;charset=utf-8' })
@@ -139,6 +156,7 @@ export function QuizResultsPage() {
     <main className="app-shell__content grid gap-6" id="main-content">
       <p className="m-0"><Badge>Class · {classroom?.name ?? 'Unassigned quiz'}</Badge></p>
       {quiz.settings.scoreVisibility === 'after_release' && <SectionCard title="Score release" description="Students can see their results after you release them. You can turn release off again at any time."><Switch checked={quiz.settings.scoresReleased} onChange={(event) => setReleasePrompt(event.currentTarget.checked)} label="Release scores to students" hint={quiz.settings.scoresReleased ? 'Scores are visible to students now.' : 'Scores are currently held back.'} /></SectionCard>}
+{quiz.mode === 'quiz' && quiz.settings.participation.type === 'individual' && attempts.some((item) => item.status === 'submitted') && <SectionCard title="Regrade" description="Changed an answer key after students submitted? Regrade so every attempt matches the current keys. Scores you adjusted by hand are kept."><Button type="button" variant="secondary" disabled={regrading} onClick={() => setRegradePrompt(true)}><RefreshCw size={16} aria-hidden="true" /> Regrade with current answer keys</Button></SectionCard>}
       <StatRow>
         <StatTile variant="navy" label="Submissions" value={String(summary.submissions)} hint={`${summary.inProgress} in progress · ${summary.submitted} submitted`} />
         {isBlankCanvas ? (
@@ -234,6 +252,7 @@ export function QuizResultsPage() {
         />
       )}
     </Dialog>
+    <ConfirmDialog open={regradePrompt} onClose={() => { if (!regrading) setRegradePrompt(false) }} onConfirm={() => { void regradeAll() }} title="Regrade all attempts?" description="Every submitted attempt is graded again with the current answer keys. Student scores can go up or down. Scores you adjusted by hand are not changed." confirmLabel="Regrade attempts" busy={regrading} closeOnConfirm={false} />
     <ConfirmDialog open={releasePrompt !== null} onClose={() => setReleasePrompt(null)} onConfirm={() => { if (releasePrompt !== null) void releaseScores(releasePrompt) }} title={releasePrompt ? 'Release scores to students?' : 'Turn off score release?'} description={releasePrompt ? 'Students will be able to see their scores according to this quiz’s answer settings.' : 'Students will no longer be able to see scores until you release them again.'} confirmLabel={releasePrompt ? 'Release scores' : 'Turn off release'} />
   </AppShell>
 }
