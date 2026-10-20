@@ -138,7 +138,7 @@ export function QuizIntroPage() {
           ) : null}
           <li>
             <Clock3 size={20} aria-hidden="true" />
-            <span>{limitSeconds !== null ? `You have ${formatDuration(limitSeconds)} once you start.` : 'There is no time limit.'}</span>
+            <span>{limitSeconds !== null ? `Every question has ${formatDuration(limitSeconds)}. When time runs out you move on automatically, and you can’t go back to earlier questions.` : 'There is no time limit.'}</span>
           </li>
           {windowText && (
             <li>

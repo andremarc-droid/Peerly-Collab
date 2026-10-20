@@ -260,9 +260,9 @@ export function QuizEditorPage() {
             {isGroupQuiz
               ? <p className="field__hint">Teams are paced per question (see Participation), so there is no whole-quiz time limit.</p>
               : <>
-                <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings(timeLimitFields(event.target.checked ? 600 : null))} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit</strong><small>Optional time for the quiz.</small></span></label>
+                <label className="choice-control"><input type="checkbox" disabled={hasSubmissions} checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings(timeLimitFields(event.target.checked ? 60 : null))} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit for each question</strong><small>Every question gets its own countdown. Students move on automatically when it runs out.</small></span></label>
                 {limitSeconds !== null && <fieldset className="grid min-w-0 gap-2 border-0 p-0" disabled={hasSubmissions}>
-                  <legend className="field__label mb-2">Time limit</legend>
+                  <legend className="field__label mb-2">Time for each question</legend>
                   <div className="grid grid-cols-2 gap-3">
                     <Input label="Minutes" name="time-limit-minutes" type="number" min={0} value={String(limitParts.minutes)} onChange={(event) => updateSettings(timeLimitFields(Math.max(0, Math.floor(Number(event.target.value) || 0)) * 60 + limitParts.seconds))} />
                     <Input label="Seconds" name="time-limit-seconds" type="number" min={0} max={59} value={String(limitParts.seconds)} error={limitProblem ?? undefined} onChange={(event) => updateSettings(timeLimitFields(limitParts.minutes * 60 + Math.min(59, Math.max(0, Math.floor(Number(event.target.value) || 0)))))} />

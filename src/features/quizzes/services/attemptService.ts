@@ -1,5 +1,5 @@
 import {
-  collection, doc, getDoc, getDocs, limit, orderBy, query, runTransaction, serverTimestamp, Timestamp, where,
+  collection, doc, getDoc, getDocs, limit, orderBy, query, runTransaction, serverTimestamp, Timestamp, updateDoc, where,
   type Firestore,
 } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
@@ -71,6 +71,14 @@ export async function autosaveAnswers(
     if (Object.keys(answers).length > 200) throw new Error('Answers map cannot exceed 200 items')
     transaction.update(ref, { answers })
   })
+}
+
+/** Remembers which question a timed attempt is on and when its countdown started, so a refresh cannot restart the clock. */
+export async function saveQuestionTimer(quizId: string, attemptId: string, index: number, startedAtMs: number, db: Firestore = firestore): Promise<void> {
+  if (!Number.isInteger(index) || index < 0) throw new Error('index must be a non-negative integer')
+  if (!Number.isFinite(startedAtMs)) throw new Error('startedAtMs must be a finite number')
+  // The server clock offset can be fractional; rules and the schema expect whole milliseconds.
+  await updateDoc(attemptRef(db, quizId, attemptId), { questionTimer: { index, startedAtMs: Math.round(startedAtMs) } })
 }
 
 export async function submitAttempt(quizId: string, attemptId: string, timeSpentSeconds?: number, db: Firestore = firestore) {

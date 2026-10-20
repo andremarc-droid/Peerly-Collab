@@ -4,7 +4,7 @@ import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
 import { listMyEnrollments } from '../classes/services/joinService'
 import { getQuiz } from '../quizzes/services/quizService'
-import { getAttempt, autosaveAnswers, submitAttempt } from '../quizzes/services/attemptService'
+import { getAttempt, autosaveAnswers, saveQuestionTimer, submitAttempt } from '../quizzes/services/attemptService'
 import { getQuestionWithKey, listQuestions } from '../quizzes/services/questionService'
 import type { QuizAttempt, QuizQuestion, SubmittedAnswer } from '../quizzes/types'
 import { parseQuestion } from '../quizzes/schemas'
@@ -17,8 +17,9 @@ import { Input } from '../../shared/ui/Input'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
-import { estimateServerOffset, optionOrderForQuestion, persistedQuestionOrder, secondsUntil, attemptEndMs, shouldAutoSubmit } from './quizLogic'
-import { effectiveTimeLimitSeconds, formatClock } from '../quizzes/quizTiming'
+import { estimateServerOffset, optionOrderForQuestion, persistedQuestionOrder, resumeQuestionClock, secondsUntil, type QuestionClock } from './quizLogic'
+import { effectiveTimeLimitSeconds, formatClock, formatDuration } from '../quizzes/quizTiming'
+import { QuestionTimer } from './QuestionTimer'
 import { CanvasPlayPage } from './CanvasPlayPage'
 import { BlankCanvasPlayPage } from './BlankCanvasPlayPage'
 import type { CanvasQuestion } from '../canvas/types'
@@ -70,8 +71,13 @@ export function QuizTakingPage() {
   const [answers, setAnswers] = useState<Record<string, SubmittedAnswer>>({})
   const checkedStorageKey = `peerly:checkedAnswers:${quizId}:${attemptId}`
   const [checked, setChecked] = useState<Record<string, { correct: boolean | null; explanation: string }>>(() => readCheckedAnswers(checkedStorageKey))
+  // In a timed quiz `seconds` is what is left on the CURRENT question. It starts over for every question.
   const [seconds, setSeconds] = useState<number | null>(null)
+  const [deadlineSeconds, setDeadlineSeconds] = useState<number | null>(null)
+  const [clock, setClock] = useState<QuestionClock | null>(null)
+  const [timeUp, setTimeUp] = useState<'question' | 'deadline' | null>(null)
   const [serverOffsetMs, setServerOffsetMs] = useState(0)
+  const [offsetReady, setOffsetReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false)
@@ -84,13 +90,36 @@ export function QuizTakingPage() {
   const pendingAnswersRef = useRef<Record<string, SubmittedAnswer> | null>(null)
   const submitted = useRef(false)
   const autoSubmitTriggered = useRef(false)
+  const clockRef = useRef<QuestionClock | null>(null)
+  const timeUpReason = useRef<'question' | 'deadline'>('question')
+  // The time limit applies to EACH question. A deadline, if there is one, ends the whole attempt.
+  const limitSeconds = quiz ? effectiveTimeLimitSeconds(quiz.settings) : null
+  const deadlineMs = quiz?.settings.closesAt?.toMillis() ?? null
+  const timed = limitSeconds !== null
+
+  /** Starts or resumes a question's countdown and remembers it, so a refresh can never hand out extra time. */
+  const adoptClock = useCallback((next: QuestionClock, persist: boolean) => {
+    clockRef.current = next
+    setClock(next)
+    setIndex(next.index)
+    if (!persist) return
+    try {
+      void Promise.resolve(saveQuestionTimer(quizId, attemptId, next.index, next.startedAtMs)).catch(() => undefined)
+    } catch {
+      // The clock can always be rebuilt from the attempt's start time, so a failed save never interrupts the student.
+    }
+  }, [quizId, attemptId])
 
   useEffect(() => {
     let active = true
+    // Timers wait for the server clock check, but never longer than a moment on a slow connection.
+    const fallback = window.setTimeout(() => { if (active) setOffsetReady(true) }, 1500)
     void estimateServerOffset().then((offset) => {
-      if (active) setServerOffsetMs(offset)
+      if (!active) return
+      setServerOffsetMs(offset)
+      setOffsetReady(true)
     })
-    return () => { active = false }
+    return () => { active = false; window.clearTimeout(fallback) }
   }, [])
 
   useEffect(() => {
@@ -145,16 +174,39 @@ export function QuizTakingPage() {
     })
   }, [quiz, user, showToast, navigate])
 
+  // Start the first countdown, or pick up the saved one after a refresh. Time spent away counts, so questions whose time ran out are skipped.
   useEffect(() => {
-    if (!attempt || !quiz) return undefined
-    // The countdown ends at the time limit or at the quiz deadline, whichever comes first.
-    const endMs = attemptEndMs(attempt.startedAt.toMillis(), effectiveTimeLimitSeconds(quiz.settings), quiz.settings.closesAt?.toMillis() ?? null)
-    if (endMs === null) return undefined
-    const update = () => setSeconds(secondsUntil(endMs, Date.now() + serverOffsetMs))
-    update()
-    const timer = window.setInterval(update, 1000)
+    if (!attempt || !quiz || limitSeconds === null || clockRef.current || !offsetReady || questions.length === 0) return
+    const resumed = resumeQuestionClock(attempt.questionTimer, limitSeconds, questions.length, attempt.startedAt.toMillis(), Date.now() + serverOffsetMs)
+    adoptClock({ index: resumed.index, startedAtMs: resumed.startedAtMs }, resumed.index !== (attempt.questionTimer?.index ?? 0))
+  }, [attempt, quiz, limitSeconds, offsetReady, serverOffsetMs, questions.length, adoptClock])
+
+  // One ticker drives the question countdown and the quiz deadline.
+  useEffect(() => {
+    if (!attempt || !quiz || (limitSeconds === null && deadlineMs === null) || !offsetReady) return undefined
+    const attemptStartMs = attempt.startedAt.toMillis()
+    const tick = () => {
+      const now = Date.now() + serverOffsetMs
+      if (deadlineMs !== null) {
+        setDeadlineSeconds(secondsUntil(deadlineMs, now))
+        if (now >= deadlineMs) { timeUpReason.current = 'deadline'; setTimeUp('deadline'); return }
+      }
+      const current = clockRef.current
+      if (limitSeconds === null || !current) return
+      const next = resumeQuestionClock(current, limitSeconds, questions.length, attemptStartMs, now)
+      if (next.finished) {
+        setSeconds(0)
+        setTimeUp((existing) => existing ?? 'question')
+        return
+      }
+      // The question's time ran out: move on, and the next question gets its full time.
+      if (next.index !== current.index) adoptClock({ index: next.index, startedAtMs: next.startedAtMs }, true)
+      setSeconds(secondsUntil(next.startedAtMs + limitSeconds * 1000, now))
+    }
+    tick()
+    const timer = window.setInterval(tick, 250)
     return () => window.clearInterval(timer)
-  }, [attempt, quiz, serverOffsetMs])
+  }, [attempt, quiz, limitSeconds, deadlineMs, offsetReady, serverOffsetMs, questions.length, adoptClock])
 
   const flushPendingAnswers = useCallback(() => {
     if (pendingAnswersRef.current && JSON.stringify(pendingAnswersRef.current) !== lastSavedAnswers.current && !submitted.current) {
@@ -210,10 +262,12 @@ export function QuizTakingPage() {
     })
     return list
   }, [questions, answers])
+  // In a timed quiz earlier questions cannot be reopened, so only link cards that can still be edited block submitting.
+  const blockingLinkCards = useMemo(() => (timed ? invalidLinkCards.filter((card) => card.questionIndex >= index) : invalidLinkCards), [timed, invalidLinkCards, index])
 
   const submit = useCallback(async (isAutoSubmit = false) => {
     if (submitted.current || !attempt || !quiz) return
-    if (!isAutoSubmit && invalidLinkCards.length > 0) {
+    if (!isAutoSubmit && blockingLinkCards.length > 0) {
       showToast('error', 'Link cards must have a valid https:// URL before submitting.')
       return
     }
@@ -223,8 +277,8 @@ export function QuizTakingPage() {
       await submitAttempt(quizId, attemptId, Math.max(0, Math.floor((Date.now() + serverOffsetMs - attempt.startedAt.toMillis()) / 1000)))
       sessionStorage.removeItem(checkedStorageKey)
       sessionStorage.removeItem(`peerly:questionIndex:${attemptId}`)
-      if (isAutoSubmit || (seconds !== null && shouldAutoSubmit(seconds))) {
-        showToast('info', 'Time had run out, so your quiz was submitted.')
+      if (isAutoSubmit) {
+        showToast('info', timeUpReason.current === 'deadline' ? 'The deadline passed, so your quiz was submitted.' : 'Time had run out, so your quiz was submitted.')
       }
       navigate(`/student/quizzes/${quizId}/attempts/${attemptId}/result`, { replace: true })
     } catch (reason) {
@@ -233,21 +287,27 @@ export function QuizTakingPage() {
       showToast('error', 'Your quiz could not be submitted.')
       setBusy(false)
     }
-  }, [attempt, quiz, quizId, attemptId, answers, seconds, navigate, showToast, checkedStorageKey, invalidLinkCards, serverOffsetMs])
+  }, [attempt, quiz, quizId, attemptId, answers, navigate, showToast, checkedStorageKey, blockingLinkCards, serverOffsetMs])
 
   useEffect(() => {
-    if (seconds !== null && shouldAutoSubmit(seconds) && !submitted.current && !autoSubmitTriggered.current) {
+    if (timeUp && !submitted.current && !autoSubmitTriggered.current) {
       autoSubmitTriggered.current = true
       void submit(true)
     }
-  }, [seconds, submit])
+  }, [timeUp, submit])
 
   const question = questions[index]
   const answeredCount = questions.filter((item) => hasAnswer(answers[item.id])).length
   const unanswered = questions.map((item, i) => ({ item, i })).filter(({ item }) => !hasAnswer(answers[item.id]))
 
   const setAnswer = (id: string, value: SubmittedAnswer) => setAnswers((current) => ({ ...current, [id]: value }))
-  const go = (next: number) => setIndex(Math.max(0, Math.min(questions.length - 1, next)))
+  const go = (next: number) => {
+    const target = Math.max(0, Math.min(questions.length - 1, next))
+    if (!timed) { setIndex(target); return }
+    // Every question has its own clock, so a timed quiz only moves forward. Moving on starts the next question's full time.
+    if (target <= index) return
+    adoptClock({ index: target, startedAtMs: Date.now() + serverOffsetMs }, true)
+  }
 
   async function checkCurrent() {
     if (!question) return
@@ -268,25 +328,28 @@ export function QuizTakingPage() {
 
   const membershipStatus = quiz ? quiz.classId ? membership?.classId === quiz.classId ? membership.status : 'checking' : 'lost' : 'active'
   if (loading || membershipStatus === 'checking') return <AppShell><main className="app-shell__content"><Skeleton className="h-96 rounded-3xl" label="Loading attempt" /></main></AppShell>
+  // A timed quiz shows nothing until its countdown is set, so a refresh never flashes a question that already ran out of time.
+  if (timed && !clock && !error) return <AppShell><main className="app-shell__content"><Skeleton className="h-96 rounded-3xl" label="Starting the timer" /></main></AppShell>
   if (membershipStatus === 'lost') return <AppShell><main className="app-shell__content"><Alert tone="warning" label="Class access changed">You’re being returned to your practice catalog.</Alert></main></AppShell>
   if (error && (!quiz || !attempt)) return <AppShell><main className="app-shell__content grid gap-4"><Alert tone="error" label="Attempt unavailable">{error}</Alert><Button to="/student" variant="secondary">Back to catalog</Button></main></AppShell>
   if (!quiz || !attempt || !question) return <AppShell><main className="app-shell__content"><EmptyAttempt onBack={() => navigate('/student')} /></main></AppShell>
   const revealEach = quiz.settings.answerReveal === 'after_each'
   const checkedCurrent = revealEach ? checked[question.id] : undefined
   const options = 'options' in question ? optionOrderForQuestion(question.id, attempt, question).map((id) => question.options.find((option) => option.id === id)!).filter(Boolean) : []
-  const timeText = seconds === null ? null : formatClock(seconds)
 
-  return <AppShell><PageHeader eyebrow={quiz.mode === 'flashcards' ? 'FLASHCARDS' : quiz.mode === 'canvas' ? 'CANVAS PRACTICE' : 'QUIZ IN PROGRESS'} title={quiz.title} subtitle={`${index + 1} of ${questions.length}${timeText ? ` · ${timeText} remaining` : ''}`} />
+  return <AppShell><PageHeader eyebrow={quiz.mode === 'flashcards' ? 'FLASHCARDS' : quiz.mode === 'canvas' ? 'CANVAS PRACTICE' : 'QUIZ IN PROGRESS'} title={quiz.title} subtitle={`Question ${index + 1} of ${questions.length}`} />
     <main className="app-shell__content grid gap-5" id="main-content">
       <label className="grid gap-2 text-sm font-semibold">Progress <progress aria-label="Quiz progress" max={questions.length} value={answeredCount} className="h-3 w-full accent-navy-900" /></label>
-      {seconds !== null && seconds <= 60 && seconds > 0 && <Alert tone="warning" label="One minute remaining">Your quiz will submit automatically when time runs out.</Alert>}
+      {timed && limitSeconds !== null && index === 0 && <Alert tone="info" label="Timed quiz">Every question has {formatDuration(limitSeconds)}. When time runs out you move to the next question automatically, and you can’t go back.</Alert>}
+      {deadlineSeconds !== null && deadlineSeconds > 0 && deadlineSeconds <= 600 && <Alert tone="warning" label="Deadline coming up">Your quiz is submitted automatically at the deadline ({formatClock(deadlineSeconds)} left).</Alert>}
+      {timed && limitSeconds !== null && seconds !== null && <QuestionTimer remaining={seconds} limit={limitSeconds} />}
       {error && (
         <Alert
           tone="error"
           label="Submission problem"
           action={
             <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={() => void submit()}>Retry submission</Button>
+              <Button type="button" onClick={() => void submit(timeUp !== null)}>Retry submission</Button>
               <Button to="/student" variant="secondary">Back to catalog</Button>
             </div>
           }
@@ -405,16 +468,16 @@ export function QuizTakingPage() {
         {checkedCurrent && <Alert tone={checkedCurrent.correct ? 'success' : 'warning'} label={checkedCurrent.correct ? 'Correct' : 'Review this answer'}>{checkedCurrent.explanation || 'No explanation was provided.'}</Alert>}
         <div className="flex flex-wrap gap-3">{revealEach && !checkedCurrent && quiz.mode !== 'flashcards' && <Button type="button" variant="secondary" onClick={() => void checkCurrent()}>Check answer</Button>}{checkedCurrent && <Button type="button" onClick={() => go(index + 1)}>Next</Button>}</div>
       </section>
-      <nav className="flex flex-wrap gap-2" aria-label="Question navigator">{questions.map((item, i) => { const answered = hasAnswer(answers[item.id]); return <Button key={item.id} type="button" variant={i === index ? 'primary' : 'secondary'} aria-current={i === index ? 'step' : undefined} aria-label={`Question ${i + 1}, ${answered ? 'answered' : 'unanswered'}`} onClick={() => go(i)}><span aria-hidden="true">{answered ? '✓' : '○'}</span> {i + 1} · {answered ? 'Answered' : 'Unanswered'}</Button> })}</nav>
-      <div className="flex flex-wrap justify-between gap-3"><Button type="button" variant="secondary" disabled={index === 0} onClick={() => go(index - 1)}>Previous</Button><Button type="button" variant="secondary" disabled={index === questions.length - 1 || revealEach && !checkedCurrent} onClick={() => go(index + 1)}>Next</Button><Button type="button" onClick={() => setReviewOpen(true)}>Review and submit</Button></div>
+      {!timed && <nav className="flex flex-wrap gap-2" aria-label="Question navigator">{questions.map((item, i) => { const answered = hasAnswer(answers[item.id]); return <Button key={item.id} type="button" variant={i === index ? 'primary' : 'secondary'} aria-current={i === index ? 'step' : undefined} aria-label={`Question ${i + 1}, ${answered ? 'answered' : 'unanswered'}`} onClick={() => go(i)}><span aria-hidden="true">{answered ? '✓' : '○'}</span> {i + 1} · {answered ? 'Answered' : 'Unanswered'}</Button> })}</nav>}
+      <div className={`flex flex-wrap gap-3 ${timed ? 'justify-end' : 'justify-between'}`}>{!timed && <Button type="button" variant="secondary" disabled={index === 0} onClick={() => go(index - 1)}>Previous</Button>}<Button type="button" variant="secondary" disabled={index === questions.length - 1 || revealEach && !checkedCurrent} onClick={() => go(index + 1)}>Next</Button>{index === questions.length - 1 && <Button type="button" onClick={() => setReviewOpen(true)}>Review and submit</Button>}</div>
     </main>
     <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} title="Review your answers" description={`${answeredCount} of ${questions.length} answered. ${unanswered.length} unanswered.`}>
-      {invalidLinkCards.length > 0 && (
+      {blockingLinkCards.length > 0 && (
         <div className="mb-4">
           <Alert tone="error" label="Link cards must have a valid https:// URL before submitting.">
             <p className="m-0 text-sm text-navy-900">The following link cards are missing a valid web address:</p>
             <ul className="m-0 pl-5 text-sm list-disc">
-              {invalidLinkCards.map((c) => (
+              {blockingLinkCards.map((c) => (
                 <li key={c.cardId}>
                   <button
                     type="button"
@@ -432,12 +495,12 @@ export function QuizTakingPage() {
           </Alert>
         </div>
       )}
-      {unanswered.length > 0 ? <ol className="grid gap-2 pl-5">{unanswered.map(({ item, i }) => <li key={item.id}><Button type="button" variant="ghost" onClick={() => { setReviewOpen(false); go(i) }}>Question {i + 1}: {item.prompt}</Button></li>)}</ol> : <p>Every question has an answer.</p>}
+      {unanswered.length > 0 ? timed ? <p>Unanswered: {unanswered.map(({ i }) => `Question ${i + 1}`).join(', ')}. Each question has its own time, so earlier questions can’t be reopened.</p> : <ol className="grid gap-2 pl-5">{unanswered.map(({ item, i }) => <li key={item.id}><Button type="button" variant="ghost" onClick={() => { setReviewOpen(false); go(i) }}>Question {i + 1}: {item.prompt}</Button></li>)}</ol> : <p>Every question has an answer.</p>}
       <div className="dialog__actions">
         <Button type="button" variant="secondary" onClick={() => setReviewOpen(false)}>Keep working</Button>
         <Button
           type="button"
-          disabled={invalidLinkCards.length > 0}
+          disabled={blockingLinkCards.length > 0}
           onClick={() => { setReviewOpen(false); setConfirmSubmitOpen(true) }}
         >
           Continue to submit

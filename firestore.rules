@@ -1672,7 +1672,7 @@ service cloud.firestore {
       let quizPath = /databases/$(database)/documents/quizzes/$(quizId);
       let quizDoc = existsAfter(quizPath) ? getAfter(quizPath).data : get(quizPath).data;
       let isBlank = quizDoc.mode == 'canvas' && ('boardKind' in quizDoc && quizDoc.boardKind == 'blank');
-      return data.keys().hasOnly(['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds'])
+      return data.keys().hasOnly(['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds', 'questionTimer'])
         && data.keys().hasAll(['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds'])
         && data.userId is string && data.userName is string
         && data.attemptNumber is int && data.attemptNumber > 0
@@ -1686,7 +1686,16 @@ service cloud.firestore {
         && data.questionOrder is list && data.optionOrder is map
         && data.startedAt is timestamp
         && (data.submittedAt == null || data.submittedAt is timestamp)
-        && data.timeSpentSeconds is int && data.timeSpentSeconds >= 0;
+        && data.timeSpentSeconds is int && data.timeSpentSeconds >= 0
+        // Timed quizzes: the question the student is on and when its countdown started (milliseconds).
+        && (!('questionTimer' in data)
+          || (data.questionTimer is map
+            && data.questionTimer.keys().hasOnly(['index', 'startedAtMs'])
+            && data.questionTimer.keys().hasAll(['index', 'startedAtMs'])
+            && data.questionTimer.index is int && data.questionTimer.index >= 0
+            && data.questionTimer.index < data.questionOrder.size()
+            && data.questionTimer.startedAtMs is int
+            && data.questionTimer.startedAtMs <= request.time.toMillis() + 60000));
     }
 
     function validResult(data) {
@@ -1833,7 +1842,11 @@ service cloud.firestore {
           && resource.data.status == 'in_progress'
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.status in ['in_progress', 'submitted']
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers', 'status', 'submittedAt', 'timeSpentSeconds', 'optionOrder'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers', 'status', 'submittedAt', 'timeSpentSeconds', 'optionOrder', 'questionTimer'])
+          // A timed attempt only moves forward: the clock cannot be removed or sent back to an earlier question.
+          && (!('questionTimer' in resource.data)
+            || ('questionTimer' in request.resource.data
+              && request.resource.data.questionTimer.index >= resource.data.questionTimer.index))
           && validAttempt(request.resource.data, quizId)
           && (request.resource.data.status == 'in_progress' || request.resource.data.submittedAt == request.time)
           && (request.resource.data.status != 'submitted'

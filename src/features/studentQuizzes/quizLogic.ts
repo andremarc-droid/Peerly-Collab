@@ -21,6 +21,30 @@ export function attemptEndMs(startedAtMs: number, limitSeconds: number | null, c
 
 export function shouldAutoSubmit(seconds: number): boolean { return seconds <= 0 }
 
+/** Which question a timed attempt is on, and when that question's countdown started (server-aligned milliseconds). */
+export interface QuestionClock { index: number; startedAtMs: number }
+
+/**
+ * Where a per-question countdown stands right now. Every question gets `limitSeconds`. Time that passed while the student
+ * was away, or while the tab was asleep, skips the questions whose time ran out. `finished` means the last question's
+ * time has run out too.
+ */
+export function resumeQuestionClock(
+  saved: QuestionClock | undefined,
+  limitSeconds: number,
+  total: number,
+  attemptStartedAtMs: number,
+  nowMs: number,
+): QuestionClock & { finished: boolean } {
+  const limitMs = limitSeconds * 1000
+  const base = saved ?? { index: 0, startedAtMs: attemptStartedAtMs }
+  const last = Math.max(0, total - 1)
+  const elapsed = limitMs > 0 ? Math.floor(Math.max(0, nowMs - base.startedAtMs) / limitMs) : 0
+  const index = base.index + elapsed
+  if (index > last) return { index: last, startedAtMs: base.startedAtMs + Math.max(0, last - base.index) * limitMs, finished: true }
+  return { index, startedAtMs: base.startedAtMs + elapsed * limitMs, finished: false }
+}
+
 export function remainingAttempts(quiz: Quiz, attempts: number): number | null {
   return quiz.settings.attemptsAllowed === null ? null : Math.max(0, quiz.settings.attemptsAllowed - attempts)
 }

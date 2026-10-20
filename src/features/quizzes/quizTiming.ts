@@ -1,9 +1,15 @@
 import { Timestamp } from 'firebase/firestore'
 import type { QuizSettings } from './types'
 
-/** A limit shorter than this is not a useful quiz timer. */
+/** The time limit is per question. Shorter than this is not a useful timer. */
 export const MIN_TIME_LIMIT_SECONDS = 10
-export const MAX_TIME_LIMIT_SECONDS = 86_400
+/** Longest limit an instructor can set for each question (one hour). Enforced by the editor. */
+export const MAX_TIME_LIMIT_SECONDS = 3_600
+/**
+ * Longest limit a stored quiz may carry (24 hours, matching validQuizSettings in firestore.rules). Quizzes saved when
+ * the limit covered the whole quiz can exceed one hour; they must keep loading, so parsing accepts this wider range.
+ */
+export const MAX_STORED_TIME_LIMIT_SECONDS = 86_400
 
 type TimingSettings = Pick<QuizSettings, 'timeLimitMinutes'> & Partial<Pick<QuizSettings, 'timeLimitSeconds' | 'opensAt' | 'closesAt'>>
 
@@ -88,8 +94,8 @@ export function describeWindow(settings: Pick<QuizSettings, 'opensAt' | 'closesA
 /** Why the timing settings cannot be saved, or null when they are fine. */
 export function timingProblem(settings: TimingSettings): string | null {
   const seconds = effectiveTimeLimitSeconds(settings)
-  if (seconds !== null && seconds < MIN_TIME_LIMIT_SECONDS) return `The time limit must be at least ${MIN_TIME_LIMIT_SECONDS} seconds.`
-  if (seconds !== null && seconds > MAX_TIME_LIMIT_SECONDS) return 'The time limit cannot be longer than 24 hours.'
+  if (seconds !== null && seconds < MIN_TIME_LIMIT_SECONDS) return `The time limit for each question must be at least ${MIN_TIME_LIMIT_SECONDS} seconds.`
+  if (seconds !== null && seconds > MAX_TIME_LIMIT_SECONDS) return 'The time limit for each question cannot be longer than 1 hour.'
   const opens = settings.opensAt?.toMillis()
   const closes = settings.closesAt?.toMillis()
   if (opens !== undefined && closes !== undefined && closes <= opens) return 'The deadline must be after the time the quiz opens.'

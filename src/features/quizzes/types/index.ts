@@ -29,9 +29,9 @@ export interface QuizSettings {
   participation: Participation
   scoreVisibility: ScoreVisibility
   scoresReleased: boolean
-  /** Whole minutes (rounded up from timeLimitSeconds). Kept so older screens and records keep working. */
+  /** Time allowed for EACH question, in whole minutes (rounded up from timeLimitSeconds). Kept so older screens and records keep working. */
   timeLimitMinutes: number | null
-  /** Exact limit in seconds. When absent (older quizzes) the limit is timeLimitMinutes * 60. */
+  /** Exact time allowed for each question, in seconds. When absent (older quizzes) it is timeLimitMinutes * 60. */
   timeLimitSeconds?: number | null
   /** Students can start the quiz from this moment. null means it is open as soon as it is published. */
   opensAt?: Timestamp | null
@@ -162,6 +162,8 @@ export interface QuizAttempt {
   startedAt: Timestamp
   submittedAt: Timestamp | null
   timeSpentSeconds: number
+  /** Timed quizzes only: the question the student is on and when its countdown started. A refresh keeps the same clock. */
+  questionTimer?: { index: number; startedAtMs: number }
   /** Only on attempts written for a team: the team this attempt belongs to. Solo attempts never have these. */
   teamId?: string
   teamName?: string

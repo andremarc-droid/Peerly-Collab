@@ -4,7 +4,7 @@ import type {
 } from '../types'
 import { ANSWER_MODES, GROUP_LIMITS, TEAM_FORMATIONS } from '../types/group'
 import { validateCanvasDefinition, validateCanvasKey } from '../../canvas/schemas'
-import { MAX_TIME_LIMIT_SECONDS, MIN_TIME_LIMIT_SECONDS } from '../quizTiming'
+import { MAX_STORED_TIME_LIMIT_SECONDS, MIN_TIME_LIMIT_SECONDS } from '../quizTiming'
 
 export class DomainValidationError extends Error {
   constructor(message: string) {
@@ -84,7 +84,7 @@ export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSetti
   const rawSeconds = settings.timeLimitSeconds === undefined ? null : settings.timeLimitSeconds
   if (rawSeconds !== null) {
     if (!Number.isInteger(rawSeconds) || (rawSeconds as number) < MIN_TIME_LIMIT_SECONDS) throw new DomainValidationError(`The time limit must be at least ${MIN_TIME_LIMIT_SECONDS} seconds`)
-    if ((rawSeconds as number) > MAX_TIME_LIMIT_SECONDS) throw new DomainValidationError('The time limit cannot be longer than 24 hours')
+    if ((rawSeconds as number) > MAX_STORED_TIME_LIMIT_SECONDS) throw new DomainValidationError('The time limit cannot be longer than 24 hours')
   }
   // Without a whole-minute limit there is no limit at all, so a stray seconds value is ignored.
   const timeLimitSeconds = timeLimitMinutes === null ? null : (rawSeconds as number | null)
@@ -207,9 +207,16 @@ export function validateQuestionAnswerPair(
   return { question, answerKey }
 }
 
+function parseQuestionTimer(value: unknown): QuizAttempt['questionTimer'] {
+  if (value === undefined) return undefined
+  const timer = record(value, 'questionTimer')
+  exactKeys(timer, ['index', 'startedAtMs'], 'questionTimer')
+  return { index: integer(timer.index, 'questionTimer.index'), startedAtMs: integer(timer.startedAtMs, 'questionTimer.startedAtMs') }
+}
+
 export function parseQuizAttempt(value: unknown): QuizAttempt {
   const attempt = record(value, 'attempt')
-  exactKeys(attempt, ['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds', 'teamId', 'teamName'], 'attempt')
+  exactKeys(attempt, ['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds', 'questionTimer', 'teamId', 'teamName'], 'attempt')
   const answers = record(attempt.answers, 'answers')
   if (Object.keys(answers).length > 200) throw new DomainValidationError('answers must not exceed 200 items')
   for (const [id, answer] of Object.entries(answers)) {
@@ -251,6 +258,7 @@ export function parseQuizAttempt(value: unknown): QuizAttempt {
     }
   }
   const optionOrder = record(attempt.optionOrder, 'optionOrder')
+  const questionTimer = parseQuestionTimer(attempt.questionTimer)
   if (!Object.values(optionOrder).every((order) => Array.isArray(order) && order.every((id) => typeof id === 'string'))) throw new DomainValidationError('optionOrder must map to lists of strings')
   if (!Array.isArray(attempt.questionOrder) || !attempt.questionOrder.every((id) => typeof id === 'string')) throw new DomainValidationError('questionOrder must be a list of strings')
   return {
@@ -263,6 +271,7 @@ export function parseQuizAttempt(value: unknown): QuizAttempt {
     timeSpentSeconds: integer(attempt.timeSpentSeconds, 'timeSpentSeconds'),
     ...(typeof attempt.teamId === 'string' ? { teamId: attempt.teamId } : {}),
     ...(typeof attempt.teamName === 'string' ? { teamName: attempt.teamName } : {}),
+    ...(questionTimer ? { questionTimer } : {}),
   }
 }
 

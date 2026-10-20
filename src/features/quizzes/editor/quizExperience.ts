@@ -31,7 +31,7 @@ export function describeQuizExperience({ mode, boardKind, title, settings }: Exp
   if (participation.type === 'group') return `${describeGroupExperience(participation)} ${revealSentence}`
 
   const limitSeconds = effectiveTimeLimitSeconds(settings)
-  const time = limitSeconds !== null ? ` with ${formatDuration(limitSeconds)}` : ''
+  const time = limitSeconds !== null ? `, with ${formatDuration(limitSeconds)} for each question` : ''
   const attempts = settings.attemptsAllowed
     ? ` and ${settings.attemptsAllowed} ${settings.attemptsAllowed === 1 ? 'attempt' : 'attempts'}`
     : ' with unlimited attempts'

@@ -10,7 +10,7 @@ import { QuizResultPage } from './QuizResultPage'
 import { defaultQuizSettings } from '../quizzes/schemas/settings'
 import type { Quiz, QuizAttempt, QuizResult } from '../quizzes/types'
 import { getQuiz } from '../quizzes/services/quizService'
-import { getAttempt, listUserAttempts, startAttempt, autosaveAnswers, submitAttempt } from '../quizzes/services/attemptService'
+import { getAttempt, listUserAttempts, startAttempt, autosaveAnswers, saveQuestionTimer, submitAttempt } from '../quizzes/services/attemptService'
 import { getQuizResult } from '../quizzes/services/resultService'
 import { getQuestionWithKey, listQuestions } from '../quizzes/services/questionService'
 import { listMyEnrollments } from '../classes/services/joinService'
@@ -30,7 +30,7 @@ vi.mock('../auth/useAuth', () => ({ useAuth: () => ({ user: signedInUser, profil
 const { showToast } = vi.hoisted(() => ({ showToast: vi.fn() }))
 vi.mock('../../shared/ui/useToast', () => ({ useToast: () => ({ showToast }) }))
 vi.mock('../quizzes/services/quizService', () => ({ getQuiz: vi.fn() }))
-vi.mock('../quizzes/services/attemptService', () => ({ getAttempt: vi.fn(), listUserAttempts: vi.fn(), startAttempt: vi.fn(), autosaveAnswers: vi.fn(), submitAttempt: vi.fn() }))
+vi.mock('../quizzes/services/attemptService', () => ({ getAttempt: vi.fn(), listUserAttempts: vi.fn(), startAttempt: vi.fn(), autosaveAnswers: vi.fn(), saveQuestionTimer: vi.fn(), submitAttempt: vi.fn() }))
 vi.mock('../quizzes/services/resultService', () => ({ getQuizResult: vi.fn() }))
 vi.mock('../quizzes/services/questionService', () => ({ getQuestionWithKey: vi.fn(), listQuestions: vi.fn() }))
 vi.mock('../classes/services/joinService', () => ({ listMyEnrollments: vi.fn() }))
@@ -58,6 +58,7 @@ beforeEach(() => {
   vi.mocked(getAttempt).mockResolvedValue(attempt)
   vi.mocked(listQuestions).mockResolvedValue([question])
   vi.mocked(autosaveAnswers).mockResolvedValue()
+  vi.mocked(saveQuestionTimer).mockResolvedValue()
   vi.mocked(submitAttempt).mockResolvedValue({ attempt: submittedAttempt, result, scoreVisibility: 'immediate' })
   vi.mocked(getQuizResult).mockResolvedValue(result)
   vi.mocked(getQuestionWithKey).mockResolvedValue({ id: 'q1', question, answerKey: { type: 'choice', correctOptionId: 'correct', explanation: 'The second option is correct.', caseSensitive: false } })
@@ -636,6 +637,95 @@ describe('student quiz pages', () => {
 
     view.unmount()
     expect(autosaveAnswers).toHaveBeenCalledWith('quiz-1', 'attempt-persisted-index', expect.objectContaining({ q2: 'opt2' }))
+  })
+
+  describe('per-question timer', () => {
+    const timedQuestion = (id: string, order: number, prompt: string) => ({
+      id, order, type: 'multiple_choice' as const, prompt, points: 1,
+      options: [{ id: `${id}a`, text: `${prompt} A` }, { id: `${id}b`, text: `${prompt} B` }],
+    })
+    const timedQuiz: Quiz & { id: string } = {
+      ...quiz, id: 'quiz-timed', questionCount: 3,
+      settings: { ...quiz.settings, answerReveal: 'never', timeLimitMinutes: 1, timeLimitSeconds: 60 },
+    }
+    const timedAttempt = (overrides: Partial<QuizAttempt> = {}): QuizAttempt & { id: string } => ({
+      ...attempt, id: 'attempt-timed', questionOrder: ['q1', 'q2', 'q3'],
+      optionOrder: { q1: ['q1a', 'q1b'], q2: ['q2a', 'q2b'], q3: ['q3a', 'q3b'] }, ...overrides,
+    })
+    const route = '/student/quizzes/quiz-timed/attempts/attempt-timed'
+
+    beforeEach(() => {
+      vi.mocked(getQuiz).mockResolvedValue(timedQuiz)
+      vi.mocked(listQuestions).mockResolvedValue([timedQuestion('q1', 0, 'First'), timedQuestion('q2', 1, 'Second'), timedQuestion('q3', 2, 'Third')])
+      vi.mocked(saveQuestionTimer).mockClear()
+      vi.mocked(submitAttempt).mockClear()
+      showToast.mockClear()
+    })
+
+    it('shows a live countdown for the current question and only moves forward', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getAttempt).mockResolvedValue(timedAttempt({ startedAt: Timestamp.fromMillis(Date.now()) }))
+      renderRoute(route, <QuizTakingPage />)
+      expect(await screen.findByText('First')).toBeInTheDocument()
+      expect(screen.getByRole('timer', { name: 'Time left on this question' })).toHaveTextContent(/^(1:00|0:5\d)$/)
+      expect(screen.queryByRole('button', { name: 'Previous' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('navigation', { name: 'Question navigator' })).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      expect(await screen.findByText('Second')).toBeInTheDocument()
+      // The next question starts again with its full time, and the new clock is saved.
+      expect(screen.getByRole('timer', { name: 'Time left on this question' })).toHaveTextContent(/^(1:00|0:5\d)$/)
+      expect(saveQuestionTimer).toHaveBeenCalledWith('quiz-timed', 'attempt-timed', 1, expect.any(Number))
+
+      // Earlier questions cannot be reopened, not even with the keyboard.
+      fireEvent.keyDown(document.querySelector('.quiz-taking__card')!, { key: 'ArrowLeft', code: 'ArrowLeft' })
+      expect(screen.getByText('Second')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Previous' })).not.toBeInTheDocument()
+    })
+
+    it('offers Review and submit only on the last question', async () => {
+      const user = userEvent.setup()
+      vi.mocked(getAttempt).mockResolvedValue(timedAttempt({ startedAt: Timestamp.fromMillis(Date.now()) }))
+      renderRoute(route, <QuizTakingPage />)
+      await screen.findByText('First')
+      expect(screen.queryByRole('button', { name: 'Review and submit' })).not.toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      await screen.findByText('Second')
+      expect(screen.queryByRole('button', { name: 'Review and submit' })).not.toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      await screen.findByText('Third')
+      expect(screen.getByRole('button', { name: 'Review and submit' })).toBeInTheDocument()
+    })
+
+    it('resumes on the saved question with the saved clock after a refresh', async () => {
+      const now = Date.now()
+      vi.mocked(getAttempt).mockResolvedValue(timedAttempt({ startedAt: Timestamp.fromMillis(now - 100_000), questionTimer: { index: 1, startedAtMs: now - 20_000 } }))
+      renderRoute(route, <QuizTakingPage />)
+      expect(await screen.findByText('Second')).toBeInTheDocument()
+      expect(screen.getByRole('timer', { name: 'Time left on this question' })).toHaveTextContent(/^0:(3|4)\d$/)
+    })
+
+    it('skips questions whose time ran out while the student was away', async () => {
+      vi.mocked(getAttempt).mockResolvedValue(timedAttempt({ startedAt: Timestamp.fromMillis(Date.now() - 130_000) }))
+      renderRoute(route, <QuizTakingPage />)
+      expect(await screen.findByText('Third')).toBeInTheDocument()
+      expect(submitAttempt).not.toHaveBeenCalled()
+    })
+
+    it('submits automatically once the last question runs out of time', async () => {
+      vi.mocked(getAttempt).mockResolvedValue(timedAttempt({ startedAt: Timestamp.fromMillis(Date.now() - 190_000) }))
+      renderRoute(route, <QuizTakingPage />)
+      await waitFor(() => expect(submitAttempt).toHaveBeenCalled(), { timeout: 3000 })
+      expect(showToast).toHaveBeenCalledWith('info', 'Time had run out, so your quiz was submitted.')
+    })
+
+    it('submits automatically at the deadline even when questions are not timed', async () => {
+      vi.mocked(getQuiz).mockResolvedValue({ ...quiz, settings: { ...quiz.settings, timeLimitMinutes: null, timeLimitSeconds: null, closesAt: Timestamp.fromMillis(Date.now() - 1_000) } })
+      vi.mocked(getAttempt).mockResolvedValue(attempt)
+      renderRoute('/student/quizzes/quiz-1/attempts/attempt-1', <QuizTakingPage />)
+      await waitFor(() => expect(submitAttempt).toHaveBeenCalled(), { timeout: 3000 })
+      expect(showToast).toHaveBeenCalledWith('info', 'The deadline passed, so your quiz was submitted.')
+    })
   })
 })
 
