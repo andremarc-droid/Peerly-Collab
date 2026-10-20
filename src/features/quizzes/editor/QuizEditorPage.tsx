@@ -64,6 +64,8 @@ export function QuizEditorPage() {
   const [errors, setErrors] = useState<QuizFormErrors>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [isCustomAttempts, setIsCustomAttempts] = useState(false)
+  const [customAttemptsText, setCustomAttemptsText] = useState('')
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved])
   useUnsavedChangesGuard(dirty)
 
@@ -80,6 +82,10 @@ export function QuizEditorPage() {
       if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
       const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, boardKind: quiz.boardKind, settings: quiz.settings }
       setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setStatus(quiz.status); setResolvedQuizId(quizId)
+      if (quiz.settings.attemptsAllowed !== null && ![1, 2, 3].includes(quiz.settings.attemptsAllowed)) {
+        setIsCustomAttempts(true)
+        setCustomAttemptsText(String(quiz.settings.attemptsAllowed))
+      }
       if (quiz.status === 'published') {
         void Promise.resolve(unpublishQuiz(quizId)).then(() => {
           if (active) {
@@ -163,6 +169,7 @@ export function QuizEditorPage() {
   const limitProblem = limitSeconds === null ? null : timingProblem({ timeLimitMinutes: form.settings.timeLimitMinutes, timeLimitSeconds: limitSeconds })
   const windowProblem = timingProblem({ timeLimitMinutes: null, opensAt: form.settings.opensAt, closesAt: form.settings.closesAt })
   const experience = describeQuizExperience({ mode: form.mode, boardKind: form.boardKind, title: form.title, settings: form.settings })
+  const showCustomAttempts = isCustomAttempts || (form.settings.attemptsAllowed !== null && ![1, 2, 3].includes(form.settings.attemptsAllowed))
   const saveLabel = saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : continueToPublish ? 'Save and continue' : 'Save settings'
 
   return <AppShell>
@@ -240,7 +247,61 @@ export function QuizEditorPage() {
                   </div>
                 </fieldset>}
               </>}
-            <Select label="Attempts allowed" name="attempts-allowed" value={form.settings.attemptsAllowed === null ? 'unlimited' : String(form.settings.attemptsAllowed)} onChange={(event) => updateSettings({ attemptsAllowed: event.target.value === 'unlimited' ? null : Number(event.target.value) })} options={[{ label: 'Unlimited', value: 'unlimited' }, { label: '1 attempt', value: '1' }, { label: '2 attempts', value: '2' }, { label: '3 attempts', value: '3' }]} />
+            <div className="grid gap-3">
+              <Select
+                label="Attempts allowed"
+                name="attempts-allowed"
+                value={
+                  showCustomAttempts
+                    ? 'custom'
+                    : form.settings.attemptsAllowed === null
+                    ? 'unlimited'
+                    : String(form.settings.attemptsAllowed)
+                }
+                onChange={(event) => {
+                  if (event.target.value === 'custom') {
+                    setIsCustomAttempts(true)
+                    const nextVal = form.settings.attemptsAllowed && form.settings.attemptsAllowed > 0 ? form.settings.attemptsAllowed : 4
+                    setCustomAttemptsText(String(nextVal))
+                    updateSettings({ attemptsAllowed: nextVal })
+                  } else {
+                    setIsCustomAttempts(false)
+                    setCustomAttemptsText('')
+                    updateSettings({ attemptsAllowed: event.target.value === 'unlimited' ? null : Number(event.target.value) })
+                  }
+                }}
+                options={[
+                  { label: 'Unlimited', value: 'unlimited' },
+                  { label: '1 attempt', value: '1' },
+                  { label: '2 attempts', value: '2' },
+                  { label: '3 attempts', value: '3' },
+                  { label: 'Custom…', value: 'custom' },
+                ]}
+              />
+              {showCustomAttempts && (
+                <Input
+                  label="Number of attempts"
+                  name="custom-attempts"
+                  type="number"
+                  min={1}
+                  value={customAttemptsText || (form.settings.attemptsAllowed !== null ? String(form.settings.attemptsAllowed) : '')}
+                  onChange={(event) => {
+                    setCustomAttemptsText(event.target.value)
+                    const parsed = parseInt(event.target.value, 10)
+                    if (!Number.isNaN(parsed) && parsed >= 1) {
+                      updateSettings({ attemptsAllowed: parsed })
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!form.settings.attemptsAllowed || form.settings.attemptsAllowed < 1) {
+                      updateSettings({ attemptsAllowed: 1 })
+                      setCustomAttemptsText('1')
+                    }
+                  }}
+                  hint="Enter any positive number of attempts (e.g., 5, 10)."
+                />
+              )}
+            </div>
             <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleQuestions} onChange={(event) => updateSettings({ shuffleQuestions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle questions</strong></span></label>
             <label className="choice-control"><input type="checkbox" checked={form.settings.shuffleOptions} onChange={(event) => updateSettings({ shuffleOptions: event.target.checked })} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Shuffle answer options</strong></span></label>
           </div>

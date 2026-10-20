@@ -592,13 +592,15 @@ describe('student quiz pages', () => {
     expect(screen.getByText('First question')).toBeInTheDocument()
     expect(screen.queryByText('Second question')).not.toBeInTheDocument()
 
-    // 2. Select option and check answer
+    // 2. Select option and submit answer to check it
     const radio = screen.getByRole('radio', { name: /Alpha/i })
     await userEvent.click(radio)
-    const checkBtn = screen.getByRole('button', { name: /Check answer/i })
-    await userEvent.click(checkBtn)
+    const submitBtn = screen.getByRole('button', { name: /Submit answer/i })
+    await userEvent.click(submitBtn)
 
     expect(await screen.findByText('Alpha is correct')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Submit answer/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Next$/i })).toBeInTheDocument()
 
     // 3. ArrowRight after checking SHOULD advance
     fireEvent.keyDown(card, { key: 'ArrowRight', code: 'ArrowRight' })

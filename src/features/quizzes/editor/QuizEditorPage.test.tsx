@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom/vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { Timestamp } from 'firebase/firestore'
@@ -290,6 +291,45 @@ describe('quick create and quiz deletion confirmation', () => {
 
     expect(await screen.findByText('Add at least one question.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Publish quiz' })).toBeDisabled()
+  })
+
+  it('supports selecting custom attempts and entering a custom number', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-1?tab=settings']}>
+        <Routes>
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const attemptsSelect = await screen.findByLabelText('Attempts allowed')
+    expect(attemptsSelect).toBeInTheDocument()
+
+    // Initially custom attempts input is not visible
+    expect(screen.queryByLabelText('Number of attempts')).not.toBeInTheDocument()
+
+    // Select Custom
+    await user.selectOptions(attemptsSelect, 'custom')
+
+    // Now custom number input appears
+    const customInput = await screen.findByLabelText('Number of attempts')
+    expect(customInput).toBeInTheDocument()
+    expect(customInput).toHaveValue(4)
+
+    // Type a custom number, e.g. 7
+    await user.clear(customInput)
+    await user.type(customInput, '7')
+    expect(customInput).toHaveValue(7)
+
+    // Save quiz
+    fireEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
+    expect(mocks.updateQuiz).toHaveBeenCalledWith(
+      'quiz-1',
+      expect.objectContaining({
+        settings: expect.objectContaining({ attemptsAllowed: 7 }),
+      }),
+    )
   })
 })
 

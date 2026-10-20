@@ -466,10 +466,23 @@ export function QuizTakingPage() {
           />
         )}
         {checkedCurrent && <Alert tone={checkedCurrent.correct ? 'success' : 'warning'} label={checkedCurrent.correct ? 'Correct' : 'Review this answer'}>{checkedCurrent.explanation || 'No explanation was provided.'}</Alert>}
-        <div className="flex flex-wrap gap-3">{revealEach && !checkedCurrent && quiz.mode !== 'flashcards' && <Button type="button" variant="secondary" onClick={() => void checkCurrent()}>Check answer</Button>}{checkedCurrent && <Button type="button" onClick={() => go(index + 1)}>Next</Button>}</div>
       </section>
       {!timed && <nav className="flex flex-wrap gap-2" aria-label="Question navigator">{questions.map((item, i) => { const answered = hasAnswer(answers[item.id]); return <Button key={item.id} type="button" variant={i === index ? 'primary' : 'secondary'} aria-current={i === index ? 'step' : undefined} aria-label={`Question ${i + 1}, ${answered ? 'answered' : 'unanswered'}`} onClick={() => go(i)}><span aria-hidden="true">{answered ? '✓' : '○'}</span> {i + 1} · {answered ? 'Answered' : 'Unanswered'}</Button> })}</nav>}
-      <div className={`flex flex-wrap gap-3 ${timed ? 'justify-end' : 'justify-between'}`}>{!timed && <Button type="button" variant="secondary" disabled={index === 0} onClick={() => go(index - 1)}>Previous</Button>}<Button type="button" variant="secondary" disabled={index === questions.length - 1 || revealEach && !checkedCurrent} onClick={() => go(index + 1)}>Next</Button>{index === questions.length - 1 && <Button type="button" onClick={() => setReviewOpen(true)}>Review and submit</Button>}</div>
+      <div className={`flex flex-wrap gap-3 ${timed ? 'justify-end' : 'justify-between'}`}>
+        {!timed && <Button type="button" variant="secondary" disabled={index === 0} onClick={() => go(index - 1)}>Previous</Button>}
+        <div className="flex flex-wrap gap-3">
+          {revealEach && !checkedCurrent && quiz.mode !== 'flashcards' && quiz.mode !== 'canvas' && (
+            <Button type="button" onClick={() => void checkCurrent()}>Submit answer</Button>
+          )}
+          {index === questions.length - 1 ? (
+            <Button type="button" onClick={() => setReviewOpen(true)}>Review and submit</Button>
+          ) : (
+            (!revealEach || Boolean(checkedCurrent) || quiz.mode === 'flashcards' || quiz.mode === 'canvas') && (
+              <Button type="button" onClick={() => go(index + 1)}>Next</Button>
+            )
+          )}
+        </div>
+      </div>
     </main>
     <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} title="Review your answers" description={`${answeredCount} of ${questions.length} answered. ${unanswered.length} unanswered.`}>
       {blockingLinkCards.length > 0 && (
