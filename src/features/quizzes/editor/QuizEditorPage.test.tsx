@@ -303,22 +303,25 @@ describe('quick create and quiz deletion confirmation', () => {
       </MemoryRouter>,
     )
 
-    const attemptsSelect = await screen.findByLabelText('Attempts allowed')
+    const attemptsSelect = await screen.findByLabelText('Attempts allowed') as HTMLSelectElement
     expect(attemptsSelect).toBeInTheDocument()
 
     // Initially custom attempts input is not visible
-    expect(screen.queryByLabelText('Number of attempts')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Number of attempts/)).not.toBeInTheDocument()
 
     // Select Custom
     await user.selectOptions(attemptsSelect, 'custom')
 
     // Now custom number input appears
-    const customInput = await screen.findByLabelText('Number of attempts')
+    const customInput = await screen.findByLabelText(/Number of attempts/)
     expect(customInput).toBeInTheDocument()
     expect(customInput).toHaveValue(4)
 
-    // Type a custom number, e.g. 7
+    // Erase the input completely
     await user.clear(customInput)
+    expect(customInput).toHaveValue(null)
+
+    // Type a custom number, e.g. 7
     await user.type(customInput, '7')
     expect(customInput).toHaveValue(7)
 
@@ -330,6 +333,30 @@ describe('quick create and quiz deletion confirmation', () => {
         settings: expect.objectContaining({ attemptsAllowed: 7 }),
       }),
     )
+  })
+
+  it('allows erasing seconds input completely without automatically reinserting zero', async () => {
+    render(
+      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-1?tab=settings']}>
+        <Routes>
+          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const checkbox = await screen.findByLabelText(/Set a time limit for each question/)
+    fireEvent.click(checkbox)
+
+    const secondsInput = await screen.findByLabelText('Seconds')
+    expect(secondsInput).toHaveValue(0)
+
+    // Erase seconds to empty string
+    fireEvent.change(secondsInput, { target: { value: '' } })
+    expect(secondsInput).toHaveValue(null)
+
+    // Type 45 seconds
+    fireEvent.change(secondsInput, { target: { value: '45' } })
+    expect(secondsInput).toHaveValue(45)
   })
 })
 

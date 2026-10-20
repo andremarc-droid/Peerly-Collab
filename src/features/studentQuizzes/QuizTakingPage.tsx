@@ -471,15 +471,12 @@ export function QuizTakingPage() {
       <div className={`flex flex-wrap gap-3 ${timed ? 'justify-end' : 'justify-between'}`}>
         {!timed && <Button type="button" variant="secondary" disabled={index === 0} onClick={() => go(index - 1)}>Previous</Button>}
         <div className="flex flex-wrap gap-3">
-          {revealEach && !checkedCurrent && quiz.mode !== 'flashcards' && quiz.mode !== 'canvas' && (
+          {revealEach && !checkedCurrent && quiz.mode !== 'flashcards' && quiz.mode !== 'canvas' ? (
             <Button type="button" onClick={() => void checkCurrent()}>Submit answer</Button>
-          )}
-          {index === questions.length - 1 ? (
+          ) : index === questions.length - 1 ? (
             <Button type="button" onClick={() => setReviewOpen(true)}>Review and submit</Button>
           ) : (
-            (!revealEach || Boolean(checkedCurrent) || quiz.mode === 'flashcards' || quiz.mode === 'canvas') && (
-              <Button type="button" onClick={() => go(index + 1)}>Next</Button>
-            )
+            <Button type="button" onClick={() => go(index + 1)}>Next</Button>
           )}
         </div>
       </div>

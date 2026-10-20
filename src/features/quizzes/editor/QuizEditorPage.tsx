@@ -66,6 +66,8 @@ export function QuizEditorPage() {
   const [saving, setSaving] = useState(false)
   const [isCustomAttempts, setIsCustomAttempts] = useState(false)
   const [customAttemptsText, setCustomAttemptsText] = useState('')
+  const [minutesText, setMinutesText] = useState<string | null>(null)
+  const [secondsText, setSecondsText] = useState<string | null>(null)
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved])
   useUnsavedChangesGuard(dirty)
 
@@ -124,7 +126,15 @@ export function QuizEditorPage() {
     if (Object.keys(validation).length) return
     if (!user) return
     setSaving(true); setSaveError(null)
-    const input = { ...(!quizId || classAssignmentChanged ? { classId: form.classId } : {}), title: form.title.trim(), description: form.description.trim(), tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean), settings: form.settings }
+    const parsedCustom = parseInt(customAttemptsText, 10)
+    const finalAttempts = isCustomAttempts
+      ? (!Number.isNaN(parsedCustom) && parsedCustom >= 1 ? parsedCustom : 1)
+      : form.settings.attemptsAllowed
+    const finalSettings = {
+      ...form.settings,
+      attemptsAllowed: finalAttempts,
+    }
+    const input = { ...(!quizId || classAssignmentChanged ? { classId: form.classId } : {}), title: form.title.trim(), description: form.description.trim(), tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean), settings: finalSettings }
     try {
       if (quizId) {
         await updateQuiz(quizId, input)
@@ -238,12 +248,38 @@ export function QuizEditorPage() {
             {isGroupQuiz
               ? <p className="field__hint">Teams are paced per question (see Participation), so there is no whole-quiz time limit.</p>
               : <>
-                <label className="choice-control"><input type="checkbox" checked={form.settings.timeLimitMinutes !== null} onChange={(event) => updateSettings(timeLimitFields(event.target.checked ? 60 : null))} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit for each question</strong><small>Every question gets its own countdown. Students move on automatically when it runs out.</small></span></label>
+                <label className="choice-control"><input type="checkbox" checked={form.settings.timeLimitMinutes !== null} onChange={(event) => { setMinutesText(null); setSecondsText(null); updateSettings(timeLimitFields(event.target.checked ? 60 : null)) }} /><span className="choice-control__mark" aria-hidden="true" /><span className="choice-control__copy"><strong>Set a time limit for each question</strong><small>Every question gets its own countdown. Students move on automatically when it runs out.</small></span></label>
                 {limitSeconds !== null && <fieldset className="grid min-w-0 gap-2 border-0 p-0">
                   <legend className="field__label mb-2">Time for each question</legend>
                   <div className="grid grid-cols-2 gap-3">
-                    <Input label="Minutes" name="time-limit-minutes" type="number" min={0} value={String(limitParts.minutes)} onChange={(event) => updateSettings(timeLimitFields(Math.max(0, Math.floor(Number(event.target.value) || 0)) * 60 + limitParts.seconds))} />
-                    <Input label="Seconds" name="time-limit-seconds" type="number" min={0} max={59} value={String(limitParts.seconds)} error={limitProblem ?? undefined} onChange={(event) => updateSettings(timeLimitFields(limitParts.minutes * 60 + Math.min(59, Math.max(0, Math.floor(Number(event.target.value) || 0)))))} />
+                    <Input
+                      label="Minutes"
+                      name="time-limit-minutes"
+                      type="number"
+                      min={0}
+                      value={minutesText ?? String(limitParts.minutes)}
+                      onChange={(event) => {
+                        setMinutesText(event.target.value)
+                        const val = parseInt(event.target.value, 10)
+                        updateSettings(timeLimitFields((Number.isNaN(val) ? 0 : Math.max(0, val)) * 60 + limitParts.seconds))
+                      }}
+                      onBlur={() => setMinutesText(null)}
+                    />
+                    <Input
+                      label="Seconds"
+                      name="time-limit-seconds"
+                      type="number"
+                      min={0}
+                      max={59}
+                      value={secondsText ?? String(limitParts.seconds)}
+                      error={limitProblem ?? undefined}
+                      onChange={(event) => {
+                        setSecondsText(event.target.value)
+                        const val = parseInt(event.target.value, 10)
+                        updateSettings(timeLimitFields(limitParts.minutes * 60 + (Number.isNaN(val) ? 0 : Math.min(59, Math.max(0, val)))))
+                      }}
+                      onBlur={() => setSecondsText(null)}
+                    />
                   </div>
                 </fieldset>}
               </>}
@@ -284,7 +320,7 @@ export function QuizEditorPage() {
                   name="custom-attempts"
                   type="number"
                   min={1}
-                  value={customAttemptsText || (form.settings.attemptsAllowed !== null ? String(form.settings.attemptsAllowed) : '')}
+                  value={customAttemptsText}
                   onChange={(event) => {
                     setCustomAttemptsText(event.target.value)
                     const parsed = parseInt(event.target.value, 10)
@@ -292,10 +328,14 @@ export function QuizEditorPage() {
                       updateSettings({ attemptsAllowed: parsed })
                     }
                   }}
-                  onBlur={() => {
-                    if (!form.settings.attemptsAllowed || form.settings.attemptsAllowed < 1) {
+                  onBlur={(event) => {
+                    const parsed = parseInt(event.target.value, 10)
+                    if (Number.isNaN(parsed) || parsed < 1) {
                       updateSettings({ attemptsAllowed: 1 })
                       setCustomAttemptsText('1')
+                    } else {
+                      updateSettings({ attemptsAllowed: parsed })
+                      setCustomAttemptsText(String(parsed))
                     }
                   }}
                   hint="Enter any positive number of attempts (e.g., 5, 10)."
