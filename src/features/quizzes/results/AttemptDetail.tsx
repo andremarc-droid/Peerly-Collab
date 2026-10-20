@@ -307,9 +307,11 @@ export function AttemptDetail({
       const grade = result.perQuestion[id]
       const answer = attempt.answers[id]
       const answerText = Array.isArray(answer)
-        ? answer.join(' · ')
+        ? (answer.length > 0 ? answer.join(' · ') : 'No answer submitted')
         : typeof answer === 'string'
-        ? answer
+        ? ('options' in question && Array.isArray(question.options)
+          ? question.options.find(({ id: optionId }) => optionId === answer)?.text ?? (answer.trim() || 'No answer submitted')
+          : answer.trim() || 'No answer submitted')
         : 'No answer submitted'
       const correctAnswer = answerKey.type === 'choice' && 'options' in question
         ? question.options.find(({ id: optionId }) => optionId === answerKey.correctOptionId)?.text

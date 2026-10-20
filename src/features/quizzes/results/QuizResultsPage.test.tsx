@@ -102,4 +102,40 @@ describe('attempt detail component', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mark correct' }))
     await waitFor(() => expect(mocks.setQuestionGradeOverride).toHaveBeenCalledWith('quiz-1', 'attempt-1', 'q1', 2))
   })
+
+  it('renders option text instead of raw option id for multiple choice questions', () => {
+    const choiceQuestion: SavedQuestion = {
+      id: 'q2',
+      question: {
+        type: 'multiple_choice',
+        prompt: 'What does API stand for?',
+        points: 1,
+        order: 0,
+        options: [
+          { id: 'opt-1', text: 'Application Programming Interface' },
+          { id: 'opt-2', text: 'Apple Pie Inside' },
+        ],
+      },
+      answerKey: {
+        type: 'choice',
+        correctOptionId: 'opt-1',
+        explanation: 'API is Application Programming Interface',
+        caseSensitive: false,
+      },
+    }
+    const choiceAttempt: AttemptResult = {
+      ...attempt,
+      answers: { q2: 'opt-1' },
+      result: {
+        userId: 'student',
+        score: 1,
+        maxScore: 1,
+        perQuestion: { q2: { correct: true, pointsAwarded: 1, overridden: false } },
+        gradedAt: now,
+      },
+    }
+    render(<AttemptDetail quizId="quiz-1" attempt={choiceAttempt} questions={[choiceQuestion]} ungraded={false} onGradeChanged={vi.fn()} />)
+    expect(screen.getAllByText('Application Programming Interface').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('opt-1')).not.toBeInTheDocument()
+  })
 })

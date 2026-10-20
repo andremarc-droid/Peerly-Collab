@@ -29,7 +29,15 @@ const CanvasBoard = lazy(() => import('../canvas/components/CanvasBoard'))
 
 type QuestionRecord = QuizQuestion & { id: string }
 type ReviewItem = { question: QuestionRecord; key: AnswerKey | null }
-const answerText = (answer: unknown) => Array.isArray(answer) ? answer.join(' / ') : typeof answer === 'string' ? answer : 'No answer submitted'
+function answerText(question: QuestionRecord, answer: unknown): string {
+  if (Array.isArray(answer)) return answer.length > 0 ? answer.join(' / ') : 'No answer submitted'
+  if (typeof answer !== 'string' || !answer.trim()) return 'No answer submitted'
+  if ('options' in question && Array.isArray(question.options)) {
+    const matched = question.options.find((opt) => opt.id === answer)
+    if (matched) return matched.text
+  }
+  return answer
+}
 
 export function QuizResultPage() {
   const { quizId = '', attemptId = '' } = useParams()
@@ -230,7 +238,7 @@ export function QuizResultPage() {
                     </div>
                   ) : (
                     <>
-                      <p className="mt-3 mb-0"><strong>Your answer:</strong> {answerText(attempt.answers[question.id])}</p>
+                      <p className="mt-3 mb-0"><strong>Your answer:</strong> {answerText(question, attempt.answers[question.id])}</p>
                       {key && <p className="mt-2 mb-0"><strong>Answer:</strong> {key.type === 'choice' && 'options' in question ? question.options.find(({ id }) => id === key.correctOptionId)?.text : key.type === 'identification' ? key.acceptedAnswers.join(', ') : key.type === 'fill_blank' ? key.blanks.map((blank) => blank.join(' / ')).join(' · ') : key.type === 'flashcard' ? key.back : ''}</p>}
                       {key?.explanation && <p className="mt-2 mb-0">{key.explanation}</p>}
                     </>

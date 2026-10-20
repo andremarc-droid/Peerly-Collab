@@ -137,6 +137,15 @@ describe('student quiz pages', () => {
     expect(await screen.findByText('Submitted after the time limit. Your instructor may review this.')).toBeInTheDocument()
   })
 
+  it('displays option text instead of raw option id on the student result page', async () => {
+    vi.mocked(getQuiz).mockResolvedValue(quiz)
+    vi.mocked(getAttempt).mockResolvedValue({ ...submittedAttempt, answers: { q1: 'correct' } })
+    renderRoute('/student/quizzes/quiz-1/attempts/attempt-1/result', <QuizResultPage />)
+    expect(await screen.findByText(/Your answer:/)).toBeInTheDocument()
+    expect(screen.getAllByText('Second option').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('correct')).not.toBeInTheDocument()
+  })
+
   it('shows retry and back to catalog actions when submission fails', async () => {
     vi.mocked(submitAttempt).mockRejectedValueOnce(new Error('Network offline'))
     const user = userEvent.setup()
