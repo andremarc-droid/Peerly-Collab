@@ -39,6 +39,7 @@ export function QuestionBuilderPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [formKey, setFormKey] = useState(0)
   const [importText, setImportText] = useState('')
   const [importBusy, setImportBusy] = useState(false)
   const dragId = useRef<string | null>(null)
@@ -93,11 +94,11 @@ export function QuestionBuilderPage() {
   function selectQuestion(question: SavedQuestion) {
     if (!question.answerKey) return
     const next = draftFromPair(question.question, question.answerKey)
-    setQuestionId(question.id); setDraft(next); setSavedSignature(JSON.stringify(next)); setSaveStatus('saved'); setSaveError(null)
+    setQuestionId(question.id); setFormKey((key) => key + 1); setDraft(next); setSavedSignature(JSON.stringify(next)); setSaveStatus('saved'); setSaveError(null)
   }
 
   function addQuestion(type: QuestionType) {
-    setQuestionId(null); setDraft(createQuestionDraft(type, questions.length)); setSavedSignature(null); setSaveStatus('waiting'); setSaveError(null)
+    setQuestionId(null); setFormKey((key) => key + 1); setDraft(createQuestionDraft(type, questions.length)); setSavedSignature(null); setSaveStatus('waiting'); setSaveError(null)
   }
 
   function duplicateQuestion(question: SavedQuestion) {
@@ -105,7 +106,7 @@ export function QuestionBuilderPage() {
     const next = draftFromPair(question.question, question.answerKey)
     if (next.type === 'multiple_choice' || next.type === 'true_false') next.options = next.options.map((option, index) => ({ ...option, id: `copy-${Date.now()}-${index}` }))
     next.prompt = `${next.prompt} (copy)`
-    setQuestionId(null); setDraft(next); setSavedSignature(null); setSaveStatus('waiting')
+    setQuestionId(null); setFormKey((key) => key + 1); setDraft(next); setSavedSignature(null); setSaveStatus('waiting')
   }
 
   // Deleting is immediate and reversible: the toast offers Undo, which saves the question and its answer key back.
@@ -173,7 +174,7 @@ export function QuestionBuilderPage() {
             return (
               <div className="question-builder__first-editor">
                 <SectionCard title="New question">
-                  <QuestionForm draft={draft} mode={quiz.mode} errors={validateQuestionDraft(draft, quiz.mode)} onChange={(nextDraft) => { setDraft(nextDraft); setSaveStatus('waiting') }} />
+                  <QuestionForm key={formKey} draft={draft} mode={quiz.mode} errors={validateQuestionDraft(draft, quiz.mode)} onChange={(nextDraft) => { setDraft(nextDraft); setSaveStatus('waiting') }} />
                   <div className="question-builder__toolbar">
                     <span className="question-save-status" role="status">{saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Complete valid fields to save'}</span>
                     {saveError && <Alert tone="error" label="Question not saved">{saveError}</Alert>}
@@ -194,7 +195,7 @@ export function QuestionBuilderPage() {
               <QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} />
             </SectionCard>
             <div className="question-builder__editor-column">
-              {draft ? <SectionCard title={questionId ? 'Edit question' : 'New question'} description="Changes save automatically once the fields are valid."><QuestionForm draft={draft} mode={quiz.mode} errors={validateQuestionDraft(draft, quiz.mode)} onChange={(nextDraft) => { setDraft(nextDraft); setSaveStatus('waiting') }} /><div className="question-builder__toolbar"><span className={`question-save-status question-save-status--${saveStatus}`} role="status">{saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Complete valid fields to save'}</span>{questionId && <><Button type="button" variant="secondary" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) duplicateQuestion(selected) }}><Copy size={16} aria-hidden="true" /> Duplicate</Button><Button type="button" variant="secondary" className="button--destructive" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) void removeQuestion(selected) }}><Trash2 size={16} aria-hidden="true" /> Delete</Button></>}</div>{saveError && <Alert tone="error" label="Question not saved">{saveError}</Alert>}</SectionCard> : <EmptyState title="Choose a question" description="Select a question to edit, or add a new one to this quiz." action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} />} />}
+              {draft ? <SectionCard title={questionId ? 'Edit question' : 'New question'} description="Changes save automatically once the fields are valid."><QuestionForm key={formKey} draft={draft} mode={quiz.mode} errors={validateQuestionDraft(draft, quiz.mode)} onChange={(nextDraft) => { setDraft(nextDraft); setSaveStatus('waiting') }} /><div className="question-builder__toolbar"><span className={`question-save-status question-save-status--${saveStatus}`} role="status">{saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Complete valid fields to save'}</span>{questionId && <><Button type="button" variant="secondary" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) duplicateQuestion(selected) }}><Copy size={16} aria-hidden="true" /> Duplicate</Button><Button type="button" variant="secondary" className="button--destructive" onClick={() => { const selected = questions.find((question) => question.id === questionId); if (selected) void removeQuestion(selected) }}><Trash2 size={16} aria-hidden="true" /> Delete</Button></>}</div>{saveError && <Alert tone="error" label="Question not saved">{saveError}</Alert>}</SectionCard> : <EmptyState title="Choose a question" description="Select a question to edit, or add a new one to this quiz." action={<QuestionTypeButtons mode={quiz.mode} onAdd={addQuestion} />} />}
               {draft && <QuestionPreview draft={draft} explanationTiming={quiz.mode === 'quiz' ? quiz.settings.answerReveal : 'never'} />}
             </div>
           </section>
