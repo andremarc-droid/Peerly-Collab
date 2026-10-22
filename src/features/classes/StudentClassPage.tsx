@@ -314,9 +314,6 @@ function StudentClassDetail({ classId }: { classId: string }) {
                     badge={
                       <div className="flex flex-wrap gap-2">
                         <QuizTypeBadge mode={quiz.mode} />
-                        {quiz.mode === 'canvas' && quiz.boardKind === 'blank' && (
-                          <Badge>Graded by instructor</Badge>
-                        )}
                         <Badge>{answerRevealLabel(quiz.settings.answerReveal)}</Badge>
                         <Badge>{scoreVisibilityLabel(quiz)}</Badge>
                       </div>

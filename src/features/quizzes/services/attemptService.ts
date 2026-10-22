@@ -102,22 +102,7 @@ export async function submitAttempt(quizId: string, attemptId: string, timeSpent
     if (participantData.activeAttemptId !== attemptId) throw new Error('Attempt is no longer active')
     const serverElapsed = attempt.startedAt ? Math.max(0, Math.floor((Date.now() - attempt.startedAt.toMillis()) / 1000)) : 0
     const spentSeconds = attempt.startedAt ? serverElapsed : (timeSpentSeconds ?? 0)
-    const isBlankCanvas = quiz.mode === 'canvas' && quiz.boardKind === 'blank'
-    let graded: QuizResult
-    if (isBlankCanvas) {
-      const boardQuestion = questions.find((q) => q.type === 'canvas') ?? questions[0]
-      const maxScore = boardQuestion?.points ?? 0
-      graded = {
-        userId: attempt.userId,
-        score: 0,
-        maxScore,
-        perQuestion: {},
-        gradedAt: Timestamp.now(),
-        reviewStatus: 'pending',
-      }
-    } else {
-      graded = gradeAttempt({ userId: attempt.userId, questions, answerKeys, answers: attempt.answers as Record<string, string | string[]>, gradedAt: Timestamp.now() })
-    }
+    const graded: QuizResult = gradeAttempt({ userId: attempt.userId, questions, answerKeys, answers: attempt.answers as Record<string, string | string[]>, gradedAt: Timestamp.now() })
     const next = { ...attempt, status: 'submitted' as const, submittedAt: Timestamp.now(), timeSpentSeconds: spentSeconds }
     transaction.update(ref, { status: next.status, submittedAt: serverTimestamp(), timeSpentSeconds: spentSeconds })
     transaction.update(participant, { activeAttemptId: null, updatedAt: serverTimestamp() })

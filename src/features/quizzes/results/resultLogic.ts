@@ -71,42 +71,23 @@ export function summarizeAttempts(
   attempts: AttemptResult[],
   ungraded = false,
   timeLimitMinutes: number | null = null,
-  options?: { isBlankCanvas?: boolean },
 ) {
   const submitted = attempts.filter((item) => item.status === 'submitted')
   const lateSubmissions = timeLimitMinutes
     ? submitted.filter((item) => isLate(item.startedAt, item.submittedAt, timeLimitMinutes).late).length
     : 0
-  const isBlank = options?.isBlankCanvas ?? false
-  const attemptsForScores = isBlank
-    ? attempts.filter((a) => a.result?.reviewStatus === 'graded')
-    : attempts
-  const best = bestAttempts(attemptsForScores)
+  const best = bestAttempts(attempts)
   const scores = ungraded ? [] : best.flatMap(({ result }) => result && result.maxScore > 0 ? [result.score / result.maxScore * 100] : [])
   const average = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null
-  const needsGradingTeams = new Set<string>()
-  let needsGradingCount = 0
-  for (const a of attempts) {
-    if (a.status !== 'submitted') continue
-    const needs = a.result?.reviewStatus === 'pending' || (isBlank && (!a.result || a.result.reviewStatus !== 'graded'))
-    if (!needs) continue
-    if (a.teamId) {
-      if (needsGradingTeams.has(a.teamId)) continue
-      needsGradingTeams.add(a.teamId)
-    }
-    needsGradingCount++
-  }
   return {
     submissions: submitted.length,
     inProgress: attempts.filter(({ status }) => status === 'in_progress').length,
     submitted: submitted.length,
     lateSubmissions,
-    needsGradingCount,
     average: average === null ? null : Math.round(average),
     highest: scores.length ? Math.round(Math.max(...scores)) : null,
     lowest: scores.length ? Math.round(Math.min(...scores)) : null,
     bestStudentCount: best.length,
-    gradedCount: attemptsForScores.filter((a) => a.status === 'submitted').length,
   }
 }
 
@@ -148,7 +129,7 @@ export function regradeAutomaticAttempt(input: {
   let score = result.score
   let changed = false
   for (const question of questions) {
-    if (question.type === 'flashcard' || question.type === 'canvas') continue
+    if (question.type === 'flashcard') continue
     const previous = result.perQuestion[question.id]
     const key = answerKeys[question.id]
     if (!previous || !key || previous.overridden) continue
@@ -198,7 +179,7 @@ export const csvCell = (value: string | number): string => {
  */
 export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = '', timeLimitMinutes: number | null = null): string {
   const hasTeams = attempts.some((attempt) => Boolean(attempt.teamName))
-  const header: Array<string | number> = ['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Review status', 'Score', 'Feedback', 'Late', 'Time spent (seconds)', 'Submitted at']
+  const header: Array<string | number> = ['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Score', 'Late', 'Time spent (seconds)', 'Submitted at']
   if (hasTeams) header.splice(1, 0, 'Team')
   const rows: Array<Array<string | number>> = [header]
   for (const attempt of attempts) {
@@ -209,13 +190,9 @@ export function resultsCsv(attempts: AttemptResult[], ungraded = false, classNam
     const timeSpent = attempt.status === 'submitted'
       ? computeTimeSpent(attempt.startedAt, attempt.submittedAt)
       : null
-    const reviewStatus = attempt.result?.reviewStatus ?? (attempt.status === 'submitted' ? 'graded' : '—')
-    const feedback = attempt.result?.feedback ?? ''
     const cells: Array<string | number> = [
       attempt.userName, attempt.userId, className, attempt.attemptNumber, attempt.status,
-      reviewStatus,
       ungraded || !attempt.result ? 'Ungraded' : `${attempt.result.score}/${attempt.result.maxScore}`,
-      feedback,
       lateCell,
       timeSpent !== null ? timeSpent : '—',
       attempt.submittedAt?.toDate().toISOString() ?? '',

@@ -143,42 +143,4 @@ describe('quiz result logic', () => {
     const csv = resultsCsv([{ ...row('lt', 'u2', 8), startedAt: started, submittedAt: Timestamp.fromMillis(1_000_000 + 900 * 1000) }], false, 'Class', 10)
     expect(csv).toContain('"Late (5 min)"')
   })
-
-  it('summarizes blank canvas attempts using graded attempts only and exports reviewStatus and feedback to CSV', () => {
-    const pendingAttempt = {
-      ...row('p1', 'u1', 0),
-      result: { ...result(0), reviewStatus: 'pending' as const },
-    }
-    const gradedAttempt = {
-      ...row('g1', 'u2', 8),
-      result: { ...result(8), reviewStatus: 'graded' as const, feedback: 'Great board!' },
-    }
-
-    const summary = summarizeAttempts([pendingAttempt, gradedAttempt], false, null, { isBlankCanvas: true })
-    expect(summary.submissions).toBe(2)
-    expect(summary.needsGradingCount).toBe(1)
-    expect(summary.average).toBe(80)
-    expect(summary.highest).toBe(80)
-    expect(summary.lowest).toBe(80)
-
-    const csv = resultsCsv([pendingAttempt, gradedAttempt], false, 'Class 101')
-    expect(csv).toContain('"pending"')
-    expect(csv).toContain('"graded"')
-    expect(csv).toContain('"Great board!"')
-  })
-
-  it('does not count standard auto-graded submissions as needsGradingCount', () => {
-    // Normal auto-graded attempts have no reviewStatus
-    const autoGradedAttempts = [row('a1', 'u1', 10), row('a2', 'u2', 5)]
-    const summary = summarizeAttempts(autoGradedAttempts)
-    expect(summary.needsGradingCount).toBe(0)
-
-    // If an attempt has a pending reviewStatus, it is counted
-    const withPending = [...autoGradedAttempts, { ...row('a3', 'u3', 0), result: { ...result(0), reviewStatus: 'pending' as const } }]
-    expect(summarizeAttempts(withPending).needsGradingCount).toBe(1)
-
-    // For blank canvas: submitted attempt without result document also counts as needs grading
-    const unresultedBlank = { ...row('b1', 'u4', 0), result: null }
-    expect(summarizeAttempts([unresultedBlank], false, null, { isBlankCanvas: true }).needsGradingCount).toBe(1)
-  })
 })

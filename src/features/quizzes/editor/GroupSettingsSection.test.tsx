@@ -118,30 +118,4 @@ describe('GroupSettingsSection', () => {
     expect(screen.getByText(/Flashcard sets/)).toHaveTextContent(/always completed individually/)
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
   })
-
-  it('offers group choice for canvas quizzes, forcing representative mode and hiding question-level options', () => {
-    const spy = vi.fn()
-    render(<Harness initial={{ type: 'individual' }} mode="canvas" spy={spy} />)
-    expect(screen.getByRole('radio', { name: /Individual/ })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /Group of 2 or more/ })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('radio', { name: /Group of 2 or more/ }))
-    expect(last(spy)).toEqual({
-      type: 'group',
-      groupSize: 3,
-      answerMode: 'representative',
-      teamFormation: 'assigned',
-      waitForEveryone: false,
-      questionTimeSec: null,
-    })
-
-    expect(screen.getByLabelText(/Largest team size/)).toHaveValue(3)
-    expect(screen.getByRole('radio', { name: /I build the teams/ })).toBeInTheDocument()
-    // Canvas does not offer "everyone answers" or question-level timer/wait
-    expect(screen.queryByRole('radio', { name: /How teams answer/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('radio', { name: /Everyone answers/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: /Wait for everyone/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: /Set a timer for each question/ })).not.toBeInTheDocument()
-    expect(screen.getByText(/One representative edits the board while teammates watch/)).toBeInTheDocument()
-  })
 })

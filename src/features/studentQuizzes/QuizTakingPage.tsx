@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
@@ -7,7 +7,6 @@ import { getQuiz } from '../quizzes/services/quizService'
 import { getAttempt, autosaveAnswers, saveQuestionTimer, submitAttempt } from '../quizzes/services/attemptService'
 import { getQuestionWithKey, listQuestions } from '../quizzes/services/questionService'
 import type { QuizAttempt, QuizQuestion, SubmittedAnswer } from '../quizzes/types'
-import { parseQuestion } from '../quizzes/schemas'
 import { gradeAttempt } from '../quizzes/grading/grade'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
@@ -17,23 +16,15 @@ import { Input } from '../../shared/ui/Input'
 import { PageHeader } from '../../shared/ui/PageHeader'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
-import { estimateServerOffset, optionOrderForQuestion, persistedQuestionOrder, resumeQuestionClock, secondsUntil, type QuestionClock } from './quizLogic'
+import { estimateServerOffset, optionOrderForQuestion, resumeQuestionClock, secondsUntil, type QuestionClock } from './quizLogic'
 import { effectiveTimeLimitSeconds, formatClock, formatDuration } from '../quizzes/quizTiming'
 import { QuestionTimer } from './QuestionTimer'
-import { CanvasPlayPage } from './CanvasPlayPage'
-import { BlankCanvasPlayPage } from './BlankCanvasPlayPage'
-import type { CanvasQuestion } from '../canvas/types'
-import type { BlankCanvasAnswer } from '../quizzes/types'
 
 type QuestionRecord = QuizQuestion & { id: string }
-const answerValue = (value: SubmittedAnswer | undefined, index?: number) => Array.isArray(value) ? (index === undefined ? '' : value[index] ?? '') : typeof value === 'object' && value !== null ? '' : value ?? ''
+const answerValue = (value: SubmittedAnswer | undefined, index?: number) => Array.isArray(value) ? (index === undefined ? '' : value[index] ?? '') : value ?? ''
 const hasAnswer = (value: SubmittedAnswer | undefined) => {
   if (value === undefined || value === null) return false
   if (Array.isArray(value)) return value.some((item) => Boolean(item.trim()))
-  if (typeof value === 'object') {
-    const blank = value as { cards?: unknown[] }
-    return Array.isArray(blank.cards) && blank.cards.length > 0
-  }
   return Boolean(value.trim())
 }
 
@@ -138,29 +129,21 @@ export function QuizTakingPage() {
       if (!live) return
       if (!foundQuiz || !foundAttempt || foundAttempt.userId !== user.uid || foundAttempt.status !== 'in_progress') { setError('This attempt is unavailable.'); setLoading(false); return }
       if (foundQuiz.settings.participation.type === 'group') { navigate(`/student/quizzes/${foundQuiz.id}/team`, { replace: true }); return }
-      const records = rawQuestions.map(({ id, ...value }) => ({ ...parseQuestion(value), id }))
-      const ordered = persistedQuestionOrder(foundAttempt, records)
-      setQuiz(foundQuiz); setAttempt({ ...foundAttempt, id: attemptId }); setAnswers(foundAttempt.answers)
+      setQuiz(foundQuiz)
+      setAttempt({ ...foundAttempt, id: attemptId })
+      const mapped = rawQuestions.map((item) => ({ ...item, id: item.id })) as QuestionRecord[]
+      setQuestions(mapped)
+      setAnswers(foundAttempt.answers as Record<string, SubmittedAnswer>)
       lastSavedAnswers.current = JSON.stringify(foundAttempt.answers)
-      setQuestions(ordered)
-      const restoredIndex = readPersistedQuestionIndex(attemptId)
-      if (restoredIndex < ordered.length) {
-        setIndex(restoredIndex)
-      } else {
-        setIndex(Math.max(0, ordered.length - 1))
-      }
       setLoading(false)
-    }).catch((reason: unknown) => { if (live) { setError(reason instanceof Error ? reason.message : 'The attempt could not be loaded.'); setLoading(false) } })
+    }).catch((reason: unknown) => {
+      if (live) { setError(reason instanceof Error ? reason.message : 'Attempt could not be loaded.'); setLoading(false) }
+    })
     return () => { live = false }
   }, [quizId, attemptId, user, navigate])
 
   useEffect(() => {
-    if (!user || !quiz) return undefined
-    if (!quiz.classId) {
-      showToast('info', 'This quiz is no longer linked to an active class.')
-      navigate('/student', { replace: true })
-      return undefined
-    }
+    if (!user || !quiz?.classId) return undefined
     return listMyEnrollments(user.uid, (items) => {
       const isActive = items.some((item) => item.classId === quiz.classId && item.status === 'active')
       setMembership({ classId: quiz.classId!, status: isActive ? 'active' : 'lost' })
@@ -168,11 +151,8 @@ export function QuizTakingPage() {
         showToast('info', 'Your class access changed. This attempt was not submitted.')
         navigate('/student', { replace: true })
       }
-    }, () => {
-      showToast('error', 'Your class access could not be checked. Please return to practice and try again.')
-      navigate('/student', { replace: true })
-    })
-  }, [quiz, user, showToast, navigate])
+    }, () => undefined)
+  }, [user, quiz?.classId, navigate, showToast])
 
   // Start the first countdown, or pick up the saved one after a refresh. Time spent away counts, so questions whose time ran out are skipped.
   useEffect(() => {
@@ -239,38 +219,8 @@ export function QuizTakingPage() {
     return () => { if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current) }
   }, [answers, attempt, flushPendingAnswers])
 
-  const invalidLinkCards = useMemo(() => {
-    const list: Array<{ questionId: string; questionIndex: number; cardId: string; title: string }> = []
-    questions.forEach((q, qIdx) => {
-      const ans = answers[q.id]
-      if (ans && typeof ans === 'object' && 'cards' in ans && Array.isArray((ans as { cards?: unknown[] }).cards)) {
-        const cards = (ans as { cards: Array<{ id?: string; type?: string; title?: string; url?: string }> }).cards
-        cards.forEach((card) => {
-          if (card.type === 'link') {
-            const u = (card.url || '').trim()
-            if (!u || !/^https:\/\/[^\s]+$/.test(u)) {
-              list.push({
-                questionId: q.id,
-                questionIndex: qIdx,
-                cardId: card.id || 'unknown',
-                title: card.title || 'Untitled link',
-              })
-            }
-          }
-        })
-      }
-    })
-    return list
-  }, [questions, answers])
-  // In a timed quiz earlier questions cannot be reopened, so only link cards that can still be edited block submitting.
-  const blockingLinkCards = useMemo(() => (timed ? invalidLinkCards.filter((card) => card.questionIndex >= index) : invalidLinkCards), [timed, invalidLinkCards, index])
-
   const submit = useCallback(async (isAutoSubmit = false) => {
     if (submitted.current || !attempt || !quiz) return
-    if (!isAutoSubmit && blockingLinkCards.length > 0) {
-      showToast('error', 'Link cards must have a valid https:// URL before submitting.')
-      return
-    }
     submitted.current = true; setBusy(true); setError('')
     try {
       await autosaveAnswers(quizId, attemptId, answers)
@@ -287,7 +237,7 @@ export function QuizTakingPage() {
       showToast('error', 'Your quiz could not be submitted.')
       setBusy(false)
     }
-  }, [attempt, quiz, quizId, attemptId, answers, navigate, showToast, checkedStorageKey, blockingLinkCards, serverOffsetMs])
+  }, [attempt, quiz, quizId, attemptId, answers, navigate, showToast, checkedStorageKey, serverOffsetMs])
 
   useEffect(() => {
     if (timeUp && !submitted.current && !autoSubmitTriggered.current) {
@@ -304,7 +254,6 @@ export function QuizTakingPage() {
   const go = (next: number) => {
     const target = Math.max(0, Math.min(questions.length - 1, next))
     if (!timed) { setIndex(target); return }
-    // Every question has its own clock, so a timed quiz only moves forward. Moving on starts the next question's full time.
     if (target <= index) return
     adoptClock({ index: target, startedAtMs: Date.now() + serverOffsetMs }, true)
   }
@@ -312,7 +261,7 @@ export function QuizTakingPage() {
   async function checkCurrent() {
     if (!question) return
     try {
-      const pair = await getQuestionWithKey(quizId, question.id, undefined, quiz)
+      const pair = await getQuestionWithKey(quizId, question.id)
       if (!pair || !pair.answerKey) throw new Error('Answer key unavailable.')
       const result = gradeAttempt({
         userId: user!.uid,
@@ -328,7 +277,6 @@ export function QuizTakingPage() {
 
   const membershipStatus = quiz ? quiz.classId ? membership?.classId === quiz.classId ? membership.status : 'checking' : 'lost' : 'active'
   if (loading || membershipStatus === 'checking') return <AppShell><main className="app-shell__content"><Skeleton className="h-96 rounded-3xl" label="Loading attempt" /></main></AppShell>
-  // A timed quiz shows nothing until its countdown is set, so a refresh never flashes a question that already ran out of time.
   if (timed && !clock && !error) return <AppShell><main className="app-shell__content"><Skeleton className="h-96 rounded-3xl" label="Starting the timer" /></main></AppShell>
   if (membershipStatus === 'lost') return <AppShell><main className="app-shell__content"><Alert tone="warning" label="Class access changed">You’re being returned to your practice catalog.</Alert></main></AppShell>
   if (error && (!quiz || !attempt)) return <AppShell><main className="app-shell__content grid gap-4"><Alert tone="error" label="Attempt unavailable">{error}</Alert><Button to="/student" variant="secondary">Back to catalog</Button></main></AppShell>
@@ -337,7 +285,7 @@ export function QuizTakingPage() {
   const checkedCurrent = revealEach ? checked[question.id] : undefined
   const options = 'options' in question ? optionOrderForQuestion(question.id, attempt, question).map((id) => question.options.find((option) => option.id === id)!).filter(Boolean) : []
 
-  return <AppShell><PageHeader eyebrow={quiz.mode === 'flashcards' ? 'FLASHCARDS' : quiz.mode === 'canvas' ? 'CANVAS PRACTICE' : 'QUIZ IN PROGRESS'} title={quiz.title} subtitle={`Question ${index + 1} of ${questions.length}`} />
+  return <AppShell><PageHeader eyebrow={quiz.mode === 'flashcards' ? 'FLASHCARDS' : 'QUIZ IN PROGRESS'} title={quiz.title} subtitle={`Question ${index + 1} of ${questions.length}`} />
     <main className="app-shell__content grid gap-5" id="main-content">
       <label className="grid gap-2 text-sm font-semibold">Progress <progress aria-label="Quiz progress" max={questions.length} value={answeredCount} className="h-3 w-full accent-navy-900" /></label>
       {timed && limitSeconds !== null && index === 0 && <Alert tone="info" label="Timed quiz">Every question has {formatDuration(limitSeconds)}. When time runs out you move to the next question automatically, and you can’t go back.</Alert>}
@@ -370,24 +318,6 @@ export function QuizTakingPage() {
 
           if (isInput && event.key !== 'Enter') return
 
-          const isCanvas = quiz.mode === 'canvas' || question.type === 'canvas'
-          const isInsideCanvasOrDialog = Boolean(
-            target?.closest(
-              '[data-testid="canvas-board"], .canvas-board-wrapper, .canvas-play-page, [role="dialog"], .dialog, .react-flow',
-            ),
-          )
-          if (isCanvas && isInsideCanvasOrDialog) {
-            if (
-              event.key === 'Enter' ||
-              event.key === 'ArrowLeft' ||
-              event.key === 'ArrowRight' ||
-              event.key === 'ArrowUp' ||
-              event.key === 'ArrowDown' ||
-              /^[0-9]$/.test(event.key)
-            ) {
-              return
-            }
-          }
           if (event.key === 'ArrowLeft' && index > 0) go(index - 1)
           const canGoNext = index < questions.length - 1 && (!revealEach || Boolean(checkedCurrent))
           if (event.key === 'ArrowRight' && canGoNext) go(index + 1)
@@ -409,14 +339,7 @@ export function QuizTakingPage() {
       >
         <p className="m-0 text-sm font-semibold">Question {index + 1} · {question.points} {question.points === 1 ? 'point' : 'points'}</p>
         <h2 id="question-title" className="m-0 font-heading text-2xl">
-          {quiz.mode === 'canvas' ? (
-            <span className="flex flex-col gap-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-navy-800-72">Instructions</span>
-              <span>{question.prompt}</span>
-            </span>
-          ) : (
-            question.prompt
-          )}
+          {question.prompt}
         </h2>
         {quiz.mode === 'flashcards' ? (
           flashcardsFinished ? (
@@ -430,7 +353,6 @@ export function QuizTakingPage() {
             <Flashcard
               question={question}
               quizId={quizId}
-              quiz={quiz}
               onRate={(rating) => {
                 setAnswer(question.id, rating)
                 if (index < questions.length - 1) go(index + 1)
@@ -438,24 +360,6 @@ export function QuizTakingPage() {
               }}
             />
           )
-        ) : quiz.mode === 'canvas' && quiz.boardKind === 'blank' ? (
-          <BlankCanvasPlayPage
-            question={question as unknown as CanvasQuestion & { id: string }}
-            attemptId={attemptId}
-            quizId={quizId}
-            value={answers[question.id] as BlankCanvasAnswer | undefined}
-            onChange={(nextVal) => setAnswer(question.id, nextVal)}
-            disabled={Boolean(checkedCurrent)}
-          />
-        ) : quiz.mode === 'canvas' ? (
-          <CanvasPlayPage
-            question={question as unknown as CanvasQuestion & { id: string }}
-            attemptId={attemptId}
-            quizId={quizId}
-            connections={Array.isArray(answers[question.id]) ? (answers[question.id] as string[]) : []}
-            onChange={(nextConnections) => setAnswer(question.id, nextConnections)}
-            disabled={Boolean(checkedCurrent)}
-          />
         ) : (
           <AnswerInput
             question={question}
@@ -471,7 +375,7 @@ export function QuizTakingPage() {
       <div className={`flex flex-wrap gap-3 ${timed ? 'justify-end' : 'justify-between'}`}>
         {!timed && <Button type="button" variant="secondary" disabled={index === 0} onClick={() => go(index - 1)}>Previous</Button>}
         <div className="flex flex-wrap gap-3">
-          {revealEach && !checkedCurrent && quiz.mode !== 'flashcards' && quiz.mode !== 'canvas' ? (
+          {revealEach && !checkedCurrent && quiz.mode !== 'flashcards' ? (
             <Button type="button" onClick={() => void checkCurrent()}>Submit answer</Button>
           ) : index === questions.length - 1 ? (
             <Button type="button" onClick={() => setReviewOpen(true)}>Review and submit</Button>
@@ -482,35 +386,11 @@ export function QuizTakingPage() {
       </div>
     </main>
     <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} title="Review your answers" description={`${answeredCount} of ${questions.length} answered. ${unanswered.length} unanswered.`}>
-      {blockingLinkCards.length > 0 && (
-        <div className="mb-4">
-          <Alert tone="error" label="Link cards must have a valid https:// URL before submitting.">
-            <p className="m-0 text-sm text-navy-900">The following link cards are missing a valid web address:</p>
-            <ul className="m-0 pl-5 text-sm list-disc">
-              {blockingLinkCards.map((c) => (
-                <li key={c.cardId}>
-                  <button
-                    type="button"
-                    className="underline font-semibold hover:text-navy-900 text-left"
-                    onClick={() => {
-                      setReviewOpen(false)
-                      go(c.questionIndex)
-                    }}
-                  >
-                    Question {c.questionIndex + 1}: {c.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Alert>
-        </div>
-      )}
       {unanswered.length > 0 ? timed ? <p>Unanswered: {unanswered.map(({ i }) => `Question ${i + 1}`).join(', ')}. Each question has its own time, so earlier questions can’t be reopened.</p> : <ol className="grid gap-2 pl-5">{unanswered.map(({ item, i }) => <li key={item.id}><Button type="button" variant="ghost" onClick={() => { setReviewOpen(false); go(i) }}>Question {i + 1}: {item.prompt}</Button></li>)}</ol> : <p>Every question has an answer.</p>}
       <div className="dialog__actions">
         <Button type="button" variant="secondary" onClick={() => setReviewOpen(false)}>Keep working</Button>
         <Button
           type="button"
-          disabled={blockingLinkCards.length > 0}
           onClick={() => { setReviewOpen(false); setConfirmSubmitOpen(true) }}
         >
           Continue to submit
@@ -531,13 +411,13 @@ function AnswerInput({ question, options, value, disabled, onChange }: { questio
   return null
 }
 
-function Flashcard({ question, quizId, quiz, onRate }: { question: QuestionRecord; quizId: string; quiz: Awaited<ReturnType<typeof getQuiz>>; onRate: (rating: string) => void }) {
+function Flashcard({ question, quizId, onRate }: { question: QuestionRecord; quizId: string; onRate: (rating: string) => void }) {
   const [back, setBack] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   async function flip() {
     setLoading(true)
     try {
-      const pair = await getQuestionWithKey(quizId, question.id, undefined, quiz)
+      const pair = await getQuestionWithKey(quizId, question.id)
       if (!pair || !pair.answerKey || pair.answerKey.type !== 'flashcard') throw new Error('Card unavailable')
       setBack(pair.answerKey.back)
     } finally {

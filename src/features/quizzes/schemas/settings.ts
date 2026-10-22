@@ -8,7 +8,7 @@ export function currentMinute(): Timestamp {
 
 export function defaultQuizSettings(mode: QuizMode): QuizSettings {
   return {
-    answerReveal: mode === 'flashcards' ? 'never' : mode === 'canvas' ? 'after_submit' : 'after_each',
+    answerReveal: mode === 'flashcards' ? 'never' : 'after_each',
     participation: { type: 'individual' },
     scoreVisibility: mode === 'flashcards' ? 'hidden' : 'immediate',
     scoresReleased: false,

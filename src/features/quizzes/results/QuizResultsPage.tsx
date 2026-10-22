@@ -83,34 +83,20 @@ export function QuizResultsPage() {
     return () => { active = false }
   }, [load])
 
-  const [reviewFilter, setReviewFilter] = useState<'all' | 'needs_grading' | 'graded'>('all')
-
-  const isBlankCanvas = quiz?.mode === 'canvas' && quiz.boardKind === 'blank'
-
   const visible = useMemo(() => {
     const needle = search.toLowerCase()
-    let filtered = buildRosterRows(enrollments, attempts).filter(
+    return buildRosterRows(enrollments, attempts).filter(
       (row) =>
         row.userName.toLowerCase().includes(needle) ||
         row.userId.toLowerCase().includes(needle) ||
         (row.attempt?.teamName ?? '').toLowerCase().includes(needle),
-    )
-    if (isBlankCanvas && reviewFilter !== 'all') {
-      filtered = filtered.filter((row) => {
-        if (!row.attempt || row.attempt.status !== 'submitted') return false
-        if (reviewFilter === 'needs_grading') return row.attempt.result?.reviewStatus !== 'graded'
-        if (reviewFilter === 'graded') return row.attempt.result?.reviewStatus === 'graded'
-        return true
-      })
-    }
-    return filtered.sort((a, b) => compareResultRows(a, b, sort))
-  }, [attempts, enrollments, search, sort, isBlankCanvas, reviewFilter])
+    ).sort((a, b) => compareResultRows(a, b, sort))
+  }, [attempts, enrollments, search, sort])
 
   const summary = summarizeAttempts(
     attempts,
     quiz?.mode === 'flashcards',
     quiz?.settings.timeLimitMinutes,
-    { isBlankCanvas },
   )
 
   async function releaseScores(value: boolean) {
@@ -159,37 +145,16 @@ export function QuizResultsPage() {
 {quiz.mode === 'quiz' && quiz.settings.participation.type === 'individual' && attempts.some((item) => item.status === 'submitted') && <SectionCard title="Regrade" description="Changed an answer key after students submitted? Regrade so every attempt matches the current keys. Scores you adjusted by hand are kept."><Button type="button" variant="secondary" disabled={regrading} onClick={() => setRegradePrompt(true)}><RefreshCw size={16} aria-hidden="true" /> Regrade with current answer keys</Button></SectionCard>}
       <StatRow>
         <StatTile variant="navy" label="Submissions" value={String(summary.submissions)} hint={`${summary.inProgress} in progress · ${summary.submitted} submitted`} />
-        {isBlankCanvas ? (
-          <StatTile label="Needs grading" value={String(summary.needsGradingCount)} hint="Ungraded blank canvas submissions" />
-        ) : (
-          <StatTile label="Late submissions" value={String(summary.lateSubmissions)} hint={quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} min limit` : 'No time limit'} />
-        )}
-        <StatTile label="Average score" value={summary.average === null ? '—' : `${summary.average}%`} hint={quiz.mode === 'flashcards' ? 'Flashcards are not graded' : isBlankCanvas ? 'Graded attempts only' : `Across ${summary.bestStudentCount} students’ best attempts`} />
-        <StatTile label="Highest" value={summary.highest === null ? '—' : `${summary.highest}%`} hint={isBlankCanvas ? 'Graded attempts only' : 'Best student result'} />
-        <StatTile label="Lowest" value={summary.lowest === null ? '—' : `${summary.lowest}%`} hint={isBlankCanvas ? 'Graded attempts only' : 'Best student result'} />
-        {isBlankCanvas ? (
-          <StatTile label="Late submissions" value={String(summary.lateSubmissions)} hint={quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} min limit` : 'No time limit'} />
-        ) : (
-          <StatTile label="Completion" value={`${summary.inProgress} / ${summary.submitted}`} hint="In progress / submitted" />
-        )}
+        <StatTile label="Late submissions" value={String(summary.lateSubmissions)} hint={quiz.settings.timeLimitMinutes ? `${quiz.settings.timeLimitMinutes} min limit` : 'No time limit'} />
+        <StatTile label="Average score" value={summary.average === null ? '—' : `${summary.average}%`} hint={quiz.mode === 'flashcards' ? 'Flashcards are not graded' : `Across ${summary.bestStudentCount} students’ best attempts`} />
+        <StatTile label="Highest" value={summary.highest === null ? '—' : `${summary.highest}%`} hint="Best student result" />
+        <StatTile label="Lowest" value={summary.lowest === null ? '—' : `${summary.lowest}%`} hint="Best student result" />
+        <StatTile label="Completion" value={`${summary.inProgress} / ${summary.submitted}`} hint="In progress / submitted" />
       </StatRow>
       <section className="grid gap-4" aria-labelledby="submission-heading"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="submission-heading" className="m-0 font-heading text-2xl">Submissions</h2><p className="m-0">{quiz.settings.participation.type === 'group' ? 'Each team member has their own row with the team’s shared answers and score.' : 'Each attempt is listed; summary scores use each student’s best attempt.'}</p></div></header>
-        <div className={`grid gap-3 ${isBlankCanvas ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+        <div className="grid gap-3 md:grid-cols-2">
           <Input label="Search students" name="results-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or student ID" />
           <Select label="Sort submissions" name="results-sort" value={sort} onChange={(event) => setSort(event.target.value as SortMode)} options={[{ value: 'recent', label: 'Recently submitted' }, { value: 'student', label: 'Student name' }, { value: 'score', label: 'Score' }]} />
-          {isBlankCanvas && (
-            <Select
-              label="Review status"
-              name="results-review-filter"
-              value={reviewFilter}
-              onChange={(event) => setReviewFilter(event.target.value as 'all' | 'needs_grading' | 'graded')}
-              options={[
-                { value: 'all', label: 'All review statuses' },
-                { value: 'needs_grading', label: 'Needs grading' },
-                { value: 'graded', label: 'Graded' },
-              ]}
-            />
-          )}
         </div>
         {visible.length === 0 && attempts.length === 0 && !enrollments.some((item) => item.status === 'active') ? <EmptyState title="No submissions yet" description="Student attempts will appear here after they submit this quiz." /> : visible.length === 0 ? <p role="status">No submissions match this search.</p> : <>
           <DataTable label="Quiz submissions" rows={visible} getRowId={(row) => row.attempt?.id ?? row.userId} columns={[
@@ -198,23 +163,9 @@ export function QuizResultsPage() {
             { key: 'status', header: 'Status', cell: (row) => {
               if (!row.attempt) return <Badge>Not started</Badge>
               const lateInfo = row.attempt.status === 'submitted' && isLate(row.attempt.startedAt, row.attempt.submittedAt, quiz.settings.timeLimitMinutes)
-              if (isBlankCanvas && row.attempt.status === 'submitted') {
-                const isGraded = row.attempt.result?.reviewStatus === 'graded'
-                return (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge>{isGraded ? 'Graded' : 'Needs grading'}</Badge>
-                    {lateInfo && lateInfo.late && <Badge className="inline-flex items-center gap-1"><Clock3 size={12} aria-hidden="true" /> Late</Badge>}
-                  </div>
-                )
-              }
               return <div className="flex flex-wrap items-center gap-1.5"><Badge>{row.attempt.status === 'submitted' ? 'Submitted' : 'In progress'}</Badge>{lateInfo && lateInfo.late && <Badge className="inline-flex items-center gap-1"><Clock3 size={12} aria-hidden="true" /> Late</Badge>}</div>
-            }, sortValue: (row) => {
-              if (isBlankCanvas && row.attempt?.status === 'submitted') {
-                return row.attempt.result?.reviewStatus ?? 'pending'
-              }
-              return row.attempt?.status ?? 'not started'
-            } },
-            { key: 'score', header: 'Score', cell: (row) => row.attempt ? scoreLabel(row.attempt, quiz.mode === 'flashcards', isBlankCanvas) : '—', sortValue: (row) => row.attempt?.result?.score ?? -1 },
+            }, sortValue: (row) => row.attempt?.status ?? 'not started' },
+            { key: 'score', header: 'Score', cell: (row) => row.attempt ? scoreLabel(row.attempt, quiz.mode === 'flashcards') : '—', sortValue: (row) => row.attempt?.result?.score ?? -1 },
             { key: 'duration', header: 'Time spent', cell: (row) => {
               if (!row.attempt || row.attempt.status !== 'submitted') return '—'
               const seconds = computeTimeSpent(row.attempt.startedAt, row.attempt.submittedAt)
@@ -232,7 +183,7 @@ export function QuizResultsPage() {
           ]} />
         </>}
       </section>
-      {(quiz.mode === 'quiz' || (quiz.mode === 'canvas' && !isBlankCanvas)) && <QuestionAnalytics questions={questions} attempts={attempts} />}
+      {quiz.mode === 'quiz' && <QuestionAnalytics questions={questions} attempts={attempts} />}
     </main>
     <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} title="Attempt detail" description={selected ? `${selected.userName || selected.userId}${selected.teamName ? ` · Team ${selected.teamName}` : ''} · Attempt ${selected.attemptNumber}` : undefined} className="dialog--wide">
       {selected && (
@@ -242,9 +193,6 @@ export function QuizResultsPage() {
           questions={questions}
           ungraded={quiz.mode === 'flashcards'}
           timeLimitMinutes={quiz.settings.timeLimitMinutes}
-          isBlankCanvas={isBlankCanvas}
-          allAttempts={attempts}
-          onSelectAttempt={(att) => setSelected(att)}
           onGradeChanged={(result: QuizResult) => {
             setAttempts((items) =>
               items.map((item) => {
@@ -264,12 +212,8 @@ export function QuizResultsPage() {
   </AppShell>
 }
 
-function scoreLabel(item: AttemptResult, ungraded: boolean, isBlankCanvas = false) {
+function scoreLabel(item: AttemptResult, ungraded: boolean) {
   if (ungraded) return 'Self-rated'
-  if (isBlankCanvas) {
-    if (item.result?.reviewStatus === 'graded') return `${item.result.score} / ${item.result.maxScore}`
-    return 'Needs grading'
-  }
   return item.result ? `${item.result.score} / ${item.result.maxScore}` : 'Awaiting grade'
 }
 function formatDuration(seconds: number) { return `${Math.floor(seconds / 60)}m ${seconds % 60}s` }

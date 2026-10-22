@@ -100,8 +100,7 @@ export interface QuizInfo {
   classId: string
   title: string
   status: string
-  mode: 'quiz' | 'canvas'
-  boardKind?: 'prebuilt' | 'blank'
+  mode: 'quiz'
   settings: GroupSettings
   answerReveal: 'after_each' | 'after_submit' | 'never'
   attemptsAllowed: number | null
@@ -112,7 +111,7 @@ export interface QuizInfo {
 export function readQuiz(snap: DocumentSnapshot): QuizInfo {
   const data = snap.data()
   if (!snap.exists || !data) throw new GroupQuizError('This quiz no longer exists.', 'not-found')
-  if (data.mode !== 'quiz' && data.mode !== 'canvas') throw new GroupQuizError('This is not a group quiz.', 'failed-precondition')
+  if (data.mode !== 'quiz') throw new GroupQuizError('This is not a group quiz.', 'failed-precondition')
   if (typeof data.ownerId !== 'string' || typeof data.classId !== 'string' || typeof data.settings !== 'object' || data.settings === null) throw new GroupQuizError('This quiz is not set up for teams.', 'failed-precondition')
   const settings = parseGroupSettings(data.settings.participation)
   const reveal = data.settings.answerReveal
@@ -123,8 +122,7 @@ export function readQuiz(snap: DocumentSnapshot): QuizInfo {
     classId: data.classId,
     title: typeof data.title === 'string' ? data.title : '',
     status: String(data.status),
-    mode: data.mode === 'canvas' ? 'canvas' : 'quiz',
-    ...(data.boardKind === 'blank' || data.boardKind === 'prebuilt' ? { boardKind: data.boardKind } : {}),
+    mode: 'quiz',
     settings,
     answerReveal: reveal === 'after_each' || reveal === 'never' ? reveal : 'after_submit',
     attemptsAllowed: typeof attempts === 'number' ? attempts : null,

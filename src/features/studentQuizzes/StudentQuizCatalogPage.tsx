@@ -70,7 +70,7 @@ export function StudentQuizCatalogPage() {
 
   return <AppShell><PageHeader eyebrow="STUDENT SPACE" title="Practice." subtitle="Find published quizzes from your classes and pick up where you left off." action={<Button to="/join">Join class</Button>} />
     <main className="app-shell__content grid gap-6" id="main-content">
-      <Toolbar query={query} onQueryChange={setQuery} placeholder="Search quizzes" filters={<Select label="Quiz mode" options={[{ value: 'all', label: 'All modes' }, { value: 'quiz', label: 'Quiz' }, { value: 'flashcards', label: 'Flashcards' }, { value: 'canvas', label: 'Canvas' }]} value={mode} onChange={(event) => setMode(event.target.value)} />} />
+      <Toolbar query={query} onQueryChange={setQuery} placeholder="Search quizzes" filters={<Select label="Quiz mode" options={[{ value: 'all', label: 'All modes' }, { value: 'quiz', label: 'Quiz' }, { value: 'flashcards', label: 'Flashcards' }]} value={mode} onChange={(event) => setMode(event.target.value)} />} />
       {(() => {
         const status = resolveListStatus({ loading, error, count: enrollments.length })
         if (status === 'error') {
@@ -94,7 +94,7 @@ function CatalogCard({ quiz }: { quiz: CatalogQuiz }) {
   const isGroup = quiz.settings.participation.type === 'group'
   const remaining = quiz.settings.attemptsAllowed === null ? null : Math.max(0, quiz.settings.attemptsAllowed - quiz.attempts.length)
   const latest = quiz.attempts.find((item) => item.status === 'in_progress')
-  const questionsLabel = quiz.mode === 'canvas' ? '1 canvas board' : `${quiz.questionCount} question${quiz.questionCount === 1 ? '' : 's'}`
+  const questionsLabel = `${quiz.questionCount} question${quiz.questionCount === 1 ? '' : 's'}`
   const to = isGroup ? `/student/quizzes/${quiz.id}/team` : latest ? `/student/quizzes/${quiz.id}/attempts/${latest.id}` : `/student/quizzes/${quiz.id}`
   const label = isGroup ? 'Play with team' : latest ? 'Resume' : 'View quiz'
   const windowState = isGroup ? 'open' : quizWindowState(quiz.settings, Date.now())
@@ -104,7 +104,7 @@ function CatalogCard({ quiz }: { quiz: CatalogQuiz }) {
   const limitSeconds = effectiveTimeLimitSeconds(quiz.settings)
   const closed = windowState === 'closed' && !latest
   const disabled = !isGroup && ((remaining === 0 && !latest) || closed)
-  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${questionsLabel}${limitSeconds !== null ? ` · ${formatDuration(limitSeconds)}` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><QuizTypeBadge mode={quiz.mode} />{windowBadge && <Badge>{windowBadge}</Badge>}{quiz.mode === 'canvas' && quiz.boardKind === 'blank' && <Badge>Graded by instructor</Badge>}<Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={to} disabled={disabled} variant="secondary">{closed ? 'Closed' : disabled ? 'No attempts left' : label}</Button></DataCard>
+  return <DataCard title={quiz.title} meta={`${quiz.ownerName} · ${quiz.className} · ${questionsLabel}${limitSeconds !== null ? ` · ${formatDuration(limitSeconds)}` : ''} · ${remaining === null ? 'Unlimited attempts' : `${remaining} attempts left`}`} badge={<div className="flex flex-wrap gap-2"><QuizTypeBadge mode={quiz.mode} />{windowBadge && <Badge>{windowBadge}</Badge>}<Badge>{revealLabel(quiz)}</Badge><Badge>{scoreLabel(quiz)}</Badge></div>}><Button to={to} disabled={disabled} variant="secondary">{closed ? 'Closed' : disabled ? 'No attempts left' : label}</Button></DataCard>
 }
 
 function QuizCard({ quiz, attempt, action }: { quiz: CatalogQuiz; attempt: QuizAttempt & { id: string }; action: string }) {

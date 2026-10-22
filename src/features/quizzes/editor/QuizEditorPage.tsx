@@ -27,7 +27,6 @@ import { QuizPublishTab } from './QuizPublishTab'
 import { QuizWorkflowNav, quizStepPath } from './QuizWorkflowNav'
 import { QuickCreateQuiz } from '../authoring/QuickCreateQuiz'
 const QuestionBuilderPage = lazy(() => import('../builder/QuestionBuilderPage').then((module) => ({ default: module.QuestionBuilderPage })))
-const CanvasBuilderPage = lazy(() => import('../builder/CanvasBuilderPage'))
 
 const revealOptions = [
   { value: 'after_each', label: 'After each question', hint: 'See the answer and explanation right after responding.' },
@@ -82,7 +81,7 @@ export function QuizEditorPage() {
     getQuiz(quizId).then((quiz) => {
       if (!active) return
       if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
-      const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, boardKind: quiz.boardKind, settings: quiz.settings }
+      const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, settings: quiz.settings }
       setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setStatus(quiz.status); setResolvedQuizId(quizId)
       if (quiz.settings.attemptsAllowed !== null && ![1, 2, 3].includes(quiz.settings.attemptsAllowed)) {
         setIsCustomAttempts(true)
@@ -160,14 +159,11 @@ export function QuizEditorPage() {
 
   const activeTab = searchParams.get('tab') ?? 'questions'
   if (activeTab === 'questions') {
-    if (form.mode === 'canvas') {
-      return (
-        <Suspense fallback={<div className="quiz-editor-skeleton" aria-label="Loading canvas builder" />}>
-          <CanvasBuilderPage quizId={quizId} />
-        </Suspense>
-      )
-    }
-    return <QuestionBuilderPage />
+    return (
+      <Suspense fallback={<div className="quiz-editor-skeleton" aria-label="Loading question builder" />}>
+        <QuestionBuilderPage />
+      </Suspense>
+    )
   }
   // "preview" is the old name of the final step; old links keep working.
   if (activeTab === 'publish' || activeTab === 'preview') return <QuizPublishTab quizId={quizId} />
@@ -178,7 +174,7 @@ export function QuizEditorPage() {
   const limitParts = splitSeconds(limitSeconds ?? 0)
   const limitProblem = limitSeconds === null ? null : timingProblem({ timeLimitMinutes: form.settings.timeLimitMinutes, timeLimitSeconds: limitSeconds })
   const windowProblem = timingProblem({ timeLimitMinutes: null, opensAt: form.settings.opensAt, closesAt: form.settings.closesAt })
-  const experience = describeQuizExperience({ mode: form.mode, boardKind: form.boardKind, title: form.title, settings: form.settings })
+  const experience = describeQuizExperience({ mode: form.mode, title: form.title, settings: form.settings })
   const showCustomAttempts = isCustomAttempts || (form.settings.attemptsAllowed !== null && ![1, 2, 3].includes(form.settings.attemptsAllowed))
   const saveLabel = saving ? 'Saving…' : !classesLoaded ? 'Loading classes…' : continueToPublish ? 'Save and continue' : 'Save settings'
 
@@ -198,7 +194,7 @@ export function QuizEditorPage() {
             <Input label="Tags" name="quiz-tags" value={form.tags} onChange={(event) => { setForm({ ...form, tags: event.target.value }); setErrors({ ...errors, tags: undefined }) }} error={errors.tags} hint="Separate tags with commas (up to 20 tags)." />
             <div className="field">
               <span className="field__label">
-                Type: {form.mode === 'canvas' ? `Canvas (${form.boardKind === 'blank' ? 'Blank board' : 'Pre-built board'})` : form.mode === 'flashcards' ? 'Flashcards' : 'Quiz'}, cannot be changed after creation
+                Type: {form.mode === 'flashcards' ? 'Flashcards' : 'Quiz'}, cannot be changed after creation
               </span>
             </div>
           </div>
@@ -213,26 +209,6 @@ export function QuizEditorPage() {
             {form.settings.scoreVisibility === 'after_release' && <p className="field__hint">You can release scores from the results page when it is available.</p>}
           </SectionCard>
         </>}
-
-        {form.mode === 'canvas' && form.boardKind !== 'blank' && (
-          <SectionCard title="Submission review" description="Choose what students see after submitting their canvas board.">
-            <RadioGroup
-              label="After submitting"
-              name="canvas-review-setting"
-              value={form.settings.scoreVisibility === 'immediate' && form.settings.answerReveal !== 'never' ? 'review' : 'submitted'}
-              options={[
-                { value: 'review', label: 'Students see their score and review', hint: 'Shows score and correct/incorrect connections upon submission.' },
-                { value: 'submitted', label: 'Students see only that it was submitted', hint: 'Holds back score and answers until you release them.' },
-              ]}
-              onChange={(value) => {
-                updateSettings({
-                  scoreVisibility: value === 'review' ? 'immediate' : 'after_release',
-                  answerReveal: value === 'review' ? 'after_submit' : 'never',
-                })
-              }}
-            />
-          </SectionCard>
-        )}
 
         <GroupSettingsSection
           mode={form.mode}

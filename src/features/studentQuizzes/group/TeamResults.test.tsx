@@ -2,10 +2,8 @@ import { describe, expect, it } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { Timestamp } from 'firebase/firestore'
 import { TeamResults } from './TeamResults'
 import type { Team, TeamReveal } from '../../quizzes/types/team'
-import type { QuizRecord } from '../../quizzes/services/quizService'
 
 const mockTeam: Team = {
   id: 'team-1',
@@ -20,45 +18,7 @@ const mockTeam: Team = {
   maxScore: null,
 }
 
-const mockCanvasQuiz: QuizRecord = {
-  id: 'quiz-canvas',
-  ownerId: 'teacher',
-  ownerName: 'Instructor',
-  classId: 'class-1',
-  title: 'Canvas Quiz',
-  description: '',
-  tags: [],
-  mode: 'canvas',
-  boardKind: 'blank',
-  status: 'published',
-  questionCount: 1,
-  createdAt: Timestamp.fromMillis(1),
-  updatedAt: Timestamp.fromMillis(1),
-  publishedAt: Timestamp.fromMillis(1),
-  settings: {
-    answerReveal: 'never',
-    participation: { type: 'group', groupSize: 2, answerMode: 'representative', teamFormation: 'assigned', waitForEveryone: false, questionTimeSec: null },
-    scoreVisibility: 'after_release',
-    scoresReleased: false,
-    timeLimitMinutes: null,
-    attemptsAllowed: 1,
-    shuffleQuestions: false,
-    shuffleOptions: false,
-  },
-}
-
 describe('TeamResults', () => {
-  it('renders "Submitted. Your instructor will check your board." for blank canvas with unreleased score', () => {
-    render(
-      <MemoryRouter>
-        <TeamResults team={mockTeam} reveals={[]} quiz={mockCanvasQuiz} />
-      </MemoryRouter>,
-    )
-
-    expect(screen.getByText(/Canvas Team finished/i)).toBeInTheDocument()
-    expect(screen.getByText('Submitted. Your instructor will check your board.')).toBeInTheDocument()
-    expect(screen.getByText(/Your team’s concept board has been submitted/i)).toBeInTheDocument()
-  })
 
   it('renders standard score text for regular quizzes when score is null', () => {
     render(

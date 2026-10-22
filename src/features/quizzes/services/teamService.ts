@@ -1,16 +1,11 @@
 import { httpsCallable } from 'firebase/functions'
-import { collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc, type Firestore } from 'firebase/firestore'
+import { collection, doc, onSnapshot, type Firestore } from 'firebase/firestore'
 import { firestore } from '../../../lib/firebase/firestore'
 import { functions } from '../../../lib/firebase/functions'
 import { auth } from '../../../lib/firebase/auth'
 import { Capacitor } from '@capacitor/core'
 import { parseReveal, parseSession, parseTeam } from '../schemas/team'
 import type { Team, TeamAnswer, TeamReveal, TeamSession } from '../types/team'
-
-export interface TeamBoardData {
-  cards?: unknown[]
-  connections: string[]
-}
 
 function getApiEndpoint(): string {
   const custom = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
@@ -150,63 +145,5 @@ export function watchReveals(quizId: string, teamId: string, onChange: (reveals:
 export function watchQuizTeams(quizId: string, onChange: (teams: Team[]) => void, onError: Fail, db: Firestore = firestore) {
   return onSnapshot(collection(db, 'quizzes', quizId, 'teams'),
     snap => safely(() => snap.docs.map(item => parseTeam(item.data(), item.id)).sort((a, b) => a.name.localeCompare(b.name)), onChange, onError), onError)
-}
-
-// ---- canvas team board ------------------------------------------------------------------------------------------
-export async function saveTeamBoard(
-  quizId: string,
-  teamId: string,
-  board: { cards?: unknown[]; connections: string[] },
-  uid: string,
-  db: Firestore = firestore,
-): Promise<void> {
-  const ref = doc(db, 'quizzes', quizId, 'teamBoards', teamId)
-  const data: Record<string, unknown> = {
-    connections: board.connections,
-    updatedAt: serverTimestamp(),
-    updatedBy: uid,
-  }
-  if (Array.isArray(board.cards)) {
-    data.cards = board.cards
-  }
-  await setDoc(ref, data)
-}
-
-export function watchTeamBoard(
-  quizId: string,
-  teamId: string,
-  onChange: (board: TeamBoardData | null) => void,
-  onError: Fail,
-  db: Firestore = firestore,
-) {
-  return onSnapshot(
-    doc(db, 'quizzes', quizId, 'teamBoards', teamId),
-    snap => {
-      if (!snap.exists()) {
-        onChange(null)
-        return
-      }
-      const data = snap.data()
-      onChange({
-        cards: Array.isArray(data.cards) ? data.cards : undefined,
-        connections: Array.isArray(data.connections) ? (data.connections as string[]) : [],
-      })
-    },
-    onError,
-  )
-}
-
-export async function getTeamBoard(
-  quizId: string,
-  teamId: string,
-  db: Firestore = firestore,
-): Promise<TeamBoardData | null> {
-  const snap = await getDoc(doc(db, 'quizzes', quizId, 'teamBoards', teamId))
-  if (!snap.exists()) return null
-  const data = snap.data()
-  return {
-    cards: Array.isArray(data.cards) ? data.cards : undefined,
-    connections: Array.isArray(data.connections) ? (data.connections as string[]) : [],
-  }
 }
 

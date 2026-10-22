@@ -541,7 +541,6 @@ describe('Contrast Test 3: Source Scanner for Unallowed Palette, Hex, Inline Sty
 
   const ALLOWED_INLINE_STYLE_FILES = new Set([
     // Dynamic ReactFlow node/edge positioning calculation for canvas label renderer
-    path.normalize('src/features/canvas/components/edges/CanvasEdge.tsx'),
     path.normalize('src/features/learningCanvas/components/LearningCanvasEdge.tsx'),
     path.normalize('src/features/learningCanvas/components/QuickAddMenu.tsx'),
   ])

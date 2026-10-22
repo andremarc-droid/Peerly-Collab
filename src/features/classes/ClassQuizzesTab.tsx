@@ -1,5 +1,4 @@
 import { Plus } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { Button } from '../../shared/ui/Button'
 import type { ClassWithId } from './types'
 import { ClassActivityList } from './ClassActivityList'
@@ -15,10 +14,6 @@ export function ClassQuizzesTab({ classroom, classes, feed }: { classroom: Class
         <div>
           <span className="section-kicker">CLASS PRACTICE</span>
           <h2 id="class-quizzes-heading" className="m-0 text-2xl">Quizzes</h2>
-          <p className="m-0 mt-1 text-sm text-navy-800-72">
-            Looking for canvas boards?{' '}
-            <Link to="?tab=canvas" className="font-semibold text-navy-800 underline">Open the Canvas tab.</Link>
-          </p>
         </div>
         {active
           ? <Button to={createHref}><Plus size={16} aria-hidden="true" /> Create quiz</Button>

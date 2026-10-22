@@ -11,14 +11,12 @@ import { answerText, revealOutcome, scoreLabel } from './teamPlayLogic'
 export function TeamResults({
   team,
   reveals,
-  quiz,
+  quiz: _quiz,
 }: {
   team: Team
   reveals: TeamReveal[]
   quiz?: QuizRecord
 }) {
-  const isBlankCanvas = quiz?.mode === 'canvas' && quiz.boardKind === 'blank'
-  const isCanvas = quiz?.mode === 'canvas'
   const anyAnswers = reveals.some((reveal) => reveal.result !== null)
 
   return (
@@ -32,9 +30,7 @@ export function TeamResults({
         </p>
         {team.score === null && (
           <p className="mt-2 mb-0">
-            {isBlankCanvas
-              ? 'Submitted. Your instructor will check your board.'
-              : 'Your instructor decides when scores are shown. Check back later.'}
+            Your instructor decides when scores are shown. Check back later.
           </p>
         )}
       </SectionCard>
@@ -85,10 +81,8 @@ export function TeamResults({
         </SectionCard>
       )}
       {reveals.length === 0 && (
-        <Alert tone="info" label={isCanvas ? 'Board submitted' : 'No question details'}>
-          {isCanvas
-            ? 'Your team’s concept board has been submitted.'
-            : 'Details for each question are not available.'}
+        <Alert tone="info" label="No question details">
+          Details for each question are not available.
         </Alert>
       )}
       <div>

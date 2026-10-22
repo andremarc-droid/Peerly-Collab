@@ -1,9 +1,8 @@
 import type { Timestamp } from 'firebase/firestore'
-import type { CanvasAnswerKey, CanvasQuestion } from '../../canvas/types'
 
-export type QuizMode = 'quiz' | 'flashcards' | 'canvas'
+export type QuizMode = 'quiz' | 'flashcards'
 export type QuizStatus = 'draft' | 'published' | 'archived'
-export type QuestionType = 'multiple_choice' | 'true_false' | 'identification' | 'fill_blank' | 'flashcard' | 'canvas'
+export type QuestionType = 'multiple_choice' | 'true_false' | 'identification' | 'fill_blank' | 'flashcard'
 export type AnswerReveal = 'after_each' | 'after_submit' | 'never'
 export type ScoreVisibility = 'immediate' | 'after_release' | 'hidden'
 
@@ -42,8 +41,6 @@ export interface QuizSettings {
   shuffleOptions: boolean
 }
 
-export type BoardKind = 'prebuilt' | 'blank'
-
 export interface Quiz {
   ownerId: string
   ownerName: string
@@ -52,7 +49,6 @@ export interface Quiz {
   description: string
   tags: string[]
   mode: QuizMode
-  boardKind?: BoardKind
   status: QuizStatus
   questionCount: number
   createdAt: Timestamp
@@ -100,7 +96,6 @@ export type QuizQuestion =
   | IdentificationQuestion
   | FillBlankQuestion
   | FlashcardQuestion
-  | CanvasQuestion
 
 interface AnswerKeyBase {
   explanation: string
@@ -132,23 +127,8 @@ export type AnswerKey =
   | IdentificationAnswerKey
   | FillBlankAnswerKey
   | FlashcardAnswerKey
-  | CanvasAnswerKey
 
-export interface BlankCanvasAnswerCard {
-  id: string
-  type: 'note' | 'paragraph' | 'link'
-  title?: string
-  content: string
-  url?: string
-  position: { x: number; y: number }
-}
-
-export interface BlankCanvasAnswer {
-  cards: BlankCanvasAnswerCard[]
-  connections: string[]
-}
-
-export type SubmittedAnswer = string | string[] | BlankCanvasAnswer
+export type SubmittedAnswer = string | string[]
 export type AttemptStatus = 'in_progress' | 'submitted'
 
 export interface QuizAttempt {
@@ -175,17 +155,12 @@ export interface QuestionResult {
   overridden: boolean
 }
 
-export type ReviewStatus = 'pending' | 'graded'
-
 export interface QuizResult {
   userId: string
   score: number
   maxScore: number
   perQuestion: Record<string, QuestionResult>
   gradedAt: Timestamp
-  reviewStatus?: ReviewStatus
-  feedback?: string
-  gradedBy?: string
 }
 
 export interface QuizParticipant {
@@ -197,11 +172,10 @@ export interface QuizParticipant {
   activeAttemptId: string | null
 }
 
-export type NewQuiz = Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings'> & { classId?: string; boardKind?: BoardKind }
+export type NewQuiz = Pick<Quiz, 'title' | 'description' | 'tags' | 'mode' | 'settings'> & { classId?: string }
 export type QuizPatch = Partial<Pick<Quiz, 'title' | 'description' | 'tags' | 'settings' | 'classId' | 'questionCount'>>
 
 export function quizModeLabel(mode: string): string {
-  if (mode === 'canvas') return 'Canvas'
   if (mode === 'flashcards') return 'Flashcards'
   return 'Quiz'
 }

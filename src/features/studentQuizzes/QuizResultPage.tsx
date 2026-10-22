@@ -1,5 +1,5 @@
 import { CircleCheck, CircleX } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { useAuth } from '../auth/useAuth'
@@ -16,16 +16,7 @@ import { SectionCard } from '../../shared/ui/SectionCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { resultVisibility, persistedQuestionOrder } from './quizLogic'
 import { isLate } from '../quizzes/results/resultLogic'
-import { CanvasReviewView } from '../canvas/components/CanvasReviewView'
-import { ExpandableCanvasContainer } from '../canvas/components/ExpandableCanvasContainer'
-import type { CanvasAnswerKey, CanvasCard, CanvasQuestion } from '../canvas/types'
-import type { BlankCanvasAnswer } from '../quizzes/types'
-import { toDataUrl } from '../canvas/imageProcessing'
-import { listImages } from '../canvas/imageService'
-import { lazy, Suspense } from 'react'
 import { MasteryPractice } from './components/MasteryPractice'
-
-const CanvasBoard = lazy(() => import('../canvas/components/CanvasBoard'))
 
 type QuestionRecord = QuizQuestion & { id: string }
 type ReviewItem = { question: QuestionRecord; key: AnswerKey | null }
@@ -49,23 +40,6 @@ export function QuizResultPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [masteryMode, setMasteryMode] = useState(false)
-  const [canvasImages, setCanvasImages] = useState<Record<string, { dataUrl: string; alt?: string }>>({})
-  const [canvasImagesError, setCanvasImagesError] = useState(false)
-
-  const loadCanvasImages = useCallback(async () => {
-    if (!quizId) return
-    setCanvasImagesError(false)
-    try {
-      const imgList = await listImages(quizId)
-      const rec: Record<string, { dataUrl: string; alt?: string }> = {}
-      imgList.forEach((img) => {
-        rec[img.id] = { dataUrl: toDataUrl(img.mimeType, img.data) }
-      })
-      setCanvasImages(rec)
-    } catch {
-      setCanvasImagesError(true)
-    }
-  }, [quizId])
 
   useEffect(() => {
     if (!user) return undefined
@@ -84,169 +58,71 @@ export function QuizResultPage() {
       }
       const questions = persistedQuestionOrder(foundAttempt, raw.map(({ id, ...value }) => ({ ...parseQuestion(value), id })))
       const visibility = resultVisibility(foundQuiz, foundQuiz.settings.answerReveal, foundResult)
-      const items = await Promise.all(questions.map(async (question) => ({ question, key: visibility.showAnswers ? (await getQuestionWithKey(quizId, question.id, undefined, foundQuiz))?.answerKey ?? null : null })))
+      const items = await Promise.all(questions.map(async (question) => ({ question, key: visibility.showAnswers ? (await getQuestionWithKey(quizId, question.id))?.answerKey ?? null : null })))
       if (!live) return
-
-      const hasCanvasImages = items.some(
-        (item) => item.question.type === 'canvas' && (item.question as unknown as CanvasQuestion).cards?.some((c) => c.type === 'image' && c.imageId)
-      )
-      if (hasCanvasImages) {
-        void loadCanvasImages()
-      }
 
       setQuiz(foundQuiz); setAttempt({ ...foundAttempt, id: attemptId }); setResult(foundResult); setReview(items); setLoading(false)
     }).catch((reason: unknown) => { if (live) { setError(reason instanceof Error ? reason.message : 'The result could not be loaded.'); setLoading(false) } })
     return () => { live = false }
-  }, [user, quizId, attemptId, loadCanvasImages])
+  }, [user, quizId, attemptId])
 
   if (loading) return <AppShell><main className="app-shell__content"><Skeleton className="h-80 rounded-3xl" label="Loading result" /></main></AppShell>
   if (error || !quiz || !attempt) return <AppShell><PageHeader eyebrow="RESULT" title="Result unavailable." subtitle="We couldn’t load this submission." /><main className="app-shell__content grid gap-4"><Alert tone="error" label="Result unavailable">{error}</Alert><Button to="/student" variant="secondary">Back to practice</Button></main></AppShell>
   const visibility = result ? resultVisibility(quiz, quiz.settings.answerReveal, result) : { showScore: false, showAnswers: false }
   const late = isLate(attempt.startedAt, attempt.submittedAt, quiz.settings.timeLimitMinutes).late
-  const isBlankCanvas = quiz.mode === 'canvas' && quiz.boardKind === 'blank'
-  const isGraded = result ? result.reviewStatus === 'graded' : false
-
-  const boardReviewItem = review.find((item) => item.question.type === 'canvas') ?? review[0]
-  const boardQ = boardReviewItem?.question as CanvasQuestion | undefined
-  const boardAnswer = attempt.answers[boardReviewItem?.question?.id ?? 'board'] as BlankCanvasAnswer | undefined
-  const blankCards = (boardAnswer?.cards ?? []) as CanvasCard[]
-  const blankConnections = boardAnswer?.connections ?? []
 
   const missedItems = review.filter(
     (item): item is { question: QuestionRecord; key: AnswerKey } =>
       item.key !== null &&
       Boolean(result?.perQuestion[item.question.id]) &&
-      !result?.perQuestion[item.question.id]?.correct &&
-      item.question.type !== 'canvas',
+      !result?.perQuestion[item.question.id]?.correct,
   ).map((item) => ({ id: item.question.id, question: item.question, key: item.key }))
 
   return <AppShell><PageHeader eyebrow="SUBMISSION COMPLETE" title="Your result." subtitle={quiz.title} />
     <main className="app-shell__content grid gap-5">
       {late && <Alert tone="warning" label="Late submission">Submitted after the time limit. Your instructor may review this.</Alert>}
-      {isBlankCanvas ? (
-        <SectionCard
-          title={isGraded && visibility.showScore && result ? 'Your score' : 'Submitted'}
-          description={
-            isGraded && visibility.showScore && result
-              ? `Attempt ${attempt.attemptNumber} · Graded by instructor · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}`
-              : 'Your instructor will check your board.'
-          }
-        >
-          {isGraded && visibility.showScore && result ? (
-            <div className="grid gap-4">
-              <div className="quiz-score-summary">
-                <ScoreRing percent={result.maxScore > 0 ? Math.round((result.score / result.maxScore) * 100) : 0} />
-                <strong>{result.score} / {result.maxScore} points</strong>
-              </div>
-              {result.feedback && (
-                <div className="p-4 bg-navy-900-5 rounded-2xl border border-navy-900-12">
-                  <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Instructor feedback</span>
-                  <p className="m-0 mt-1 whitespace-pre-wrap text-base text-navy-900 font-medium">{result.feedback}</p>
-                </div>
-              )}
+      <SectionCard title={visibility.showScore && result ? 'Your score' : 'Submitted'} description={visibility.showScore && result ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
+        {quiz.mode === 'flashcards' ? (
+          <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p>
+        ) : visibility.showScore && result ? (
+          <div className="grid gap-4">
+            <div className="quiz-score-summary">
+              <ScoreRing percent={result.maxScore > 0 ? Math.round((result.score / result.maxScore) * 100) : 0} />
+              <strong>{result.score} / {result.maxScore} points</strong>
             </div>
-          ) : (
-            <Alert tone="info" label="Submitted">
-              Submitted. Your instructor will check your board.
-            </Alert>
-          )}
-
-          {boardQ?.showRubricToStudents && boardQ.rubric && (
-            <div className="mt-4 pt-4 border-t border-navy-900-12">
-              <span className="block text-sm font-semibold uppercase tracking-wider text-navy-800-72">Grading rubric</span>
-              <p className="m-0 mt-1 whitespace-pre-wrap text-sm text-navy-900 leading-relaxed">{boardQ.rubric}</p>
-            </div>
-          )}
-
-          <div className="mt-4">
-            <h3 className="m-0 text-base font-semibold text-navy-900 mb-2">Your submitted board</h3>
-            <ExpandableCanvasContainer title="Submitted concept board">
-              <div className="w-full h-full bg-white rounded-3xl border border-navy-900-12 overflow-hidden shadow-sm">
-                <Suspense fallback={<Skeleton label="Loading canvas board" className="w-full h-full" />}>
-                  <CanvasBoard
-                    cards={blankCards}
-                    connections={blankConnections}
-                    mode="review"
-                    directed={boardQ?.directed ?? false}
-                    className="w-full h-full"
-                  />
-                </Suspense>
+            {missedItems.length > 0 && !masteryMode && (
+              <div>
+                <Button type="button" onClick={() => setMasteryMode(true)}>
+                  Practice missed questions ({missedItems.length})
+                </Button>
               </div>
-            </ExpandableCanvasContainer>
+            )}
           </div>
-        </SectionCard>
+        ) : (
+          <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>
+        )}
+      </SectionCard>
+
+      {masteryMode && missedItems.length > 0 ? (
+        <MasteryPractice items={missedItems} onExit={() => setMasteryMode(false)} />
       ) : (
         <>
-          <SectionCard title={visibility.showScore && result ? 'Your score' : 'Submitted'} description={visibility.showScore && result ? `Attempt ${attempt.attemptNumber} · Submitted ${attempt.submittedAt?.toDate().toLocaleString() ?? ''}` : 'Your instructor will share results when they are ready.'}>
-            {quiz.mode === 'flashcards' ? (
-              <p className="m-0">You rated {Object.values(attempt.answers).filter((answer) => answer === 'knew' || answer === 'learning').length} of {review.length} cards. Keep practicing to strengthen what you know.</p>
-            ) : visibility.showScore && result ? (
-              <div className="grid gap-4">
-                <div className="quiz-score-summary">
-                  <ScoreRing percent={result.maxScore > 0 ? Math.round(result.score / result.maxScore * 100) : 0} />
-                  <strong>{result.score} / {result.maxScore} points</strong>
-                </div>
-                {missedItems.length > 0 && !masteryMode && (
-                  <div>
-                    <Button type="button" onClick={() => setMasteryMode(true)}>
-                      Practice missed questions ({missedItems.length})
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <Alert tone="warning" label="Results are not available yet">Submitted, your instructor will share results.</Alert>
-            )}
-          </SectionCard>
-
-          {masteryMode && missedItems.length > 0 ? (
-            <MasteryPractice items={missedItems} onExit={() => setMasteryMode(false)} />
-          ) : (
-            <>
-              {!visibility.showAnswers && quiz.mode !== 'flashcards' && quiz.settings.answerReveal !== 'never' && (
-                <Alert tone="info" label="Answers hidden">
-                  {quiz.settings.scoreVisibility === 'after_release' && !quiz.settings.scoresReleased
-                    ? 'Answers and explanations will appear after your instructor releases results.'
-                    : 'Answers and explanations are not shown for this quiz.'}
-                </Alert>
-              )}
-              {visibility.showAnswers && result && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {
-                const grade = result.perQuestion[question.id]
-                return <SectionCard key={question.id} title={`Question ${index + 1}`} description={question.prompt}>
-                  {quiz.mode !== 'flashcards' && visibility.showScore && <span className={`attempt-status ${grade?.correct ? 'attempt-status--correct' : 'attempt-status--incorrect'}`}>{grade?.correct ? <CircleCheck size={16} aria-hidden="true" /> : <CircleX size={16} aria-hidden="true" />}{grade?.correct ? 'Correct' : 'Needs practice'} · {grade?.pointsAwarded ?? 0} / {question.points}</span>}
-                  {question.type === 'canvas' && key?.type === 'canvas' ? (
-                    <div className="mt-3">
-                      <CanvasReviewView
-                        question={question as unknown as CanvasQuestion}
-                        attemptId={attemptId}
-                        studentAnswer={typeof attempt.answers[question.id] === 'string' || Array.isArray(attempt.answers[question.id]) ? (attempt.answers[question.id] as string | string[]) : undefined}
-                        answerKey={key as unknown as CanvasAnswerKey}
-                        images={canvasImages}
-                      />
-                      {canvasImagesError && (
-                        <div className="mt-2 flex items-center gap-2 text-xs text-navy-800 bg-navy-50 border border-navy-900-12 rounded-xl px-3 py-2" role="status">
-                          <span>Some board images could not be loaded.</span>
-                          <button
-                            type="button"
-                            onClick={() => void loadCanvasImages()}
-                            className="underline font-medium hover:text-navy-900 focus:outline-none focus:ring-2 focus:ring-navy-600 rounded"
-                          >
-                            Retry
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <p className="mt-3 mb-0"><strong>Your answer:</strong> {answerText(question, attempt.answers[question.id])}</p>
-                      {key && <p className="mt-2 mb-0"><strong>Answer:</strong> {key.type === 'choice' && 'options' in question ? question.options.find(({ id }) => id === key.correctOptionId)?.text : key.type === 'identification' ? key.acceptedAnswers.join(', ') : key.type === 'fill_blank' ? key.blanks.map((blank) => blank.join(' / ')).join(' · ') : key.type === 'flashcard' ? key.back : ''}</p>}
-                      {key?.explanation && <p className="mt-2 mb-0">{key.explanation}</p>}
-                    </>
-                  )}
-                </SectionCard>
-              })}</section>}
-            </>
+          {!visibility.showAnswers && quiz.mode !== 'flashcards' && quiz.settings.answerReveal !== 'never' && (
+            <Alert tone="info" label="Answers hidden">
+              {quiz.settings.scoreVisibility === 'after_release' && !quiz.settings.scoresReleased
+                ? 'Answers and explanations will appear after your instructor releases results.'
+                : 'Answers and explanations are not shown for this quiz.'}
+            </Alert>
           )}
+          {visibility.showAnswers && result && <section className="grid gap-4" aria-labelledby="review-heading"><h2 id="review-heading" className="m-0 font-heading text-2xl">Question review</h2>{review.map(({ question, key }, index) => {
+            const grade = result.perQuestion[question.id]
+            return <SectionCard key={question.id} title={`Question ${index + 1}`} description={question.prompt}>
+              {quiz.mode !== 'flashcards' && visibility.showScore && <span className={`attempt-status ${grade?.correct ? 'attempt-status--correct' : 'attempt-status--incorrect'}`}>{grade?.correct ? <CircleCheck size={16} aria-hidden="true" /> : <CircleX size={16} aria-hidden="true" />}{grade?.correct ? 'Correct' : 'Needs practice'} · {grade?.pointsAwarded ?? 0} / {question.points}</span>}
+              <p className="mt-3 mb-0"><strong>Your answer:</strong> {answerText(question, attempt.answers[question.id])}</p>
+              {key && <p className="mt-2 mb-0"><strong>Answer:</strong> {key.type === 'choice' && 'options' in question ? question.options.find(({ id }) => id === key.correctOptionId)?.text : key.type === 'identification' ? key.acceptedAnswers.join(', ') : key.type === 'fill_blank' ? key.blanks.map((blank) => blank.join(' / ')).join(' · ') : key.type === 'flashcard' ? key.back : ''}</p>}
+              {key?.explanation && <p className="mt-2 mb-0">{key.explanation}</p>}
+            </SectionCard>
+          })}</section>}
         </>
       )}
       <Button to="/student">Back to practice</Button></main>

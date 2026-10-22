@@ -4,7 +4,6 @@ import {
   Globe,
   BookOpen,
   HelpCircle,
-  Network,
   Sparkles,
   Layers,
   ArrowRight,
@@ -62,10 +61,8 @@ export function CanvasOutlineView({
     if (node.type === 'link') return <Globe size={16} aria-hidden="true" />
     if (node.type === 'group') return <Layers size={16} aria-hidden="true" />
     if (node.type === 'reference') {
-      const info = node.reference ? resolvedReferences[node.reference.refId] : undefined
       if (node.reference?.refType === 'module') return <BookOpen size={16} aria-hidden="true" />
       if (node.reference?.refType === 'learning') return <Sparkles size={16} aria-hidden="true" />
-      if (info?.isCanvasActivity) return <Network size={16} aria-hidden="true" />
       return <HelpCircle size={16} aria-hidden="true" />
     }
     return <FileText size={16} aria-hidden="true" />

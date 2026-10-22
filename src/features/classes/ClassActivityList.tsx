@@ -25,7 +25,6 @@ import {
 import { QuizTypeBadge } from '../quizzes/QuizTypeBadge'
 import type { ClassWithId } from './types'
 import { copyQuizToClass } from './services/quizService'
-import { canvasBoardStatus } from './classActivities'
 import { effectiveTimeLimitSeconds, formatDuration, formatWindowDate } from '../quizzes/quizTiming'
 
 function timeLimitLabel(quiz: QuizRecord): string {
@@ -143,10 +142,7 @@ export function ClassActivityList({
     <>
       <div className="grid gap-3">
         {activities.map((quiz) => {
-          const isCanvas = quiz.mode === 'canvas'
-          const metaStatus = isCanvas
-            ? 'Canvas board'
-            : `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}`
+          const metaStatus = `${quiz.questionCount} ${quiz.questionCount === 1 ? 'question' : 'questions'}`
           const updatedDate = quiz.updatedAt.toDate().toLocaleDateString(undefined, { dateStyle: 'medium' })
           const meta = `${metaStatus} · Updated ${updatedDate}`
           const busy = busyId === quiz.id
@@ -165,41 +161,25 @@ export function ClassActivityList({
                 <div className="flex flex-wrap gap-2">
                   <Badge>{quiz.status[0].toUpperCase() + quiz.status.slice(1)}</Badge>
                   <QuizTypeBadge mode={quiz.mode} />
-                  {isCanvas && (
-                    <Badge>{quiz.boardKind === 'blank' ? 'You grade' : 'Auto-graded'}</Badge>
-                  )}
                 </div>
               }
             >
-              {isCanvas ? (
-                <p className="m-0 flex flex-wrap gap-2 text-sm text-navy-800-72">
-                  <span>{canvasBoardStatus(quiz)}</span>
-                  <span>
-                    {quiz.settings.participation.type === 'group'
-                      ? `Group of ${quiz.settings.participation.groupSize}`
-                      : 'Individual'}
-                  </span>
-                  <span>{timeLimitLabel(quiz)}</span>
-                  {quiz.settings.closesAt && <span>Deadline {formatWindowDate(quiz.settings.closesAt)}</span>}
-                </p>
-              ) : (
-                <p className="m-0 flex flex-wrap gap-2 text-sm text-navy-800-72">
-                  <span>
-                    {quiz.settings.participation.type === 'group'
-                      ? `Group of ${quiz.settings.participation.groupSize}`
-                      : 'Individual'}
-                  </span>
-                  <span>
-                    {quiz.settings.answerReveal === 'never'
-                      ? 'Answers hidden'
-                      : quiz.settings.answerReveal === 'after_each'
-                      ? 'Answers after each question'
-                      : 'Answers after submission'}
-                  </span>
-                  <span>{timeLimitLabel(quiz)}</span>
-                  {quiz.settings.closesAt && <span>Deadline {formatWindowDate(quiz.settings.closesAt)}</span>}
-                </p>
-              )}
+              <p className="m-0 flex flex-wrap gap-2 text-sm text-navy-800-72">
+                <span>
+                  {quiz.settings.participation.type === 'group'
+                    ? `Group of ${quiz.settings.participation.groupSize}`
+                    : 'Individual'}
+                </span>
+                <span>
+                  {quiz.settings.answerReveal === 'never'
+                    ? 'Answers hidden'
+                    : quiz.settings.answerReveal === 'after_each'
+                    ? 'Answers after each question'
+                    : 'Answers after submission'}
+                </span>
+                <span>{timeLimitLabel(quiz)}</span>
+                {quiz.settings.closesAt && <span>Deadline {formatWindowDate(quiz.settings.closesAt)}</span>}
+              </p>
 
               {/* One primary action per card, the same on every screen size. Everything else lives in the menu. */}
               <div className="flex w-full items-center justify-between gap-2">
@@ -211,7 +191,7 @@ export function ClassActivityList({
                       type="button"
                       variant="secondary"
                       disabled={busy}
-                      onClick={() => void action(quiz.id, isCanvas ? 'Canvas unpublished for editing.' : 'Quiz unpublished for editing.', async () => {
+                      onClick={() => void action(quiz.id, 'Quiz unpublished for editing.', async () => {
                         await unpublishQuiz(quiz.id)
                         navigate(editPath)
                       })}
@@ -224,7 +204,7 @@ export function ClassActivityList({
                   <Button
                     type="button"
                     disabled={busy}
-                    onClick={() => void action(quiz.id, isCanvas ? 'Canvas restored to drafts.' : 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}
+                    onClick={() => void action(quiz.id, 'Quiz restored to drafts.', () => restoreQuiz(quiz.id))}
                   >
                     <RotateCcw size={15} aria-hidden="true" /> Restore
                   </Button>
@@ -235,7 +215,7 @@ export function ClassActivityList({
                       type="button"
                       role="menuitem"
                       disabled={busy}
-                      onClick={() => void action(quiz.id, isCanvas ? 'Canvas unpublished for editing.' : 'Quiz unpublished for editing.', async () => {
+                      onClick={() => void action(quiz.id, 'Quiz unpublished for editing.', async () => {
                         await unpublishQuiz(quiz.id)
                         navigate(editPath)
                       })}
@@ -260,7 +240,7 @@ export function ClassActivityList({
                     </Link>
                   )}
                   {isPublished && (
-                    <button type="button" role="menuitem" disabled={busy} onClick={() => void action(quiz.id, isCanvas ? 'Canvas returned to draft.' : 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}>
+                    <button type="button" role="menuitem" disabled={busy} onClick={() => void action(quiz.id, 'Quiz returned to draft.', () => unpublishQuiz(quiz.id))}>
                       <Send size={16} aria-hidden="true" /> Unpublish
                     </button>
                   )}
@@ -277,7 +257,7 @@ export function ClassActivityList({
                     </Link>
                   )}
                   {!isArchived && (
-                    <button type="button" role="menuitem" disabled={busy} onClick={() => void action(quiz.id, isCanvas ? 'Canvas archived.' : 'Quiz archived.', () => archiveQuiz(quiz.id))}>
+                    <button type="button" role="menuitem" disabled={busy} onClick={() => void action(quiz.id, 'Quiz archived.', () => archiveQuiz(quiz.id))}>
                       <Archive size={16} aria-hidden="true" /> Archive
                     </button>
                   )}
@@ -294,7 +274,7 @@ export function ClassActivityList({
       <Dialog
         open={Boolean(copySelection)}
         onClose={() => setCopySelection(null)}
-        title={copySelection?.mode === 'canvas' ? 'Copy canvas to another class' : 'Copy quiz to another class'}
+        title="Copy quiz to another class"
         description={copySelection ? `Create a separate draft of “${copySelection.title}”.` : undefined}
       >
         {targets.length ? (
@@ -308,20 +288,20 @@ export function ClassActivityList({
             />
             <div className="dialog__actions">
               <Button type="button" variant="secondary" onClick={() => setCopySelection(null)}>
-                Cancel
+               Cancel
               </Button>
               <Button
                 type="button"
                 onClick={() => void copyToClass()}
                 disabled={!targetClass || busyId === copySelection?.id}
               >
-                {copySelection?.mode === 'canvas' ? 'Copy canvas' : 'Copy quiz'}
+                Copy quiz
               </Button>
             </div>
           </>
         ) : (
           <>
-            <p>You need another active class before you can copy this {copySelection?.mode === 'canvas' ? 'canvas' : 'quiz'}.</p>
+            <p>You need another active class before you can copy this quiz.</p>
             <Link to="/instructor" className="text-navy-800 underline">
               Create a class
             </Link>
@@ -333,18 +313,16 @@ export function ClassActivityList({
         open={Boolean(deleteSelection)}
         onClose={() => setDeleteSelection(null)}
         onConfirm={() => void remove()}
-        title={deleteSelection?.quiz.mode === 'canvas' ? 'Delete this canvas?' : 'Delete this quiz?'}
+        title="Delete this quiz?"
         description={
           deleteSelection
             ? `This erases ${deleteSelection.submissions} student ${
                 deleteSelection.submissions === 1 ? 'submission' : 'submissions'
-              } and all ${deleteSelection.quiz.mode === 'canvas' ? 'canvas' : 'quiz'} content. Archive ${
-                deleteSelection.quiz.mode === 'canvas' ? 'the canvas' : 'the quiz'
-              } if you may want it later.`
+              } and all quiz content. Archive the quiz if you may want it later.`
             : ''
         }
         requiredName={deleteSelection?.quiz.title}
-        confirmLabel={deleteSelection?.quiz.mode === 'canvas' ? 'Delete canvas' : 'Delete quiz'}
+        confirmLabel="Delete quiz"
       />
     </>
   )

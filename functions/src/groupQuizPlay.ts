@@ -83,28 +83,6 @@ export async function startTeamAttempt(call: CallableRequest<unknown>) {
           throw new GroupQuizError(`${team.memberNames[id] ?? 'A teammate'} has no attempts left for this quiz.`, 'failed-precondition')
         }
       })
-      if (quiz.mode === 'canvas') {
-        const boardDoc = questionsSnap.docs.find(doc => doc.get('type') === 'canvas') ?? questionsSnap.docs[0]
-        if (!boardDoc || boardDoc.get('type') !== 'canvas') throw new GroupQuizError('This canvas quiz has no board question.', 'failed-precondition')
-        const now = Date.now()
-        const ready = team.status === 'forming' ? nextTeamStatus('forming', 'ready') : team.status
-        const questionOrder = [boardDoc.id]
-        const first = {
-          id: boardDoc.id,
-          index: 0,
-          type: 'canvas',
-          prompt: typeof boardDoc.get('prompt') === 'string' ? boardDoc.get('prompt') : '',
-          points: typeof boardDoc.get('points') === 'number' ? boardDoc.get('points') : 0,
-          options: [],
-        }
-        tx.set(privateRef(request.quizId, request.teamId), { questionOrder, optionOrder: {}, picks: {}, finalAnswers: {}, startedAtMs: now })
-        tx.set(sessionRef(request.quizId, request.teamId), {
-          phase: 'answering', currentIndex: 0, total: 1, questionStartedAt: now, questionEndsAt: null, reviewStartedAt: null,
-          question: first, answered: {}, picks: null, locked: false, ready: {}, updatedAt: FieldValue.serverTimestamp(),
-        })
-        tx.update(teamRef(request.quizId, request.teamId), { status: nextTeamStatus(ready, 'in_progress'), startedAt: now, updatedAt: FieldValue.serverTimestamp() })
-        return { ok: true }
-      }
       if (questionsSnap.docs.some(doc => !isPlayableType(doc.get('type')))) throw new GroupQuizError('This quiz has questions that teams cannot answer.', 'failed-precondition')
       const docs = questionsSnap.docs
       const questionOrder = buildQuestionOrder(docs.map(doc => doc.id), quiz.shuffleQuestions)

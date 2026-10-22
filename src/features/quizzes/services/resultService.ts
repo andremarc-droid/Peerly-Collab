@@ -94,7 +94,7 @@ export async function regradeQuizAttempts(quizId: string, db: Firestore = firest
   for (const item of attemptSnapshot.docs) {
     const attempt = parseQuizAttempt(item.data())
     const result = results.get(item.id)
-    if (attempt.status !== 'submitted' || attempt.teamId || !result || result.reviewStatus !== undefined) continue
+    if (attempt.status !== 'submitted' || attempt.teamId || !result) continue
     checked += 1
     const next = regradeAutomaticAttempt({ result, questions, answerKeys, attempt })
     if (next) updates.push({ attemptId: item.id, result: next })
@@ -107,59 +107,4 @@ export async function regradeQuizAttempts(quizId: string, db: Firestore = firest
     await batch.commit()
   }
   return { checked, updated: updates.length }
-}
-
-export async function gradeBlankCanvasAttempt(
-  quizId: string,
-  attemptId: string,
-  payload: { score: number; feedback?: string; gradedBy: string },
-  db: Firestore = firestore,
-): Promise<void> {
-  const currentAttemptSnap = await getDoc(attemptRef(db, quizId, attemptId))
-  const teamId = currentAttemptSnap.exists() ? (currentAttemptSnap.data().teamId as string | undefined) : undefined
-
-  let targetAttemptIds = [attemptId]
-  if (teamId) {
-    const teamAttemptsSnap = await getDocs(query(attemptsRef(db, quizId), where('teamId', '==', teamId)))
-    if (!teamAttemptsSnap.empty) {
-      targetAttemptIds = teamAttemptsSnap.docs.map((doc) => doc.id)
-    }
-  }
-
-  await runTransaction(db, async (transaction) => {
-    const boardRef = questionRef(db, quizId, 'board')
-    const boardSnapshot = await transaction.get(boardRef)
-    if (!boardSnapshot.exists()) throw new Error('Board question not found')
-    const board = parseQuestion(boardSnapshot.data())
-    if (typeof payload.score !== 'number' || !Number.isFinite(payload.score) || payload.score < 0 || payload.score > board.points) {
-      throw new Error(`Score must be between 0 and ${board.points}`)
-    }
-    const feedback = payload.feedback ? payload.feedback.trim() : ''
-    if (feedback.length > 1000) {
-      throw new Error('Feedback must not exceed 1000 characters')
-    }
-
-    const resultSnapshots = await Promise.all(
-      targetAttemptIds.map((id) => transaction.get(resultRef(db, quizId, id))),
-    )
-
-    for (const snap of resultSnapshots) {
-      if (!snap.exists()) continue
-      parseQuizResult(snap.data())
-    }
-
-    const updateData: Record<string, unknown> = {
-      score: payload.score,
-      reviewStatus: 'graded',
-      feedback,
-      gradedAt: Timestamp.now(),
-      gradedBy: payload.gradedBy,
-    }
-
-    for (let i = 0; i < targetAttemptIds.length; i++) {
-      if (resultSnapshots[i].exists()) {
-        transaction.update(resultRef(db, quizId, targetAttemptIds[i]), updateData)
-      }
-    }
-  })
 }

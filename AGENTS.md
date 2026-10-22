@@ -47,7 +47,7 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Signup, signin, and password reset routes provide full accessible form handling, validation, error reporting, email verification gates, and Google SSO authentication.
 
 ## QUIZ DOMAIN
-- Quizzes live at `quizzes/{quizId}` with owner identity, title/description/tags, mode (`quiz`, `flashcards`, or `canvas`), status (`draft`, `published`, `archived`), question count, timestamps, and settings for answer reveal, participation, score visibility/release, time limit, attempts, and shuffling.
+- Quizzes live at `quizzes/{quizId}` with owner identity, title/description/tags, mode (`quiz` or `flashcards`), status (`draft`, `published`, `archived`), question count, timestamps, and settings for answer reveal, participation, score visibility/release, time limit, attempts, and shuffling.
 - Questions live at `quizzes/{quizId}/questions/{questionId}` and contain prompt, type, order, points, and options where applicable. Never store correct answers in question documents.
 - Answer keys live separately at `quizzes/{quizId}/answerKeys/{questionId}`. Participants may read them only under the access rules in `firestore.rules`; v1 browser grading means participants can inspect those keys (see `docs/design-22-retrieval-before-reveal.md` for target server-side grading architecture).
 - Editing a published quiz automatically unpublishes it to draft, allowing instructors to freely edit questions, options, and settings. Once republished, the changes immediately reflect on the student's side.
@@ -55,32 +55,8 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Optional mastery round ("Practice missed questions") is available after submitting an instructor quiz to reinforce learning without mutating graded results.
 - Synchronized class-wide pacing for instructor quizzes supports self-paced, timed per question, and wait-for-everyone pacing via live sessions.
 - In live games, host can toggle the speed bonus (default off, rewarding mastery and accuracy over speed). Stuck group quiz teams can be advanced or overridden by the instructor.
-- Support multiple choice, true/false, identification, fill-in-the-blank, flashcards, and concept canvas boards. Flashcard quizzes use neutral reveal/score defaults and flashcards are not graded.
-- Images for canvas image cards live in `quizzes/{quizId}/images/{imageId}`: `{ data, mimeType, width, height, bytes, createdAt }` (data stored without `data:` prefix, mimeType in `image/jpeg` or `image/webp`). Enforced hard cap of <= 700,000 characters of data per image document in Firestore rules.
+- Support multiple choice, true/false, identification, fill-in-the-blank, and flashcards. Flashcard quizzes use neutral reveal/score defaults and flashcards are not graded.
 - Validate untrusted domain payloads at runtime. Grade with pure functions and expose the service boundary as `gradeAttempt` so grading can move to a Cloud Function later.
-
-## CANVAS
-- Modes: `quiz`, `flashcards`, and `canvas`. Mode is permanently locked upon quiz creation.
-- Canvas kinds (`boardKind`): `'prebuilt'` (default) and `'blank'`. `boardKind` is locked permanently upon quiz creation.
-  - Prebuilt canvas: instructor builds a target board with cards (concept, fact, note, paragraph, link, image) and answer key connections; graded automatically browser-side against the answer key.
-  - Blank canvas: open-ended student concept mapping. The board question has `cards: []`, an optional rubric (max 1000 chars), `showRubricToStudents`, configurable limits (`maxCards` 1–30, default 20; `maxConnections` 0–80, default 40), and `allowedCardTypes` (`note`, `paragraph`, `link`). No answer key document exists for blank canvas (`validateQuestionAnswerPair` returns `{ question, answerKey: null }`).
-- Hard limits: prebuilt boards support up to 50 cards, 80 connections, and at most 12 uploaded images. Blank boards support up to 30 student cards, 80 connections, and notes/paragraphs/links.
-- Blank canvas student attempts: student answers are saved in `answers.board` as `{ cards: BlankCanvasAnswerCard[], connections: string[] }`. Debounced autosave preserves the student's card layout and connections.
-- Blank canvas grading lifecycle: student submit creates a result with `reviewStatus: 'pending'`, `score: 0`, and `maxScore: question.points`. Instructors review student boards with an interactive read-only board canvas, previous/next ungraded navigation, and a manual grading form (`score`, optional `feedback` max 1000 chars) which updates `reviewStatus: 'graded'`.
-- Results & CSV export: quiz results table features a "Needs grading" filter, count badge, status column, and CSV export with Review status and Feedback.
-- Image storage and processing: uploaded images are processed client-side (JPEG, PNG, WebP only up to 10 MB; SVG/GIF rejected), canvas filled with white prior to drawing so transparent PNGs do not turn black in JPEG, resized to at most 1024px on the longest side, and re-encoded to JPEG/WebP with quality stepping down until base64 data length is <= 350,000 characters (stripping EXIF metadata). Images live at `quizzes/{quizId}/images/{imageId}` with a 700,000-character hard limit and disabled single-field indexing in `firestore.indexes.json`.
-- Legacy image cards: boards with existing Google Drive image cards load safely without crashing, show a "Re-upload required" warning badge in the builder, and block saving or publishing until replaced with an uploaded image.
-- Connection ID formats: directed connections use `fromId->toId`; undirected connections use `fromId<->toId` (with endpoint IDs normalized alphabetically).
-- QuickCreateQuiz supports `mode` and `boardKind` parameters. When opened from the Canvas tab (`?classId=<id>&mode=canvas`), the picker allows choosing between Prebuilt Canvas and Blank Canvas, and routes directly to the respective builder (`CanvasBuilderPage` or `BlankCanvasBuilder`).
-- Canvas geometry & sizing: `src/features/canvas/constants.ts` is the single source of truth for 240x140 cards, 40px padding, 44px handles with 28px dot, 2.5px edges, 22px arrowheads, 3px selection outline, 200x140 minimap, 44px control buttons, zoom bounds (0.2–2.5), and fitView options (padding: 0.2). Wired into `mapping.ts`, `canvas.css`, `CanvasBoard.tsx`, `placement.ts`, and `schemas.ts` (`scatterCards`).
-- Non-overlapping card placement & tidy layout: `findNonOverlappingPosition` ensures newly added cards do not overlap existing cards. `tidyLayout` arranges cards into a clean non-overlapping grid.
-- Responsive board containers & full screen expansion: all canvas boards use `ExpandableCanvasContainer` (`h-[max(70dvh,480px)] lg:h-[max(560px,calc(100dvh-220px))]`) supporting Fullscreen API with fixed `inset-0` fallback, Escape key handling, body scroll lock, and collapsible 360px side panels (`lg:w-[360px] lg:min-w-[360px]`).
-- Text outline companion: `CanvasTextOutline` provides a searchable, copyable plain-text outline with shared selection synchronized with `CanvasBoard`. It is collapsible (open by default at 1024px and wider, closed below; `defaultOpen` overrides).
-- Link safety (security rule): card links can be written by students, so NEVER put a card `url` into an `href` directly. Always use `safeHttpsUrl()` from `src/features/canvas/safeUrl.ts` (https only, no credentials, no whitespace, max 500 characters); anything else renders as plain text with a "Link blocked" label. Used by `LinkCard`, `CanvasTextOutline` and the read-only `CardEditorPanel`.
-- Known rules gap: `validBlankCardsList` and `validBlankConnectionsList` in `firestore.rules` only validate the first 10 cards and the first 10 connections of a blank-board attempt (the board allows 30 and 80). Items beyond that are not shape-checked by rules, so the client must treat all student card data as untrusted. Closing this gap needs an emulator test with a maximum-size attempt to confirm Firestore's expression limit is not exceeded.
-- Blank canvas directed setting: supports optional `directed?: boolean` in `BlankCanvasQuestion`, schema, and Firestore rules. Honors directed arrows (`from->to`) or undirected edges (`from<->to`) in student taking mode.
-- Student link card validation: link cards require valid `https://` URLs on quiz submit; empty URLs are tolerated during draft autosaves.
-- Hidden/unreleased scores: `QuizResultPage` handles unreleased/hidden scores gracefully when student read is denied, rendering "Submitted. Your instructor will check your board." and the read-only submitted board without crashing.
 
 ## CHATBOT
 - The Learning hub has an AI Tutor tab (last tab, both roles) implemented in `src/features/chatbot`. It is non-graded study help and never touches quizzes, attempts, or answer keys.
@@ -110,7 +86,7 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 
 ## CLASSROOMS
 - Classes live at `classes/{classId}` and are owned by instructors. Students only see published quizzes for classes where their enrollment is active.
-- Class page tabs order: Modules, Quizzes, Canvas, People, Settings (`?tab=canvas` supported; unknown values fall back to Modules). Quizzes tab lists quiz and flashcards modes; Canvas tab lists canvas mode with board readiness summary. Tab count badges and the Activities stat tile derive honest per-mode counts from watched quizzes.
+- Class page tabs order: Modules, Quizzes, People, Settings. Quizzes tab lists quiz and flashcards modes. Tab count badges and the Activities stat tile derive honest counts from watched quizzes.
 - `classCodes/{CODE}` is a lookup preview index, never an authority; use the class document and Firestore rules for authoritative join checks. Codes are six characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, generated with Web Crypto and normalized by uppercasing and removing spaces and hyphens.
 - `enrollments/{classId}_{uid}` is the canonical membership record. Status is `active`, `pending`, or `blocked`; pending membership needs instructor approval and blocked students cannot recreate their enrollment.
 - New quizzes require a `classId`. Legacy quizzes without one remain visible to their owner as unassigned and cannot be published. Quiz assignment changes are allowed only while draft and to an active class owned by the same instructor.

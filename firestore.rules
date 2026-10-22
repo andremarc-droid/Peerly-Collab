@@ -1465,7 +1465,7 @@ service cloud.firestore {
             && settings.participation.keys().hasAll(['type', 'groupSize'])
             && settings.participation.groupSize is int
             && settings.participation.groupSize >= 2
-            && (mode == 'quiz' || mode == 'canvas')
+            && mode == 'quiz'
             && (!('answerMode' in settings.participation) || settings.participation.answerMode in ['representative', 'everyone'])
             && (!('teamFormation' in settings.participation) || settings.participation.teamFormation in ['assigned', 'self'])
             && (!('waitForEveryone' in settings.participation) || settings.participation.waitForEveryone is bool)
@@ -1475,25 +1475,16 @@ service cloud.firestore {
                 && settings.participation.questionTimeSec >= 10
                 && settings.participation.questionTimeSec <= 300))))
         && (mode != 'flashcards'
-          || (settings.answerReveal == 'never' && settings.scoreVisibility == 'hidden' && settings.scoresReleased == false))
-        && (mode != 'canvas'
-          || (settings.shuffleQuestions == false
-            && settings.shuffleOptions == false
-            && (settings.participation.type == 'individual'
-              || (settings.participation.type == 'group'
-                && (!('answerMode' in settings.participation) || settings.participation.answerMode == 'representative')
-                && (!('waitForEveryone' in settings.participation) || settings.participation.waitForEveryone == false)
-                && (!('questionTimeSec' in settings.participation) || settings.participation.questionTimeSec == null)))));
+          || (settings.answerReveal == 'never' && settings.scoreVisibility == 'hidden' && settings.scoresReleased == false));
     }
 
     function validQuiz(data) {
-      return data.keys().hasOnly(['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'boardKind', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings'])
+      return data.keys().hasOnly(['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings'])
         && data.keys().hasAll(['ownerId', 'ownerName', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings'])
         && data.ownerId is string && data.ownerName is string
         && data.title is string && data.title.size() <= 200
         && data.description is string && data.description.size() <= 2000
-        && data.tags is list && data.tags.size() <= 20 && data.mode in ['quiz', 'flashcards', 'canvas']
-        && (!data.keys().hasAny(['boardKind']) || (data.mode == 'canvas' && data.boardKind in ['prebuilt', 'blank']))
+        && data.tags is list && data.tags.size() <= 20 && data.mode in ['quiz', 'flashcards']
         && data.status in ['draft', 'published', 'archived']
         && (!data.keys().hasAny(['classId']) || data.classId is string)
         && data.questionCount is int && data.questionCount >= 0
@@ -1533,170 +1524,37 @@ service cloud.firestore {
           : !data.keys().hasAny(['options']));
     }
 
-    function validCanvasQuestion(data) {
-      return data.keys().hasOnly(['order', 'type', 'prompt', 'points', 'layoutMode', 'directed', 'wrongPenalty', 'cards'])
-        && data.keys().hasAll(['order', 'type', 'prompt', 'points', 'layoutMode', 'directed', 'wrongPenalty', 'cards'])
-        && data.order is int && data.order >= 0
-        && data.type == 'canvas'
-        && data.prompt is string && data.prompt.size() <= 2000
-        && data.points is int && data.points >= 1 && data.points <= 1000
-        && data.layoutMode in ['scattered', 'fixed']
-        && data.directed is bool
-        && data.wrongPenalty in ['none', 'half', 'full']
-        && data.cards is list && data.cards.size() <= 50;
-    }
-
-    function validBlankCanvasQuestion(data) {
-      return data.keys().hasOnly(['order', 'type', 'prompt', 'points', 'cards', 'rubric', 'showRubricToStudents', 'maxCards', 'maxConnections', 'allowedCardTypes', 'directed'])
-        && data.keys().hasAll(['order', 'type', 'prompt', 'points', 'cards', 'showRubricToStudents', 'maxCards', 'maxConnections', 'allowedCardTypes'])
-        && (!('directed' in data) || data.directed is bool)
-        && data.order is int && data.order >= 0
-        && data.type == 'canvas'
-        && data.prompt is string && data.prompt.size() > 0 && data.prompt.size() <= 2000
-        && (!('rubric' in data) || (data.rubric is string && data.rubric.size() <= 1000))
-        && data.showRubricToStudents is bool
-        && data.points is int && data.points >= 1 && data.points <= 1000
-        && data.maxCards is int && data.maxCards >= 1 && data.maxCards <= 30
-        && data.maxConnections is int && data.maxConnections >= 0 && data.maxConnections <= 80
-        && data.allowedCardTypes is list && data.allowedCardTypes.size() > 0
-        && data.allowedCardTypes.hasOnly(['note', 'paragraph', 'link'])
-        && data.cards is list && data.cards.size() == 0;
-    }
-
     function validQuestionForQuiz(quizId, questionId, data) {
-      let quizPath = /databases/$(database)/documents/quizzes/$(quizId);
-      let quizDoc = existsAfter(quizPath) ? getAfter(quizPath).data : get(quizPath).data;
-      let quizMode = quizDoc.mode;
-      let isBlank = quizDoc.mode == 'canvas' && ('boardKind' in quizDoc && quizDoc.boardKind == 'blank');
-      return (quizMode == 'canvas'
-        ? questionId == 'board' && (isBlank ? validBlankCanvasQuestion(data) : validCanvasQuestion(data))
-        : validQuestion(data));
+      return validQuestion(data);
     }
 
     function matchingAnswerKey(quizId, questionId, data) {
-      let quizPath = /databases/$(database)/documents/quizzes/$(quizId);
-      let quizDoc = existsAfter(quizPath) ? getAfter(quizPath).data : get(quizPath).data;
-      let isBlankCanvas = quizDoc.mode == 'canvas' && ('boardKind' in quizDoc && quizDoc.boardKind == 'blank');
       let questionPath = /databases/$(database)/documents/quizzes/$(quizId)/questions/$(questionId);
       let questionType = existsAfter(questionPath) ? getAfter(questionPath).data.type : get(questionPath).data.type;
-      return !isBlankCanvas
-        && existsAfter(questionPath)
+      return existsAfter(questionPath)
         && ((questionType in ['multiple_choice', 'true_false'] && data.type == 'choice')
           || (questionType == 'identification' && data.type == 'identification')
           || (questionType == 'fill_blank' && data.type == 'fill_blank')
-          || (questionType == 'flashcard' && data.type == 'flashcard')
-          || (questionType == 'canvas' && data.type == 'canvas' && questionId == 'board'));
+          || (questionType == 'flashcard' && data.type == 'flashcard'));
     }
 
     function validAnswerKey(data) {
-      return (data.type == 'canvas'
-        ? data.keys().hasOnly(['type', 'explanation', 'connections'])
-          && data.keys().hasAll(['type', 'explanation', 'connections'])
-          && data.explanation is string && data.explanation.size() <= 2000
-          && data.connections is list && data.connections.size() <= 80
-        : data.keys().hasOnly(['type', 'correctOptionId', 'acceptedAnswers', 'blanks', 'back', 'explanation', 'caseSensitive'])
-          && data.keys().hasAll(['type', 'explanation', 'caseSensitive'])
-          && data.explanation is string && data.caseSensitive is bool
-          && ((data.type == 'choice' && data.keys().hasOnly(['type', 'correctOptionId', 'explanation', 'caseSensitive']) && data.correctOptionId is string)
-            || (data.type == 'identification' && data.keys().hasOnly(['type', 'acceptedAnswers', 'explanation', 'caseSensitive']) && data.acceptedAnswers is list && data.acceptedAnswers.size() > 0)
-            || (data.type == 'fill_blank' && data.keys().hasOnly(['type', 'blanks', 'explanation', 'caseSensitive']) && data.blanks is list && data.blanks.size() > 0)
-            || (data.type == 'flashcard' && data.keys().hasOnly(['type', 'back', 'explanation', 'caseSensitive']) && data.back is string)));
-    }
-
-    function validImage(data) {
-      return data.keys().hasOnly(['data', 'mimeType', 'width', 'height', 'bytes', 'createdAt'])
-        && data.keys().hasAll(['data', 'mimeType', 'width', 'height', 'bytes', 'createdAt'])
-        && data.mimeType in ['image/jpeg', 'image/webp']
-        && data.data is string && data.data.size() <= 700000
-        && data.width is int && data.width >= 1 && data.width <= 2048
-        && data.height is int && data.height >= 1 && data.height <= 2048
-        && data.bytes is int && data.bytes >= 0
-        && data.createdAt is timestamp;
-    }
-
-    function validBlankCard(card) {
-      return card is map
-        && card.keys().hasOnly(['id', 'type', 'content', 'title', 'url', 'position'])
-        && card.keys().hasAll(['id', 'type', 'content', 'position'])
-        && card.id is string && card.id.size() > 0 && card.id.size() <= 40
-        && card.type in ['note', 'paragraph', 'link']
-        && card.content is string && card.content.size() <= 1000
-        && (!('title' in card) || (card.title is string && card.title.size() <= 120))
-        && (card.type != 'link' || (!('url' in card) || card.url == '' || (card.url is string && card.url.size() <= 500 && card.url.matches('^https://[^\\s]+$'))))
-        && card.position is map
-        && card.position.keys().hasOnly(['x', 'y'])
-        && card.position.keys().hasAll(['x', 'y'])
-        && card.position.x is number && card.position.y is number;
-    }
-
-    function validBlankCardsList(cards) {
-      return cards.size() == 0
-        || (validBlankCard(cards[0])
-          && (cards.size() < 2 || validBlankCard(cards[1]))
-          && (cards.size() < 3 || validBlankCard(cards[2]))
-          && (cards.size() < 4 || validBlankCard(cards[3]))
-          && (cards.size() < 5 || validBlankCard(cards[4]))
-          && (cards.size() < 6 || validBlankCard(cards[5]))
-          && (cards.size() < 7 || validBlankCard(cards[6]))
-          && (cards.size() < 8 || validBlankCard(cards[7]))
-          && (cards.size() < 9 || validBlankCard(cards[8]))
-          && (cards.size() < 10 || validBlankCard(cards[9])));
-    }
-
-    function validBlankConnection(conn) {
-      return conn is string && conn.size() > 0 && conn.size() <= 100;
-    }
-
-    function validBlankConnectionsList(connections) {
-      return connections.size() == 0
-        || (validBlankConnection(connections[0])
-          && (connections.size() < 2 || validBlankConnection(connections[1]))
-          && (connections.size() < 3 || validBlankConnection(connections[2]))
-          && (connections.size() < 4 || validBlankConnection(connections[3]))
-          && (connections.size() < 5 || validBlankConnection(connections[4]))
-          && (connections.size() < 6 || validBlankConnection(connections[5]))
-          && (connections.size() < 7 || validBlankConnection(connections[6]))
-          && (connections.size() < 8 || validBlankConnection(connections[7]))
-          && (connections.size() < 9 || validBlankConnection(connections[8]))
-          && (connections.size() < 10 || validBlankConnection(connections[9])));
-    }
-
-    function validBlankBoardAnswer(board) {
-      return board is map
-        && board.keys().hasOnly(['cards', 'connections'])
-        && board.keys().hasAll(['cards', 'connections'])
-        && board.cards is list && board.cards.size() <= 30
-        && validBlankCardsList(board.cards)
-        && board.connections is list && board.connections.size() <= 80
-        && validBlankConnectionsList(board.connections);
-    }
-
-    function validTeamBoard(data) {
-      return data is map
-        && data.keys().hasOnly(['cards', 'connections', 'updatedAt', 'updatedBy'])
-        && data.keys().hasAll(['connections', 'updatedAt', 'updatedBy'])
-        && data.updatedBy == request.auth.uid
-        && data.updatedAt is timestamp
-        && data.connections is list && data.connections.size() <= 80
-        && validBlankConnectionsList(data.connections)
-        && (!('cards' in data) || (data.cards is list && data.cards.size() <= 30 && validBlankCardsList(data.cards)));
+      return data.keys().hasOnly(['type', 'correctOptionId', 'acceptedAnswers', 'blanks', 'back', 'explanation', 'caseSensitive'])
+        && data.keys().hasAll(['type', 'explanation', 'caseSensitive'])
+        && data.explanation is string && data.caseSensitive is bool
+        && ((data.type == 'choice' && data.keys().hasOnly(['type', 'correctOptionId', 'explanation', 'caseSensitive']) && data.correctOptionId is string)
+          || (data.type == 'identification' && data.keys().hasOnly(['type', 'acceptedAnswers', 'explanation', 'caseSensitive']) && data.acceptedAnswers is list && data.acceptedAnswers.size() > 0)
+          || (data.type == 'fill_blank' && data.keys().hasOnly(['type', 'blanks', 'explanation', 'caseSensitive']) && data.blanks is list && data.blanks.size() > 0)
+          || (data.type == 'flashcard' && data.keys().hasOnly(['type', 'back', 'explanation', 'caseSensitive']) && data.back is string));
     }
 
     function validAttempt(data, quizId) {
-      let quizPath = /databases/$(database)/documents/quizzes/$(quizId);
-      let quizDoc = existsAfter(quizPath) ? getAfter(quizPath).data : get(quizPath).data;
-      let isBlank = quizDoc.mode == 'canvas' && ('boardKind' in quizDoc && quizDoc.boardKind == 'blank');
       return data.keys().hasOnly(['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds', 'questionTimer'])
         && data.keys().hasAll(['userId', 'userName', 'attemptNumber', 'status', 'answers', 'questionOrder', 'optionOrder', 'startedAt', 'submittedAt', 'timeSpentSeconds'])
         && data.userId is string && data.userName is string
         && data.attemptNumber is int && data.attemptNumber > 0
         && data.status in ['in_progress', 'submitted']
         && data.answers is map && data.answers.size() <= 200
-        && (isBlank
-          ? data.answers.keys().hasOnly(['board'])
-            && (!('board' in data.answers) || validBlankBoardAnswer(data.answers.board))
-          : (!data.answers.keys().hasAny(['board']) || (data.answers.board is list && data.answers.board.size() <= 80))
-            && (!data.answers.keys().hasAny(['layout']) || (data.answers.layout is list && data.answers.layout.size() <= 50)))
         && data.questionOrder is list && data.optionOrder is map
         && data.startedAt is timestamp
         && (data.submittedAt == null || data.submittedAt is timestamp)
@@ -1720,41 +1578,16 @@ service cloud.firestore {
         && data.perQuestion is map && data.gradedAt is timestamp;
     }
 
-    function validBlankStudentResult(data, quizId) {
-      return data.keys().hasOnly(['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt', 'reviewStatus'])
-        && data.keys().hasAll(['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt', 'reviewStatus'])
-        && data.userId is string
-        && data.score == 0
-        && data.maxScore is number && data.maxScore >= 0
-        && data.perQuestion is map
-        && data.gradedAt is timestamp
-        && data.reviewStatus == 'pending';
-    }
-
-    function validBlankOwnerResultUpdate(data, quizId, oldData) {
-      let boardQuestion = get(/databases/$(database)/documents/quizzes/$(quizId)/questions/board).data;
-      return data.keys().hasOnly(['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt', 'reviewStatus', 'feedback', 'gradedBy', 'teamId', 'teamName'])
-        && data.keys().hasAll(['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt', 'reviewStatus'])
-        && data.userId == oldData.userId
-        && data.maxScore == oldData.maxScore
-        && data.score is number && data.score >= 0 && data.score <= boardQuestion.points
-        && data.reviewStatus in ['pending', 'graded']
-        && (!('feedback' in data) || (data.feedback is string && data.feedback.size() <= 1000))
-        && (!('gradedBy' in data) || data.gradedBy is string)
-        && (!('teamId' in data) || data.teamId is string)
-        && (!('teamName' in data) || data.teamName is string)
-        && data.perQuestion is map
-        && data.gradedAt is timestamp;
-    }
-
     match /quizzes/{quizId} {
       allow get: if quizSignedIn()
         && (!exists(/databases/$(database)/documents/quizzes/$(quizId))
           || resource.data.ownerId == request.auth.uid
         || (isStudent() && resource.data.status == 'published'
+          && resource.data.mode != 'canvas'
           && resource.data.get('classId', null) is string && isActiveMember(resource.data.classId)));
       allow list: if quizSignedIn() && (resource.data.ownerId == request.auth.uid
         || (isStudent() && resource.data.status == 'published'
+          && resource.data.mode != 'canvas'
           && resource.data.get('classId', null) is string && isActiveMember(resource.data.classId)));
       allow create: if isInstructor()
         && isEmailVerified()
@@ -1765,9 +1598,9 @@ service cloud.firestore {
         && request.resource.data.questionCount == 0
         && validQuiz(request.resource.data);
       allow update: if quizOwner(quizId)
+        && resource.data.mode != 'canvas'
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.mode == resource.data.mode
-        && (resource.data.mode != 'canvas' || (!('boardKind' in resource.data) && !('boardKind' in request.resource.data)) || (request.resource.data.get('boardKind', 'prebuilt') == resource.data.get('boardKind', 'prebuilt')))
         && request.resource.data.createdAt == resource.data.createdAt
         && (request.resource.data.get('classId', null) == resource.data.get('classId', null)
           || (resource.data.status == 'draft' && request.resource.data.get('classId', null) is string
@@ -1777,23 +1610,21 @@ service cloud.firestore {
           || (request.resource.data.title.size() > 0 && request.resource.data.questionCount > 0 && request.resource.data.publishedAt is timestamp
             && request.resource.data.get('classId', null) is string
             && isClassOwner(request.resource.data.classId)
-            && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.status == 'active'
-            && (request.resource.data.mode != 'canvas' || request.resource.data.questionCount == 1)))
+            && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.status == 'active'))
         && validQuiz(request.resource.data);
       allow delete: if quizOwner(quizId);
 
       match /questions/{questionId} {
         // Group quizzes serve one question at a time through the team session, so students never read this collection.
-        // Canvas quizzes have exactly one question ('board') containing board cards, limits and rubric.
-        allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId) && (!quizIsGroup(quizId) || get(/databases/$(database)/documents/quizzes/$(quizId)).data.mode == 'canvas') && quizHasOpened(quizId));
+        allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId) && !quizIsGroup(quizId) && quizHasOpened(quizId));
         allow create, update: if quizOwner(quizId)
           && validQuestionForQuiz(quizId, questionId, request.resource.data);
         allow delete: if quizOwner(quizId);
       }
 
       match /images/{imageId} {
-        allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId));
-        allow create, update: if quizOwner(quizId) && validImage(request.resource.data);
+        allow read: if quizOwner(quizId);
+        allow create, update: if false;
         allow delete: if quizOwner(quizId);
       }
 
@@ -1881,9 +1712,7 @@ service cloud.firestore {
                 && get(/databases/$(database)/documents/quizzes/$(quizId)).data.settings.scoresReleased == true)));
         allow create: if isStudent() && quizPublished(quizId)
           && request.resource.data.userId == request.auth.uid
-          && (('boardKind' in get(/databases/$(database)/documents/quizzes/$(quizId)).data && get(/databases/$(database)/documents/quizzes/$(quizId)).data.boardKind == 'blank')
-            ? validBlankStudentResult(request.resource.data, quizId)
-            : validResult(request.resource.data))
+          && validResult(request.resource.data)
           && exists(/databases/$(database)/documents/quizzes/$(quizId)/attempts/$(attemptId))
           && get(/databases/$(database)/documents/quizzes/$(quizId)/attempts/$(attemptId)).data.status == 'in_progress'
           && existsAfter(/databases/$(database)/documents/quizzes/$(quizId)/attempts/$(attemptId))
@@ -1891,9 +1720,7 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/quizzes/$(quizId)/attempts/$(attemptId)).data.status == 'submitted';
         allow update: if quizOwner(quizId)
           && request.resource.data.userId == resource.data.userId
-          && (('boardKind' in get(/databases/$(database)/documents/quizzes/$(quizId)).data && get(/databases/$(database)/documents/quizzes/$(quizId)).data.boardKind == 'blank')
-            ? validBlankOwnerResultUpdate(request.resource.data, quizId, resource.data)
-            : validResult(request.resource.data));
+          && validResult(request.resource.data);
         allow delete: if quizOwner(quizId);
       }
     }
@@ -1921,11 +1748,8 @@ service cloud.firestore {
       }
     }
     match /quizzes/{quizId}/teamBoards/{teamId} {
-      allow get, list: if quizOwner(quizId) || isQuizTeamMember(quizId, teamId);
-      allow create, update: if isQuizTeamMember(quizId, teamId)
-        && get(/databases/$(database)/documents/quizzes/$(quizId)/teams/$(teamId)).data.representativeId == request.auth.uid
-        && get(/databases/$(database)/documents/quizzes/$(quizId)/teams/$(teamId)).data.status == 'in_progress'
-        && validTeamBoard(request.resource.data);
+      allow get, list: if quizOwner(quizId);
+      allow create, update: if false;
       allow delete: if quizOwner(quizId);
     }
     match /quizzes/{quizId}/teamPrivate/{teamId} {

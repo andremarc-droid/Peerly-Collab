@@ -1,11 +1,10 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import type { CallableRequest } from 'firebase-functions/v2/https'
 import { GroupQuizError, nextTeamStatus } from './groupQuizLogic.js'
-import { gradeCanvasQuestion, gradeTeam, type GradableKey, type GradableQuestion } from './groupQuizGrading.js'
-import { validateBlankBoard, validatePrebuiltBoard } from './groupQuizCanvasValidation.js'
+import { gradeTeam, type GradableKey, type GradableQuestion } from './groupQuizGrading.js'
 import { parseEmptyRequest, parseTeamRef } from './groupQuizRequests.js'
 import {
-  RATE, assertMember, authedUid, boardRef, db, enforceRate, guarded, membershipsCollection, participantRef, privateRef, quizRef, readPrivate, readQuiz, readSession, readTeam,
+  RATE, assertMember, authedUid, db, enforceRate, guarded, membershipsCollection, participantRef, privateRef, quizRef, readPrivate, readQuiz, readSession, readTeam,
   revealRef, sessionRef, teamRef,
 } from './groupQuizData.js'
 import { correctAnswerOf, isPlayableType, readKey } from './groupQuizSession.js'
@@ -34,89 +33,6 @@ export async function submitTeamAttempt(call: CallableRequest<unknown>) {
         return { alreadySubmitted: true, score: scored.score ?? null, maxScore: scored.maxScore ?? null }
       }
       if (team.status !== 'in_progress') throw new GroupQuizError('This team has not started the quiz.', 'failed-precondition')
-
-      if (quiz.mode === 'canvas') {
-        if (quiz.ownerId !== uid && team.representativeId !== uid) {
-          throw new GroupQuizError('Only your team representative can submit.', 'permission-denied')
-        }
-        const boardSnap = await tx.get(boardRef(request.quizId, request.teamId))
-        const rawBoard = boardSnap.exists ? boardSnap.data() : null
-        const boardDoc = questionsSnap.docs.find(doc => doc.get('type') === 'canvas') ?? questionsSnap.docs[0]
-        if (!boardDoc) throw new GroupQuizError('This canvas quiz has no board question.', 'failed-precondition')
-        const questionData = boardDoc.data() ?? {}
-        const points = typeof questionData.points === 'number' ? questionData.points : 0
-        const isBlank = quiz.boardKind === 'blank'
-        let gradedScore = 0
-        let maxScore = points
-        let perQuestion: Record<string, { correct: boolean | null; pointsAwarded: number; overridden: false }> = {}
-        let answers: Record<string, unknown>
-
-        if (isBlank) {
-          const validated = validateBlankBoard(rawBoard, questionData)
-          answers = { [boardDoc.id]: validated, board: validated }
-          perQuestion = {}
-          gradedScore = 0
-          maxScore = points
-        } else {
-          const validated = validatePrebuiltBoard(rawBoard, { cards: Array.isArray(questionData.cards) ? questionData.cards : [] })
-          const keyDoc = keysSnap.docs.find(doc => doc.id === boardDoc.id) ?? keysSnap.docs[0]
-          const keyData = keyDoc?.data() ?? {}
-          const keyConnections = Array.isArray(keyData.connections) ? keyData.connections : []
-          const graded = gradeCanvasQuestion(
-            { points, directed: questionData.directed ?? true, wrongPenalty: questionData.wrongPenalty ?? 'half', cards: Array.isArray(questionData.cards) ? questionData.cards : [] },
-            { connections: keyConnections },
-            validated,
-          )
-          answers = { [boardDoc.id]: validated, board: validated }
-          perQuestion = { [boardDoc.id]: graded }
-          gradedScore = graded.pointsAwarded
-          maxScore = points
-        }
-
-        const participants = await Promise.all(team.memberIds.map(id => tx.get(participantRef(request.quizId, id))))
-        const nowMs = Date.now()
-        const startedAtMs = privSnap.exists && typeof privSnap.get('startedAtMs') === 'number' ? (privSnap.get('startedAtMs') as number) : nowMs
-        const timeSpentSeconds = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
-        const attempts = db().collection(`quizzes/${request.quizId}/attempts`)
-
-        team.memberIds.forEach((memberId, index) => {
-          const participant = participants[index]
-          const attemptCount = typeof participant?.get('attemptCount') === 'number' ? (participant.get('attemptCount') as number) : 0
-          const userName = team.memberNames[memberId] ?? 'Student'
-          const attempt = attempts.doc()
-          tx.set(attempt, {
-            userId: memberId, userName, attemptNumber: attemptCount + 1, status: 'submitted', answers, questionOrder: [boardDoc.id],
-            optionOrder: {}, startedAt: Timestamp.fromMillis(startedAtMs), submittedAt: FieldValue.serverTimestamp(), timeSpentSeconds,
-            teamId: request.teamId, teamName: team.name,
-          })
-          tx.set(db().doc(`quizzes/${request.quizId}/results/${attempt.id}`), {
-            userId: memberId, score: gradedScore, maxScore, perQuestion, gradedAt: FieldValue.serverTimestamp(),
-            ...(isBlank ? { reviewStatus: 'pending' as const } : {}),
-          })
-          tx.set(participantRef(request.quizId, memberId), {
-            userId: memberId, userName, createdAt: participant?.exists ? participant.get('createdAt') : FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
-            attemptCount: attemptCount + 1, activeAttemptId: null,
-          })
-        })
-
-        if (!isBlank && quiz.answerReveal === 'after_submit') {
-          const keyDoc = keysSnap.docs.find(doc => doc.id === boardDoc.id) ?? keysSnap.docs[0]
-          const explanation = typeof keyDoc?.get('explanation') === 'string' ? keyDoc.get('explanation') : ''
-          const grade = perQuestion[boardDoc.id]
-          tx.set(revealRef(request.quizId, request.teamId, 0), {
-            result: { correct: grade?.correct ?? false, pointsAwarded: grade?.pointsAwarded ?? 0, explanation },
-          }, { merge: true })
-        }
-
-        tx.update(teamRef(request.quizId, request.teamId), {
-          status: nextTeamStatus('in_progress', 'submitted'),
-          score: gradedScore,
-          maxScore,
-          submittedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        })
-        return { alreadySubmitted: false, score: gradedScore, maxScore }
-      }
 
       if (readSession(sessionSnap).phase !== 'finished') throw new GroupQuizError('Finish every question before submitting.', 'failed-precondition')
       const priv = readPrivate(privSnap)

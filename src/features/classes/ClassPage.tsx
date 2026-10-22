@@ -19,7 +19,6 @@ import { ClassCodePanel } from './ClassCodePanel'
 import { ClassInitialBadge } from './ClassInitialBadge'
 import { ClassPeopleTab } from './ClassPeopleTab'
 import { ClassQuizzesTab } from './ClassQuizzesTab'
-import { ClassCanvasTab } from './ClassCanvasTab'
 import { countActivitiesByMode } from './classActivities'
 import { ClassSettingsTab } from './ClassSettingsTab'
 import { ModulesTab } from '../modules/ModulesTab'
@@ -124,17 +123,16 @@ export function ClassPage() {
   if (error || !classroom) return <AppShell><PageHeader eyebrow="CLASSROOM" title="Class unavailable" subtitle="We couldn’t open this class." /><main className="app-shell__content grid gap-4">{error ? <Alert tone="error" label="Class unavailable" action={<Button type="button" variant="secondary" onClick={() => { setError(''); setResolvedClassId(null); setLoading(true); setRetry((value) => value + 1) }}>Retry</Button>}>{error}</Alert> : <Alert tone="error" label="Class not found">It may have been removed or you may not have access.</Alert>}<Button to="/instructor" variant="secondary">Back to My classes</Button></main></AppShell>
 
   const subtitle = [classroom.section, classroom.subject].filter(Boolean).join(' · ') || 'Manage learners, class quizzes, and invitations.'
-  const { quizzes: quizCount, canvas: canvasCount, total: totalActivities } = countActivitiesByMode(quizzes)
+  const { quizzes: quizCount, total: totalActivities } = countActivitiesByMode(quizzes)
 
   const tabs = [
     { label: 'Modules', content: <ModulesTab key={classroom.id} classroom={classroom} /> },
     { label: 'Assignments', content: <AssignmentsTab key={classroom.id} classroom={classroom} /> },
     { label: 'Quizzes', count: quizCount, content: <ClassQuizzesTab key={classroom.id} classroom={classroom} classes={classes} feed={activityFeed} /> },
-    { label: 'Canvas', count: canvasCount, content: <ClassCanvasTab key={classroom.id} classroom={classroom} classes={classes} feed={activityFeed} /> },
     { label: 'People', count: counts.students + counts.pending, content: <ClassPeopleTab key={classroom.id} classroom={classroom} enrollments={enrollments} counts={counts} /> },
     { label: 'Settings', content: <ClassSettingsTab key={classroom.id} classroom={classroom} counts={{ students: counts.enrollments, quizzes: totalActivities }} /> },
   ]
-  const tabNames = ['modules', 'assignments', 'quizzes', 'canvas', 'people', 'settings']
+  const tabNames = ['modules', 'assignments', 'quizzes', 'people', 'settings']
   const selectedTab = tabNames.indexOf(searchParams.get('tab') ?? 'modules')
   const defaultTab = selectedTab < 0 ? 0 : selectedTab
 
@@ -160,7 +158,7 @@ export function ClassPage() {
         <StatTile
           label="Activities"
           value={String(totalActivities)}
-          hint={`${quizCount} ${quizCount === 1 ? 'quiz' : 'quizzes'} · ${canvasCount} canvas`}
+          hint={`${quizCount} ${quizCount === 1 ? 'quiz' : 'quizzes'}`}
         />
       </StatRow>
       <ClassCodePanel classroom={classroom} onJoiningChange={(open) => void toggleJoining(open)} onRegenerate={regenerate} busy={mutating} shareOnOpen={shareOnOpen} />

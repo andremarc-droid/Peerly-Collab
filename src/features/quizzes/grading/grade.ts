@@ -1,79 +1,11 @@
 import { normalizeAnswer } from './normalize'
 import { Timestamp } from 'firebase/firestore'
-import type { AnswerKey, QuestionResult, QuizQuestion, QuizResult } from '../types'
-import type { CanvasAnswerKey, CanvasQuestion } from '../../canvas/types'
-import { normalizeConnection, parseConnectionEdge } from '../../canvas/schemas'
+import type { AnswerKey, QuizQuestion, QuizResult } from '../types'
 
 export type QuizQuestionRecord = QuizQuestion & { id: string }
 
-export function gradeCanvasQuestion(
-  question: CanvasQuestion,
-  key: CanvasAnswerKey,
-  rawAnswer: string | string[] | undefined,
-): QuestionResult {
-  const rawConnections = Array.isArray(rawAnswer) ? rawAnswer : typeof rawAnswer === 'string' && rawAnswer ? [rawAnswer] : []
-  const totalKeyPoints = key.connections.reduce((sum, c) => sum + (c.points ?? 1), 0)
-  const avgPoints = key.connections.length > 0 ? totalKeyPoints / key.connections.length : 0
-
-  if (key.connections.length === 0 || totalKeyPoints <= 0) {
-    return { correct: false, pointsAwarded: 0, overridden: false }
-  }
-
-  const keyMap = new Map<string, number>()
-  for (const c of key.connections) {
-    const norm = normalizeConnection(c.from, c.to, question.directed ?? true)
-    keyMap.set(norm, c.points ?? 1)
-  }
-
-  const validCardIds = new Set(question.cards.map((c) => c.id))
-  const cap = Math.min(80, 2 * key.connections.length)
-  const validStudentEdges: string[] = []
-  const seenStudentEdges = new Set<string>()
-
-  for (const raw of rawConnections) {
-    const parsed = parseConnectionEdge(raw)
-    if (!parsed) continue
-    if (parsed.from === parsed.to) continue // self-connections are ignored
-    if (!validCardIds.has(parsed.from) || !validCardIds.has(parsed.to)) continue // unknown card ids are ignored
-
-    const norm = normalizeConnection(parsed.from, parsed.to, question.directed ?? true)
-    if (seenStudentEdges.has(norm)) continue // duplicates are ignored
-    seenStudentEdges.add(norm)
-    validStudentEdges.push(norm)
-
-    if (validStudentEdges.length >= cap) break // connections over the cap are ignored
-  }
-
-  let matchedPoints = 0
-  let wrongCount = 0
-
-  for (const edge of validStudentEdges) {
-    const pts = keyMap.get(edge)
-    if (pts !== undefined) {
-      matchedPoints += pts
-    } else {
-      wrongCount += 1
-    }
-  }
-
-  const penaltyMultiplier = question.wrongPenalty === 'none' ? 0 : question.wrongPenalty === 'half' ? 0.5 : 1
-  const penalty = wrongCount * (penaltyMultiplier * avgPoints)
-  const netPoints = Math.max(0, matchedPoints - penalty)
-  const pointsAwarded = Math.round((netPoints / totalKeyPoints) * question.points * 100) / 100
-  const correct =
-    question.points > 0 &&
-    ((matchedPoints === totalKeyPoints && wrongCount === 0) ||
-      Math.round(pointsAwarded * 100) >= Math.round(question.points * 100))
-
-  return {
-    correct,
-    pointsAwarded,
-    overridden: false,
-  }
-}
-
 export function isCorrect(question: QuizQuestion, key: AnswerKey, answer: string | string[] | undefined): boolean | null {
-  if (question.type === 'flashcard' || question.type === 'canvas') return null
+  if (question.type === 'flashcard') return null
   if (answer === undefined) return false
   if (question.type === 'multiple_choice' || question.type === 'true_false') {
     if (Array.isArray(answer)) return false
@@ -108,14 +40,6 @@ export function gradeAttempt(input: {
     maxScore += question.points
     const key = answerKeys[question.id]
     if (!key) throw new Error(`Missing answer key for question ${question.id}`)
-    if (question.type === 'canvas') {
-      if (key.type !== 'canvas') throw new Error(`Mismatched answer key for canvas question ${question.id}`)
-      const answer = answers[question.id]
-      const graded = gradeCanvasQuestion(question, key, answer)
-      score += graded.pointsAwarded
-      perQuestion[question.id] = graded
-      continue
-    }
     const answer = answers[question.id]
     let pointsAwarded = 0
     let correct = isCorrect(question, key, answer)

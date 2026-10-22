@@ -9,7 +9,15 @@ import type { NewQuiz, Quiz, QuizPatch, QuizStatus } from '../types'
 import { quizRef } from './paths'
 
 export type QuizRecord = Quiz & { id: string }
-const asRecord = (id: string, value: unknown): QuizRecord => ({ ...parseQuiz(value), id })
+const asRecord = (id: string, value: unknown): QuizRecord | null => {
+  try {
+    const raw = value as { mode?: unknown } | null
+    if (raw?.mode === 'canvas') return null
+    return { ...parseQuiz(value), id }
+  } catch {
+    return null
+  }
+}
 
 function cleanFlashcardSettings(mode: Quiz['mode'], settings: Quiz['settings']) {
   return mode === 'flashcards' ? { ...settings, ...defaultQuizSettings('flashcards'), participation: settings.participation, timeLimitMinutes: settings.timeLimitMinutes, timeLimitSeconds: settings.timeLimitSeconds ?? null, opensAt: settings.opensAt ?? null, closesAt: settings.closesAt ?? null, attemptsAllowed: settings.attemptsAllowed, shuffleQuestions: settings.shuffleQuestions, shuffleOptions: settings.shuffleOptions } : settings
@@ -23,7 +31,6 @@ export async function createQuiz(ownerId: string, ownerName: string, input: NewQ
     ownerId, ownerName, classId: input.classId, title: input.title, description: input.description, tags: input.tags,
     mode: input.mode, status: 'draft', questionCount: 0, createdAt: now, updatedAt: now,
     publishedAt: null, settings: cleanFlashcardSettings(input.mode, input.settings),
-    ...(input.boardKind ? { boardKind: input.boardKind } : input.mode === 'canvas' ? { boardKind: 'prebuilt' } : {}),
   }
   const parsed = parseQuiz(quiz)
   await runTransaction(db, async (transaction) => {
@@ -64,12 +71,12 @@ export async function getQuiz(quizId: string, db: Firestore = firestore): Promis
 
 export async function listOwnerQuizzes(ownerId: string, db: Firestore = firestore): Promise<QuizRecord[]> {
   const result = await getDocs(query(collection(db, 'quizzes'), where('ownerId', '==', ownerId), orderBy('updatedAt', 'desc')))
-  return result.docs.map((snapshot) => asRecord(snapshot.id, snapshot.data()))
+  return result.docs.map((snapshot) => asRecord(snapshot.id, snapshot.data())).filter((item): item is QuizRecord => item !== null)
 }
 
 export function watchOwnerQuizzes(ownerId: string, onChange: (quizzes: QuizRecord[]) => void, onError: (error: Error) => void, db: Firestore = firestore) {
   return onSnapshot(query(collection(db, 'quizzes'), where('ownerId', '==', ownerId), orderBy('updatedAt', 'desc')),
-    (snapshot) => onChange(snapshot.docs.map((item) => asRecord(item.id, item.data()))), onError)
+    (snapshot) => onChange(snapshot.docs.map((item) => asRecord(item.id, item.data())).filter((item): item is QuizRecord => item !== null)), onError)
 }
 
 async function setStatus(quizId: string, status: QuizStatus, db: Firestore): Promise<void> {
@@ -84,16 +91,6 @@ async function setStatus(quizId: string, status: QuizStatus, db: Firestore): Pro
       if (!quiz.classId) throw new Error('Assign this quiz to an active class before publishing.')
       const classSnapshot = await transaction.get(doc(db, 'classes', quiz.classId))
       if (!classSnapshot.exists() || classSnapshot.data().ownerId !== quiz.ownerId || classSnapshot.data().status !== 'active') throw new Error('Publishing requires an active class that you own.')
-      if (quiz.mode === 'canvas') {
-        const boardDoc = await transaction.get(doc(db, 'quizzes', quizId, 'questions', 'board'))
-        if (boardDoc.exists()) {
-          const boardData = boardDoc.data()
-          if (Array.isArray(boardData?.cards)) {
-            const hasLegacy = boardData.cards.some((c: Record<string, unknown>) => c.type === 'image' && (!c.imageId || Boolean(c.url || c.driveFileId)))
-            if (hasLegacy) throw new Error('Legacy image cards must be re-uploaded before publishing.')
-          }
-        }
-      }
     }
     transaction.update(ref, { status, updatedAt: Timestamp.now(), ...(status === 'published' ? { publishedAt: Timestamp.now() } : status === 'draft' ? { publishedAt: null } : {}) })
   })

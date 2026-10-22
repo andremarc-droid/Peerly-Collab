@@ -12,8 +12,8 @@ describe('results CSV for team attempts', () => {
   it('keeps the solo export unchanged: no Team column', () => {
     const lines = resultsCsv([row('a', 'u1', 'Ana')]).split('\r\n')
     expect(lines[0]).not.toContain('Team')
-    expect(lines[0].split(',')).toHaveLength(11)
-    expect(lines[1].split(',')).toHaveLength(11)
+    expect(lines[0].split(',')).toHaveLength(9)
+    expect(lines[1].split(',')).toHaveLength(9)
   })
 
   it('adds a Team column after Student when any attempt belongs to a team', () => {
@@ -29,26 +29,11 @@ describe('results CSV for team attempts', () => {
     expect(lines[2].startsWith('"Ben","Red Team","u2"')).toBe(true)
     // A solo attempt in the same export gets an empty team cell.
     expect(lines[3].startsWith('"Cy","","u3"')).toBe(true)
-    for (const line of lines) expect(line.split('","').length).toBeGreaterThanOrEqual(12)
+    for (const line of lines) expect(line.split('","').length).toBeGreaterThanOrEqual(10)
   })
 
   it('protects team names that look like spreadsheet formulas and escapes quotes', () => {
     const csv = resultsCsv([row('a', 'u1', 'Ana', { teamId: 't1', teamName: '=HYPERLINK("x")' })])
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`)
-  })
-
-  it('deduplicates teams in needsGradingCount for blank canvas so one team = one board', () => {
-    const pendingResult = (userId: string): QuizResult => ({ userId, score: 0, maxScore: 10, perQuestion: {}, gradedAt: time, reviewStatus: 'pending' })
-    const pendingRow = (id: string, userId: string, userName: string, extra: Partial<QuizAttempt> = {}): AttemptResult => ({ ...base, ...extra, id, userId, userName, result: pendingResult(userId) })
-
-    const summary = import('./resultLogic').then(m => m.summarizeAttempts([
-      pendingRow('a', 'u1', 'Ana', { teamId: 't1', teamName: 'Red Team' }),
-      pendingRow('b', 'u2', 'Ben', { teamId: 't1', teamName: 'Red Team' }),
-      pendingRow('c', 'u3', 'Cy'),
-    ], false, null, { isBlankCanvas: true }))
-
-    return summary.then(s => {
-      expect(s.needsGradingCount).toBe(2) // 1 for Red Team + 1 for Cy
-    })
   })
 })

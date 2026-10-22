@@ -48,24 +48,23 @@ export function GroupSettingsSection({ mode, participation, disabled, onChange }
         onChange={(value) => {
           if (value === 'group') {
             const base = participation.type === 'group' ? participation : defaultGroupParticipation()
-            onChange(mode === 'canvas' ? { ...base, answerMode: 'representative', waitForEveryone: false, questionTimeSec: null } : base)
+            onChange(base)
           } else {
             onChange({ type: 'individual' })
           }
         }}
       />
-      {isGroup && <GroupFields mode={mode} participation={participation} disabled={disabled} onChange={onChange} />}
+      {isGroup && <GroupFields participation={participation} disabled={disabled} onChange={onChange} />}
     </SectionCard>
   )
 }
 
-function GroupFields({ mode, participation, disabled, onChange }: { mode: QuizMode; participation: GroupParticipation; disabled?: boolean; onChange: (next: Participation) => void }) {
+function GroupFields({ participation, disabled, onChange }: { participation: GroupParticipation; disabled?: boolean; onChange: (next: Participation) => void }) {
   const [sizeText, setSizeText] = useState(String(participation.groupSize))
   const [timerText, setTimerText] = useState(String(participation.questionTimeSec ?? DEFAULT_GROUP_TIMER_SEC))
   const errors = groupSettingsErrors(participation)
   const update = (patch: Partial<GroupParticipation>) => onChange({ ...participation, ...patch })
   const timerOn = participation.questionTimeSec !== null
-  const isCanvas = mode === 'canvas'
 
   return (
     <div className="quiz-editor__fields">
@@ -82,50 +81,44 @@ function GroupFields({ mode, participation, disabled, onChange }: { mode: QuizMo
         error={errors.groupSize}
         hint={`Teams can have ${GROUP_LIMITS.minTeamSize} to ${GROUP_LIMITS.maxTeamSize} members. A team needs at least 2 members to start.`}
       />
-      {!isCanvas && (
-        <RadioGroup label="How teams answer" name="group-answer-mode" disabled={disabled} value={participation.answerMode} options={answerModeOptions} onChange={(value) => update({ answerMode: value as AnswerMode })} />
-      )}
+      <RadioGroup label="How teams answer" name="group-answer-mode" disabled={disabled} value={participation.answerMode} options={answerModeOptions} onChange={(value) => update({ answerMode: value as AnswerMode })} />
       <RadioGroup label="How teams are formed" name="group-team-formation" disabled={disabled} value={participation.teamFormation} options={formationOptions} onChange={(value) => update({ teamFormation: value as TeamFormation })} />
-      {!isCanvas && (
-        <div className="quiz-editor__settings-grid">
-          <label className="choice-control">
-            <input type="checkbox" disabled={disabled} checked={participation.waitForEveryone} onChange={(event) => update({ waitForEveryone: event.target.checked })} />
-            <span className="choice-control__mark" aria-hidden="true" />
-            <span className="choice-control__copy"><strong>Wait for everyone</strong><small>{waitHint(participation)}</small></span>
-          </label>
-          <label className="choice-control">
-            <input
-              type="checkbox"
-              disabled={disabled}
-              checked={timerOn}
-              onChange={(event) => {
-                if (event.target.checked) { setTimerText(String(DEFAULT_GROUP_TIMER_SEC)); update({ questionTimeSec: DEFAULT_GROUP_TIMER_SEC }) }
-                else update({ questionTimeSec: null })
-              }}
-            />
-            <span className="choice-control__mark" aria-hidden="true" />
-            <span className="choice-control__copy"><strong>Set a timer for each question</strong><small>The question closes when time runs out, even if someone has not answered. The server keeps the clock.</small></span>
-          </label>
-          {timerOn && (
-            <Input
-              label="Seconds per question"
-              name="group-question-time"
-              type="number"
-              inputMode="numeric"
-              min={GROUP_LIMITS.minQuestionTimeSec}
-              max={GROUP_LIMITS.maxQuestionTimeSec}
-              disabled={disabled}
-              value={timerText}
-              onChange={(event) => { setTimerText(event.target.value); update({ questionTimeSec: toNumber(event.target.value) }) }}
-              error={errors.questionTimeSec}
-            />
-          )}
-        </div>
-      )}
+      <div className="quiz-editor__settings-grid">
+        <label className="choice-control">
+          <input type="checkbox" disabled={disabled} checked={participation.waitForEveryone} onChange={(event) => update({ waitForEveryone: event.target.checked })} />
+          <span className="choice-control__mark" aria-hidden="true" />
+          <span className="choice-control__copy"><strong>Wait for everyone</strong><small>{waitHint(participation)}</small></span>
+        </label>
+        <label className="choice-control">
+          <input
+            type="checkbox"
+            disabled={disabled}
+            checked={timerOn}
+            onChange={(event) => {
+              if (event.target.checked) { setTimerText(String(DEFAULT_GROUP_TIMER_SEC)); update({ questionTimeSec: DEFAULT_GROUP_TIMER_SEC }) }
+              else update({ questionTimeSec: null })
+            }}
+          />
+          <span className="choice-control__mark" aria-hidden="true" />
+          <span className="choice-control__copy"><strong>Set a timer for each question</strong><small>The question closes when time runs out, even if someone has not answered. The server keeps the clock.</small></span>
+        </label>
+        {timerOn && (
+          <Input
+            label="Seconds per question"
+            name="group-question-time"
+            type="number"
+            inputMode="numeric"
+            min={GROUP_LIMITS.minQuestionTimeSec}
+            max={GROUP_LIMITS.maxQuestionTimeSec}
+            disabled={disabled}
+            value={timerText}
+            onChange={(event) => { setTimerText(event.target.value); update({ questionTimeSec: toNumber(event.target.value) }) }}
+            error={errors.questionTimeSec}
+          />
+        )}
+      </div>
       <p className="field__hint">
-        {isCanvas
-          ? 'One representative edits the board while teammates watch. A team’s attempt counts against every member’s attempts allowed. Flashcard sets stay individual.'
-          : 'With no timer and no waiting, each team moves at its own pace. A team’s attempt counts against every member’s attempts allowed. Flashcard sets stay individual.'}
+        With no timer and no waiting, each team moves at its own pace. A team’s attempt counts against every member’s attempts allowed. Flashcard sets stay individual.
       </p>
     </div>
   )

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Search, BookOpen, HelpCircle, Network, Sparkles } from 'lucide-react'
+import { Search, BookOpen, HelpCircle, Sparkles } from 'lucide-react'
 import { Dialog } from '../../../shared/ui/Dialog'
 import { Button } from '../../../shared/ui/Button'
 import type { LearningCanvasRefType } from '../types'
@@ -38,14 +38,12 @@ export function ReferencePickerDialog({
   const renderIcon = (item: ResolvedReferenceInfo) => {
     if (item.type === 'module') return <BookOpen size={16} aria-hidden="true" />
     if (item.type === 'learning') return <Sparkles size={16} aria-hidden="true" />
-    if (item.isCanvasActivity) return <Network size={16} aria-hidden="true" />
     return <HelpCircle size={16} aria-hidden="true" />
   }
 
   const getTypeLabel = (item: ResolvedReferenceInfo) => {
     if (item.type === 'module') return 'Module'
     if (item.type === 'learning') return 'Learning canvas'
-    if (item.isCanvasActivity) return 'Canvas activity'
     return 'Quiz'
   }
 

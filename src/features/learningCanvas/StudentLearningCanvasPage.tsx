@@ -99,7 +99,6 @@ export function StudentLearningCanvasPage() {
             id: q.id,
             title: q.title,
             type: 'quiz',
-            isCanvasActivity: q.mode === 'canvas',
             available: true,
           })),
         )

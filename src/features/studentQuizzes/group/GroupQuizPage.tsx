@@ -11,7 +11,6 @@ import { getQuiz, type QuizRecord } from '../../quizzes/services/quizService'
 import { watchMyTeamId, watchReveals, watchTeam, watchTeamSession } from '../../quizzes/services/teamService'
 import type { GroupParticipation } from '../../quizzes/types'
 import type { Team, TeamReveal, TeamSession } from '../../quizzes/types/team'
-import { TeamCanvasPlay } from './TeamCanvasPlay'
 import { TeamEntry } from './TeamEntry'
 import { TeamLobby } from './TeamLobby'
 import { TeamPlay } from './TeamPlay'
@@ -110,9 +109,7 @@ function TeamRoom({ quiz, teamId, uid, settings }: TeamRoomProps) {
     {!online && <Alert tone="warning" label="You are offline">Your answers cannot be sent until you reconnect. Nothing is lost on this screen.</Alert>}
     {team.status === 'submitted' ? <TeamResults team={team} reveals={reveals} quiz={quiz} />
       : team.status === 'in_progress' ? (
-          quiz.mode === 'canvas' ? (
-            <TeamCanvasPlay quiz={quiz} team={team} uid={uid} />
-          ) : session ? (
+          session ? (
             <TeamPlay quizId={quizId} team={team} session={session} reveals={reveals} settings={settings} uid={uid} getNow={getNow} />
           ) : (
             <Skeleton className="h-72 rounded-3xl" label="Opening the first question" />

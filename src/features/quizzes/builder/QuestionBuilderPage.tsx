@@ -217,6 +217,5 @@ export function QuestionBuilderPage() {
 }
 
 function QuestionTypeButtons({ mode, onAdd, disabled }: { mode: QuizMode; onAdd: (type: QuestionType) => void; disabled?: boolean }) {
-  if (mode === 'canvas') return null
   return <div className="question-type-buttons">{mode === 'flashcards' ? <Button type="button" disabled={disabled} onClick={() => onAdd('flashcard')}><Plus size={17} aria-hidden="true" /> Add flashcard</Button> : <>{(['multiple_choice', 'true_false', 'identification', 'fill_blank'] as const).map((type) => <Button type="button" variant="secondary" key={type} disabled={disabled} onClick={() => onAdd(type)}><Plus size={16} aria-hidden="true" /> Add {type === 'multiple_choice' ? 'multiple choice' : type === 'true_false' ? 'true/false' : type === 'identification' ? 'identification' : 'fill in the blank'}</Button>)}</>}</div>
 }

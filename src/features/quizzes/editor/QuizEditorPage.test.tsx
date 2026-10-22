@@ -51,15 +51,6 @@ vi.mock('../services/questionService', () => ({
   getQuestionWithKey: mocks.getQuestionWithKey,
   listQuestions: vi.fn().mockResolvedValue([]),
 }))
-vi.mock('../../canvas/imageService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../canvas/imageService')>()
-  return {
-    ...actual,
-    listImages: vi.fn().mockResolvedValue([]),
-    reconcileImages: vi.fn().mockResolvedValue(undefined),
-    saveImage: vi.fn(),
-  }
-})
 vi.mock('../../classes/services/classService', () => ({ watchMyClasses: (_uid: string, onChange: (items: never[]) => void) => { onChange(mocks.classes as never[]); return () => undefined } }))
 vi.mock('../../../shared/ui/useToast', () => ({ useToast: () => ({ showToast: vi.fn() }) }))
 afterEach(cleanup)
@@ -140,9 +131,9 @@ describe('quick create and quiz deletion confirmation', () => {
     expect(mocks.updateQuiz).toHaveBeenCalledWith('quiz-1', expect.not.objectContaining({ classId: expect.anything() }))
   })
 
-  it('allows selecting Canvas type in QuickCreateQuiz with one-line description and creates canvas draft', async () => {
+  it('falls back to quiz mode when legacy ?mode=canvas is passed in QuickCreateQuiz', async () => {
     render(
-      <MemoryRouter initialEntries={['/instructor/quizzes/new?classId=class-1']}>
+      <MemoryRouter initialEntries={['/instructor/quizzes/new?classId=class-1&mode=canvas']}>
         <Routes>
           <Route path="/instructor/quizzes/new" element={<QuizEditorPage />} />
           <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
@@ -151,49 +142,23 @@ describe('quick create and quiz deletion confirmation', () => {
     )
 
     expect(await screen.findByRole('dialog', { name: 'Create quiz' })).toBeInTheDocument()
-    expect(screen.getByText('Visual board where students connect related concept cards.')).toBeInTheDocument()
+    expect(screen.queryByText('Visual board where students connect related concept cards.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Canvas/i })).not.toBeInTheDocument()
 
-    const canvasOption = screen.getByRole('button', { name: /Canvas/i })
-    fireEvent.click(canvasOption)
-
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cell Structure Canvas' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create canvas' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cell Structure Quiz' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create quiz' }))
 
     expect(mocks.createQuiz).toHaveBeenCalledWith(
       'teacher',
       'Teacher',
       expect.objectContaining({
         classId: 'class-1',
-        title: 'Cell Structure Canvas',
-        mode: 'canvas',
+        title: 'Cell Structure Quiz',
+        mode: 'quiz',
       }),
     )
   })
 
-  it('renders CanvasBuilderPage when quiz mode is canvas and tab is questions', async () => {
-    mocks.getQuiz.mockImplementation(async (id: string) => ({
-      ...savedQuiz,
-      id,
-      mode: id === 'quiz-canvas' ? 'canvas' : 'quiz',
-      title: id === 'quiz-canvas' ? 'Neural Networks' : 'Practice',
-    }))
-
-    render(
-      <MemoryRouter initialEntries={['/instructor/quizzes/quiz-canvas?tab=questions']}>
-        <Routes>
-          <Route path="/instructor/quizzes/:quizId" element={<QuizEditorPage />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-    expect(await screen.findByText('STEP 1 OF 3 · CANVAS BOARD', {}, { timeout: 4000 })).toBeInTheDocument()
-    const workspaceNav = await screen.findByRole('navigation', { name: 'Quiz workspace' })
-    expect(workspaceNav).toBeInTheDocument()
-    expect(workspaceNav).toHaveTextContent('Questions')
-    expect(workspaceNav).toHaveTextContent('Settings')
-    expect(workspaceNav).toHaveTextContent('Preview & publish')
-    expect(workspaceNav).toHaveTextContent('Next: Settings')
-  })
 
   it('guards in-app links when quiz settings are dirty', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)

@@ -26,27 +26,18 @@ export async function saveQuestionAndKey(
   questionId: string | null,
   questionValue: unknown,
   answerKeyValue: unknown,
-  optionsOrDb?: { allowLegacyImages?: boolean; boardKind?: 'prebuilt' | 'blank' } | Firestore,
-  dbArg?: Firestore,
+  db: Firestore = firestore,
 ): Promise<string> {
-  const isOptions = typeof optionsOrDb === 'object' && optionsOrDb !== null && ('allowLegacyImages' in optionsOrDb || 'boardKind' in optionsOrDb)
-  const options = isOptions ? (optionsOrDb as { allowLegacyImages?: boolean; boardKind?: 'prebuilt' | 'blank' }) : undefined
-  const db: Firestore = (isOptions ? dbArg : (optionsOrDb as Firestore | undefined)) ?? firestore
   const ref = questionId ? questionRef(db, quizId, questionId) : doc(collection(db, 'quizzes', quizId, 'questions'))
   await runTransaction(db, async (transaction) => {
     const parentRef = quizRef(db, quizId)
     const [parentSnapshot, questionSnapshot] = await Promise.all([transaction.get(parentRef), transaction.get(ref)])
     if (!parentSnapshot.exists()) throw new Error('Quiz not found')
     const parent = parseQuiz(parentSnapshot.data())
-    const boardKind = options?.boardKind ?? parent.boardKind
-    const { question, answerKey } = validateQuestionAnswerPair(questionValue, answerKeyValue, {
-      allowLegacyImages: options?.allowLegacyImages,
-      boardKind,
-    })
+    const { question, answerKey } = validateQuestionAnswerPair(questionValue, answerKeyValue)
     const matchesMode =
       (parent.mode === 'flashcards' && question.type === 'flashcard') ||
-      (parent.mode === 'canvas' && question.type === 'canvas') ||
-      (parent.mode === 'quiz' && question.type !== 'flashcard' && question.type !== 'canvas')
+      (parent.mode === 'quiz' && question.type !== 'flashcard')
     if (!matchesMode) throw new Error('Question type must match the quiz format')
     transaction.set(ref, stripUndefined(question))
     if (answerKey !== null) {
@@ -90,27 +81,20 @@ export async function listQuestions(quizId: string, db: Firestore = firestore) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
 }
 
-import type { Quiz } from '../types'
-
 export async function getQuestionWithKey(
   quizId: string,
   questionId: string,
   db: Firestore = firestore,
-  cachedQuiz?: Quiz | null,
 ) {
-  const [questionSnapshot, keySnapshot, quizSnapshot] = await Promise.all([
+  const [questionSnapshot, keySnapshot] = await Promise.all([
     getDoc(questionRef(db, quizId, questionId)),
     getDoc(answerKeyRef(db, quizId, questionId)),
-    cachedQuiz !== undefined ? Promise.resolve(null) : getDoc(quizRef(db, quizId)),
   ])
   if (!questionSnapshot.exists()) return null
-  const quiz = cachedQuiz !== undefined ? cachedQuiz : (quizSnapshot?.exists() ? parseQuiz(quizSnapshot.data()) : null)
-  const isBlankCanvas = quiz?.mode === 'canvas' && quiz?.boardKind === 'blank'
-  if (!isBlankCanvas && !keySnapshot.exists()) return null
+  if (!keySnapshot.exists()) return null
   const pair = validateQuestionAnswerPair(
     questionSnapshot.data(),
-    isBlankCanvas ? null : keySnapshot.data(),
-    { allowLegacyImages: true, boardKind: quiz?.boardKind },
+    keySnapshot.data(),
   )
   return { id: questionSnapshot.id, ...pair }
 }
@@ -125,9 +109,7 @@ export function watchQuestionPairs(
 ) {
   return onSnapshot(query(questionsRef(db, quizId), orderBy('order')), async (snapshot) => {
     try {
-      const quizSnap = await getDoc(quizRef(db, quizId))
-      const quiz = quizSnap.exists() ? parseQuiz(quizSnap.data()) : null
-      const questions = await Promise.all(snapshot.docs.map((item) => getQuestionWithKey(quizId, item.id, db, quiz)))
+      const questions = await Promise.all(snapshot.docs.map((item) => getQuestionWithKey(quizId, item.id, db)))
       if (questions.some((question) => !question)) throw new Error('A question is missing its answer key.')
       onChange(questions as SavedQuestion[])
     } catch (reason: unknown) {

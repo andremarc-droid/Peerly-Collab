@@ -10,7 +10,6 @@ describe('QuizTypeBadge', () => {
   it.each([
     ['quiz', 'badge--kind-quiz', 'Quiz'],
     ['flashcards', 'badge--kind-flashcards', 'Flashcards'],
-    ['canvas', 'badge--kind-canvas', 'Canvas'],
     ['assignment', 'badge--kind-assignment', 'Assignment'],
   ] as const)('gives %s its own color class, label, and an icon', (mode, className, expectedLabel) => {
     render(<QuizTypeBadge mode={mode} />)
@@ -28,13 +27,13 @@ describe('QuizTypeBadge', () => {
   })
 
   it('never shares a color class between types', () => {
-    const classes = (['quiz', 'flashcards', 'canvas', 'assignment'] as const).map((mode) => {
+    const classes = (['quiz', 'flashcards', 'assignment'] as const).map((mode) => {
       const { unmount } = render(<QuizTypeBadge mode={mode} />)
       const label = mode === 'assignment' ? 'Assignment' : quizModeLabel(mode)
       const found = Array.from(screen.getByText(label).classList).find((name) => name.startsWith('badge--kind-'))
       unmount()
       return found
     })
-    expect(new Set(classes).size).toBe(4)
+    expect(new Set(classes).size).toBe(3)
   })
 })

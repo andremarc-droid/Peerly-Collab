@@ -1,17 +1,16 @@
-import type { BoardKind, QuizMode, QuizSettings } from '../types'
+import type { QuizMode, QuizSettings } from '../types'
 import { describeGroupExperience } from './groupSettingsLogic'
 import { describeWindow, effectiveTimeLimitSeconds, formatDuration } from '../quizTiming'
 
 interface ExperienceInput {
   mode: QuizMode
-  boardKind?: BoardKind
   title: string
   settings: QuizSettings
 }
 
-/** Quizzes and canvas quizzes can run in teams; flashcard sets never do. Drives the Teams entry in the quiz navigation. */
+/** Quizzes can run in teams; flashcard sets never do. Drives the Teams entry in the quiz navigation. */
 export function hasTeamParticipation(mode: QuizMode, settings: Pick<QuizSettings, 'participation'>): boolean {
-  return (mode === 'quiz' || mode === 'canvas') && settings.participation.type === 'group'
+  return mode === 'quiz' && settings.participation.type === 'group'
 }
 
 /**
@@ -19,7 +18,7 @@ export function hasTeamParticipation(mode: QuizMode, settings: Pick<QuizSettings
  * Shown on the Settings step and again on the final Preview & publish step so the instructor
  * confirms the experience right before it goes live.
  */
-export function describeQuizExperience({ mode, boardKind, title, settings }: ExperienceInput): string {
+export function describeQuizExperience({ mode, title, settings }: ExperienceInput): string {
   const participation = settings.participation
   const revealSentence = settings.answerReveal === 'after_each'
     ? 'Explanations appear after each question.'
@@ -28,17 +27,6 @@ export function describeQuizExperience({ mode, boardKind, title, settings }: Exp
       : 'Answers stay hidden.'
 
   if (mode === 'flashcards') return `Students will review ${title.trim() || 'this set'} as flashcards and self-rate their recall.`
-  if (mode === 'canvas') {
-    if (participation.type === 'group') {
-      const formation = participation.teamFormation === 'assigned' ? 'You build the teams from your class roster' : 'Students form their own teams with a team code'
-      return boardKind === 'blank'
-        ? `${formation}, in teams of up to ${participation.groupSize}. One representative builds the board while teammates watch. You will review and grade their submissions.`
-        : `${formation}, in teams of up to ${participation.groupSize}. One representative connects cards on the canvas board while teammates watch. Each team gets one shared score.`
-    }
-    return boardKind === 'blank'
-      ? 'Students will create their own concept board from a blank canvas. You will review and grade their submissions.'
-      : 'Students will connect cards on the canvas board individually.'
-  }
   if (participation.type === 'group') return `${describeGroupExperience(participation)} ${revealSentence}`
 
   const limitSeconds = effectiveTimeLimitSeconds(settings)

@@ -31,7 +31,7 @@ describe('filterAndSortQuizzes', () => {
   const quizzes = [
     makeQuiz('1', 'Zoology', 'draft', 2, 'quiz'),
     makeQuiz('2', 'Algebra', 'published', 3, 'flashcards'),
-    makeQuiz('3', 'Biology', 'archived', 1, 'canvas'),
+    makeQuiz('3', 'Biology', 'archived', 1, 'quiz'),
   ]
 
   it('searches titles without case sensitivity and filters by status', () => {
@@ -50,10 +50,9 @@ describe('filterAndSortQuizzes', () => {
     expect(filterAndSortQuizzes(quizzes, '', 'all', 'recent', 'unassigned')).toHaveLength(3)
   })
 
-  it('filters by quiz mode (quiz, flashcards, canvas)', () => {
+  it('filters by quiz mode (quiz, flashcards)', () => {
     expect(filterAndSortQuizzes(quizzes, '', 'all', 'recent', 'all', 'all')).toHaveLength(3)
-    expect(filterAndSortQuizzes(quizzes, '', 'all', 'recent', 'all', 'quiz').map(({ id }) => id)).toEqual(['1'])
+    expect(filterAndSortQuizzes(quizzes, '', 'all', 'recent', 'all', 'quiz').map(({ id }) => id)).toEqual(['1', '3'])
     expect(filterAndSortQuizzes(quizzes, '', 'all', 'recent', 'all', 'flashcards').map(({ id }) => id)).toEqual(['2'])
-    expect(filterAndSortQuizzes(quizzes, '', 'all', 'recent', 'all', 'canvas').map(({ id }) => id)).toEqual(['3'])
   })
 })

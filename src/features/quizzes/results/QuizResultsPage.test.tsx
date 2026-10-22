@@ -141,49 +141,4 @@ describe('attempt detail component', () => {
     expect(screen.getAllByText('Application Programming Interface').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('opt-1')).not.toBeInTheDocument()
   })
-
-  it('renders team badge and team board submission title for team blank canvas attempts', () => {
-    const blankQuestion: SavedQuestion = {
-      id: 'board',
-      question: {
-        type: 'canvas',
-        prompt: 'Draw diagram',
-        points: 20,
-        order: 0,
-        cards: [],
-        showRubricToStudents: true,
-        maxCards: 20,
-        maxConnections: 40,
-        allowedCardTypes: ['note', 'paragraph', 'link'],
-      },
-      answerKey: null,
-    }
-    const teamBlankAttempt: AttemptResult = {
-      ...attempt,
-      teamId: 'team-blue',
-      teamName: 'Team Blue',
-      answers: { board: { cards: [{ id: 'c1', type: 'note', content: 'Node 1', position: { x: 0, y: 0 } }], connections: [] } },
-      result: {
-        userId: 'student',
-        score: 0,
-        maxScore: 20,
-        perQuestion: {},
-        gradedAt: now,
-        reviewStatus: 'pending',
-      },
-    }
-    render(
-      <AttemptDetail
-        quizId="quiz-1"
-        attempt={teamBlankAttempt}
-        questions={[blankQuestion]}
-        ungraded={false}
-        isBlankCanvas={true}
-        allAttempts={[teamBlankAttempt]}
-        onGradeChanged={vi.fn()}
-      />,
-    )
-    expect(screen.getByText('Team: Team Blue')).toBeInTheDocument()
-    expect(screen.getByText('Team board submission · Team Blue')).toBeInTheDocument()
-  })
 })

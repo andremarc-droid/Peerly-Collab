@@ -3,7 +3,6 @@ import type {
   AnswerKey, Participation, Quiz, QuizAttempt, QuizParticipant, QuizQuestion, QuizResult, QuizSettings,
 } from '../types'
 import { ANSWER_MODES, GROUP_LIMITS, TEAM_FORMATIONS } from '../types/group'
-import { validateCanvasDefinition, validateCanvasKey } from '../../canvas/schemas'
 import { MAX_STORED_TIME_LIMIT_SECONDS, MIN_TIME_LIMIT_SECONDS } from '../quizTiming'
 
 export class DomainValidationError extends Error {
@@ -42,7 +41,7 @@ const oneOf = <T extends string>(value: unknown, values: readonly T[], name: str
   return value as T
 }
 
-const quizKeys = ['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'boardKind', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings']
+const quizKeys = ['ownerId', 'ownerName', 'classId', 'title', 'description', 'tags', 'mode', 'status', 'questionCount', 'createdAt', 'updatedAt', 'publishedAt', 'settings']
 const settingsKeys = ['answerReveal', 'participation', 'scoreVisibility', 'scoresReleased', 'timeLimitMinutes', 'timeLimitSeconds', 'opensAt', 'closesAt', 'attemptsAllowed', 'shuffleQuestions', 'shuffleOptions']
 const groupKeys = ['type', 'groupSize', 'answerMode', 'teamFormation', 'waitForEveryone', 'questionTimeSec']
 
@@ -66,12 +65,7 @@ export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSetti
   if (parsedParticipation.type === 'group') {
     if (parsedParticipation.groupSize > GROUP_LIMITS.maxTeamSize) throw new DomainValidationError('groupSize cannot exceed 10')
     if (parsedParticipation.questionTimeSec !== null && parsedParticipation.questionTimeSec > GROUP_LIMITS.maxQuestionTimeSec) throw new DomainValidationError('questionTimeSec cannot exceed 300')
-    if (mode !== 'quiz' && mode !== 'canvas') throw new DomainValidationError('Only quizzes can be taken as a group')
-    if (mode === 'canvas') {
-      if (parsedParticipation.answerMode !== 'representative') throw new DomainValidationError('Canvas group quizzes must use representative answering')
-      if (parsedParticipation.waitForEveryone) throw new DomainValidationError('Canvas group quizzes do not support wait-for-everyone')
-      if (parsedParticipation.questionTimeSec !== null) throw new DomainValidationError('Canvas group quizzes do not support per-question timers')
-    }
+    if (mode !== 'quiz') throw new DomainValidationError('Only quizzes can be taken as a group')
   }
   const answerReveal = oneOf(settings.answerReveal, ['after_each', 'after_submit', 'never'] as const, 'answerReveal')
   const scoreVisibility = oneOf(settings.scoreVisibility, ['immediate', 'after_release', 'hidden'] as const, 'scoreVisibility')
@@ -109,10 +103,7 @@ export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSetti
 export function parseQuiz(value: unknown): Quiz {
   const quiz = record(value, 'quiz')
   exactKeys(quiz, quizKeys, 'quiz')
-  const mode = oneOf(quiz.mode, ['quiz', 'flashcards', 'canvas'] as const, 'mode')
-  const boardKind = mode === 'canvas'
-    ? (quiz.boardKind !== undefined ? oneOf(quiz.boardKind, ['prebuilt', 'blank'] as const, 'boardKind') : 'prebuilt')
-    : undefined
+  const mode = oneOf(quiz.mode, ['quiz', 'flashcards'] as const, 'mode')
   if (!Array.isArray(quiz.tags) || !quiz.tags.every((tag) => typeof tag === 'string')) throw new DomainValidationError('tags must be a list of strings')
   if (quiz.tags.length > 20) throw new DomainValidationError('tags must not exceed 20 items')
   const title = string(quiz.title, 'title', true)
@@ -123,7 +114,7 @@ export function parseQuiz(value: unknown): Quiz {
     ownerId: string(quiz.ownerId, 'ownerId'), ownerName: string(quiz.ownerName, 'ownerName'),
     classId: quiz.classId === undefined || quiz.classId === null ? null : string(quiz.classId, 'classId'),
     title, description,
-    tags: quiz.tags as string[], mode, ...(boardKind !== undefined ? { boardKind } : {}), status: oneOf(quiz.status, ['draft', 'published', 'archived'] as const, 'status'),
+    tags: quiz.tags as string[], mode, status: oneOf(quiz.status, ['draft', 'published', 'archived'] as const, 'status'),
     questionCount: integer(quiz.questionCount, 'questionCount'), createdAt: timestamp(quiz.createdAt, 'createdAt'),
     updatedAt: timestamp(quiz.updatedAt, 'updatedAt'),
     publishedAt: quiz.publishedAt === null ? null : timestamp(quiz.publishedAt, 'publishedAt'),
@@ -131,10 +122,9 @@ export function parseQuiz(value: unknown): Quiz {
   }
 }
 
-export function parseQuestion(value: unknown, parseOptions?: { allowLegacyImages?: boolean; boardKind?: 'prebuilt' | 'blank' }): QuizQuestion {
+export function parseQuestion(value: unknown): QuizQuestion {
   const question = record(value, 'question')
-  const type = oneOf(question.type, ['multiple_choice', 'true_false', 'identification', 'fill_blank', 'flashcard', 'canvas'] as const, 'question.type')
-  if (type === 'canvas') return validateCanvasDefinition(question, parseOptions)
+  const type = oneOf(question.type, ['multiple_choice', 'true_false', 'identification', 'fill_blank', 'flashcard'] as const, 'question.type')
   const hasOptions = type === 'multiple_choice' || type === 'true_false'
   exactKeys(question, hasOptions ? ['order', 'type', 'prompt', 'options', 'points'] : ['order', 'type', 'prompt', 'points'], 'question')
   const prompt = string(question.prompt, 'prompt')
@@ -156,8 +146,7 @@ export function parseQuestion(value: unknown, parseOptions?: { allowLegacyImages
 
 export function parseAnswerKey(value: unknown): AnswerKey {
   const key = record(value, 'answerKey')
-  const type = oneOf(key.type, ['choice', 'identification', 'fill_blank', 'flashcard', 'canvas'] as const, 'answerKey.type')
-  if (type === 'canvas') return validateCanvasKey(key)
+  const type = oneOf(key.type, ['choice', 'identification', 'fill_blank', 'flashcard'] as const, 'answerKey.type')
   const base = { explanation: string(key.explanation, 'explanation', true), caseSensitive: bool(key.caseSensitive, 'caseSensitive') }
   if (type === 'choice') {
     exactKeys(key, ['type', 'correctOptionId', 'explanation', 'caseSensitive'], 'answerKey')
@@ -180,23 +169,9 @@ export function parseAnswerKey(value: unknown): AnswerKey {
 export function validateQuestionAnswerPair(
   questionValue: unknown,
   keyValue: unknown,
-  options?: { allowLegacyImages?: boolean; boardKind?: 'prebuilt' | 'blank' },
-): { question: QuizQuestion; answerKey: AnswerKey | null } {
-  const question = parseQuestion(questionValue, options)
-  const isBlankCanvas =
-    question.type === 'canvas' &&
-    (options?.boardKind === 'blank' ||
-      (question.cards.length === 0 && ('maxCards' in question || 'allowedCardTypes' in question || 'rubric' in question)))
-
-  if (isBlankCanvas) {
-    return { question, answerKey: null }
-  }
-
+): { question: QuizQuestion; answerKey: AnswerKey } {
+  const question = parseQuestion(questionValue)
   const answerKey = parseAnswerKey(keyValue)
-  if (question.type === 'canvas') {
-    if (answerKey.type !== 'canvas') throw new DomainValidationError('canvas requires a canvas answer key')
-    return { question, answerKey: validateCanvasKey(keyValue, question.cards, question.directed) }
-  }
   const expectedKeyType = question.type === 'multiple_choice' || question.type === 'true_false'
     ? 'choice'
     : question.type === 'identification' ? 'identification' : question.type
@@ -224,39 +199,7 @@ export function parseQuizAttempt(value: unknown): QuizAttempt {
   for (const [id, answer] of Object.entries(answers)) {
     string(id, 'answer question id')
     if (typeof answer !== 'string' && !(Array.isArray(answer) && answer.every((item) => typeof item === 'string'))) {
-      if (typeof answer === 'object' && answer !== null && !Array.isArray(answer)) {
-        const b = record(answer, `answers.${id}`)
-        if (!Array.isArray(b.cards) || !Array.isArray(b.connections)) {
-          throw new DomainValidationError(`answers.${id} must contain cards and connections lists`)
-        }
-        if (b.cards.length > 30) throw new DomainValidationError(`answers.${id}.cards must not exceed 30 items`)
-        if (b.connections.length > 80) throw new DomainValidationError(`answers.${id}.connections must not exceed 80 items`)
-        for (let i = 0; i < b.cards.length; i++) {
-          const c = record(b.cards[i], `answers.${id}.cards[${i}]`)
-          string(c.id, `card id`)
-          oneOf(c.type, ['note', 'paragraph', 'link'] as const, `card type`)
-          if (c.title !== undefined && c.title !== null) {
-            string(c.title, `card title`, true)
-            if (typeof c.title === 'string' && c.title.length > 120) throw new DomainValidationError(`card title must not exceed 120 characters`)
-          }
-          string(c.content, `card content`, true)
-          if (typeof c.content === 'string' && c.content.length > 1000) throw new DomainValidationError(`card content must not exceed 1000 characters`)
-          if (c.type === 'link') {
-            const url = string(c.url, `card url`)
-            if (!url.startsWith('https://')) throw new DomainValidationError(`link card url must start with https://`)
-          } else if (c.url !== undefined && c.url !== null && c.url !== '') {
-            throw new DomainValidationError(`only link cards can have a url`)
-          }
-          const pos = record(c.position, `card position`)
-          if (typeof pos.x !== 'number' || typeof pos.y !== 'number') throw new DomainValidationError(`card position must have x and y`)
-        }
-        for (let i = 0; i < b.connections.length; i++) {
-          const conn = b.connections[i]
-          if (typeof conn !== 'string') throw new DomainValidationError(`connections must be strings`)
-        }
-      } else {
-        throw new DomainValidationError('answers must be strings or lists of strings')
-      }
+      throw new DomainValidationError('answers must be strings or lists of strings')
     }
   }
   const optionOrder = record(attempt.optionOrder, 'optionOrder')
@@ -290,7 +233,7 @@ export function parseQuizParticipant(value: unknown): QuizParticipant {
 
 export function parseQuizResult(value: unknown): QuizResult {
   const result = record(value, 'result')
-  exactKeys(result, ['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt', 'reviewStatus', 'feedback', 'gradedBy'], 'result')
+  exactKeys(result, ['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt'], 'result')
   const perQuestion = record(result.perQuestion, 'perQuestion')
   const parsed: QuizResult['perQuestion'] = {}
   for (const [id, value] of Object.entries(perQuestion)) {
@@ -303,10 +246,6 @@ export function parseQuizResult(value: unknown): QuizResult {
   for (const field of ['score', 'maxScore'] as const) {
     if (typeof result[field] !== 'number' || !Number.isFinite(result[field]) || result[field] < 0) throw new DomainValidationError(`${field} must be non-negative`)
   }
-  const reviewStatus = result.reviewStatus !== undefined ? oneOf(result.reviewStatus, ['pending', 'graded'] as const, 'reviewStatus') : undefined
-  const feedback = result.feedback !== undefined && result.feedback !== null ? string(result.feedback, 'feedback', true) : undefined
-  if (feedback && feedback.length > 1000) throw new DomainValidationError('feedback must not exceed 1000 characters')
-  const gradedBy = result.gradedBy !== undefined && result.gradedBy !== null ? string(result.gradedBy, 'gradedBy') : undefined
 
   return {
     userId: string(result.userId, 'userId'),
@@ -314,8 +253,6 @@ export function parseQuizResult(value: unknown): QuizResult {
     maxScore: result.maxScore as number,
     perQuestion: parsed,
     gradedAt: timestamp(result.gradedAt, 'gradedAt'),
-    ...(reviewStatus ? { reviewStatus } : {}),
-    ...(feedback !== undefined ? { feedback } : {}),
-    ...(gradedBy ? { gradedBy } : {}),
   }
 }
+

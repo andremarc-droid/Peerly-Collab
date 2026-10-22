@@ -1,5 +1,5 @@
 import type { NodeProps } from '@xyflow/react'
-import { BookOpen, HelpCircle, Network, Sparkles, ExternalLink, Trash2, Palette, AlertCircle } from 'lucide-react'
+import { BookOpen, HelpCircle, Sparkles, ExternalLink, Trash2, Palette, AlertCircle } from 'lucide-react'
 import { CardHandles } from '../../canvas/components/CardHandles'
 import { CardColorPicker } from './CardColorPicker'
 import { useState } from 'react'
@@ -9,7 +9,6 @@ export interface ResolvedReferenceInfo {
   id: string
   title: string
   type: LearningCanvasRefType
-  isCanvasActivity?: boolean
   available: boolean
 }
 
@@ -44,14 +43,12 @@ export function ReferenceCard({ id, data, selected }: NodeProps & { data: Refere
     }
     if (refType === 'module') return <BookOpen size={16} aria-hidden="true" />
     if (refType === 'learning') return <Sparkles size={16} aria-hidden="true" />
-    if (info?.isCanvasActivity) return <Network size={16} aria-hidden="true" />
     return <HelpCircle size={16} aria-hidden="true" />
   }
 
   const getTypeLabel = () => {
     if (refType === 'module') return 'Module'
     if (refType === 'learning') return 'Learning canvas'
-    if (info?.isCanvasActivity) return 'Canvas activity'
     if (refType === 'quiz') return 'Quiz'
     return 'Reference'
   }

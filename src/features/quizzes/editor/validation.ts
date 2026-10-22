@@ -8,7 +8,6 @@ export interface QuizFormValues {
   description: string
   tags: string
   mode: QuizMode
-  boardKind?: 'prebuilt' | 'blank'
   settings: QuizSettings
 }
 
