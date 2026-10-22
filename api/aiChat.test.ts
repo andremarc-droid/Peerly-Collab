@@ -320,7 +320,8 @@ describe('api/aiChat handler', () => {
 
     await handler(req, res)
     expect(res.statusCode).toBe(200)
-    expect(res.getResponseJson().choices[0].message.content).toBe('Image analyzed')
+    const json = res.getResponseJson() as { choices?: Array<{ message?: { content?: unknown } }> }
+    expect(json.choices?.[0]?.message?.content).toBe('Image analyzed')
     fetchSpy.mockRestore()
     delete process.env.GROQ_API_KEY
   })
