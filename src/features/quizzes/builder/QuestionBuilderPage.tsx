@@ -19,6 +19,7 @@ import type { QuestionType, QuizMode } from '../types'
 import { QuestionForm, QuestionPreview } from './QuestionForm'
 import { createQuestionDraft, draftFromPair, moveQuestion, toQuestionPair, validateQuestionDraft, type QuestionDraft } from './questionDraft'
 import { QuizWorkflowNav } from '../editor/QuizWorkflowNav'
+import { hasTeamParticipation } from '../editor/quizExperience'
 import { QuizTitleField } from '../editor/QuizTitleField'
 import { parseQuestionsFromText } from '../authoring/textParser'
 
@@ -162,7 +163,7 @@ export function QuestionBuilderPage() {
     <PageHeader eyebrow={quiz.mode === 'quiz' ? 'STEP 1 OF 3 · QUESTIONS' : 'STEP 1 OF 3 · FLASHCARDS'} title={quiz.title || 'Untitled quiz'} subtitle="Add your questions and answer keys. Each one saves automatically once it is complete." />
     <main className="app-shell__content question-builder" id="main-content">
       <QuizTitleField quizId={quizId} title={quiz.title} onSaved={(title) => setQuiz({ ...quiz, title })} />
-      <QuizWorkflowNav quizId={quizId} current="questions" hasTeams={quiz.mode === 'quiz' && quiz.settings.participation.type === 'group'} nextStep="settings" nextLabel="Next: Settings" />
+      <QuizWorkflowNav quizId={quizId} current="questions" hasTeams={hasTeamParticipation(quiz.mode, quiz.settings)} nextStep="settings" nextLabel="Next: Settings" />
       {quiz.mode === 'quiz' && <div className="mb-4"><Button type="button" variant="secondary" onClick={() => setImportOpen(true)}><ClipboardPaste size={16} aria-hidden="true" /> Paste questions</Button></div>}
       {(() => {
         const listStatus = resolveListStatus({ loading: false, error: loadError, count: questions.length })

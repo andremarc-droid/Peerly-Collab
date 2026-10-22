@@ -22,7 +22,7 @@ import type { ClassWithId } from '../../classes/types'
 import type { QuizSettings, QuizStatus } from '../types'
 import { validateQuizForm, type QuizFormErrors, type QuizFormValues } from './validation'
 import { GroupSettingsSection } from './GroupSettingsSection'
-import { describeQuizExperience } from './quizExperience'
+import { describeQuizExperience, hasTeamParticipation } from './quizExperience'
 import { QuizPublishTab } from './QuizPublishTab'
 import { QuizWorkflowNav, quizStepPath } from './QuizWorkflowNav'
 import { QuickCreateQuiz } from '../authoring/QuickCreateQuiz'
@@ -185,7 +185,7 @@ export function QuizEditorPage() {
   return <AppShell>
     <PageHeader eyebrow={quizId ? 'EDIT QUIZ' : 'NEW QUIZ'} title={quizId ? 'Quiz settings.' : 'Create a quiz.'} subtitle={continueToPublish ? 'Choose how students take this quiz. Next you will preview and publish it.' : 'Choose how students take this quiz.'} action={<Button type="button" variant="secondary" onClick={leaveEditor}><ArrowLeft size={17} aria-hidden="true" /> Back</Button>} />
     <main className="app-shell__content quiz-editor" id="main-content">
-      <QuizWorkflowNav quizId={quizId} current="settings" hasTeams={isGroupQuiz} />
+      <QuizWorkflowNav quizId={quizId} current="settings" hasTeams={hasTeamParticipation(form.mode, form.settings)} />
       {saveError && <Alert tone="error" label="Could not save changes">{saveError}</Alert>}
       {quizId && (!form.classId || (classesLoaded && !classes.some((item) => item.id === form.classId && item.status === 'active'))) && <Alert tone="warning" label="Assign this quiz to a class">Choose an active class below and save to keep this quiz in the classroom catalog.</Alert>}
       {classesLoaded && !classes.some((item) => item.status === 'active') && <Alert tone="warning" label="Create a class first">Quizzes must belong to an active class. <Button to="/instructor" variant="secondary">Create a class</Button></Alert>}

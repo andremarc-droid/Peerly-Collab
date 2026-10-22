@@ -9,6 +9,11 @@ interface ExperienceInput {
   settings: QuizSettings
 }
 
+/** Quizzes and canvas quizzes can run in teams; flashcard sets never do. Drives the Teams entry in the quiz navigation. */
+export function hasTeamParticipation(mode: QuizMode, settings: Pick<QuizSettings, 'participation'>): boolean {
+  return (mode === 'quiz' || mode === 'canvas') && settings.participation.type === 'group'
+}
+
 /**
  * One plain-language paragraph describing what students will go through.
  * Shown on the Settings step and again on the final Preview & publish step so the instructor

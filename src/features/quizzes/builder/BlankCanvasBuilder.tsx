@@ -16,6 +16,7 @@ import type { CanvasAllowedCardType, CanvasQuestion } from '../../canvas/types'
 import { getQuestionWithKey, saveQuestionAndKey } from '../services/questionService'
 import { getQuiz, type QuizRecord } from '../services/quizService'
 import { QuizWorkflowNav } from '../editor/QuizWorkflowNav'
+import { hasTeamParticipation } from '../editor/quizExperience'
 import { QuizTitleField } from '../editor/QuizTitleField'
 
 interface Props {
@@ -222,7 +223,7 @@ export function BlankCanvasBuilder({ quizId }: Props) {
       <main className="app-shell__content grid gap-6" id="main-content">
         <QuizTitleField quizId={quizId} title={quiz.title} onSaved={(title) => setQuiz({ ...quiz, title })} />
         {/* One shared step bar. Links are watched by the unsaved-changes guard above. */}
-        <QuizWorkflowNav quizId={quizId} current="questions" nextStep="settings" nextLabel="Next: Settings" />
+        <QuizWorkflowNav quizId={quizId} current="questions" hasTeams={quiz ? hasTeamParticipation(quiz.mode, quiz.settings) : false} nextStep="settings" nextLabel="Next: Settings" />
 
         {/* Action and status bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-navy-900-12 shadow-sm">

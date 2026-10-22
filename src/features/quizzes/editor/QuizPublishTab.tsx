@@ -15,7 +15,7 @@ import { listImages } from '../../canvas/imageService'
 import type { CanvasQuestion } from '../../canvas/types'
 import { draftFromPair, validateQuestionDraft } from '../builder/questionDraft'
 import { getQuiz, publishQuiz, unpublishQuiz, watchQuestionPairs, type QuizRecord, type SavedQuestion } from '../services'
-import { describeQuizExperience } from './quizExperience'
+import { describeQuizExperience, hasTeamParticipation } from './quizExperience'
 import { QuizWorkflowNav, quizStepPath } from './QuizWorkflowNav'
 
 const CanvasBoard = lazy(() => import('../../canvas/components/CanvasBoard'))
@@ -94,7 +94,7 @@ export function QuizPublishTab({ quizId }: { quizId: string }) {
   const activeClass = assignedClass?.status === 'active' ? assignedClass : undefined
   const published = quiz?.status === 'published'
   const isCanvas = quiz?.mode === 'canvas'
-  const isGroupQuiz = quiz?.mode === 'quiz' && quiz.settings.participation.type === 'group'
+  const isGroupQuiz = quiz ? hasTeamParticipation(quiz.mode, quiz.settings) : false
   const classPath = quiz?.classId ? `/instructor/classes/${quiz.classId}?tab=${isCanvas ? 'canvas' : 'quizzes'}` : '/instructor/quizzes'
 
   const problems = useMemo<PublishProblem[]>(() => {

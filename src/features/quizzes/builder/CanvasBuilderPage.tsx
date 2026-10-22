@@ -62,6 +62,7 @@ import type {
 } from '../../canvas/types'
 import { Badge } from '../../../shared/ui/Badge'
 import { QuizWorkflowNav } from '../editor/QuizWorkflowNav'
+import { hasTeamParticipation } from '../editor/quizExperience'
 import { QuizTitleField } from '../editor/QuizTitleField'
 import { BlankCanvasBuilder } from './BlankCanvasBuilder'
 import { getQuestionWithKey, getQuiz, saveQuestionAndKey, updateQuiz, type QuizRecord } from '../services'
@@ -806,7 +807,7 @@ export default function CanvasBuilderPage({ quizId: propQuizId }: { quizId?: str
       <main className="app-shell__content canvas-builder-main" id="main-content">
         <QuizTitleField quizId={quizId} title={quizTitle} onSaved={setQuizTitle} />
         {/* One shared step bar. Leaving with unsaved board changes still asks first. */}
-        <QuizWorkflowNav quizId={quizId} current="questions" nextStep="settings" nextLabel="Next: Settings" onNavigate={handleNavigateWithGuard} />
+        <QuizWorkflowNav quizId={quizId} current="questions" hasTeams={quizRecord ? hasTeamParticipation(quizRecord.mode, quizRecord.settings) : false} nextStep="settings" nextLabel="Next: Settings" onNavigate={handleNavigateWithGuard} />
 
         {/* Builder Toolbar & Status Header */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-navy-900-12 shadow-sm">
