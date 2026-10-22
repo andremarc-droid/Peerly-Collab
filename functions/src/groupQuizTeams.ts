@@ -7,7 +7,7 @@ import {
   parseCreateAssignedTeam, parseCreateSelfTeam, parseJoinTeam, parseRemoveMember, parseSetRepresentative, parseTeamRef,
 } from './groupQuizRequests.js'
 import {
-  RATE, assertActiveStudents, assertOwner, assertPlayable, authedUid, codeRef, db, displayNames, enforceRate, guarded, membershipRef,
+  RATE, assertActiveStudents, assertOwner, assertPlayable, authedUid, boardRef, codeRef, db, displayNames, enforceRate, guarded, membershipRef,
   metaRef, privateRef, quizRef, readQuiz, readTeam, sessionRef, studyGroupMemberRef, teamRef, teamsCollection,
   type QuizInfo, type TeamData,
 } from './groupQuizData.js'
@@ -32,6 +32,7 @@ function assertNotStarted(team: TeamData): void {
 export async function purgeTeamData(quizId: string, teamId: string): Promise<void> {
   await db().recursiveDelete(sessionRef(quizId, teamId))
   await privateRef(quizId, teamId).delete()
+  await boardRef(quizId, teamId).delete().catch(() => undefined)
 }
 
 // ---- instructor builds a team ---------------------------------------------------------------------------------

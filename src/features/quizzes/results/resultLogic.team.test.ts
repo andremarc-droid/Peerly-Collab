@@ -36,4 +36,19 @@ describe('results CSV for team attempts', () => {
     const csv = resultsCsv([row('a', 'u1', 'Ana', { teamId: 't1', teamName: '=HYPERLINK("x")' })])
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`)
   })
+
+  it('deduplicates teams in needsGradingCount for blank canvas so one team = one board', () => {
+    const pendingResult = (userId: string): QuizResult => ({ userId, score: 0, maxScore: 10, perQuestion: {}, gradedAt: time, reviewStatus: 'pending' })
+    const pendingRow = (id: string, userId: string, userName: string, extra: Partial<QuizAttempt> = {}): AttemptResult => ({ ...base, ...extra, id, userId, userName, result: pendingResult(userId) })
+
+    const summary = import('./resultLogic').then(m => m.summarizeAttempts([
+      pendingRow('a', 'u1', 'Ana', { teamId: 't1', teamName: 'Red Team' }),
+      pendingRow('b', 'u2', 'Ben', { teamId: 't1', teamName: 'Red Team' }),
+      pendingRow('c', 'u3', 'Cy'),
+    ], false, null, { isBlankCanvas: true }))
+
+    return summary.then(s => {
+      expect(s.needsGradingCount).toBe(2) // 1 for Red Team + 1 for Cy
+    })
+  })
 })

@@ -53,11 +53,26 @@ describe('group participation settings', () => {
     expect(() => parseQuizSettings(settingsWith({ type: 'individual', answerMode: 'everyone' }), 'quiz')).toThrow('unsupported fields')
   })
 
-  it('keeps flashcards and canvas quizzes individual-only', () => {
+  it('keeps flashcards individual-only and allows canvas group with representative mode', () => {
     const group = { type: 'group', groupSize: 3 }
-    expect(() => parseQuiz(quizWith(group, 'canvas'))).toThrow(DomainValidationError)
     expect(() => parseQuiz(quizWith(group, 'flashcards'))).toThrow(DomainValidationError)
     expect(() => parseQuizSettings({ ...defaultQuizSettings('flashcards'), participation: group }, 'flashcards')).toThrow('Only quizzes can be taken as a group')
+
+    // Canvas accepts valid representative group settings
+    const validCanvasGroup = parseQuizSettings(settingsWith({ type: 'group', groupSize: 4, answerMode: 'representative' }), 'canvas')
+    expect(validCanvasGroup.participation).toEqual({
+      type: 'group',
+      groupSize: 4,
+      answerMode: 'representative',
+      teamFormation: 'assigned',
+      waitForEveryone: false,
+      questionTimeSec: null,
+    })
+
+    // Canvas rejects 'everyone' answerMode, wait-for-everyone, or timers
+    expect(() => parseQuizSettings(settingsWith({ type: 'group', groupSize: 4, answerMode: 'everyone' }), 'canvas')).toThrow('Canvas group quizzes must use representative answering')
+    expect(() => parseQuizSettings(settingsWith({ type: 'group', groupSize: 4, answerMode: 'representative', waitForEveryone: true }), 'canvas')).toThrow('Canvas group quizzes do not support wait-for-everyone')
+    expect(() => parseQuizSettings(settingsWith({ type: 'group', groupSize: 4, answerMode: 'representative', questionTimeSec: 30 }), 'canvas')).toThrow('Canvas group quizzes do not support per-question timers')
   })
 
   it('leaves individual quizzes exactly as before', () => {

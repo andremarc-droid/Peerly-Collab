@@ -22,6 +22,9 @@ vi.mock('../services/resultService', () => ({ getQuizResult: mocks.getQuizResult
 vi.mock('../services/questionService', () => ({ watchQuestionPairs: mocks.watchQuestionPairs }))
 vi.mock('../../classes/services/classService', () => ({ getClass: mocks.getClass }))
 vi.mock('../../classes/services/enrollmentService', () => ({ listEnrollments: mocks.listEnrollments }))
+vi.mock('../../canvas/components/CanvasBoard', () => ({
+  default: () => <div data-testid="canvas-board" />,
+}))
 
 const now = Timestamp.fromMillis(1000)
 const quiz = { id: 'quiz-1', ownerId: 'teacher', ownerName: 'Teacher', classId: 'class-1', title: 'Practice', description: '', tags: [], mode: 'quiz', status: 'published', questionCount: 1, createdAt: now, updatedAt: now, publishedAt: now, settings: { answerReveal: 'after_each', participation: { type: 'individual' }, scoreVisibility: 'after_release', scoresReleased: false, timeLimitMinutes: null, attemptsAllowed: 1, shuffleQuestions: false, shuffleOptions: false } }
@@ -137,5 +140,50 @@ describe('attempt detail component', () => {
     render(<AttemptDetail quizId="quiz-1" attempt={choiceAttempt} questions={[choiceQuestion]} ungraded={false} onGradeChanged={vi.fn()} />)
     expect(screen.getAllByText('Application Programming Interface').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('opt-1')).not.toBeInTheDocument()
+  })
+
+  it('renders team badge and team board submission title for team blank canvas attempts', () => {
+    const blankQuestion: SavedQuestion = {
+      id: 'board',
+      question: {
+        type: 'canvas',
+        prompt: 'Draw diagram',
+        points: 20,
+        order: 0,
+        cards: [],
+        showRubricToStudents: true,
+        maxCards: 20,
+        maxConnections: 40,
+        allowedCardTypes: ['note', 'paragraph', 'link'],
+      },
+      answerKey: null,
+    }
+    const teamBlankAttempt: AttemptResult = {
+      ...attempt,
+      teamId: 'team-blue',
+      teamName: 'Team Blue',
+      answers: { board: { cards: [{ id: 'c1', type: 'note', content: 'Node 1', position: { x: 0, y: 0 } }], connections: [] } },
+      result: {
+        userId: 'student',
+        score: 0,
+        maxScore: 20,
+        perQuestion: {},
+        gradedAt: now,
+        reviewStatus: 'pending',
+      },
+    }
+    render(
+      <AttemptDetail
+        quizId="quiz-1"
+        attempt={teamBlankAttempt}
+        questions={[blankQuestion]}
+        ungraded={false}
+        isBlankCanvas={true}
+        allAttempts={[teamBlankAttempt]}
+        onGradeChanged={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Team: Team Blue')).toBeInTheDocument()
+    expect(screen.getByText('Team board submission · Team Blue')).toBeInTheDocument()
   })
 })

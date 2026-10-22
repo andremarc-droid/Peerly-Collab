@@ -115,13 +115,21 @@ export async function gradeBlankCanvasAttempt(
   payload: { score: number; feedback?: string; gradedBy: string },
   db: Firestore = firestore,
 ): Promise<void> {
+  const currentAttemptSnap = await getDoc(attemptRef(db, quizId, attemptId))
+  const teamId = currentAttemptSnap.exists() ? (currentAttemptSnap.data().teamId as string | undefined) : undefined
+
+  let targetAttemptIds = [attemptId]
+  if (teamId) {
+    const teamAttemptsSnap = await getDocs(query(attemptsRef(db, quizId), where('teamId', '==', teamId)))
+    if (!teamAttemptsSnap.empty) {
+      targetAttemptIds = teamAttemptsSnap.docs.map((doc) => doc.id)
+    }
+  }
+
   await runTransaction(db, async (transaction) => {
-    const resRef = resultRef(db, quizId, attemptId)
     const boardRef = questionRef(db, quizId, 'board')
-    const [resultSnapshot, boardSnapshot] = await Promise.all([transaction.get(resRef), transaction.get(boardRef)])
-    if (!resultSnapshot.exists()) throw new Error('Result not found')
+    const boardSnapshot = await transaction.get(boardRef)
     if (!boardSnapshot.exists()) throw new Error('Board question not found')
-    parseQuizResult(resultSnapshot.data())
     const board = parseQuestion(boardSnapshot.data())
     if (typeof payload.score !== 'number' || !Number.isFinite(payload.score) || payload.score < 0 || payload.score > board.points) {
       throw new Error(`Score must be between 0 and ${board.points}`)
@@ -130,6 +138,16 @@ export async function gradeBlankCanvasAttempt(
     if (feedback.length > 1000) {
       throw new Error('Feedback must not exceed 1000 characters')
     }
+
+    const resultSnapshots = await Promise.all(
+      targetAttemptIds.map((id) => transaction.get(resultRef(db, quizId, id))),
+    )
+
+    for (const snap of resultSnapshots) {
+      if (!snap.exists()) continue
+      parseQuizResult(snap.data())
+    }
+
     const updateData: Record<string, unknown> = {
       score: payload.score,
       reviewStatus: 'graded',
@@ -137,6 +155,11 @@ export async function gradeBlankCanvasAttempt(
       gradedAt: Timestamp.now(),
       gradedBy: payload.gradedBy,
     }
-    transaction.update(resRef, updateData)
+
+    for (let i = 0; i < targetAttemptIds.length; i++) {
+      if (resultSnapshots[i].exists()) {
+        transaction.update(resultRef(db, quizId, targetAttemptIds[i]), updateData)
+      }
+    }
   })
 }

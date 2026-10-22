@@ -28,8 +28,12 @@ describe('validateQuizForm with group participation', () => {
     expect(errors.title).toBeTruthy()
     expect(errors.settings).toBeTruthy()
   })
-  it('rejects group participation for flashcards and canvas quizzes through the shared schema', () => {
-    const base = defaultQuizSettings('flashcards')
-    expect(validateQuizForm({ classId: 'c', title: 'T', description: '', tags: '', mode: 'flashcards', settings: { ...base, participation: group() } }).settings).toMatch(/Only quizzes/)
+  it('rejects group participation for flashcards and accepts valid canvas group', () => {
+    const baseFlashcards = defaultQuizSettings('flashcards')
+    expect(validateQuizForm({ classId: 'c', title: 'T', description: '', tags: '', mode: 'flashcards', settings: { ...baseFlashcards, participation: group() } }).settings).toMatch(/Only quizzes/)
+
+    const baseCanvas = defaultQuizSettings('canvas')
+    expect(validateQuizForm({ classId: 'c', title: 'T', description: '', tags: '', mode: 'canvas', settings: { ...baseCanvas, participation: group({ answerMode: 'representative', questionTimeSec: null, waitForEveryone: false }) } })).toEqual({})
+    expect(validateQuizForm({ classId: 'c', title: 'T', description: '', tags: '', mode: 'canvas', settings: { ...baseCanvas, participation: group({ answerMode: 'everyone' }) } }).settings).toMatch(/representative answering/)
   })
 })

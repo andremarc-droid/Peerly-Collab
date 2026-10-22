@@ -1465,8 +1465,7 @@ service cloud.firestore {
             && settings.participation.keys().hasAll(['type', 'groupSize'])
             && settings.participation.groupSize is int
             && settings.participation.groupSize >= 2
-            && settings.participation.groupSize <= 10
-            && mode == 'quiz'
+            && (mode == 'quiz' || mode == 'canvas')
             && (!('answerMode' in settings.participation) || settings.participation.answerMode in ['representative', 'everyone'])
             && (!('teamFormation' in settings.participation) || settings.participation.teamFormation in ['assigned', 'self'])
             && (!('waitForEveryone' in settings.participation) || settings.participation.waitForEveryone is bool)
@@ -1478,9 +1477,13 @@ service cloud.firestore {
         && (mode != 'flashcards'
           || (settings.answerReveal == 'never' && settings.scoreVisibility == 'hidden' && settings.scoresReleased == false))
         && (mode != 'canvas'
-          || (settings.participation.type == 'individual'
-            && settings.shuffleQuestions == false
-            && settings.shuffleOptions == false));
+          || (settings.shuffleQuestions == false
+            && settings.shuffleOptions == false
+            && (settings.participation.type == 'individual'
+              || (settings.participation.type == 'group'
+                && (!('answerMode' in settings.participation) || settings.participation.answerMode == 'representative')
+                && (!('waitForEveryone' in settings.participation) || settings.participation.waitForEveryone == false)
+                && (!('questionTimeSec' in settings.participation) || settings.participation.questionTimeSec == null)))));
     }
 
     function validQuiz(data) {
@@ -1668,6 +1671,17 @@ service cloud.firestore {
         && validBlankConnectionsList(board.connections);
     }
 
+    function validTeamBoard(data) {
+      return data is map
+        && data.keys().hasOnly(['cards', 'connections', 'updatedAt', 'updatedBy'])
+        && data.keys().hasAll(['connections', 'updatedAt', 'updatedBy'])
+        && data.updatedBy == request.auth.uid
+        && data.updatedAt is timestamp
+        && data.connections is list && data.connections.size() <= 80
+        && validBlankConnectionsList(data.connections)
+        && (!('cards' in data) || (data.cards is list && data.cards.size() <= 30 && validBlankCardsList(data.cards)));
+    }
+
     function validAttempt(data, quizId) {
       let quizPath = /databases/$(database)/documents/quizzes/$(quizId);
       let quizDoc = existsAfter(quizPath) ? getAfter(quizPath).data : get(quizPath).data;
@@ -1719,7 +1733,7 @@ service cloud.firestore {
 
     function validBlankOwnerResultUpdate(data, quizId, oldData) {
       let boardQuestion = get(/databases/$(database)/documents/quizzes/$(quizId)/questions/board).data;
-      return data.keys().hasOnly(['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt', 'reviewStatus', 'feedback', 'gradedBy'])
+      return data.keys().hasOnly(['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt', 'reviewStatus', 'feedback', 'gradedBy', 'teamId', 'teamName'])
         && data.keys().hasAll(['userId', 'score', 'maxScore', 'perQuestion', 'gradedAt', 'reviewStatus'])
         && data.userId == oldData.userId
         && data.maxScore == oldData.maxScore
@@ -1727,6 +1741,8 @@ service cloud.firestore {
         && data.reviewStatus in ['pending', 'graded']
         && (!('feedback' in data) || (data.feedback is string && data.feedback.size() <= 1000))
         && (!('gradedBy' in data) || data.gradedBy is string)
+        && (!('teamId' in data) || data.teamId is string)
+        && (!('teamName' in data) || data.teamName is string)
         && data.perQuestion is map
         && data.gradedAt is timestamp;
     }
@@ -1768,7 +1784,8 @@ service cloud.firestore {
 
       match /questions/{questionId} {
         // Group quizzes serve one question at a time through the team session, so students never read this collection.
-        allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId) && !quizIsGroup(quizId) && quizHasOpened(quizId));
+        // Canvas quizzes have exactly one question ('board') containing board cards, limits and rubric.
+        allow read: if quizOwner(quizId) || (isStudent() && quizPublished(quizId) && (!quizIsGroup(quizId) || get(/databases/$(database)/documents/quizzes/$(quizId)).data.mode == 'canvas') && quizHasOpened(quizId));
         allow create, update: if quizOwner(quizId)
           && validQuestionForQuiz(quizId, questionId, request.resource.data);
         allow delete: if quizOwner(quizId);
@@ -1902,6 +1919,14 @@ service cloud.firestore {
         allow create, update: if false;
         allow delete: if quizOwner(quizId);
       }
+    }
+    match /quizzes/{quizId}/teamBoards/{teamId} {
+      allow get, list: if quizOwner(quizId) || isQuizTeamMember(quizId, teamId);
+      allow create, update: if isQuizTeamMember(quizId, teamId)
+        && get(/databases/$(database)/documents/quizzes/$(quizId)/teams/$(teamId)).data.representativeId == request.auth.uid
+        && get(/databases/$(database)/documents/quizzes/$(quizId)/teams/$(teamId)).data.status == 'in_progress'
+        && validTeamBoard(request.resource.data);
+      allow delete: if quizOwner(quizId);
     }
     match /quizzes/{quizId}/teamPrivate/{teamId} {
       allow read, create, update: if false;

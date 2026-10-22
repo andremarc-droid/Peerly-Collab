@@ -58,6 +58,20 @@ beforeEach(async () => {
       mode: 'flashcards', status: 'draft', publishedAt: null,
       settings: { ...settings(individual), answerReveal: 'never', scoreVisibility: 'hidden' },
     }))
+    await db.doc('quizzes/cdraft').set(quizDoc(individual, {
+      mode: 'canvas', boardKind: 'prebuilt', status: 'draft', publishedAt: null,
+      settings: { ...settings(individual), shuffleQuestions: false, shuffleOptions: false },
+    }))
+    await db.doc('quizzes/cpub').set(quizDoc(
+      { type: 'group', groupSize: 3, answerMode: 'representative', teamFormation: 'assigned', waitForEveryone: false, questionTimeSec: null },
+      { mode: 'canvas', boardKind: 'blank', status: 'published', shuffleQuestions: false, shuffleOptions: false },
+    ))
+    await db.doc('quizzes/cpub/questions/board').set({
+      order: 0, type: 'canvas', prompt: 'Concept map', points: 30, cards: [], showRubricToStudents: true, maxCards: 20, maxConnections: 40, allowedCardTypes: ['note', 'paragraph', 'link'],
+    })
+    await db.doc('quizzes/cpub/results/att1').set({
+      userId: 'alice', score: 0, maxScore: 30, perQuestion: {}, gradedAt: day, reviewStatus: 'pending', teamId: 't1', teamName: 'Team One',
+    })
   })
 })
 
@@ -196,6 +210,123 @@ describe('group quiz settings validation', () => {
   it('keeps flashcard quizzes individual-only', async () => {
     await assertFails(updateDoc(doc(as('teacher'), 'quizzes/fdraft'), {
       settings: { ...settings(group), answerReveal: 'never', scoreVisibility: 'hidden' }, updatedAt: new Date(),
+    }))
+  })
+
+  it('allows canvas group quizzes with representative mode and rejects question timers / everyone mode', async () => {
+    const validCanvasGroup = {
+      type: 'group',
+      groupSize: 4,
+      answerMode: 'representative',
+      teamFormation: 'assigned',
+      waitForEveryone: false,
+      questionTimeSec: null,
+    }
+    await assertSucceeds(updateDoc(doc(as('teacher'), 'quizzes/cdraft'), {
+      settings: { ...settings(validCanvasGroup), shuffleQuestions: false, shuffleOptions: false },
+      updatedAt: new Date(),
+    }))
+
+    // Rejects everyone answerMode on canvas
+    await assertFails(updateDoc(doc(as('teacher'), 'quizzes/cdraft'), {
+      settings: { ...settings({ ...validCanvasGroup, answerMode: 'everyone' }), shuffleQuestions: false, shuffleOptions: false },
+      updatedAt: new Date(),
+    }))
+
+    // Rejects per-question timer on canvas
+    await assertFails(updateDoc(doc(as('teacher'), 'quizzes/cdraft'), {
+      settings: { ...settings({ ...validCanvasGroup, questionTimeSec: 30 }), shuffleQuestions: false, shuffleOptions: false },
+      updatedAt: new Date(),
+    }))
+
+    // Rejects wait for everyone on canvas
+    await assertFails(updateDoc(doc(as('teacher'), 'quizzes/cdraft'), {
+      settings: { ...settings({ ...validCanvasGroup, waitForEveryone: true }), shuffleQuestions: false, shuffleOptions: false },
+      updatedAt: new Date(),
+    }))
+  })
+})
+
+describe('teamBoards security rules', () => {
+  const boardData = (uid: string) => ({
+    connections: ['c1->c2'],
+    updatedAt: new Date(),
+    updatedBy: uid,
+  })
+
+  it('lets the representative write the board while team is in_progress', async () => {
+    // alice is representative of t1 on quiz gq (status: in_progress)
+    await assertSucceeds(setDoc(doc(as('alice'), 'quizzes/gq/teamBoards/t1'), boardData('alice')))
+  })
+
+  it('denies teammates who are not the representative from writing the board', async () => {
+    // bob is a member of t1 but not the representative
+    await assertFails(setDoc(doc(as('bob'), 'quizzes/gq/teamBoards/t1'), boardData('bob')))
+    await assertFails(setDoc(doc(as('bob'), 'quizzes/gq/teamBoards/t1'), boardData('alice')))
+  })
+
+  it('denies non-members from reading or writing the board', async () => {
+    // carol is not in t1
+    await assertFails(getDoc(doc(as('carol'), 'quizzes/gq/teamBoards/t1')))
+    await assertFails(setDoc(doc(as('carol'), 'quizzes/gq/teamBoards/t1'), boardData('carol')))
+  })
+
+  it('lets all team members and the quiz owner read the board', async () => {
+    await env.withSecurityRulesDisabled(async context => {
+      await context.firestore().doc('quizzes/gq/teamBoards/t1').set(boardData('alice'))
+    })
+    await assertSucceeds(getDoc(doc(as('alice'), 'quizzes/gq/teamBoards/t1')))
+    await assertSucceeds(getDoc(doc(as('bob'), 'quizzes/gq/teamBoards/t1')))
+    await assertSucceeds(getDoc(doc(as('teacher'), 'quizzes/gq/teamBoards/t1')))
+  })
+
+  it('denies writing the board after team has submitted', async () => {
+    await env.withSecurityRulesDisabled(async context => {
+      await context.firestore().doc('quizzes/gq/teams/t1').update({ status: 'submitted' })
+    })
+    await assertFails(setDoc(doc(as('alice'), 'quizzes/gq/teamBoards/t1'), boardData('alice')))
+  })
+
+  it('enforces size caps on connections and cards', async () => {
+    // Over 80 connections rejected
+    const tooManyConnections = {
+      connections: new Array(81).fill('c1->c2'),
+      updatedAt: new Date(),
+      updatedBy: 'alice',
+    }
+    await assertFails(setDoc(doc(as('alice'), 'quizzes/gq/teamBoards/t1'), tooManyConnections))
+
+    // Over 30 cards rejected
+    const tooManyCards = {
+      cards: new Array(31).fill({ id: 'c', type: 'note', title: 'Note' }),
+      connections: [],
+      updatedAt: new Date(),
+      updatedBy: 'alice',
+    }
+    await assertFails(setDoc(doc(as('alice'), 'quizzes/gq/teamBoards/t1'), tooManyCards))
+  })
+
+  it('allows the quiz owner to delete the team board', async () => {
+    await env.withSecurityRulesDisabled(async context => {
+      await context.firestore().doc('quizzes/gq/teamBoards/t1').set(boardData('alice'))
+    })
+    await assertSucceeds(deleteDoc(doc(as('teacher'), 'quizzes/gq/teamBoards/t1')))
+  })
+
+  it('allows enrolled students to read canvas board questions on a group quiz', async () => {
+    // alice is an active student in class c1
+    await assertSucceeds(getDoc(doc(as('alice'), 'quizzes/cpub/questions/board')))
+    // on normal group quiz gq, questions are blocked from direct reading
+    await assertFails(getDoc(doc(as('alice'), 'quizzes/gq/questions/q1')))
+  })
+
+  it('allows the instructor to update blank canvas results that have teamId and teamName', async () => {
+    await assertSucceeds(updateDoc(doc(as('teacher'), 'quizzes/cpub/results/att1'), {
+      score: 25,
+      reviewStatus: 'graded',
+      feedback: 'Good work team!',
+      gradedAt: new Date(),
+      gradedBy: 'teacher',
     }))
   })
 })

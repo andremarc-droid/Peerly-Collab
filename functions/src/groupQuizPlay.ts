@@ -75,7 +75,6 @@ export async function startTeamAttempt(call: CallableRequest<unknown>) {
       }
       assertCanStart({ memberCount: team.memberIds.length, groupSize: quiz.settings.groupSize, status: team.status, force: request.force })
       if (questionsSnap.empty) throw new GroupQuizError('This quiz has no questions yet.', 'failed-precondition')
-      if (questionsSnap.docs.some(doc => !isPlayableType(doc.get('type')))) throw new GroupQuizError('This quiz has questions that teams cannot answer.', 'failed-precondition')
       const participants = await Promise.all(team.memberIds.map(id => tx.get(participantRef(request.quizId, id))))
       participants.forEach((snap, index) => {
         const attemptCount = typeof snap.get('attemptCount') === 'number' ? (snap.get('attemptCount') as number) : 0
@@ -84,6 +83,29 @@ export async function startTeamAttempt(call: CallableRequest<unknown>) {
           throw new GroupQuizError(`${team.memberNames[id] ?? 'A teammate'} has no attempts left for this quiz.`, 'failed-precondition')
         }
       })
+      if (quiz.mode === 'canvas') {
+        const boardDoc = questionsSnap.docs.find(doc => doc.get('type') === 'canvas') ?? questionsSnap.docs[0]
+        if (!boardDoc || boardDoc.get('type') !== 'canvas') throw new GroupQuizError('This canvas quiz has no board question.', 'failed-precondition')
+        const now = Date.now()
+        const ready = team.status === 'forming' ? nextTeamStatus('forming', 'ready') : team.status
+        const questionOrder = [boardDoc.id]
+        const first = {
+          id: boardDoc.id,
+          index: 0,
+          type: 'canvas',
+          prompt: typeof boardDoc.get('prompt') === 'string' ? boardDoc.get('prompt') : '',
+          points: typeof boardDoc.get('points') === 'number' ? boardDoc.get('points') : 0,
+          options: [],
+        }
+        tx.set(privateRef(request.quizId, request.teamId), { questionOrder, optionOrder: {}, picks: {}, finalAnswers: {}, startedAtMs: now })
+        tx.set(sessionRef(request.quizId, request.teamId), {
+          phase: 'answering', currentIndex: 0, total: 1, questionStartedAt: now, questionEndsAt: null, reviewStartedAt: null,
+          question: first, answered: {}, picks: null, locked: false, ready: {}, updatedAt: FieldValue.serverTimestamp(),
+        })
+        tx.update(teamRef(request.quizId, request.teamId), { status: nextTeamStatus(ready, 'in_progress'), startedAt: now, updatedAt: FieldValue.serverTimestamp() })
+        return { ok: true }
+      }
+      if (questionsSnap.docs.some(doc => !isPlayableType(doc.get('type')))) throw new GroupQuizError('This quiz has questions that teams cannot answer.', 'failed-precondition')
       const docs = questionsSnap.docs
       const questionOrder = buildQuestionOrder(docs.map(doc => doc.id), quiz.shuffleQuestions)
       const optionOrder: Record<string, string[]> = {}
@@ -173,7 +195,7 @@ export async function advanceTeam(call: CallableRequest<unknown>) {
     await enforceRate(uid, 'play', RATE.play)
     return db().runTransaction(async tx => {
       const ctx = await loadPlay(tx, request.quizId, request.teamId)
-      const { quiz, team, session, priv } = ctx
+      const { quiz, team, session } = ctx
       const isInstructor = uid === quiz.ownerId
       if (!isInstructor) {
         assertMember(team, uid)

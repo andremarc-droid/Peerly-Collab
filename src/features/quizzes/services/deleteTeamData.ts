@@ -19,6 +19,7 @@ export async function deleteTeamData(quizId: string, db: Firestore = firestore):
       reveals.docs.forEach(item => refs.push(item.ref))
       refs.push(doc(db, 'quizzes', quizId, 'teamSessions', team.id))
       refs.push(doc(db, 'quizzes', quizId, 'teamPrivate', team.id))
+      refs.push(doc(db, 'quizzes', quizId, 'teamBoards', team.id))
       const code: unknown = team.get('code')
       if (typeof code === 'string' && code.length > 0) refs.push(doc(db, 'quizzes', quizId, 'teamCodes', code))
       refs.push(team.ref)

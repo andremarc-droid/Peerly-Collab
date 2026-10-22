@@ -11,6 +11,7 @@ import { getQuiz, type QuizRecord } from '../../quizzes/services/quizService'
 import { watchMyTeamId, watchReveals, watchTeam, watchTeamSession } from '../../quizzes/services/teamService'
 import type { GroupParticipation } from '../../quizzes/types'
 import type { Team, TeamReveal, TeamSession } from '../../quizzes/types/team'
+import { TeamCanvasPlay } from './TeamCanvasPlay'
 import { TeamEntry } from './TeamEntry'
 import { TeamLobby } from './TeamLobby'
 import { TeamPlay } from './TeamPlay'
@@ -60,7 +61,7 @@ export function GroupQuizPage() {
   const { quiz, group } = loaded
   return shell(`${quiz.title}.`, teamId === null
     ? <TeamEntry quizId={quiz.id} uid={user.uid} teamFormation={group.teamFormation} groupSize={group.groupSize} />
-    : <TeamRoom key={teamId} quizId={quiz.id} teamId={teamId} uid={user.uid} settings={group} />)
+    : <TeamRoom key={teamId} quiz={quiz} teamId={teamId} uid={user.uid} settings={group} />)
 }
 
 const subscribeOnline = (notify: () => void) => {
@@ -68,10 +69,11 @@ const subscribeOnline = (notify: () => void) => {
   return () => { window.removeEventListener('online', notify); window.removeEventListener('offline', notify) }
 }
 
-interface TeamRoomProps { quizId: string; teamId: string; uid: string; settings: GroupParticipation }
+interface TeamRoomProps { quiz: QuizRecord; teamId: string; uid: string; settings: GroupParticipation }
 
 /** Watches one team. Remounted (by key) whenever the student's team changes, so nothing from an old team leaks into a new one. */
-function TeamRoom({ quizId, teamId, uid, settings }: TeamRoomProps) {
+function TeamRoom({ quiz, teamId, uid, settings }: TeamRoomProps) {
+  const quizId = quiz.id
   const [team, setTeam] = useState<Team | null | undefined>(undefined)
   const [session, setSession] = useState<TeamSession | null | undefined>(undefined)
   const [reveals, setReveals] = useState<TeamReveal[]>([])
@@ -106,8 +108,16 @@ function TeamRoom({ quizId, teamId, uid, settings }: TeamRoomProps) {
 
   return <>
     {!online && <Alert tone="warning" label="You are offline">Your answers cannot be sent until you reconnect. Nothing is lost on this screen.</Alert>}
-    {team.status === 'submitted' ? <TeamResults team={team} reveals={reveals} />
-      : team.status === 'in_progress' ? (session ? <TeamPlay quizId={quizId} team={team} session={session} reveals={reveals} settings={settings} uid={uid} getNow={getNow} /> : <Skeleton className="h-72 rounded-3xl" label="Opening the first question" />)
+    {team.status === 'submitted' ? <TeamResults team={team} reveals={reveals} quiz={quiz} />
+      : team.status === 'in_progress' ? (
+          quiz.mode === 'canvas' ? (
+            <TeamCanvasPlay quiz={quiz} team={team} uid={uid} />
+          ) : session ? (
+            <TeamPlay quizId={quizId} team={team} session={session} reveals={reveals} settings={settings} uid={uid} getNow={getNow} />
+          ) : (
+            <Skeleton className="h-72 rounded-3xl" label="Opening the first question" />
+          )
+        )
       : <TeamLobby quizId={quizId} team={team} settings={settings} uid={uid} />}
   </>
 }

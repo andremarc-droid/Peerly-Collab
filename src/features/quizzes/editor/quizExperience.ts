@@ -24,6 +24,12 @@ export function describeQuizExperience({ mode, boardKind, title, settings }: Exp
 
   if (mode === 'flashcards') return `Students will review ${title.trim() || 'this set'} as flashcards and self-rate their recall.`
   if (mode === 'canvas') {
+    if (participation.type === 'group') {
+      const formation = participation.teamFormation === 'assigned' ? 'You build the teams from your class roster' : 'Students form their own teams with a team code'
+      return boardKind === 'blank'
+        ? `${formation}, in teams of up to ${participation.groupSize}. One representative builds the board while teammates watch. You will review and grade their submissions.`
+        : `${formation}, in teams of up to ${participation.groupSize}. One representative connects cards on the canvas board while teammates watch. Each team gets one shared score.`
+    }
     return boardKind === 'blank'
       ? 'Students will create their own concept board from a blank canvas. You will review and grade their submissions.'
       : 'Students will connect cards on the canvas board individually.'

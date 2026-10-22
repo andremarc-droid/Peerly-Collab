@@ -246,7 +246,14 @@ export function QuizResultsPage() {
           allAttempts={attempts}
           onSelectAttempt={(att) => setSelected(att)}
           onGradeChanged={(result: QuizResult) => {
-            setAttempts((items) => items.map((item) => (item.id === selected.id ? { ...item, result } : item)))
+            setAttempts((items) =>
+              items.map((item) => {
+                if (selected.teamId && item.teamId === selected.teamId) {
+                  return { ...item, result: { ...result, userId: item.userId } }
+                }
+                return item.id === selected.id ? { ...item, result } : item
+              }),
+            )
             setSelected({ ...selected, result })
           }}
         />

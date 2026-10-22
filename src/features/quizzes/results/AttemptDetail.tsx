@@ -105,10 +105,18 @@ export function AttemptDetail({
   const timeSpent = attempt.status === 'submitted' ? computeTimeSpent(attempt.startedAt, attempt.submittedAt) : null
 
   if (isBlankCanvas) {
-    const ungradedAttempts = allAttempts.filter(
-      (a) => a.status === 'submitted' && a.result?.reviewStatus !== 'graded',
+    const seenTeams = new Set<string>()
+    const ungradedAttempts = allAttempts.filter((a) => {
+      if (a.status !== 'submitted' || a.result?.reviewStatus === 'graded') return false
+      if (a.teamId) {
+        if (seenTeams.has(a.teamId)) return false
+        seenTeams.add(a.teamId)
+      }
+      return true
+    })
+    const currentUngradedIndex = ungradedAttempts.findIndex((a) =>
+      attempt.teamId ? a.teamId === attempt.teamId : a.id === attempt.id,
     )
-    const currentUngradedIndex = ungradedAttempts.findIndex((a) => a.id === attempt.id)
     const prevUngraded = currentUngradedIndex > 0 ? ungradedAttempts[currentUngradedIndex - 1] : null
     const nextUngraded =
       currentUngradedIndex >= 0 && currentUngradedIndex < ungradedAttempts.length - 1
@@ -172,6 +180,9 @@ export function AttemptDetail({
             <span className="text-sm font-semibold text-navy-900">
               {result.reviewStatus === 'graded' ? `${result.score} / ${maxPoints} points` : 'Awaiting instructor grade'}
             </span>
+            {attempt.teamName && (
+              <Badge>{`Team: ${attempt.teamName}`}</Badge>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -204,7 +215,7 @@ export function AttemptDetail({
         )}
 
         <SectionCard
-          title="Student board submission"
+          title={attempt.teamName ? `Team board submission · ${attempt.teamName}` : 'Student board submission'}
           description={`${studentCards.length} ${studentCards.length === 1 ? 'card' : 'cards'} · ${studentConnections.length} ${studentConnections.length === 1 ? 'connection' : 'connections'}`}
         >
           {studentCards.length === 0 ? (

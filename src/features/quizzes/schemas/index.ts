@@ -66,15 +66,17 @@ export function parseQuizSettings(value: unknown, mode: Quiz['mode']): QuizSetti
   if (parsedParticipation.type === 'group') {
     if (parsedParticipation.groupSize > GROUP_LIMITS.maxTeamSize) throw new DomainValidationError('groupSize cannot exceed 10')
     if (parsedParticipation.questionTimeSec !== null && parsedParticipation.questionTimeSec > GROUP_LIMITS.maxQuestionTimeSec) throw new DomainValidationError('questionTimeSec cannot exceed 300')
-    if (mode !== 'quiz') throw new DomainValidationError('Only quizzes can be taken as a group')
+    if (mode !== 'quiz' && mode !== 'canvas') throw new DomainValidationError('Only quizzes can be taken as a group')
+    if (mode === 'canvas') {
+      if (parsedParticipation.answerMode !== 'representative') throw new DomainValidationError('Canvas group quizzes must use representative answering')
+      if (parsedParticipation.waitForEveryone) throw new DomainValidationError('Canvas group quizzes do not support wait-for-everyone')
+      if (parsedParticipation.questionTimeSec !== null) throw new DomainValidationError('Canvas group quizzes do not support per-question timers')
+    }
   }
   const answerReveal = oneOf(settings.answerReveal, ['after_each', 'after_submit', 'never'] as const, 'answerReveal')
   const scoreVisibility = oneOf(settings.scoreVisibility, ['immediate', 'after_release', 'hidden'] as const, 'scoreVisibility')
   if (mode === 'flashcards' && (answerReveal !== 'never' || scoreVisibility !== 'hidden' || settings.scoresReleased !== false)) {
     throw new DomainValidationError('Flashcard quizzes must use neutral answer and score settings')
-  }
-  if (mode === 'canvas' && parsedParticipation.type !== 'individual') {
-    throw new DomainValidationError('Canvas quizzes must use individual participation')
   }
   const timeLimitMinutes = settings.timeLimitMinutes
   const attemptsAllowed = settings.attemptsAllowed

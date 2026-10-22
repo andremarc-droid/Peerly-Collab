@@ -84,12 +84,18 @@ export function summarizeAttempts(
   const best = bestAttempts(attemptsForScores)
   const scores = ungraded ? [] : best.flatMap(({ result }) => result && result.maxScore > 0 ? [result.score / result.maxScore * 100] : [])
   const average = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null
-  const needsGradingCount = attempts.filter((a) => {
-    if (a.status !== 'submitted') return false
-    if (a.result?.reviewStatus === 'pending') return true
-    if (isBlank && (!a.result || a.result.reviewStatus !== 'graded')) return true
-    return false
-  }).length
+  const needsGradingTeams = new Set<string>()
+  let needsGradingCount = 0
+  for (const a of attempts) {
+    if (a.status !== 'submitted') continue
+    const needs = a.result?.reviewStatus === 'pending' || (isBlank && (!a.result || a.result.reviewStatus !== 'graded'))
+    if (!needs) continue
+    if (a.teamId) {
+      if (needsGradingTeams.has(a.teamId)) continue
+      needsGradingTeams.add(a.teamId)
+    }
+    needsGradingCount++
+  }
   return {
     submissions: submitted.length,
     inProgress: attempts.filter(({ status }) => status === 'in_progress').length,

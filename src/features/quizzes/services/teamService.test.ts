@@ -12,9 +12,21 @@ vi.mock('firebase/functions', () => ({
 }))
 vi.mock('../../../lib/firebase/functions', () => ({ functions: {} }))
 vi.mock('../../../lib/firebase/firestore', () => ({ firestore: {} }))
+const writtenDocs: Array<{ path: string; data: unknown }> = []
+let mockGetDocResult: unknown = undefined
+
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, ...segments: string[]) => ({ path: segments.join('/') }),
   collection: (_db: unknown, ...segments: string[]) => ({ path: segments.join('/') }),
+  setDoc: (ref: { path: string }, data: unknown) => {
+    writtenDocs.push({ path: ref.path, data })
+    return Promise.resolve()
+  },
+  getDoc: (_ref: { path: string }) => Promise.resolve({
+    exists: () => mockGetDocResult !== undefined,
+    data: () => mockGetDocResult,
+  }),
+  serverTimestamp: () => 'SERVER_TIMESTAMP',
   onSnapshot: (ref: { path: string }, next: (snap: unknown) => void, error: (cause: Error) => void) => {
     h.listeners.push({ path: ref.path, next, error })
     return () => undefined
@@ -22,8 +34,8 @@ vi.mock('firebase/firestore', () => ({
 }))
 
 import {
-  addTeamMember, advanceTeam, cleanupGroupQuizData, createSelfTeam, createTeam, deleteTeam, describeTeamError, joinTeam, leaveTeam, lockTeamAnswer, overrideTeamQuestion, removeTeamMember,
-  setRepresentative, startTeamAttempt, submitTeamAnswer, submitTeamAttempt, watchMyTeamId, watchQuizTeams, watchReveals, watchTeam, watchTeamSession,
+  addTeamMember, advanceTeam, cleanupGroupQuizData, createSelfTeam, createTeam, deleteTeam, describeTeamError, getTeamBoard, joinTeam, leaveTeam, lockTeamAnswer, overrideTeamQuestion, removeTeamMember,
+  saveTeamBoard, setRepresentative, startTeamAttempt, submitTeamAnswer, submitTeamAttempt, watchMyTeamId, watchQuizTeams, watchReveals, watchTeam, watchTeamBoard, watchTeamSession,
 } from './teamService'
 
 const db = {} as Firestore
@@ -164,5 +176,42 @@ describe('live data', () => {
     expect(lastListener().path).toBe('quizzes/q/teams')
     lastListener().next({ docs: [{ id: 'b', data: () => ({ ...teamData, name: 'Wolves' }) }, { id: 'a', data: () => ({ ...teamData, name: 'Bears' }) }] })
     expect(seen).toEqual([['Bears', 'Wolves']])
+  })
+
+  it('watchTeamBoard watches quizzes/{quizId}/teamBoards/{teamId} and returns null on missing doc', () => {
+    const seen: Array<unknown> = []
+    watchTeamBoard('q1', 't1', b => seen.push(b), () => undefined, db)
+    expect(lastListener().path).toBe('quizzes/q1/teamBoards/t1')
+    lastListener().next(snapshot({ cards: [{ id: 'c1' }], connections: ['c1->c2'] }))
+    lastListener().next(snapshot(undefined))
+    expect(seen).toEqual([
+      { cards: [{ id: 'c1' }], connections: ['c1->c2'] },
+      null,
+    ])
+  })
+
+  it('saveTeamBoard writes to quizzes/{quizId}/teamBoards/{teamId} with server timestamp and uid', async () => {
+    writtenDocs.length = 0
+    await saveTeamBoard('q1', 't1', { cards: [{ id: 'c1' }], connections: ['c1->c2'] }, 'user-1', db)
+    expect(writtenDocs).toHaveLength(1)
+    expect(writtenDocs[0]).toEqual({
+      path: 'quizzes/q1/teamBoards/t1',
+      data: {
+        cards: [{ id: 'c1' }],
+        connections: ['c1->c2'],
+        updatedAt: 'SERVER_TIMESTAMP',
+        updatedBy: 'user-1',
+      },
+    })
+  })
+
+  it('getTeamBoard returns board data or null', async () => {
+    mockGetDocResult = { connections: ['a->b'] }
+    const result = await getTeamBoard('q1', 't1', db)
+    expect(result).toEqual({ cards: undefined, connections: ['a->b'] })
+
+    mockGetDocResult = undefined
+    const missing = await getTeamBoard('q1', 't1', db)
+    expect(missing).toBeNull()
   })
 })
