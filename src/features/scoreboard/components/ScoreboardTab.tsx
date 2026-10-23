@@ -15,7 +15,7 @@ import type { ScoreboardEntry, ScoreboardPeriod } from '../types'
 
 export function ScoreboardTab() {
   const { user, profile } = useAuth()
-  const [period, setPeriod] = useState<ScoreboardPeriod>('weekly')
+  const [period, setPeriod] = useState<ScoreboardPeriod>('allTime')
   const [entries, setEntries] = useState<ScoreboardEntry[]>([])
   const [userEntry, setUserEntry] = useState<ScoreboardEntry | undefined>()
   const [loading, setLoading] = useState(true)
@@ -132,22 +132,6 @@ export function ScoreboardTab() {
           <button
             type="button"
             role="tab"
-            aria-selected={period === 'weekly'}
-            onClick={() => {
-              setPeriod('weekly')
-              setLimitCount(50)
-            }}
-            className={`min-h-11 rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-navy-900 ${
-              period === 'weekly'
-                ? 'bg-navy-900 text-white'
-                : 'bg-navy-900-08 text-navy-900 hover:bg-navy-900-15'
-            }`}
-          >
-            This week
-          </button>
-          <button
-            type="button"
-            role="tab"
             aria-selected={period === 'allTime'}
             onClick={() => {
               setPeriod('allTime')
@@ -160,6 +144,22 @@ export function ScoreboardTab() {
             }`}
           >
             All time
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={period === 'weekly'}
+            onClick={() => {
+              setPeriod('weekly')
+              setLimitCount(50)
+            }}
+            className={`min-h-11 rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-navy-900 ${
+              period === 'weekly'
+                ? 'bg-navy-900 text-white'
+                : 'bg-navy-900-08 text-navy-900 hover:bg-navy-900-15'
+            }`}
+          >
+            This week
           </button>
         </div>
       </div>

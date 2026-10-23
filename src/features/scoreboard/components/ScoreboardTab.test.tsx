@@ -158,4 +158,33 @@ describe('ScoreboardTab', () => {
       expect(screen.queryByText("You're on the public scoreboard")).not.toBeInTheDocument()
     })
   })
+
+  it('defaults to the All time period and allows switching to This week', async () => {
+    vi.mocked(services.listScoreboardEntries).mockResolvedValue({
+      entries: [],
+      userEntry: undefined,
+    })
+    vi.mocked(services.callEnsureScoreboardEntry).mockResolvedValue({ optIn: true, created: false })
+
+    render(
+      <MemoryRouter>
+        <ScoreboardTab />
+      </MemoryRouter>,
+    )
+
+    const allTimeTab = screen.getByRole('tab', { name: /all time/i })
+    const weeklyTab = screen.getByRole('tab', { name: /this week/i })
+
+    expect(allTimeTab).toHaveAttribute('aria-selected', 'true')
+    expect(weeklyTab).toHaveAttribute('aria-selected', 'false')
+    expect(services.listScoreboardEntries).toHaveBeenCalledWith('allTime', 50, 'u1')
+
+    fireEvent.click(weeklyTab)
+    expect(weeklyTab).toHaveAttribute('aria-selected', 'true')
+    expect(allTimeTab).toHaveAttribute('aria-selected', 'false')
+    await waitFor(() => {
+      expect(services.listScoreboardEntries).toHaveBeenCalledWith('weekly', 50, 'u1')
+    })
+  })
 })
+
