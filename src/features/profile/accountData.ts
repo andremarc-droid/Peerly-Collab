@@ -9,6 +9,7 @@ import { deleteCanvasSubcollections } from '../learningCanvas/collab/cleanup'
 import { deleteQuizCascade } from '../quizzes/services/deleteQuizCascade'
 import { cleanupGroupQuizData } from '../quizzes/services/teamService'
 import { deleteMyTurnIns } from '../assignments/services/turnInService'
+import { deleteMyPublicDecks } from '../publicDecks/services'
 
 const PAGE = 100
 const DECK_SUBCOLLECTIONS = ['members', 'invites', 'activity', 'presence'] as const
@@ -112,6 +113,7 @@ export async function deleteAccountData(uid: string, role: UserRole | null, db: 
   // Group quizzes: takes this person off every team (a team left empty is deleted). If it fails, nothing
   // else is deleted and the Auth account stays, so the person can retry.
   await cleanupGroupQuizData()
+  await deleteMyPublicDecks(uid, db)
   await deleteLearningPlans(uid, db)
   await emptyCollection(db, 'users', uid, 'deckProgress')
   await emptyCollection(db, 'users', uid, 'studyAttempts')

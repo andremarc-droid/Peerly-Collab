@@ -26,7 +26,7 @@ export interface CleanupReport {
 }
 
 export function isEmulatorEnvironment(projectId: string): boolean {
-  if (Boolean(process.env.FIRESTORE_EMULATOR_HOST)) return true
+  if (process.env.FIRESTORE_EMULATOR_HOST) return true
   if (projectId.startsWith('demo-')) return true
   return false
 }

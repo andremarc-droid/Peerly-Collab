@@ -19,6 +19,10 @@ describe('resolveLearningTab', () => {
   it.each([
     ['flashcards', 'decks'], ['decks', 'decks'], ['notes', 'notes'],
     ['canvases', 'canvases'], ['canvas', 'canvases'], ['graph', 'canvases'],
+    ['lessons', 'lessons'],
+    ['publicDecks', 'publicDecks'], ['public-decks', 'publicDecks'], ['public', 'publicDecks'],
+    ['studyGroups', 'studyGroups'], ['study-groups', 'studyGroups'], ['groups', 'studyGroups'],
+    ['scoreboard', 'scoreboard'], ['scores', 'scoreboard'], ['leaderboard', 'scoreboard'],
     ['tutor', 'home'], ['unknown', 'home'], [null, 'home'],
   ] as const)('maps legacy tab %s to %s', (value, expected) => {
     expect(resolveLearningTab(value)).toBe(expected)

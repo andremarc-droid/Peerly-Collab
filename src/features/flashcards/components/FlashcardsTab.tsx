@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, Calendar, Edit3, Link2, Play, Plus, Search, Trash2, X } from 'lucide-react'
+import { Bot, Calendar, Edit3, Globe, Link2, Play, Plus, Search, Trash2, X } from 'lucide-react'
+import { collection, getDocs, query, where } from 'firebase/firestore'
+import { firestore } from '../../../lib/firebase/firestore'
 import { Alert } from '../../../shared/ui/Alert'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
@@ -16,6 +18,8 @@ import type { FlashcardDeckWithId } from '../types'
 import { DeckEditorDialog, type DeckEditorValues } from './DeckEditorDialog'
 import { FlashcardStudyDialog } from './FlashcardStudyDialog'
 import { DeckShareDialog } from './DeckShareDialog'
+import { PublishDeckConfirmDialog } from '../../publicDecks/components/PublishDeckConfirmDialog'
+import { unpublishPublicDeck } from '../../publicDecks/services'
 
 interface FlashcardsTabProps {
   decks: FlashcardDeckWithId[]
@@ -26,8 +30,9 @@ interface FlashcardsTabProps {
   onCreateDeck?: () => void
 }
 
-function statusLabel(deck: FlashcardDeckWithId, uid: string | undefined): string {
+function statusLabel(deck: FlashcardDeckWithId, uid: string | undefined, isPublic?: boolean): string {
   if (deck.sharedRole) return deck.sharedRole === 'editor' ? 'Shared · Can edit' : 'Shared · View only'
+  if (isPublic) return 'Public'
   if (deck.kind === 'personal') return 'Private'
   if (deck.ownerId !== uid) return 'From instructor'
   return deck.status === 'published' ? 'Published' : 'Draft'
@@ -54,7 +59,33 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error, on
   const [deleteTarget, setDeleteTarget] = useState<FlashcardDeckWithId | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [sharing, setSharing] = useState<FlashcardDeckWithId | null>(null)
+  const [myPublicDeckIds, setMyPublicDeckIds] = useState<Set<string>>(new Set())
+  const [publishingDeck, setPublishingDeck] = useState<FlashcardDeckWithId | null>(null)
   const presenceFailureShown = useRef(false)
+
+  useEffect(() => {
+    if (!uid) { setMyPublicDeckIds(new Set()); return }
+    let active = true
+    const q = query(collection(firestore, 'publicDecks'), where('ownerId', '==', uid))
+    getDocs(q).then((snap) => {
+      if (active) setMyPublicDeckIds(new Set(snap.docs.map((d) => d.id)))
+    }).catch(() => {})
+    return () => { active = false }
+  }, [uid])
+
+  const handleUnpublish = async (deck: FlashcardDeckWithId) => {
+    try {
+      await unpublishPublicDeck(deck.id)
+      setMyPublicDeckIds((prev) => {
+        const next = new Set(prev)
+        next.delete(deck.id)
+        return next
+      })
+      showToast('success', `"${deck.title}" is now private.`)
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : 'Could not unpublish deck.')
+    }
+  }
 
   const classNames = useMemo(() => new Map(classes.map((c) => [c.id, c.name])), [classes])
   const defaultClassId = selectedClassId !== 'all' ? selectedClassId : (classes[0]?.id ?? '')
@@ -233,7 +264,7 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error, on
                   </p>
                   <p className="m-0 text-sm font-semibold text-navy-900">
                     {deck.cardCount} {deck.cardCount === 1 ? 'card' : 'cards'} ·{' '}
-                    {statusLabel(deck, uid)}
+                    {statusLabel(deck, uid, myPublicDeckIds.has(deck.id))}
                   </p>
                 </article>
 
@@ -281,6 +312,28 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error, on
                         <Trash2 size={16} aria-hidden="true" />
                       </Button>}
                     </div>
+                  )}
+                  {deck.ownerId === uid && (
+                    myPublicDeckIds.has(deck.id) ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void handleUnpublish(deck)}
+                        aria-label={`Make deck "${deck.title}" private`}
+                      >
+                        <span>Unpublish</span>
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setPublishingDeck(deck)}
+                        aria-label={`Make deck "${deck.title}" public`}
+                      >
+                        <Globe size={16} aria-hidden="true" />
+                        <span>Make public</span>
+                      </Button>
+                    )
                   )}
                   {(canShare || deck.sharedRole) && (
                     <Button type="button" variant="secondary" onClick={() => setSharing(deck)} aria-label={`${canShare ? 'Share' : 'View people and activity for'} deck "${deck.title}"`}>
@@ -331,6 +384,19 @@ export function FlashcardsTab({ decks, classes, selectedClassId, role, error, on
           closeOnConfirm={false}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => void handleDelete()}
+        />
+      )}
+
+      {publishingDeck && (
+        <PublishDeckConfirmDialog
+          deck={publishingDeck}
+          authorDisplayName={user?.displayName || 'Peerly Learner'}
+          open
+          onClose={() => setPublishingDeck(null)}
+          onSuccess={() => {
+            setMyPublicDeckIds((prev) => new Set(prev).add(publishingDeck.id))
+            showToast('success', `"${publishingDeck.title}" is now public!`)
+          }}
         />
       )}
     </div>

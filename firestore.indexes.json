@@ -166,6 +166,22 @@
         { "fieldPath": "ownerId", "order": "ASCENDING" },
         { "fieldPath": "classId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "publicDecks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tags", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "publicDecks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tags", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "savesCount", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

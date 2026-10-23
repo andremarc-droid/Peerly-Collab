@@ -1797,9 +1797,66 @@ service cloud.firestore {
       allow get: if signedIn();
       allow list: if false;
       allow create: if signedIn() && validInviteCode(request.resource.data);
-      allow update, delete: if false;
+    // System admin role check: custom claim or active admin record. No hard-coded emails.
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.token.get('admin', false) == true
+        || (exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+            && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.get('active', false) == true)
+      );
     }
 
+    // Public flashcard decks.
+    // Signed-in users can read; only the owner can publish, update content, or unpublish.
+    // Saves counter cannot be modified by client writes.
+    match /publicDecks/{deckId} {
+      function validPublicDeck(data) {
+        return data.keys().hasOnly(['id', 'ownerId', 'authorDisplayName', 'title', 'description', 'tags', 'cardCount', 'cards', 'savesCount', 'publishedAt', 'updatedAt'])
+          && data.keys().hasAll(['id', 'ownerId', 'authorDisplayName', 'title', 'description', 'tags', 'cardCount', 'cards', 'savesCount', 'publishedAt', 'updatedAt'])
+          && data.id == deckId
+          && data.ownerId == request.auth.uid
+          && data.authorDisplayName is string && data.authorDisplayName.size() >= 1 && data.authorDisplayName.size() <= 80
+          && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+          && data.description is string && data.description.size() <= 300
+          && data.tags is list && data.tags.size() <= 10
+          && data.cardCount is int && data.cardCount >= 1 && data.cardCount <= 100
+          && data.cards is list && data.cards.size() == data.cardCount
+          && data.savesCount is int && data.savesCount >= 0
+          && data.publishedAt is timestamp
+          && data.updatedAt == request.time;
+      }
+      allow get, list: if signedIn();
+      allow create: if signedIn() && request.auth.uid == request.resource.data.ownerId
+        && validPublicDeck(request.resource.data)
+        && request.resource.data.savesCount == 0
+        && request.resource.data.publishedAt == request.time;
+      allow update: if signedIn() && request.auth.uid == resource.data.ownerId
+        && request.auth.uid == request.resource.data.ownerId
+        && validPublicDeck(request.resource.data)
+        && request.resource.data.publishedAt == resource.data.publishedAt
+        && request.resource.data.savesCount == resource.data.savesCount;
+      allow delete: if signedIn() && request.auth.uid == resource.data.ownerId;
+    }
+
+    // Reports against public decks: write-only for users; read/managed only by admins.
+    match /publicDeckReports/{reportId} {
+      function validReport(data) {
+        return data.keys().hasOnly(['deckId', 'reportedBy', 'reason', 'note', 'createdAt'])
+          && data.keys().hasAll(['deckId', 'reportedBy', 'reason', 'createdAt'])
+          && data.deckId is string && data.deckId.size() > 0 && data.deckId.size() <= 150
+          && data.reportedBy == request.auth.uid
+          && data.reason in ['inappropriate', 'spam', 'copyright', 'other']
+          && (!('note' in data) || (data.note is string && data.note.size() <= 500))
+          && data.createdAt == request.time;
+      }
+      allow create: if signedIn() && validReport(request.resource.data);
+      allow get, list, update, delete: if isAdmin();
+    }
+
+    // Public deck save tracking: written exclusively through Cloud Functions with Admin SDK.
+    match /publicDeckSaves/{saveId} {
+      allow read, write: if false;
+    }
 
     match /sharedTutorThreads/{threadId} {
       function threadPath() {

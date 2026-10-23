@@ -3,6 +3,7 @@ import { FieldPath, getFirestore } from 'firebase-admin/firestore'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
 import { isGraphOwner, parseGraphDeleteRequest } from './graphDeletionValidation.js'
+import { savePublicDeckHandler } from './publicDecks.js'
 import {
   addTeamMember as addTeamMemberHandler,
   advanceTeam as advanceTeamHandler,
@@ -92,6 +93,8 @@ export const deleteSharedGraph = onCall(
     }
   },
 )
+
+export const savePublicDeck = onCall({ region: 'us-central1', cors: true }, savePublicDeckHandler)
 
 // Group quizzes: the only code that writes team, session and team result data.
 export const createTeam = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(createTeamHandler))
