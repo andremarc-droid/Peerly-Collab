@@ -9,8 +9,6 @@ import { deleteCanvasSubcollections } from '../learningCanvas/collab/cleanup'
 import { deleteQuizCascade } from '../quizzes/services/deleteQuizCascade'
 import { cleanupGroupQuizData } from '../quizzes/services/teamService'
 import { deleteMyTurnIns } from '../assignments/services/turnInService'
-import { cleanupGroups } from '../groups/services'
-import { cleanupGames } from '../games/services'
 
 const PAGE = 100
 const DECK_SUBCOLLECTIONS = ['members', 'invites', 'activity', 'presence'] as const
@@ -111,11 +109,7 @@ async function deleteLearningPlans(uid: string, db: Firestore): Promise<void> {
  * the app to the role screen, and because every earlier step can be safely retried if it fails.
  */
 export async function deleteAccountData(uid: string, role: UserRole | null, db: Firestore = firestore): Promise<void> {
-  await cleanupGroups()
-  // Hosted games are deleted and the person is removed from the game they play. If this fails the error propagates,
-  // nothing else is deleted and the Auth account stays, so the person can simply retry.
-  await cleanupGames()
-  // Group quizzes: takes this person off every team (a team left empty is deleted). Same rule: if it fails, nothing
+  // Group quizzes: takes this person off every team (a team left empty is deleted). If it fails, nothing
   // else is deleted and the Auth account stays, so the person can retry.
   await cleanupGroupQuizData()
   await deleteLearningPlans(uid, db)

@@ -142,14 +142,6 @@
       ]
     },
     {
-      "collectionGroup": "groupMemberships",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "uid", "order": "ASCENDING" },
-        { "fieldPath": "joinedAt", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "quizzes",
       "queryScope": "COLLECTION",
       "fields": [
@@ -205,18 +197,6 @@
         { "order": "ASCENDING", "queryScope": "COLLECTION" },
         { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
       ]
-    },
-    {
-      "collectionGroup": "games",
-      "fieldPath": "expiresAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
-      "collectionGroup": "gameCodes",
-      "fieldPath": "expiresAt",
-      "ttl": true,
-      "indexes": []
     }
   ]
 }

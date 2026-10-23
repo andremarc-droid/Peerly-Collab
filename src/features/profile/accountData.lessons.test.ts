@@ -3,11 +3,8 @@ import { doc, getDoc, type Firestore } from 'firebase/firestore'
 import rules from '../../../firestore.rules?raw'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteAccountData } from './accountData'
-import { cleanupGroups } from '../groups/services'
 import { cleanupGroupQuizData } from '../quizzes/services/teamService'
 
-vi.mock('../groups/services', () => ({ cleanupGroups: vi.fn().mockResolvedValue({ success: true }) }))
-vi.mock('../games/services', () => ({ cleanupGames: vi.fn().mockResolvedValue({ success: true }) }))
 vi.mock('../quizzes/services/teamService', () => ({ cleanupGroupQuizData: vi.fn().mockResolvedValue({ removed: 0 }) }))
 
 let environment: RulesTestEnvironment
@@ -42,13 +39,6 @@ describe('deleteAccountData lesson cleanup', () => {
       expect((await getDoc(doc(admin, 'users/learner/stats/summary'))).exists()).toBe(false)
       expect((await getDoc(doc(admin, 'users/learner'))).exists()).toBe(false)
     })
-  })
-  it('cleans up group memberships before deleting the account profile', async () => {
-    const cleanup = vi.mocked(cleanupGroups)
-    cleanup.mockClear()
-    const db = environment.authenticatedContext('learner').firestore()
-    await deleteAccountData('learner', 'student', db as unknown as Firestore)
-    expect(cleanup).toHaveBeenCalledOnce()
   })
   it('takes the person off group quiz teams before deleting the account profile', async () => {
     const cleanup = vi.mocked(cleanupGroupQuizData)

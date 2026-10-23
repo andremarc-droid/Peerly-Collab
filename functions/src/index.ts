@@ -3,30 +3,6 @@ import { FieldPath, getFirestore } from 'firebase-admin/firestore'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
 import { isGraphOwner, parseGraphDeleteRequest } from './graphDeletionValidation.js'
-import { fetchTranscriptForUser, TranscriptFailure, youtubeTimedTextProvider } from './youtubeTranscript.js'
-import {
-  cleanupStudyGroups as cleanupStudyGroupsHandler,
-  createStudyGroup as createStudyGroupHandler,
-  deleteStudyGroup as deleteStudyGroupHandler,
-  joinStudyGroup as joinStudyGroupHandler,
-  leaveStudyGroup as leaveStudyGroupHandler,
-  previewStudyGroup as previewStudyGroupHandler,
-  removeStudyGroupMember as removeStudyGroupMemberHandler,
-  shareStudyItem as shareStudyItemHandler,
-  unshareStudyItem as unshareStudyItemHandler,
-} from './studyGroups.js'
-import {
-  advanceQuestion as advanceQuestionHandler,
-  cleanupGames as cleanupGamesHandler,
-  createGame as createGameHandler,
-  deleteGame as deleteGameHandler,
-  endGame as endGameHandler,
-  joinGame as joinGameHandler,
-  kickPlayer as kickPlayerHandler,
-  startGame as startGameHandler,
-  submitAnswer as submitAnswerHandler,
-  syncGame as syncGameHandler,
-} from './liveGames.js'
 import {
   addTeamMember as addTeamMemberHandler,
   advanceTeam as advanceTeamHandler,
@@ -116,56 +92,6 @@ export const deleteSharedGraph = onCall(
     }
   },
 )
-
-export const fetchYoutubeTranscript = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 30, memory: '256MiB' }, async call => {
-  const limits = {
-    async consume(uid: string, now: number, limit: number, windowMs: number): Promise<boolean> {
-      const ref = db.doc(`youtubeTranscriptRateLimits/${uid}`)
-      return db.runTransaction(async transaction => {
-        const snapshot = await transaction.get(ref)
-        const data = snapshot.data()
-        const startedAt = data?.windowStartedAt?.toMillis?.() as number | undefined
-        const count = typeof data?.count === 'number' ? data.count : 0
-        if (!startedAt || now - startedAt >= windowMs || now < startedAt) {
-          transaction.set(ref, { windowStartedAt: new Date(now), count: 1 })
-          return true
-        }
-        if (count >= limit) return false
-        transaction.update(ref, { count: count + 1 })
-        return true
-      })
-    },
-  }
-  try {
-    const result = await fetchTranscriptForUser(call.auth?.uid ?? null, call.data?.url, { provider: youtubeTimedTextProvider, limits })
-    return result
-  } catch (error) {
-    if (error instanceof TranscriptFailure) throw new HttpsError(error.code, error.message)
-    logger.error('Could not fetch YouTube transcript.', { error })
-    throw new HttpsError('internal', 'Transcript import failed. Paste the transcript instead.')
-  }
-})
-
-export const createStudyGroup = onCall({ region: 'us-central1', cors: true }, createStudyGroupHandler)
-export const deleteStudyGroup = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 540, memory: '1GiB' }, deleteStudyGroupHandler)
-export const previewStudyGroup = onCall({ region: 'us-central1', cors: true }, previewStudyGroupHandler)
-export const joinStudyGroup = onCall({ region: 'us-central1', cors: true }, joinStudyGroupHandler)
-export const leaveStudyGroup = onCall({ region: 'us-central1', cors: true }, leaveStudyGroupHandler)
-export const removeStudyGroupMember = onCall({ region: 'us-central1', cors: true }, removeStudyGroupMemberHandler)
-export const cleanupStudyGroups = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 540, memory: '1GiB' }, cleanupStudyGroupsHandler)
-export const shareStudyItem = onCall({ region: 'us-central1', cors: true }, shareStudyItemHandler)
-export const unshareStudyItem = onCall({ region: 'us-central1', cors: true }, unshareStudyItemHandler)
-
-export const createGame = onCall({ region: 'us-central1', cors: true }, createGameHandler)
-export const joinGame = onCall({ region: 'us-central1', cors: true }, joinGameHandler)
-export const startGame = onCall({ region: 'us-central1', cors: true }, startGameHandler)
-export const submitAnswer = onCall({ region: 'us-central1', cors: true }, submitAnswerHandler)
-export const advanceQuestion = onCall({ region: 'us-central1', cors: true }, advanceQuestionHandler)
-export const syncGame = onCall({ region: 'us-central1', cors: true }, syncGameHandler)
-export const endGame = onCall({ region: 'us-central1', cors: true }, endGameHandler)
-export const kickPlayer = onCall({ region: 'us-central1', cors: true }, kickPlayerHandler)
-export const deleteGame = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 120 }, deleteGameHandler)
-export const cleanupGames = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 300, memory: '512MiB' }, cleanupGamesHandler)
 
 // Group quizzes: the only code that writes team, session and team result data.
 export const createTeam = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(createTeamHandler))

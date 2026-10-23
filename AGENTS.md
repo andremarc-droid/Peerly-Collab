@@ -53,8 +53,7 @@ Peerly Collab is a quiz platform for effective, collaborative learning. Instruct
 - Editing a published quiz automatically unpublishes it to draft, allowing instructors to freely edit questions, options, and settings. Once republished, the changes immediately reflect on the student's side.
 - Participants, attempts, and results are separate subcollections. Attempts store responses and ordering but no score; results store grades separately so rules enforce score visibility.
 - Optional mastery round ("Practice missed questions") is available after submitting an instructor quiz to reinforce learning without mutating graded results.
-- Synchronized class-wide pacing for instructor quizzes supports self-paced, timed per question, and wait-for-everyone pacing via live sessions.
-- In live games, host can toggle the speed bonus (default off, rewarding mastery and accuracy over speed). Stuck group quiz teams can be advanced or overridden by the instructor.
+- Stuck group quiz teams can be advanced or overridden by the instructor.
 - Support multiple choice, true/false, identification, fill-in-the-blank, and flashcards. Flashcard quizzes use neutral reveal/score defaults and flashcards are not graded.
 - Validate untrusted domain payloads at runtime. Grade with pure functions and expose the service boundary as `gradeAttempt` so grading can move to a Cloud Function later.
 
