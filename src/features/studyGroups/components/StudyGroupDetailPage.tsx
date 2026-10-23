@@ -7,6 +7,7 @@ import {
   FileText,
   Network,
   RefreshCw,
+  Settings,
   Trash2,
   Users,
 } from 'lucide-react'
@@ -61,13 +62,14 @@ import { ItemPreviewDialog } from './ItemPreviewDialog'
 import { SharedItemsTabContent } from './SharedItemsTabContent'
 import { ShareItemDialog } from './ShareItemDialog'
 import { StudyGroupPreview } from './StudyGroupPreview'
+import { StudyGroupSettingsTab } from './StudyGroupSettingsTab'
 
 interface Props {
   groupId: string
   onBack: () => void
 }
 
-type TabType = 'decks' | 'canvases' | 'lessons' | 'notes' | 'activity' | 'members'
+type TabType = 'decks' | 'canvases' | 'lessons' | 'notes' | 'activity' | 'members' | 'settings'
 
 export function StudyGroupDetailPage({ groupId, onBack }: Props) {
   const { user } = useAuth()
@@ -411,99 +413,115 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
     )
   }
 
-  const tabDefs: Array<{ id: TabType; label: string; count: number; icon: any }> = [
+  const tabDefs: Array<{ id: TabType; label: string; count?: number; icon: any }> = [
     { id: 'decks', label: 'Decks', count: decks.length, icon: BookOpen },
     { id: 'canvases', label: 'Canvases', count: canvases.length, icon: Network },
     { id: 'lessons', label: 'Lessons', count: lessons.length, icon: FileText },
     { id: 'notes', label: 'Notes', count: notes.length, icon: FileText },
     { id: 'activity', label: 'Activity', count: activity.length, icon: Clock },
     { id: 'members', label: 'Members', count: members.length, icon: Users },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ]
 
   return (
     <div className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="secondary" onClick={onBack}>
+        <Button variant="secondary" onClick={onBack} className="min-h-11">
           <ArrowLeft size={16} aria-hidden="true" />
           All study groups
         </Button>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={tab === 'settings' ? 'primary' : 'secondary'}
+            onClick={() => setTab('settings')}
+            className="min-h-11"
+          >
+            <Settings size={16} aria-hidden="true" />
+            Settings
+          </Button>
           {isOwner ? (
-            <Button variant="ghost" onClick={() => setDeleteOpen(true)}>
+            <Button variant="ghost" onClick={() => setDeleteOpen(true)} className="min-h-11 text-red-600 hover:bg-red-50">
               <Trash2 size={16} aria-hidden="true" />
               Delete group
             </Button>
           ) : (
-            <Button variant="secondary" onClick={() => setLeaveOpen(true)}>
+            <Button variant="secondary" onClick={() => setLeaveOpen(true)} className="min-h-11">
               Leave group
             </Button>
           )}
         </div>
       </div>
 
-      <header className="rounded-3xl border border-navy-900-15 bg-white p-6 shadow-sm grid gap-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="grid gap-1">
+      <header className="rounded-3xl border border-navy-900-15 bg-white p-4 sm:p-6 shadow-sm grid gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="grid gap-1.5 min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <Badge>{group.privacy === 'public' ? 'Public group' : 'Private group'}</Badge>
-              <span className="text-sm text-navy-900-72 flex items-center gap-1">
+              <span className="text-xs sm:text-sm text-navy-900-72 flex items-center gap-1">
                 <Users size={14} aria-hidden="true" />
                 {members.length > 0 ? members.length : group.memberCount} / {group.maxMembers} members
               </span>
-              <span className="text-sm text-navy-900-72">· {sharedItems.length} shared items</span>
+              <span className="text-xs sm:text-sm text-navy-900-72">· {sharedItems.length} shared items</span>
             </div>
             {renaming ? (
-              <div className="flex items-center gap-2 mt-2">
+              <div className="flex flex-wrap items-center gap-2 mt-2">
                 <Input
                   label="Rename group"
                   name="new-name"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   maxLength={80}
+                  className="flex-1 min-w-44"
                 />
                 <Button variant="primary" onClick={() => void handleRename()}>Save</Button>
                 <Button variant="secondary" onClick={() => setRenaming(false)}>Cancel</Button>
               </div>
             ) : (
-              <h2 className="m-0 text-2xl font-bold text-navy-900 flex items-center gap-3">
-                {group.name}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h2 className="m-0 text-2xl sm:text-3xl font-extrabold text-navy-900 tracking-tight break-words">
+                  {group.name}
+                </h2>
                 {isOwner && (
                   <button
                     type="button"
                     onClick={() => setRenaming(true)}
-                    className="text-xs text-navy-900-72 underline hover:text-navy-900"
+                    className="text-xs font-semibold text-navy-900-72 underline hover:text-navy-900 min-h-8 px-1 inline-flex items-center"
                   >
                     Rename
                   </button>
                 )}
-              </h2>
+              </div>
             )}
-            {group.description && <p className="m-0 text-base text-navy-900 mt-1">{group.description}</p>}
+            {group.description && <p className="m-0 text-sm sm:text-base text-navy-900-72 mt-1 leading-relaxed">{group.description}</p>}
           </div>
 
-          <div className="rounded-2xl border border-navy-900-15 bg-navy-900-05 p-3.5 text-center min-w-44">
-            <span className="text-xs font-semibold uppercase text-navy-900-72">Invite code</span>
-            <div className="text-xl font-mono font-bold text-navy-900 tracking-wider my-1">
-              {group.inviteCode}
+          <div className="w-full sm:w-auto sm:min-w-48 shrink-0 rounded-2xl border border-navy-900-15 bg-navy-900-05 p-3.5 text-center flex sm:flex-col items-center justify-between sm:justify-center gap-2">
+            <div className="text-left sm:text-center">
+              <span className="text-xs font-semibold uppercase text-navy-900-72 tracking-wider">Invite code</span>
+              <div className="text-xl sm:text-2xl font-mono font-bold text-navy-900 tracking-widest my-0.5 sm:my-1">
+                {group.inviteCode}
+              </div>
             </div>
-            <div className="flex items-center justify-center gap-1">
-              <button
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
                 type="button"
+                variant="primary"
                 onClick={() => void copyCode()}
-                className="inline-flex items-center gap-1 text-xs font-medium text-navy-900 hover:underline min-h-8 px-2"
+                className="min-h-9 text-xs px-3"
               >
                 <Copy size={12} aria-hidden="true" />
                 Copy
-              </button>
+              </Button>
               {isOwner && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => void handleRegenerateCode()}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-navy-900 hover:underline min-h-8 px-2"
+                  className="min-h-9 text-xs px-2.5"
                 >
                   <RefreshCw size={12} aria-hidden="true" />
                   New
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -511,7 +529,7 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
       </header>
 
       {/* Group Navigation Tabs (44px touch target) */}
-      <div className="flex flex-wrap gap-2 border-b border-navy-900-15 pb-2" role="tablist" aria-label="Study group tabs">
+      <div className="flex overflow-x-auto no-scrollbar gap-2 border-b border-navy-900-15 pb-2 -mx-2 px-2 sm:mx-0 sm:px-0 sm:flex-wrap" role="tablist" aria-label="Study group tabs">
         {tabDefs.map((t) => {
           const Icon = t.icon
           const active = tab === t.id
@@ -522,15 +540,17 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
               role="tab"
               aria-selected={active}
               onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 min-h-11 rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-navy-900 ${
-                active ? 'bg-navy-900 text-white' : 'bg-navy-900-08 text-navy-900 hover:bg-navy-900-15'
+              className={`shrink-0 flex items-center gap-2 min-h-11 rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-navy-900 ${
+                active ? 'bg-navy-900 text-white shadow-xs' : 'bg-navy-900-08 text-navy-900 hover:bg-navy-900-15'
               }`}
             >
               <Icon size={16} aria-hidden="true" />
               <span>{t.label}</span>
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20' : 'bg-navy-900-10'}`}>
-                {t.count}
-              </span>
+              {t.count !== undefined && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20' : 'bg-navy-900-10'}`}>
+                  {t.count}
+                </span>
+              )}
             </button>
           )
         })}
@@ -694,6 +714,18 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
             </ul>
           )}
         </section>
+      )}
+
+      {tab === 'settings' && (
+        <StudyGroupSettingsTab
+          group={group}
+          isOwner={isOwner}
+          onUpdateGroup={(updated) => setGroup(updated)}
+          onCopyCode={copyCode}
+          onRegenerateCode={handleRegenerateCode}
+          onDeleteGroup={() => setDeleteOpen(true)}
+          onLeaveGroup={() => setLeaveOpen(true)}
+        />
       )}
 
       {/* Share Dialog */}

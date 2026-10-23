@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, FileText, Network, Plus } from 'lucide-react'
 import { Alert } from '../../../shared/ui/Alert'
-import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { Dialog } from '../../../shared/ui/Dialog'
 import { EmptyState } from '../../../shared/ui/EmptyState'
@@ -212,7 +211,7 @@ export function ShareItemDialog({
         {currentError && <Alert tone="error" label="Could not load items">{currentError}</Alert>}
 
         {/* Kind Picker Tabs (44px touch target) */}
-        <div className="flex flex-wrap gap-2 border-b border-navy-900-15 pb-2" role="tablist" aria-label="Select material type">
+        <div className="flex overflow-x-auto no-scrollbar sm:flex-wrap gap-2 border-b border-navy-900-15 pb-2 -mx-1 px-1" role="tablist" aria-label="Select material type">
           {kindOptions.map((opt) => {
             const Icon = opt.icon
             const active = kind === opt.kind
@@ -226,8 +225,8 @@ export function ShareItemDialog({
                   setKind(opt.kind)
                   setSelectedItem(null)
                 }}
-                className={`flex items-center gap-2 min-h-11 rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-navy-900 ${
-                  active ? 'bg-navy-900 text-white' : 'bg-navy-900-08 text-navy-900 hover:bg-navy-900-15'
+                className={`shrink-0 flex items-center gap-2 min-h-11 rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-navy-900 ${
+                  active ? 'bg-navy-900 text-white shadow-xs' : 'bg-navy-900-08 text-navy-900 hover:bg-navy-900-15'
                 }`}
               >
                 <Icon size={16} aria-hidden="true" />
@@ -249,7 +248,7 @@ export function ShareItemDialog({
             description={`Create or save ${kindOptions.find((k) => k.kind === kind)?.label.toLowerCase()} in your library first, then share them here.`}
           />
         ) : (
-          <div className="max-h-60 overflow-y-auto grid gap-2 pr-1" role="radiogroup" aria-label={`Choose ${kind} to share`}>
+          <div className="max-h-72 sm:max-h-80 overflow-y-auto grid gap-2.5 pr-2 p-0.5" role="radiogroup" aria-label={`Choose ${kind} to share`}>
             {currentItems.map((item) => {
               const isSelected = selectedItem?.id === item.id
               return (
@@ -259,19 +258,25 @@ export function ShareItemDialog({
                   role="radio"
                   aria-checked={isSelected}
                   onClick={() => setSelectedItem(item)}
-                  className={`flex flex-col text-left rounded-2xl border p-3.5 min-h-12 transition focus:outline-none focus:ring-2 focus:ring-navy-900 ${
+                  className={`group flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-left rounded-2xl border p-3.5 transition overflow-hidden focus:outline-none focus:ring-2 focus:ring-navy-900 ${
                     isSelected
-                      ? 'border-navy-900 bg-navy-900-08'
-                      : 'border-navy-900-15 bg-white hover:border-navy-900-30'
+                      ? 'border-navy-900 bg-navy-900-08 shadow-xs ring-1 ring-navy-900'
+                      : 'border-navy-900-15 bg-white hover:border-navy-900-30 hover:bg-navy-900-02'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-navy-900 text-sm">{item.title}</span>
-                    <Badge>{item.hint}</Badge>
+                  <div className="min-w-0 flex-1">
+                    <span className="font-bold text-navy-900 text-sm sm:text-base block truncate">
+                      {item.title}
+                    </span>
+                    {item.summary && (
+                      <span className="text-xs text-navy-900-72 mt-0.5 line-clamp-1 block">
+                        {item.summary}
+                      </span>
+                    )}
                   </div>
-                  {item.summary && (
-                    <span className="text-xs text-navy-900-72 mt-1 line-clamp-1">{item.summary}</span>
-                  )}
+                  <span className="shrink-0 self-start sm:self-center inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-navy-900-08 text-navy-900 border border-navy-900-15 whitespace-nowrap">
+                    {item.hint}
+                  </span>
                 </button>
               )
             })}
@@ -280,22 +285,22 @@ export function ShareItemDialog({
 
         {/* Selected Item Preview & Snapshot Notice */}
         {selectedItem && (
-          <div className="rounded-2xl border border-navy-900-10 bg-navy-900-05 p-4 grid gap-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-navy-900">Snapshot preview: {selectedItem.title}</span>
-              <span className="text-xs text-navy-900-72 capitalize">{selectedItem.kind}</span>
+          <div className="rounded-2xl border border-navy-900-10 bg-navy-900-05 p-3.5 sm:p-4 grid gap-1.5 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-navy-900 truncate">Snapshot preview: {selectedItem.title}</span>
+              <span className="text-xs text-navy-900-72 capitalize shrink-0">{selectedItem.kind}</span>
             </div>
-            <p className="m-0 text-xs text-navy-900-72">
+            <p className="m-0 text-xs text-navy-900-72 leading-relaxed">
               Group members will receive a read-only snapshot copy. They cannot modify or see your personal private document.
             </p>
           </div>
         )}
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-navy-900-10">
-          <Button variant="secondary" onClick={onClose} disabled={busy}>
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 border-t border-navy-900-10">
+          <Button variant="secondary" onClick={onClose} disabled={busy} className="min-h-11 w-full sm:w-auto">
             Cancel
           </Button>
-          <Button variant="primary" onClick={() => void handleShare()} disabled={busy || !selectedItem}>
+          <Button variant="primary" onClick={() => void handleShare()} disabled={busy || !selectedItem} className="min-h-11 w-full sm:w-auto">
             <Plus size={16} aria-hidden="true" />
             {busy ? 'Sharing…' : 'Share snapshot with group'}
           </Button>

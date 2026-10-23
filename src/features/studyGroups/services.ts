@@ -32,6 +32,7 @@ import type {
   StudyGroup,
   StudyGroupActivity,
   StudyGroupMember,
+  StudyGroupPrivacy,
 } from './types'
 
 export async function createStudyGroup(
@@ -281,6 +282,47 @@ export async function renameStudyGroup(
     name: newName.trim(),
     updatedAt: serverTimestamp(),
   })
+}
+
+export async function updateStudyGroupPrivacy(
+  groupId: string,
+  privacy: StudyGroupPrivacy,
+  db: Firestore = firestore,
+): Promise<void> {
+  if (privacy !== 'public' && privacy !== 'private') {
+    throw new Error('Invalid privacy setting.')
+  }
+  await updateDoc(doc(db, 'studyGroups', groupId), {
+    privacy,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function updateStudyGroupSettings(
+  groupId: string,
+  updates: { name?: string; description?: string; privacy?: StudyGroupPrivacy },
+  db: Firestore = firestore,
+): Promise<void> {
+  const patch: Record<string, unknown> = {
+    updatedAt: serverTimestamp(),
+  }
+  if (updates.name !== undefined) {
+    const check = validateGroupName(updates.name)
+    if (!check.valid) throw new Error(check.error)
+    patch.name = updates.name.trim()
+  }
+  if (updates.description !== undefined) {
+    const check = validateGroupDescription(updates.description)
+    if (!check.valid) throw new Error(check.error)
+    patch.description = (updates.description ?? '').trim().slice(0, 300)
+  }
+  if (updates.privacy !== undefined) {
+    if (updates.privacy !== 'public' && updates.privacy !== 'private') {
+      throw new Error('Invalid privacy setting.')
+    }
+    patch.privacy = updates.privacy
+  }
+  await updateDoc(doc(db, 'studyGroups', groupId), patch)
 }
 
 export async function regenerateGroupInviteCode(
