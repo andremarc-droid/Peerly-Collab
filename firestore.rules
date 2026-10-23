@@ -555,7 +555,7 @@ service cloud.firestore {
     }
 
     match /classes/{classId} {
-      allow get, list: if signedIn() && (resource.data.ownerId == request.auth.uid || isActiveMember(classId));
+      allow get, list: if signedIn() && (resource.data.get('ownerId', '') == request.auth.uid || isActiveMember(classId));
       allow create: if isInstructor()
         && isEmailVerified()
         && request.resource.data.ownerId == request.auth.uid
@@ -585,7 +585,7 @@ service cloud.firestore {
             && (data.publishedAt == null || data.publishedAt is timestamp);
         }
         function owner() { return isClassOwner(classId) && resource.data.ownerId == request.auth.uid; }
-        allow get, list: if isClassOwner(classId) || (isActiveMember(classId) && resource.data.status == 'published');
+        allow get, list: if isClassOwner(classId) || (isActiveMember(classId) && resource.data.get('status', '') == 'published');
         allow create: if isClassOwner(classId) && request.resource.data.ownerId == request.auth.uid && validModule(request.resource.data);
         allow update: if isClassOwner(classId) && request.resource.data.ownerId == resource.data.ownerId
           && request.resource.data.createdAt == resource.data.createdAt && validModule(request.resource.data);
@@ -1366,8 +1366,8 @@ service cloud.firestore {
       allow get: if signedIn()
         && ((!exists(/databases/$(database)/documents/enrollments/$(enrollmentId))
             && enrollmentId.matches('^.+_' + request.auth.uid + '$'))
-          || resource.data.uid == request.auth.uid || resource.data.ownerId == request.auth.uid);
-      allow list: if signedIn() && (resource.data.uid == request.auth.uid || resource.data.ownerId == request.auth.uid);
+          || resource.data.get('uid', '') == request.auth.uid || resource.data.get('ownerId', '') == request.auth.uid);
+      allow list: if signedIn() && (resource.data.get('uid', '') == request.auth.uid || resource.data.get('ownerId', '') == request.auth.uid);
       allow create: if isStudent()
         && isEmailVerified()
         && request.resource.data.uid == request.auth.uid
@@ -1581,13 +1581,13 @@ service cloud.firestore {
     match /quizzes/{quizId} {
       allow get: if quizSignedIn()
         && (!exists(/databases/$(database)/documents/quizzes/$(quizId))
-          || resource.data.ownerId == request.auth.uid
-        || (isStudent() && resource.data.status == 'published'
-          && resource.data.mode != 'canvas'
+          || resource.data.get('ownerId', null) == request.auth.uid
+        || (isStudent() && resource.data.get('status', null) == 'published'
+          && resource.data.get('mode', null) != 'canvas'
           && resource.data.get('classId', null) is string && isActiveMember(resource.data.classId)));
-      allow list: if quizSignedIn() && (resource.data.ownerId == request.auth.uid
-        || (isStudent() && resource.data.status == 'published'
-          && resource.data.mode != 'canvas'
+      allow list: if quizSignedIn() && (resource.data.get('ownerId', null) == request.auth.uid
+        || (isStudent() && resource.data.get('status', null) == 'published'
+          && resource.data.get('mode', null) != 'canvas'
           && resource.data.get('classId', null) is string && isActiveMember(resource.data.classId)));
       allow create: if isInstructor()
         && isEmailVerified()
