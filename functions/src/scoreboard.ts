@@ -1,5 +1,6 @@
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
-import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https'
+import type { CallableRequest } from 'firebase-functions/v2/https'
+import { HttpsError } from './httpsErrors.js'
 import type { Change, FirestoreEvent } from 'firebase-functions/v2/firestore'
 import type { DocumentSnapshot } from 'firebase-admin/firestore'
 import {

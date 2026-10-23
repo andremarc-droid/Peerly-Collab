@@ -1,5 +1,6 @@
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
-import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https'
+import type { CallableRequest } from 'firebase-functions/v2/https'
+import { HttpsError } from './httpsErrors.js'
 
 export interface JoinStudyGroupData {
   inviteCode?: string

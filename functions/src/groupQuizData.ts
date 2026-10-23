@@ -3,29 +3,8 @@ import type { CallableRequest } from 'firebase-functions/v2/https'
 import { GroupQuizError, parseGroupSettings, type Answer, type GroupSettings, type SessionPhase, type TeamStatus } from './groupQuizLogic.js'
 import { consumeRateWindow, type RateWindow } from './groupQuizRequests.js'
 
-/**
- * Minimal HttpsError replacement that works both on Cloud Functions (where firebase-functions
- * provides the real class) and on Vercel (where importing firebase-functions crashes because
- * its init code contacts Google's Cloud Run metadata server which doesn't exist on Vercel).
- * Matches the shape that index.ts and the Vercel API route expect.
- */
-export class HttpsError extends Error {
-  readonly code: string
-  readonly httpErrorCode: { status: number }
-  constructor(code: string, message: string) {
-    super(message)
-    this.name = 'HttpsError'
-    this.code = code
-    const statusMap: Record<string, number> = {
-      'ok': 200, 'cancelled': 499, 'unknown': 500, 'invalid-argument': 400,
-      'deadline-exceeded': 504, 'not-found': 404, 'already-exists': 409,
-      'permission-denied': 403, 'resource-exhausted': 429, 'failed-precondition': 400,
-       'aborted': 409, 'out-of-range': 400, 'unimplemented': 501, 'internal': 500,
-      'unavailable': 503, 'data-loss': 500, 'unauthenticated': 401,
-    }
-    this.httpErrorCode = { status: statusMap[code] ?? 500 }
-  }
-}
+import { HttpsError, type FunctionsErrorCode } from './httpsErrors.js'
+export { HttpsError, type FunctionsErrorCode }
 
 /**
  * Shared helpers for the group quiz callables. The Firestore handle is created lazily: index.ts calls initializeApp() AFTER its

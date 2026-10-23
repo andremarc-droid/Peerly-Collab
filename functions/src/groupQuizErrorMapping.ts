@@ -32,3 +32,6 @@ export function wrapGroupQuizHandler<I, O>(handler: (call: CallableRequest<I>) =
     }
   }
 }
+
+export const wrapCallableHandler = wrapGroupQuizHandler
+

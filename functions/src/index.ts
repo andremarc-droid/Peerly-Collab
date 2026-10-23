@@ -35,7 +35,7 @@ import {
   submitTeamAnswer as submitTeamAnswerHandler,
   submitTeamAttempt as submitTeamAttemptHandler,
 } from './groupQuizzes.js'
-import { wrapGroupQuizHandler } from './groupQuizErrorMapping.js'
+import { wrapCallableHandler, wrapGroupQuizHandler } from './groupQuizErrorMapping.js'
 
 initializeApp()
 
@@ -108,7 +108,7 @@ export const deleteSharedGraph = onCall(
   },
 )
 
-export const savePublicDeck = onCall({ region: 'us-central1', cors: true }, savePublicDeckHandler)
+export const savePublicDeck = onCall({ region: 'us-central1', cors: true }, wrapCallableHandler(savePublicDeckHandler))
 
 // Group quizzes: the only code that writes team, session and team result data.
 export const createTeam = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(createTeamHandler))
@@ -127,12 +127,12 @@ export const overrideTeamQuestion = onCall({ region: 'us-central1', cors: true }
 export const submitTeamAttempt = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 120 }, wrapGroupQuizHandler(submitTeamAttemptHandler))
 export const cleanupGroupQuizData = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 300, memory: '512MiB' }, wrapGroupQuizHandler(cleanupGroupQuizDataHandler))
 
-export const joinStudyGroup = onCall({ region: 'us-central1', cors: true }, joinStudyGroupHandler)
-export const leaveStudyGroup = onCall({ region: 'us-central1', cors: true }, leaveStudyGroupHandler)
-export const removeStudyGroupMember = onCall({ region: 'us-central1', cors: true }, removeStudyGroupMemberHandler)
+export const joinStudyGroup = onCall({ region: 'us-central1', cors: true }, wrapCallableHandler(joinStudyGroupHandler))
+export const leaveStudyGroup = onCall({ region: 'us-central1', cors: true }, wrapCallableHandler(leaveStudyGroupHandler))
+export const removeStudyGroupMember = onCall({ region: 'us-central1', cors: true }, wrapCallableHandler(removeStudyGroupMemberHandler))
 
-export const ensureScoreboardEntry = onCall({ region: 'us-central1', cors: true }, ensureScoreboardEntryHandler)
-export const updateScoreboardOptIn = onCall({ region: 'us-central1', cors: true }, updateScoreboardOptInHandler)
+export const ensureScoreboardEntry = onCall({ region: 'us-central1', cors: true }, wrapCallableHandler(ensureScoreboardEntryHandler))
+export const updateScoreboardOptIn = onCall({ region: 'us-central1', cors: true }, wrapCallableHandler(updateScoreboardOptInHandler))
 export const syncStatsSummaryToScoreboard = onDocumentWritten(
   { document: 'users/{uid}/stats/summary', region: 'us-central1' },
   syncStatsSummaryToScoreboardHandler,
