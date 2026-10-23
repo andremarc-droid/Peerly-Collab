@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Flame, Sparkles, TrendingUp } from 'lucide-react'
+import { Flame, Star, TrendingUp } from 'lucide-react'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { Dialog } from '../../shared/ui/Dialog'
@@ -49,7 +49,7 @@ export function StatsHome({ uid }: { uid: string }) {
     <StatRow label="Your study stats">
       <StatTile label="Streak" value={`${streak} ${streak === 1 ? 'day' : 'days'}`} hint="Consecutive local study days" icon={<Flame size={17}/>}/>
       <StatTile label="Level" value={`Level ${level.level}`} hint={`${level.xpToNextLevel} XP to the next level`} icon={<TrendingUp size={17}/>}/>
-      <StatTile label="Total XP" value={String(stats.xp)} hint={`${stats.totalReviews} card reviews`} icon={<Sparkles size={17}/>}/>
+      <StatTile label="Total XP" value={String(stats.xp)} hint={`${stats.totalReviews} card reviews`} icon={<Star size={17}/>}/>
     </StatRow>
     <section className="grid min-w-0 gap-3 rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm" aria-labelledby="daily-goal-heading">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3"><h2 id="daily-goal-heading" className="m-0 text-lg font-bold text-navy-900">Daily goal</h2><Button variant="secondary" onClick={() => { setGoal(stats.dailyGoalXp); setGoalError(null); setGoalOpen(true) }}>Change goal</Button></div>

@@ -14,7 +14,7 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { firestore } from '../../lib/firebase/firestore'
 import { functions } from '../../lib/firebase/functions'
-import type { ScoreboardEntry, ScoreboardPeriod, ScoreboardRankingResult, StudyEventType } from './types'
+import type { ScoreboardEntry, ScoreboardPeriod, ScoreboardRankingResult } from './types'
 
 export async function listScoreboardEntries(
   period: ScoreboardPeriod,
@@ -62,19 +62,16 @@ export async function listScoreboardEntries(
   return { entries, userEntry }
 }
 
-export async function callRecordStudyEvent(
-  eventType: StudyEventType,
-  count = 1,
-): Promise<{ awardedPoints: number; totalDailyPoints: number }> {
+export async function callEnsureScoreboardEntry(): Promise<{ optIn: boolean; created?: boolean }> {
   try {
-    const fn = httpsCallable<
-      { eventType: StudyEventType; count: number },
-      { awardedPoints: number; totalDailyPoints: number }
-    >(functions, 'recordStudyEvent')
-    const res = await fn({ eventType, count })
+    const fn = httpsCallable<void, { optIn: boolean; created?: boolean }>(
+      functions,
+      'ensureScoreboardEntry',
+    )
+    const res = await fn()
     return res.data
   } catch {
-    return { awardedPoints: 0, totalDailyPoints: 0 }
+    return { optIn: true }
   }
 }
 

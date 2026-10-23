@@ -1,47 +1,44 @@
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https'
-
-export type StudyEventType = 'card_mastered' | 'practice_completed' | 'quiz_completed'
-
-export interface RecordStudyEventData {
-  eventType: StudyEventType
-  count?: number
-}
+import type { Change, FirestoreEvent } from 'firebase-functions/v2/firestore'
+import type { DocumentSnapshot } from 'firebase-admin/firestore'
+import {
+  calculateCappedDelta,
+  DAILY_SCOREBOARD_CAP,
+  getTodayKeyUtc,
+  resolveAvatar,
+  resolveDisplayName,
+  resolveScoreboardOptIn,
+  type ScoreboardUserFields,
+} from './scoreboardLogic.js'
 
 export interface UpdateScoreboardOptInData {
   optIn: boolean
   displayName?: string
 }
 
-export const POINT_VALUES: Record<StudyEventType, number> = {
-  card_mastered: 5,
-  practice_completed: 25,
-  quiz_completed: 50,
-}
+/**
+ * Triggered whenever a user's stats summary document is written.
+ * When `xp` increases, awards the capped delta to weekly and allTime scoreboard
+ * entries if the user is currently opted in.
+ */
+export async function syncStatsSummaryToScoreboardHandler(
+  event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { uid: string }>,
+): Promise<{ awardedPoints: number; totalDailyPoints: number } | null> {
+  if (!event.data) return null
 
-export const DAILY_CAPS: Record<StudyEventType, number> = {
-  card_mastered: 100,
-  practice_completed: 50,
-  quiz_completed: 100,
-}
+  const uid = event.params.uid
+  const beforeData = event.data.before?.exists ? event.data.before.data() : null
+  const afterData = event.data.after?.exists ? event.data.after.data() : null
 
-export const TOTAL_DAILY_CAP = 250
+  if (!afterData) return null // Stats doc deleted
 
-export function getTodayKeyUtc(date = new Date()): string {
-  return date.toISOString().slice(0, 10)
-}
+  const oldXp = (beforeData?.xp as number) ?? 0
+  const newXp = (afterData.xp as number) ?? 0
+  const delta = newXp - oldXp
 
-export async function recordStudyEventHandler(
-  request: CallableRequest<RecordStudyEventData>,
-): Promise<{ awardedPoints: number; totalDailyPoints: number }> {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'You must be signed in to record study points.')
-  }
-
-  const uid = request.auth.uid
-  const { eventType, count = 1 } = request.data || {}
-  if (!eventType || !(eventType in POINT_VALUES)) {
-    throw new HttpsError('invalid-argument', 'Valid study eventType is required.')
+  if (delta <= 0) {
+    return { awardedPoints: 0, totalDailyPoints: 0 }
   }
 
   const db = getFirestore()
@@ -51,96 +48,249 @@ export async function recordStudyEventHandler(
   const weeklyEntryRef = db.doc(`scoreboard/weekly/entries/${uid}`)
   const allTimeEntryRef = db.doc(`scoreboard/allTime/entries/${uid}`)
 
-  const result = await db.runTransaction(async (transaction) => {
+  return await db.runTransaction(async (transaction) => {
+    const userSnap = await transaction.get(userRef)
+    const userData = (userSnap.data() as ScoreboardUserFields) || {}
+    const isOptedIn = resolveScoreboardOptIn(userData)
+
+    if (!isOptedIn) {
+      return { awardedPoints: 0, totalDailyPoints: 0 }
+    }
+
     const logSnap = await transaction.get(logRef)
-    const currentLog = logSnap.data() || {
-      total: 0,
-      card_mastered: 0,
-      practice_completed: 0,
-      quiz_completed: 0,
-    }
+    const currentDailyTotal = logSnap.exists ? ((logSnap.data()?.total as number) ?? 0) : 0
+    const pointsToAward = calculateCappedDelta(currentDailyTotal, delta, DAILY_SCOREBOARD_CAP)
 
-    const currentTypePoints = (currentLog[eventType] as number) ?? 0
-    const currentTotal = (currentLog.total as number) ?? 0
-
-    if (currentTotal >= TOTAL_DAILY_CAP) {
-      return { awardedPoints: 0, totalDailyPoints: currentTotal }
-    }
-
-    const typeCap = DAILY_CAPS[eventType]
-    const unitPoints = POINT_VALUES[eventType]
-    const potentialPoints = unitPoints * Math.max(1, Math.min(count, 20))
-    const typeRemaining = Math.max(0, typeCap - currentTypePoints)
-    const totalRemaining = Math.max(0, TOTAL_DAILY_CAP - currentTotal)
-
-    const pointsToAward = Math.min(potentialPoints, typeRemaining, totalRemaining)
     if (pointsToAward <= 0) {
-      return { awardedPoints: 0, totalDailyPoints: currentTotal }
+      return { awardedPoints: 0, totalDailyPoints: currentDailyTotal }
     }
 
-    const newTotal = currentTotal + pointsToAward
-    const newTypePoints = currentTypePoints + pointsToAward
+    const newDailyTotal = currentDailyTotal + pointsToAward
+    const now = FieldValue.serverTimestamp()
 
     transaction.set(
       logRef,
       {
         uid,
         date: todayKey,
-        total: newTotal,
-        [eventType]: newTypePoints,
-        updatedAt: FieldValue.serverTimestamp(),
+        total: newDailyTotal,
+        updatedAt: now,
       },
       { merge: true },
     )
 
-    const userSnap = await transaction.get(userRef)
-    const userData = userSnap.data() || {}
-    const isStudent = userData.role === 'student'
-    const age = typeof userData.age === 'number' ? userData.age : null
-    const isUnder18 = isStudent && age !== null && age < 18
-    const optIn = userData.scoreboardOptIn ?? (isUnder18 ? false : true)
-    const displayName =
-      userData.scoreboardDisplayName ||
-      userData.displayName ||
-      userData.name ||
-      'Peerly Learner'
-    const avatar = userData.avatar || userData.photoURL || null
+    const displayName = resolveDisplayName(userData)
+    const avatar = resolveAvatar(userData)
 
-    if (optIn) {
-      const now = FieldValue.serverTimestamp()
-      transaction.set(
-        weeklyEntryRef,
-        {
-          uid,
-          displayName,
-          avatar,
-          points: FieldValue.increment(pointsToAward),
-          optIn: true,
-          updatedAt: now,
-        },
-        { merge: true },
-      )
+    transaction.set(
+      weeklyEntryRef,
+      {
+        uid,
+        displayName,
+        avatar,
+        points: FieldValue.increment(pointsToAward),
+        optIn: true,
+        updatedAt: now,
+      },
+      { merge: true },
+    )
 
-      transaction.set(
-        allTimeEntryRef,
-        {
-          uid,
-          displayName,
-          avatar,
-          points: FieldValue.increment(pointsToAward),
-          optIn: true,
-          updatedAt: now,
-        },
-        { merge: true },
-      )
-    }
+    transaction.set(
+      allTimeEntryRef,
+      {
+        uid,
+        displayName,
+        avatar,
+        points: FieldValue.increment(pointsToAward),
+        optIn: true,
+        updatedAt: now,
+      },
+      { merge: true },
+    )
 
-    return { awardedPoints: pointsToAward, totalDailyPoints: newTotal }
+    return { awardedPoints: pointsToAward, totalDailyPoints: newDailyTotal }
   })
-
-  return result
 }
 
+/**
+ * Idempotent callable ensuring the caller has weekly and allTime scoreboard entries
+ * if opted in. Never overwrites existing points.
+ */
+export async function ensureScoreboardEntryHandler(
+  request: CallableRequest<void>,
+): Promise<{ optIn: boolean; created: boolean }> {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.')
+  }
+
+  const uid = request.auth.uid
+  const db = getFirestore()
+  const userRef = db.doc(`users/${uid}`)
+  const weeklyRef = db.doc(`scoreboard/weekly/entries/${uid}`)
+  const allTimeRef = db.doc(`scoreboard/allTime/entries/${uid}`)
+
+  const userSnap = await userRef.get()
+  const userData = (userSnap.data() as ScoreboardUserFields) || {}
+  const optIn = resolveScoreboardOptIn(userData)
+
+  if (!optIn) {
+    await Promise.all([weeklyRef.delete().catch(() => {}), allTimeRef.delete().catch(() => {})])
+    return { optIn: false, created: false }
+  }
+
+  const [weeklySnap, allTimeSnap, statsSnap] = await Promise.all([
+    weeklyRef.get(),
+    allTimeRef.get(),
+    db.doc(`users/${uid}/stats/summary`).get(),
+  ])
+
+  const displayName = resolveDisplayName(userData)
+  const avatar = resolveAvatar(userData)
+  const now = FieldValue.serverTimestamp()
+  const statsXp = statsSnap.exists ? ((statsSnap.data()?.xp as number) ?? 0) : 0
+
+  const batch = db.batch()
+  let created = false
+
+  if (!weeklySnap.exists) {
+    batch.set(weeklyRef, {
+      uid,
+      displayName,
+      avatar,
+      points: 0,
+      optIn: true,
+      updatedAt: now,
+    })
+    created = true
+  } else {
+    batch.set(
+      weeklyRef,
+      {
+        displayName,
+        avatar,
+        optIn: true,
+        updatedAt: now,
+      },
+      { merge: true },
+    )
+  }
+
+  if (!allTimeSnap.exists) {
+    batch.set(allTimeRef, {
+      uid,
+      displayName,
+      avatar,
+      points: statsXp,
+      optIn: true,
+      updatedAt: now,
+    })
+    created = true
+  } else {
+    batch.set(
+      allTimeRef,
+      {
+        displayName,
+        avatar,
+        optIn: true,
+        updatedAt: now,
+      },
+      { merge: true },
+    )
+  }
+
+  await batch.commit()
+  return { optIn: true, created }
+}
+
+/**
+ * Triggered on user profile document changes to keep display fields and opt-in status in sync.
+ */
+export async function syncUserToScoreboardHandler(
+  event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { userId: string }>,
+): Promise<void> {
+  if (!event.data) return
+  const userId = event.params.userId
+  const db = getFirestore()
+
+  if (!event.data.after.exists) {
+    const weeklyRef = db.doc(`scoreboard/weekly/entries/${userId}`)
+    const allTimeRef = db.doc(`scoreboard/allTime/entries/${userId}`)
+    await Promise.all([weeklyRef.delete().catch(() => {}), allTimeRef.delete().catch(() => {})])
+    return
+  }
+
+  const beforeData = (event.data.before.exists ? event.data.before.data() : null) as ScoreboardUserFields | null
+  const afterData = event.data.after.data() as ScoreboardUserFields
+
+  if (beforeData) {
+    const relevantKeys: (keyof ScoreboardUserFields)[] = [
+      'role',
+      'age',
+      'scoreboardOptIn',
+      'scoreboardDisplayName',
+      'displayName',
+      'name',
+      'avatar',
+      'photoURL',
+    ]
+    const changed = relevantKeys.some((k) => beforeData[k] !== afterData[k])
+    if (!changed) return
+  }
+
+  const weeklyRef = db.doc(`scoreboard/weekly/entries/${userId}`)
+  const allTimeRef = db.doc(`scoreboard/allTime/entries/${userId}`)
+
+  const optIn = resolveScoreboardOptIn(afterData)
+  if (!optIn) {
+    await Promise.all([weeklyRef.delete().catch(() => {}), allTimeRef.delete().catch(() => {})])
+    return
+  }
+
+  const displayName = resolveDisplayName(afterData)
+  const avatar = resolveAvatar(afterData)
+  const now = FieldValue.serverTimestamp()
+
+  const [weeklySnap, allTimeSnap, statsSnap] = await Promise.all([
+    weeklyRef.get(),
+    allTimeRef.get(),
+    db.doc(`users/${userId}/stats/summary`).get(),
+  ])
+
+  const statsXp = statsSnap.exists ? ((statsSnap.data()?.xp as number) ?? 0) : 0
+  const batch = db.batch()
+
+  if (!weeklySnap.exists) {
+    batch.set(weeklyRef, {
+      uid: userId,
+      displayName,
+      avatar,
+      points: 0,
+      optIn: true,
+      updatedAt: now,
+    })
+  } else {
+    batch.set(weeklyRef, { displayName, avatar, optIn: true, updatedAt: now }, { merge: true })
+  }
+
+  if (!allTimeSnap.exists) {
+    batch.set(allTimeRef, {
+      uid: userId,
+      displayName,
+      avatar,
+      points: statsXp,
+      optIn: true,
+      updatedAt: now,
+    })
+  } else {
+    batch.set(allTimeRef, { displayName, avatar, optIn: true, updatedAt: now }, { merge: true })
+  }
+
+  await batch.commit()
+}
+
+/**
+ * Callable allowing user to update their opt-in preference and custom scoreboard display name.
+ */
 export async function updateScoreboardOptInHandler(
   request: CallableRequest<UpdateScoreboardOptInData>,
 ): Promise<{ success: boolean; optIn: boolean }> {
@@ -158,7 +308,7 @@ export async function updateScoreboardOptInHandler(
 
   await db.runTransaction(async (transaction) => {
     const userSnap = await transaction.get(userRef)
-    const userData = userSnap.data() || {}
+    const userData = (userSnap.data() as ScoreboardUserFields) || {}
     const cleanName = (displayName ?? userData.scoreboardDisplayName ?? userData.displayName ?? 'Learner')
       .trim()
       .slice(0, 40)
@@ -179,6 +329,8 @@ export async function updateScoreboardOptInHandler(
     } else {
       const weeklySnap = await transaction.get(weeklyEntryRef)
       const allTimeSnap = await transaction.get(allTimeEntryRef)
+      const statsSnap = await transaction.get(db.doc(`users/${uid}/stats/summary`))
+      const statsXp = statsSnap.exists ? ((statsSnap.data()?.xp as number) ?? 0) : 0
       const now = FieldValue.serverTimestamp()
 
       transaction.set(
@@ -186,7 +338,7 @@ export async function updateScoreboardOptInHandler(
         {
           uid,
           displayName: cleanName,
-          avatar: userData.avatar || null,
+          avatar: userData.avatar || userData.photoURL || null,
           points: weeklySnap.exists ? weeklySnap.data()?.points ?? 0 : 0,
           optIn: true,
           updatedAt: now,
@@ -199,8 +351,8 @@ export async function updateScoreboardOptInHandler(
         {
           uid,
           displayName: cleanName,
-          avatar: userData.avatar || null,
-          points: allTimeSnap.exists ? allTimeSnap.data()?.points ?? 0 : 0,
+          avatar: userData.avatar || userData.photoURL || null,
+          points: allTimeSnap.exists ? allTimeSnap.data()?.points ?? 0 : statsXp,
           optIn: true,
           updatedAt: now,
         },
@@ -212,13 +364,59 @@ export async function updateScoreboardOptInHandler(
   return { success: true, optIn }
 }
 
-export async function resetWeeklyScoreboardHandler(): Promise<{ deletedCount: number }> {
+/**
+ * Scheduled job to reset weekly scoreboard entries to 0 without deleting opted-in users.
+ * Pages in batches of 400. Deletes entries for users who are now opted out.
+ */
+export async function resetWeeklyScoreboardHandler(): Promise<{
+  processedCount: number
+  resetCount: number
+  deletedCount: number
+}> {
   const db = getFirestore()
-  const snap = await db.collection('scoreboard/weekly/entries').get()
-  if (snap.empty) return { deletedCount: 0 }
+  const entriesCol = db.collection('scoreboard/weekly/entries')
+  const BATCH_SIZE = 400
 
-  const batch = db.batch()
-  snap.docs.forEach((docSnap) => batch.delete(docSnap.ref))
-  await batch.commit()
-  return { deletedCount: snap.size }
+  let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null
+  let processedCount = 0
+  let resetCount = 0
+  let deletedCount = 0
+
+  while (true) {
+    let q = entriesCol.limit(BATCH_SIZE)
+    if (lastDoc) {
+      q = q.startAfter(lastDoc)
+    }
+    const snap = await q.get()
+    if (snap.empty) break
+
+    const batch = db.batch()
+    const userDocs = await Promise.all(snap.docs.map((d) => db.doc(`users/${d.id}`).get()))
+
+    for (let i = 0; i < snap.docs.length; i++) {
+      const entryDoc = snap.docs[i]!
+      const userDoc = userDocs[i]!
+      const userData = (userDoc.exists ? userDoc.data() : null) as ScoreboardUserFields | null
+      const isOptedIn = resolveScoreboardOptIn(userData)
+
+      if (!isOptedIn) {
+        batch.delete(entryDoc.ref)
+        batch.delete(db.doc(`scoreboard/allTime/entries/${entryDoc.id}`))
+        deletedCount += 1
+      } else {
+        batch.update(entryDoc.ref, {
+          points: 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        resetCount += 1
+      }
+      processedCount += 1
+    }
+
+    await batch.commit()
+    if (snap.size < BATCH_SIZE) break
+    lastDoc = snap.docs[snap.docs.length - 1]!
+  }
+
+  return { processedCount, resetCount, deletedCount }
 }

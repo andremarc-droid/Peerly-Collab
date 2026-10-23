@@ -225,12 +225,19 @@ service cloud.firestore {
           && request.resource.data.age <= 120);
     }
 
+    function validScoreboardNoticeSeenAt() {
+      return !('scoreboardNoticeSeenAt' in request.resource.data)
+        || request.resource.data.scoreboardNoticeSeenAt == null
+        || request.resource.data.scoreboardNoticeSeenAt is timestamp;
+    }
+
     match /users/{userId} {
       allow read: if signedIn() && request.auth.uid == userId;
       allow create: if signedIn() && request.auth.uid == userId
         && validUserRoleOnCreate() && validUserAge();
       allow update: if signedIn() && request.auth.uid == userId
-        && validUserRoleOnUpdate() && validUserAge();
+        && validUserRoleOnUpdate() && validUserAge()
+        && validScoreboardNoticeSeenAt();
       // A person may delete only their own profile document (account deletion from Profile settings).
       allow delete: if signedIn() && request.auth.uid == userId;
 
@@ -2234,6 +2241,17 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if isThreadOwner();
       }
+    }
+
+    // Scoreboard entries: readable by signed-in users, writable only by server (Cloud Functions)
+    match /scoreboard/{period}/entries/{entryUid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Daily point logs: internal to Cloud Functions, clients have no access
+    match /userPointDailyLogs/{logId} {
+      allow read, write: if false;
     }
 
     // Collection group queries for members and sharedItems

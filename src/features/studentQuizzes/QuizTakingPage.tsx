@@ -8,7 +8,6 @@ import { getAttempt, autosaveAnswers, saveQuestionTimer, submitAttempt } from '.
 import { getQuestionWithKey, listQuestions } from '../quizzes/services/questionService'
 import type { QuizAttempt, QuizQuestion, SubmittedAnswer } from '../quizzes/types'
 import { gradeAttempt } from '../quizzes/grading/grade'
-import { callRecordStudyEvent } from '../scoreboard/services'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -226,7 +225,6 @@ export function QuizTakingPage() {
     try {
       await autosaveAnswers(quizId, attemptId, answers)
       await submitAttempt(quizId, attemptId, Math.max(0, Math.floor((Date.now() + serverOffsetMs - attempt.startedAt.toMillis()) / 1000)))
-      void callRecordStudyEvent('quiz_completed').catch(() => {})
       sessionStorage.removeItem(checkedStorageKey)
       sessionStorage.removeItem(`peerly:questionIndex:${attemptId}`)
       if (isAutoSubmit) {

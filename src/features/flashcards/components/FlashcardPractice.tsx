@@ -7,7 +7,6 @@ import { loadProgress, saveProgress } from '../../studyEngine/services'
 import { localDayKey, pruneProgress, recordGrade, type DeckProgress } from '../../studyEngine/progress'
 import { recordActivity } from '../../stats/services'
 import { reviewXp } from '../../stats/xp'
-import { callRecordStudyEvent } from '../../scoreboard/services'
 import { FlipCard } from './FlipCard'
 import type { FlashcardDeckWithId } from '../types'
 
@@ -50,7 +49,6 @@ export function FlashcardPractice({ deck, progressKey }: Props) {
       setProgress(next)
       await saveProgress(user.uid, key, next)
       void recordActivity(user.uid, { kind: 'review', amount: reviewXp('good'), key: `review:${key}:${cardId}:${reviewedAt}:${Math.random()}` })
-      void callRecordStudyEvent('card_mastered').catch(() => {})
     } catch {
       // Non-blocking error for review XP
     }
@@ -61,7 +59,6 @@ export function FlashcardPractice({ deck, progressKey }: Props) {
     if (currentCard) void recordCardProgress(currentCard.id)
     if (currentIndex >= cards.length - 1) {
       setCompleted(true)
-      void callRecordStudyEvent('practice_completed').catch(() => {})
     } else {
       setCurrentIndex(prev => prev + 1)
       setFlipped(false)

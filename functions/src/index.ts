@@ -10,11 +10,14 @@ import {
   removeStudyGroupMemberHandler,
 } from './studyGroups.js'
 import {
-  recordStudyEventHandler,
+  ensureScoreboardEntryHandler,
   updateScoreboardOptInHandler,
+  syncStatsSummaryToScoreboardHandler,
+  syncUserToScoreboardHandler,
   resetWeeklyScoreboardHandler,
 } from './scoreboard.js'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
+import { onDocumentWritten } from 'firebase-functions/v2/firestore'
 import {
   addTeamMember as addTeamMemberHandler,
   advanceTeam as advanceTeamHandler,
@@ -128,8 +131,16 @@ export const joinStudyGroup = onCall({ region: 'us-central1', cors: true }, join
 export const leaveStudyGroup = onCall({ region: 'us-central1', cors: true }, leaveStudyGroupHandler)
 export const removeStudyGroupMember = onCall({ region: 'us-central1', cors: true }, removeStudyGroupMemberHandler)
 
-export const recordStudyEvent = onCall({ region: 'us-central1', cors: true }, recordStudyEventHandler)
+export const ensureScoreboardEntry = onCall({ region: 'us-central1', cors: true }, ensureScoreboardEntryHandler)
 export const updateScoreboardOptIn = onCall({ region: 'us-central1', cors: true }, updateScoreboardOptInHandler)
+export const syncStatsSummaryToScoreboard = onDocumentWritten(
+  { document: 'users/{uid}/stats/summary', region: 'us-central1' },
+  syncStatsSummaryToScoreboardHandler,
+)
+export const syncUserToScoreboard = onDocumentWritten(
+  { document: 'users/{userId}', region: 'us-central1' },
+  syncUserToScoreboardHandler,
+)
 export const resetWeeklyScoreboard = onSchedule(
   { schedule: '0 0 * * 0', timeZone: 'UTC', region: 'us-central1' },
   async () => {

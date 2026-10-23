@@ -25,3 +25,46 @@ export function isUnder18DefaultOff(role?: string | null, age?: number | null): 
   }
   return true // Adult or instructor defaults to ON (true)
 }
+
+export interface ScoreboardUserFields {
+  scoreboardOptIn?: boolean | null
+  role?: string | null
+  age?: number | null
+  scoreboardDisplayName?: string | null
+  displayName?: string | null
+  name?: string | null
+  avatar?: string | null
+  photoURL?: string | null
+}
+
+/**
+ * Single source of truth for scoreboard opt-in resolution.
+ * Keep in sync with functions/src/scoreboardLogic.ts.
+ */
+export function resolveScoreboardOptIn(user: ScoreboardUserFields | null | undefined): boolean {
+  if (!user) return true
+  if (typeof user.scoreboardOptIn === 'boolean') {
+    return user.scoreboardOptIn
+  }
+  if (user.role === 'student' && typeof user.age === 'number' && user.age < 18) {
+    return false
+  }
+  return true
+}
+
+export function resolveDisplayName(user: ScoreboardUserFields | null | undefined): string {
+  const custom = user?.scoreboardDisplayName?.trim()
+  if (custom && custom.length > 0) return custom.slice(0, 40)
+
+  const display = user?.displayName?.trim()
+  if (display && display.length > 0) return display.slice(0, 40)
+
+  const name = user?.name?.trim()
+  if (name && name.length > 0) return name.slice(0, 40)
+
+  return 'Peerly Learner'
+}
+
+export function resolveAvatar(user: ScoreboardUserFields | null | undefined): string | null {
+  return user?.avatar || user?.photoURL || null
+}
