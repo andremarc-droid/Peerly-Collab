@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, CirclePlay, File, FileSpreadsheet, FileText, Link2, MoveDown, MoveUp, Plus, Presentation, Send } from 'lucide-react'
+import { ArrowLeft, BookOpenText, CirclePlay, Eye, File, FileSpreadsheet, FileText, Link2, MoveDown, MoveUp, Plus, Presentation, Send } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
@@ -17,6 +17,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { useGoogleDrive } from '../assignments/useGoogleDrive'
 import { AttachedQuizzesSection } from './AttachedQuizzesSection'
 import { ResourceEditorDialog, type ResourceInput } from './ResourceEditorDialog'
+import { ResourceReviewDialog } from './ResourceReviewDialog'
 import { addResource, deleteResource, publishModule, reorderResources, subscribeToModules, subscribeToResources, unpublishModule, updateModule, updateResource } from './services'
 import type { ModuleResourceWithId, ModuleWithId, ResourceType } from './types'
 import './modules.css'
@@ -42,6 +43,7 @@ export function ModuleWorkspacePage() {
   const [saveRetry, setSaveRetry] = useState(0)
   const dirtyRef = useRef(false)
   const [resourceDialog, setResourceDialog] = useState<{ open: boolean; initial?: ModuleResourceWithId; type?: ResourceType }>({ open: false })
+  const [reviewResource, setReviewResource] = useState<ModuleResourceWithId | null>(null)
   const [removingId, setRemovingId] = useState('')
   const [draggedResource, setDraggedResource] = useState('')
   const undoResourceRef = useRef<ModuleResourceWithId | null>(null)
@@ -181,7 +183,7 @@ export function ModuleWorkspacePage() {
         : <DropdownMenu label="Add resource" trigger={<><Plus size={16} aria-hidden="true" /> Add resource</>}>
           {(['drive', 'youtube', 'link', 'text'] as ResourceType[]).map((type) => <button role="menuitem" type="button" key={type} onClick={() => setResourceDialog({ open: true, type })}>Add {resourceTypeLabel[type]}</button>)}
         </DropdownMenu>}>
-        {resources.length ? <ol className="resource-list" aria-label="Module resources in order">{resources.map((resource, index) => <ResourceRow key={resource.id} resource={resource} index={index} total={resources.length} busy={Boolean(removingId)} onEdit={() => setResourceDialog({ open: true, initial: resource })} onRemove={() => void removeResource(resource)} onMove={moveResource} onDragStart={() => setDraggedResource(resource.id)} onDrop={() => dropResource(resource.id)} onDragEnd={() => setDraggedResource('')} />)}</ol>
+        {resources.length ? <ol className="resource-list" aria-label="Module resources in order">{resources.map((resource, index) => <ResourceRow key={resource.id} resource={resource} index={index} total={resources.length} busy={Boolean(removingId)} onReview={() => setReviewResource(resource)} onEdit={() => setResourceDialog({ open: true, initial: resource })} onRemove={() => void removeResource(resource)} onMove={moveResource} onDragStart={() => setDraggedResource(resource.id)} onDrop={() => dropResource(resource.id)} onDragEnd={() => setDraggedResource('')} />)}</ol>
           : <EmptyState title="Add your first resource" description="Add a Drive file, video, link, or plain-text note to start this module." action={<Button type="button" onClick={() => setResourceDialog({ open: true, type: 'drive' })}><Plus size={16} aria-hidden="true" /> Add resource</Button>} />}
       </SectionCard>
 
@@ -196,10 +198,11 @@ export function ModuleWorkspacePage() {
       </section>
     </main>
     <ResourceEditorDialog open={resourceDialog.open} initial={resourceDialog.initial} drive={drive} onClose={() => setResourceDialog({ open: false })} onSave={saveResource} />
+    <ResourceReviewDialog open={Boolean(reviewResource)} resource={reviewResource} onClose={() => setReviewResource(null)} onEdit={(res) => setResourceDialog({ open: true, initial: res })} />
   </AppShell>
 }
 
-function ResourceRow({ resource, index, total, busy, onEdit, onRemove, onMove, onDragStart, onDrop, onDragEnd }: { resource: ModuleResourceWithId; index: number; total: number; busy: boolean; onEdit: () => void; onRemove: () => void; onMove: (id: string, offset: -1 | 1) => void; onDragStart: () => void; onDrop: () => void; onDragEnd: () => void }) {
+function ResourceRow({ resource, index, total, busy, onReview, onEdit, onRemove, onMove, onDragStart, onDrop, onDragEnd }: { resource: ModuleResourceWithId; index: number; total: number; busy: boolean; onReview: () => void; onEdit: () => void; onRemove: () => void; onMove: (id: string, offset: -1 | 1) => void; onDragStart: () => void; onDrop: () => void; onDragEnd: () => void }) {
   const Icon = resource.type === 'youtube'
     ? CirclePlay
     : resource.type === 'drive'
@@ -210,6 +213,6 @@ function ResourceRow({ resource, index, total, busy, onEdit, onRemove, onMove, o
   let host = resource.type === 'text' ? 'Plain-text note' : ''
   if (resource.url) { try { host = new URL(resource.url).hostname } catch { host = 'Link' } }
   return <li draggable onDragStart={onDragStart} onDragOver={(event) => event.preventDefault()} onDrop={onDrop} onDragEnd={onDragEnd} className="resource-list__item">
-    <article className="resource-card"><span className="resource-card__icon" aria-hidden="true"><Icon size={19} /></span><div className="resource-card__content"><h3>{resource.title}</h3><p>{host}</p></div><div className="resource-card__actions"><Button type="button" variant="secondary" disabled={busy} onClick={onEdit}>Edit</Button><Button type="button" variant="secondary" disabled={busy} onClick={onRemove}>Remove</Button><Button type="button" variant="ghost" aria-label={'Move ' + resource.title + ' up'} disabled={index === 0 || busy} onClick={() => onMove(resource.id, -1)}><MoveUp size={16} aria-hidden="true" /></Button><Button type="button" variant="ghost" aria-label={'Move ' + resource.title + ' down'} disabled={index === total - 1 || busy} onClick={() => onMove(resource.id, 1)}><MoveDown size={16} aria-hidden="true" /></Button></div></article>
+    <article className="resource-card"><span className="resource-card__icon" aria-hidden="true"><Icon size={19} /></span><div className="resource-card__content"><h3><button type="button" className="resource-card__title-btn" onClick={onReview}>{resource.title}</button></h3><p>{host}</p></div><div className="resource-card__actions"><Button type="button" variant="secondary" disabled={busy} onClick={onReview}><Eye size={16} aria-hidden="true" /> Review</Button><Button type="button" variant="secondary" disabled={busy} onClick={onEdit}>Edit</Button><Button type="button" variant="secondary" disabled={busy} onClick={onRemove}>Remove</Button><Button type="button" variant="ghost" aria-label={'Move ' + resource.title + ' up'} disabled={index === 0 || busy} onClick={() => onMove(resource.id, -1)}><MoveUp size={16} aria-hidden="true" /></Button><Button type="button" variant="ghost" aria-label={'Move ' + resource.title + ' down'} disabled={index === total - 1 || busy} onClick={() => onMove(resource.id, 1)}><MoveDown size={16} aria-hidden="true" /></Button></div></article>
   </li>
 }

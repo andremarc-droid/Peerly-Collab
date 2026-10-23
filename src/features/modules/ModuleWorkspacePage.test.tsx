@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   reorderResources: vi.fn(async () => undefined),
 }))
 vi.mock('../../app/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }))
+vi.mock('../assignments/useGoogleDrive', () => ({ useGoogleDrive: () => undefined }))
 vi.mock('../classes/services/classService', () => ({ watchClass: (_id: string, onChange: (value: unknown) => void) => { onChange(classroom); return () => undefined } }))
 vi.mock('./services', () => ({
   subscribeToModules: (_classId: string, _role: string, onChange: (items: unknown[]) => void) => { onChange(mocks.module ? [mocks.module] : []); return () => undefined },
@@ -90,5 +91,26 @@ describe('module workspace', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
     await waitFor(() => expect(mocks.addResource).toHaveBeenCalledWith('class-1', 'module-1', expect.objectContaining({ title: 'Notes 1', type: 'text' })))
     await waitFor(() => expect(mocks.reorderResources).toHaveBeenCalledWith('class-1', 'module-1', ['new-resource']))
+  })
+
+  it('opens resource review dialog on Review click and on title click', async () => {
+    mocks.module = { ...mod, resourceCount: 1 }
+    mocks.resources = [resource('r1', 0)]
+    renderPage()
+    expect(await screen.findByRole('button', { name: /^Review$/ })).toBeInTheDocument()
+
+    // Open via Review button
+    fireEvent.click(screen.getByRole('button', { name: /^Review$/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Lesson')).toBeInTheDocument()
+
+    // Close review dialog
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // Open via clicking resource title
+    fireEvent.click(screen.getByRole('button', { name: 'Notes 1' }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Lesson')).toBeInTheDocument()
   })
 })
