@@ -1,15 +1,20 @@
-import { useEffect, useState } from 'react'
-import { ChevronDown, Trophy, User } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { ChevronDown, Eye, Trophy, User } from 'lucide-react'
 import { Alert } from '../../../shared/ui/Alert'
 import { Button } from '../../../shared/ui/Button'
 import { EmptyState } from '../../../shared/ui/EmptyState'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { useAuth } from '../../auth/useAuth'
-import { listScoreboardEntries } from '../services'
+import { resolveScoreboardOptIn } from '../schemas'
+import {
+  callEnsureScoreboardEntry,
+  listScoreboardEntries,
+  recordScoreboardNoticeSeen,
+} from '../services'
 import type { ScoreboardEntry, ScoreboardPeriod } from '../types'
 
 export function ScoreboardTab() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [period, setPeriod] = useState<ScoreboardPeriod>('weekly')
   const [entries, setEntries] = useState<ScoreboardEntry[]>([])
   const [userEntry, setUserEntry] = useState<ScoreboardEntry | undefined>()
@@ -17,34 +22,104 @@ export function ScoreboardTab() {
   const [error, setError] = useState<string | null>(null)
   const [limitCount, setLimitCount] = useState(50)
   const [hasMore, setHasMore] = useState(false)
+  const [noticeDismissed, setNoticeDismissed] = useState(false)
 
-  useEffect(() => {
-    let active = true
+  const isOptedIn = resolveScoreboardOptIn(profile)
+  const isMinor = profile?.role === 'student' && typeof profile?.age === 'number' && profile.age < 18
+  const isAdultOrInstructor = !isMinor
+  const shouldShowNotice =
+    Boolean(user && profile && isAdultOrInstructor && !profile.scoreboardNoticeSeenAt && !noticeDismissed)
+
+  const loadData = useCallback(async (active: { current: boolean }) => {
     setLoading(true)
     setError(null)
+    try {
+      const res = await listScoreboardEntries(period, limitCount, user?.uid)
+      if (!active.current) return
+      setEntries(res.entries)
+      setUserEntry(res.userEntry)
+      setHasMore(res.entries.length >= limitCount)
 
-    listScoreboardEntries(period, limitCount, user?.uid)
-      .then((res) => {
-        if (!active) return
-        setEntries(res.entries)
-        setUserEntry(res.userEntry)
-        setHasMore(res.entries.length >= limitCount)
-      })
-      .catch((err) => {
-        if (!active) return
+      // Self-heal: if signed-in user has no entry but is opted in, ensure entry once per session
+      if (user && !res.userEntry && isOptedIn) {
+        const sessionKey = `peerly:scoreboard:ensured:${user.uid}`
+        if (!sessionStorage.getItem(sessionKey)) {
+          sessionStorage.setItem(sessionKey, '1')
+          void callEnsureScoreboardEntry()
+            .then(async (ensured) => {
+              if (ensured.created && active.current) {
+                const refreshed = await listScoreboardEntries(period, limitCount, user.uid)
+                if (active.current) {
+                  setEntries(refreshed.entries)
+                  setUserEntry(refreshed.userEntry)
+                }
+              }
+            })
+            .catch(() => {})
+        }
+      }
+    } catch (err) {
+      if (active.current) {
         setError(err instanceof Error ? err.message : 'Could not load scoreboard.')
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-
-    return () => {
-      active = false
+      }
+    } finally {
+      if (active.current) setLoading(false)
     }
-  }, [period, limitCount, user?.uid])
+  }, [isOptedIn, limitCount, period, user])
+
+  useEffect(() => {
+    const active = { current: true }
+    void loadData(active)
+    return () => {
+      active.current = false
+    }
+  }, [loadData])
+
+  const handleDismissNotice = async () => {
+    setNoticeDismissed(true)
+    if (user) {
+      await recordScoreboardNoticeSeen(user.uid).catch(() => {})
+    }
+  }
 
   return (
     <div className="grid gap-6">
+      {/* One-time public scoreboard notice for adult users */}
+      {shouldShowNotice && (
+        <aside
+          className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm flex flex-wrap items-center justify-between gap-4"
+          aria-label="Public Scoreboard Notice"
+        >
+          <div className="flex items-start gap-3 max-w-2xl">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-navy-900-10 text-navy-900">
+              <Eye size={20} aria-hidden="true" />
+            </div>
+            <div>
+              <strong className="block text-base font-bold text-navy-900">
+                You're on the public scoreboard
+              </strong>
+              <p className="m-0 text-sm text-navy-900-72 mt-0.5">
+                Your chosen display name, avatar, and study points are visible to celebrate learning
+                consistency. You can customize your name or hide yourself at any time in Settings.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button to="/profile/settings" variant="secondary" className="min-h-11">
+              Review privacy settings
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => void handleDismissNotice()}
+              className="min-h-11"
+            >
+              Got it
+            </Button>
+          </div>
+        </aside>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="m-0 text-2xl font-bold text-navy-900">Scoreboard</h2>
@@ -97,29 +172,55 @@ export function ScoreboardTab() {
           className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm flex flex-wrap items-center justify-between gap-4"
           aria-label="Your standing"
         >
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-navy-900 text-white font-bold text-lg">
-              {userEntry?.rank ? `#${userEntry.rank}` : '—'}
-            </div>
-            <div>
-              <span className="text-xs uppercase font-bold tracking-wider text-navy-900-72">Your standing</span>
-              <h3 className="m-0 text-lg font-bold text-navy-900">
-                {userEntry ? userEntry.displayName : (user.displayName || 'You')}
-              </h3>
-            </div>
-          </div>
+          {!isOptedIn ? (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-navy-900-10 text-navy-900 font-bold text-lg">
+                  —
+                </div>
+                <div>
+                  <span className="text-xs uppercase font-bold tracking-wider text-navy-900-72">Your standing</span>
+                  <h3 className="m-0 text-lg font-bold text-navy-900">
+                    You're hidden from the scoreboard
+                  </h3>
+                  <p className="m-0 text-xs text-navy-900-72">
+                    Your study points and display name are private.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <Button to="/profile/settings" variant="secondary" className="min-h-11">
+                  Settings & Privacy
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-navy-900 text-white font-bold text-lg">
+                  {userEntry?.rank ? `#${userEntry.rank}` : '—'}
+                </div>
+                <div>
+                  <span className="text-xs uppercase font-bold tracking-wider text-navy-900-72">Your standing</span>
+                  <h3 className="m-0 text-lg font-bold text-navy-900">
+                    {userEntry ? userEntry.displayName : (user.displayName || 'You')}
+                  </h3>
+                </div>
+              </div>
 
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <span className="text-2xl font-extrabold text-navy-900">
-                {userEntry?.points ?? 0}
-              </span>
-              <span className="text-xs text-navy-900-72 block">points</span>
-            </div>
-            <Button to="/profile/settings" variant="secondary">
-              Settings & Privacy
-            </Button>
-          </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <span className="text-2xl font-extrabold text-navy-900">
+                    {userEntry?.points ?? 0}
+                  </span>
+                  <span className="text-xs text-navy-900-72 block">points</span>
+                </div>
+                <Button to="/profile/settings" variant="secondary" className="min-h-11">
+                  Settings & Privacy
+                </Button>
+              </div>
+            </>
+          )}
         </section>
       )}
 
@@ -194,6 +295,7 @@ export function ScoreboardTab() {
                 <Button
                   variant="secondary"
                   onClick={() => setLimitCount((prev) => prev + 50)}
+                  className="min-h-11"
                 >
                   <ChevronDown size={16} aria-hidden="true" />
                   Load more

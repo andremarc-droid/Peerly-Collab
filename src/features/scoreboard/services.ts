@@ -8,12 +8,15 @@ import {
   limit,
   orderBy,
   query,
+  serverTimestamp,
+  updateDoc,
   where,
   type Firestore,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { firestore } from '../../lib/firebase/firestore'
 import { functions } from '../../lib/firebase/functions'
+import { computeCompetitionRanks } from './schemas'
 import type { ScoreboardEntry, ScoreboardPeriod, ScoreboardRankingResult } from './types'
 
 export async function listScoreboardEntries(
@@ -23,17 +26,25 @@ export async function listScoreboardEntries(
   db: Firestore = firestore,
 ): Promise<ScoreboardRankingResult> {
   const col = collection(db, 'scoreboard', period, 'entries')
-  const q = query(col, orderBy('points', 'desc'), limit(maxCount))
+  const q = query(
+    col,
+    orderBy('points', 'desc'),
+    orderBy('displayName', 'asc'),
+    limit(maxCount),
+  )
   const snap = await getDocs(q)
 
-  const entries: ScoreboardEntry[] = snap.docs.map((d, index) => {
+  const rawEntries: ScoreboardEntry[] = snap.docs.map((d) => {
     const data = d.data() as ScoreboardEntry
     return {
       ...data,
       uid: d.id,
-      rank: index + 1,
+      points: data.points ?? 0,
+      displayName: data.displayName || 'Peerly Learner',
     }
   })
+
+  const entries: ScoreboardEntry[] = computeCompetitionRanks(rawEntries)
 
   let userEntry: ScoreboardEntry | undefined
 
@@ -53,6 +64,8 @@ export async function listScoreboardEntries(
         userEntry = {
           ...myData,
           uid: currentUid,
+          points: myPoints,
+          displayName: myData.displayName || 'Peerly Learner',
           rank: myRank,
         }
       }
@@ -60,6 +73,15 @@ export async function listScoreboardEntries(
   }
 
   return { entries, userEntry }
+}
+
+export async function recordScoreboardNoticeSeen(
+  uid: string,
+  db: Firestore = firestore,
+): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), {
+    scoreboardNoticeSeenAt: serverTimestamp(),
+  })
 }
 
 export async function callEnsureScoreboardEntry(): Promise<{ optIn: boolean; created?: boolean }> {

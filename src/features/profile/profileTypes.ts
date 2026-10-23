@@ -8,6 +8,9 @@ export interface UserProfile {
   role: UserRole | null
   /** Students only; entered at sign-up. Private: never copied to the public profile. */
   age?: number | null
+  scoreboardOptIn?: boolean | null
+  scoreboardDisplayName?: string | null
+  scoreboardNoticeSeenAt?: unknown
   createdAt: number
   updatedAt: number
 }

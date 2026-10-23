@@ -5,20 +5,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ScoreboardTab } from './ScoreboardTab'
 import * as services from '../services'
 
+let mockAuthUser: any = { uid: 'u1', email: 'ada@example.com' }
+let mockAuthProfile: any = { role: 'student', age: 20, displayName: 'Ada Lovelace' }
+
 vi.mock('../../auth/useAuth', () => ({
   useAuth: () => ({
-    user: { uid: 'u1', email: 'ada@example.com' },
+    user: mockAuthUser,
+    profile: mockAuthProfile,
   }),
 }))
 
 vi.mock('../services', () => ({
   listScoreboardEntries: vi.fn(),
+  callEnsureScoreboardEntry: vi.fn(),
+  recordScoreboardNoticeSeen: vi.fn(),
 }))
 
 describe('ScoreboardTab', () => {
   afterEach(cleanup)
   beforeEach(() => {
     vi.clearAllMocks()
+    sessionStorage.clear()
+    mockAuthUser = { uid: 'u1', email: 'ada@example.com' }
+    mockAuthProfile = { role: 'student', age: 20, displayName: 'Ada Lovelace', scoreboardNoticeSeenAt: 123456 }
   })
 
   it('renders loading state initially and then shows empty state if no entries', async () => {
@@ -26,6 +35,7 @@ describe('ScoreboardTab', () => {
       entries: [],
       userEntry: undefined,
     })
+    vi.mocked(services.callEnsureScoreboardEntry).mockResolvedValue({ optIn: true, created: false })
 
     render(
       <MemoryRouter>
@@ -41,13 +51,14 @@ describe('ScoreboardTab', () => {
     })
   })
 
-  it('renders top learner rankings and user standing banner', async () => {
+  it('renders 0-point users normally and handles ties sharing rank', async () => {
     vi.mocked(services.listScoreboardEntries).mockResolvedValueOnce({
       entries: [
-        { uid: 'u2', displayName: 'Curie', points: 200, avatar: null, rank: 1 },
-        { uid: 'u1', displayName: 'Ada Lovelace', points: 150, avatar: null, rank: 2 },
+        { uid: 'u2', displayName: 'Curie', points: 100, avatar: null, rank: 1 },
+        { uid: 'u3', displayName: 'Franklin', points: 100, avatar: null, rank: 1 },
+        { uid: 'u1', displayName: 'Ada Lovelace', points: 0, avatar: null, rank: 3 },
       ],
-      userEntry: { uid: 'u1', displayName: 'Ada Lovelace', points: 150, avatar: null, rank: 2 },
+      userEntry: { uid: 'u1', displayName: 'Ada Lovelace', points: 0, avatar: null, rank: 3 },
     })
 
     render(
@@ -60,25 +71,31 @@ describe('ScoreboardTab', () => {
       expect(screen.getByText('Your standing')).toBeInTheDocument()
     })
 
-    // Standing banner
-    expect(screen.getByText('#2')).toBeInTheDocument()
-    expect(screen.getAllByText('150').length).toBeGreaterThan(0)
+    // Standing banner shows rank #3 and 0 points
+    expect(screen.getByText('#3')).toBeInTheDocument()
+    expect(screen.getAllByText('0')).toHaveLength(2)
 
-    // Table / list
-    expect(screen.getByText('Curie')).toBeInTheDocument()
-    expect(screen.getByText('200')).toBeInTheDocument()
+    // Tied users both show '1st'
+    const firstBadges = screen.getAllByText('1st')
+    expect(firstBadges).toHaveLength(2)
+    expect(screen.getAllByText('pts').length).toBe(3)
   })
 
-  it('switches between weekly and all-time periods', async () => {
+  it('self-heals when user has no entry but is opted in', async () => {
     vi.mocked(services.listScoreboardEntries)
       .mockResolvedValueOnce({
-        entries: [{ uid: 'u1', displayName: 'Ada', points: 50, avatar: null, rank: 1 }],
-        userEntry: { uid: 'u1', displayName: 'Ada', points: 50, avatar: null, rank: 1 },
+        entries: [{ uid: 'u2', displayName: 'Curie', points: 100, avatar: null, rank: 1 }],
+        userEntry: undefined,
       })
       .mockResolvedValueOnce({
-        entries: [{ uid: 'u1', displayName: 'Ada', points: 500, avatar: null, rank: 1 }],
-        userEntry: { uid: 'u1', displayName: 'Ada', points: 500, avatar: null, rank: 1 },
+        entries: [
+          { uid: 'u2', displayName: 'Curie', points: 100, avatar: null, rank: 1 },
+          { uid: 'u1', displayName: 'Ada Lovelace', points: 0, avatar: null, rank: 2 },
+        ],
+        userEntry: { uid: 'u1', displayName: 'Ada Lovelace', points: 0, avatar: null, rank: 2 },
       })
+
+    vi.mocked(services.callEnsureScoreboardEntry).mockResolvedValueOnce({ optIn: true, created: true })
 
     render(
       <MemoryRouter>
@@ -87,14 +104,58 @@ describe('ScoreboardTab', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getAllByText('50').length).toBeGreaterThan(0)
+      expect(services.callEnsureScoreboardEntry).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('shows honest hidden-state message when user is opted out', async () => {
+    mockAuthProfile = { role: 'student', age: 16, scoreboardOptIn: undefined } // minor defaults to hidden
+
+    vi.mocked(services.listScoreboardEntries).mockResolvedValueOnce({
+      entries: [{ uid: 'u2', displayName: 'Curie', points: 100, avatar: null, rank: 1 }],
+      userEntry: undefined,
     })
 
-    fireEvent.click(screen.getByRole('tab', { name: /all time/i }))
+    render(
+      <MemoryRouter>
+        <ScoreboardTab />
+      </MemoryRouter>,
+    )
 
     await waitFor(() => {
-      expect(services.listScoreboardEntries).toHaveBeenCalledWith('allTime', 50, 'u1')
-      expect(screen.getAllByText('500').length).toBeGreaterThan(0)
+      expect(screen.getByText("You're hidden from the scoreboard")).toBeInTheDocument()
+      expect(screen.getByText('Your study points and display name are private.')).toBeInTheDocument()
+    })
+
+    // Should NOT show '0 points' or call ensureScoreboardEntry
+    expect(services.callEnsureScoreboardEntry).not.toHaveBeenCalled()
+  })
+
+  it('displays one-time visibility notice for adult users without dismissal and allows dismiss', async () => {
+    mockAuthProfile = { role: 'student', age: 20, displayName: 'Ada', scoreboardNoticeSeenAt: null }
+
+    vi.mocked(services.listScoreboardEntries).mockResolvedValueOnce({
+      entries: [],
+      userEntry: undefined,
+    })
+    vi.mocked(services.callEnsureScoreboardEntry).mockResolvedValue({ optIn: true, created: false })
+    vi.mocked(services.recordScoreboardNoticeSeen).mockResolvedValueOnce(undefined)
+
+    render(
+      <MemoryRouter>
+        <ScoreboardTab />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText("You're on the public scoreboard")).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }))
+
+    await waitFor(() => {
+      expect(services.recordScoreboardNoticeSeen).toHaveBeenCalledWith('u1')
+      expect(screen.queryByText("You're on the public scoreboard")).not.toBeInTheDocument()
     })
   })
 })

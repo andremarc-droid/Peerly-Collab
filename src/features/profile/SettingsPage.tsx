@@ -12,7 +12,7 @@ import { Switch } from '../../shared/ui/Switch'
 import { useToast } from '../../shared/ui/useToast'
 import { firestore } from '../../lib/firebase/firestore'
 import { useAuth } from '../auth/useAuth'
-import { isUnder18DefaultOff, validateScoreboardDisplayName } from '../scoreboard/schemas'
+import { resolveScoreboardOptIn, validateScoreboardDisplayName } from '../scoreboard/schemas'
 import { callUpdateScoreboardOptIn } from '../scoreboard/services'
 import { signedOutRedirectPath } from './accountDeletionState'
 import { ProfileLoadError } from './ProfileLoadError'
@@ -39,14 +39,14 @@ export function SettingsPage() {
       if (!active) return
       const data = snap.data() || {}
       const savedOptIn = data.scoreboardOptIn as boolean | undefined
-      const defaultVal = isUnder18DefaultOff(profile?.role, profile?.age)
+      const defaultVal = resolveScoreboardOptIn(profile)
       setOptIn(savedOptIn ?? defaultVal)
       setDisplayName((data.scoreboardDisplayName as string) || data.displayName || data.name || '')
     }).catch(() => {
-      if (active) setOptIn(isUnder18DefaultOff(profile?.role, profile?.age))
+      if (active) setOptIn(resolveScoreboardOptIn(profile))
     })
     return () => { active = false }
-  }, [user, profile?.role, profile?.age])
+  }, [user, profile])
 
   if (status === 'loading' || profileStatus === 'loading' || loading) return <AppShellLoading />
   if (status === 'signedOut' || !user) return <Navigate to={signedOutRedirectPath()} replace />
@@ -104,7 +104,7 @@ export function SettingsPage() {
           <div className="grid gap-4">
             <Switch
               label="Show me on the public scoreboard"
-              hint={isMinor ? 'Students under 18 start hidden by default for safety. You can opt in here.' : 'When enabled, your display name and study points appear on the public scoreboard.'}
+              hint={isMinor ? 'Students under 18 start hidden by default for privacy. You can turn this on to show your display name and study points.' : 'When enabled, your display name and study points appear on the public scoreboard.'}
               checked={optIn ?? false}
               disabled={busyOptIn || optIn === null}
               onChange={(e) => void handleToggleOptIn(e.target.checked)}

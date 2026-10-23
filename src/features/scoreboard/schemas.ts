@@ -68,3 +68,18 @@ export function resolveDisplayName(user: ScoreboardUserFields | null | undefined
 export function resolveAvatar(user: ScoreboardUserFields | null | undefined): string | null {
   return user?.avatar || user?.photoURL || null
 }
+
+/**
+ * Assigns competition ranks (1224 ranking standard):
+ * Equal points share the same rank; subsequent rank skips accordingly.
+ */
+export function computeCompetitionRanks<T extends { points: number }>(items: T[]): Array<T & { rank: number }> {
+  let currentRank = 1
+  return items.map((item, index) => {
+    if (index > 0 && item.points < items[index - 1]!.points) {
+      currentRank = index + 1
+    }
+    return { ...item, rank: currentRank }
+  })
+}
+
