@@ -1953,6 +1953,18 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == resource.data.ownerId;
     }
 
+    // Public Scoreboard (Phase 4: server-computed points, signed-in reads, no client writes)
+    match /scoreboard/{period}/entries/{entryUid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Daily study point logs (server-only anti-abuse caps)
+    match /userPointDailyLogs/{logId} {
+      allow read, write: if false;
+    }
+
+
 
     match /sharedTutorThreads/{threadId} {
       function threadPath() {

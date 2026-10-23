@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '../../shared/ui/ToastProvider'
 import { SettingsPage } from './SettingsPage'
 
 vi.mock('../../app/AppShell', () => ({
@@ -25,14 +26,34 @@ vi.mock('./useUserProfile', () => ({
   }),
 }))
 
+vi.mock('../scoreboard/services', () => ({
+  updateScoreboardOptIn: vi.fn().mockResolvedValue({ success: true, optIn: true }),
+}))
+
 afterEach(cleanup)
 
 describe('SettingsPage', () => {
+  it('renders the scoreboard privacy section with switch and display name input', () => {
+    render(
+      <ToastProvider>
+        <MemoryRouter>
+          <SettingsPage />
+        </MemoryRouter>
+      </ToastProvider>,
+    )
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
+    expect(screen.getByText('Scoreboard & Privacy')).toBeInTheDocument()
+    expect(screen.getByLabelText(/show me on the public scoreboard/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/scoreboard display name/i)).toBeInTheDocument()
+  })
+
   it('lists the danger zone as its own step and links back to the profile', () => {
     render(
-      <MemoryRouter>
-        <SettingsPage />
-      </MemoryRouter>,
+      <ToastProvider>
+        <MemoryRouter>
+          <SettingsPage />
+        </MemoryRouter>
+      </ToastProvider>,
     )
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
     const dangerZone = screen.getByRole('heading', { name: 'Danger zone' }).closest('section')
@@ -43,9 +64,11 @@ describe('SettingsPage', () => {
 
   it('does not delete anything from the settings list itself', () => {
     render(
-      <MemoryRouter>
-        <SettingsPage />
-      </MemoryRouter>,
+      <ToastProvider>
+        <MemoryRouter>
+          <SettingsPage />
+        </MemoryRouter>
+      </ToastProvider>,
     )
     expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument()
   })

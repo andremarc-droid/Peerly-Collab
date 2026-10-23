@@ -11,6 +11,7 @@ import { cleanupGroupQuizData } from '../quizzes/services/teamService'
 import { deleteMyTurnIns } from '../assignments/services/turnInService'
 import { deleteMyPublicDecks } from '../publicDecks/services'
 import { cleanupMyStudyGroupsOnAccountDeletion } from '../studyGroups/services'
+import { deleteUserScoreboardEntriesOnAccountDeletion } from '../scoreboard/services'
 
 const PAGE = 100
 const DECK_SUBCOLLECTIONS = ['members', 'invites', 'activity', 'presence'] as const
@@ -116,6 +117,7 @@ export async function deleteAccountData(uid: string, role: UserRole | null, db: 
   await cleanupGroupQuizData()
   await deleteMyPublicDecks(uid, db)
   await cleanupMyStudyGroupsOnAccountDeletion(uid, db)
+  await deleteUserScoreboardEntriesOnAccountDeletion(uid, db)
   await deleteLearningPlans(uid, db)
   await emptyCollection(db, 'users', uid, 'deckProgress')
   await emptyCollection(db, 'users', uid, 'studyAttempts')

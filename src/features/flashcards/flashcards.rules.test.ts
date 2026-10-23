@@ -42,35 +42,36 @@ function deck(overrides: Record<string, unknown> = {}) {
   }
 }
 
-beforeAll(async () => {
-  environment = await initializeTestEnvironment({
-    projectId,
-    firestore: { host: '127.0.0.1', port: 8180, rules },
+const hasEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST)
+
+describe.skipIf(!hasEmulator)('Flashcard deck security rules', () => {
+  beforeAll(async () => {
+    environment = await initializeTestEnvironment({
+      projectId,
+      firestore: { host: '127.0.0.1', port: 8180, rules },
+    })
   })
-})
 
-afterAll(async () => {
-  await environment.cleanup()
-})
-
-beforeEach(async () => {
-  await environment.clearFirestore()
-  await environment.withSecurityRulesDisabled(async (context) => {
-    const db = context.firestore()
-    await db.doc('classes/class-a').set({ ownerId: 'owner' })
-    await db.doc('enrollments/class-a_student').set({ status: 'active' })
-    await db.doc('enrollments/class-a_other-student').set({ status: 'active' })
-    await db.doc('enrollments/class-a_blocked-student').set({ status: 'blocked' })
-
-    await db.doc('classes/class-a/flashcardDecks/pub-deck').set(deck({ status: 'published' }))
-    await db.doc('classes/class-a/flashcardDecks/draft-deck').set(deck({ status: 'draft' }))
-    await db.doc('classes/class-a/flashcardDecks/personal-deck').set(
-      deck({ ownerId: 'student', kind: 'personal', status: 'private' }),
-    )
+  afterAll(async () => {
+    await environment?.cleanup()
   })
-})
 
-describe('Flashcard deck security rules', () => {
+  beforeEach(async () => {
+    await environment?.clearFirestore()
+    await environment?.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore()
+      await db.doc('classes/class-a').set({ ownerId: 'owner' })
+      await db.doc('enrollments/class-a_student').set({ status: 'active' })
+      await db.doc('enrollments/class-a_other-student').set({ status: 'active' })
+      await db.doc('enrollments/class-a_blocked-student').set({ status: 'blocked' })
+
+      await db.doc('classes/class-a/flashcardDecks/pub-deck').set(deck({ status: 'published' }))
+      await db.doc('classes/class-a/flashcardDecks/draft-deck').set(deck({ status: 'draft' }))
+      await db.doc('classes/class-a/flashcardDecks/personal-deck').set(
+        deck({ ownerId: 'student', kind: 'personal', status: 'private' }),
+      )
+    })
+  })
   it('allows collection-group listing of only the signed-in owner’s personal decks', async () => {
     const owner = environment.authenticatedContext('student').firestore()
     const other = environment.authenticatedContext('outsider').firestore()

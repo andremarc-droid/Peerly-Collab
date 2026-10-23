@@ -10,6 +10,12 @@ import {
   removeStudyGroupMemberHandler,
 } from './studyGroups.js'
 import {
+  recordStudyEventHandler,
+  updateScoreboardOptInHandler,
+  resetWeeklyScoreboardHandler,
+} from './scoreboard.js'
+import { onSchedule } from 'firebase-functions/v2/scheduler'
+import {
   addTeamMember as addTeamMemberHandler,
   advanceTeam as advanceTeamHandler,
   cleanupGroupQuizData as cleanupGroupQuizDataHandler,
@@ -121,3 +127,12 @@ export const cleanupGroupQuizData = onCall({ region: 'us-central1', cors: true, 
 export const joinStudyGroup = onCall({ region: 'us-central1', cors: true }, joinStudyGroupHandler)
 export const leaveStudyGroup = onCall({ region: 'us-central1', cors: true }, leaveStudyGroupHandler)
 export const removeStudyGroupMember = onCall({ region: 'us-central1', cors: true }, removeStudyGroupMemberHandler)
+
+export const recordStudyEvent = onCall({ region: 'us-central1', cors: true }, recordStudyEventHandler)
+export const updateScoreboardOptIn = onCall({ region: 'us-central1', cors: true }, updateScoreboardOptInHandler)
+export const resetWeeklyScoreboard = onSchedule(
+  { schedule: '0 0 * * 0', timeZone: 'UTC', region: 'us-central1' },
+  async () => {
+    await resetWeeklyScoreboardHandler()
+  },
+)
