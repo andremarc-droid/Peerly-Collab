@@ -12,20 +12,22 @@ import { useAuth } from '../../auth/useAuth'
 import { FlashcardStudyDialog } from '../../flashcards/components/FlashcardStudyDialog'
 import type { FlashcardDeckWithId } from '../../flashcards/types'
 import {
+  checkIsGroupMember,
   deleteStudyGroupCascade,
   getStudyGroup,
   leaveStudyGroupCallable as callLeaveStudyGroup,
-  listGroupActivity,
-  listGroupMembers,
-  listGroupSharedDecks,
   logStudySessionActivity,
   regenerateGroupInviteCode,
   removeStudyGroupMemberCallable as callRemoveMember,
   renameStudyGroup,
+  subscribeGroupActivity,
+  subscribeGroupMembers,
+  subscribeGroupSharedDecks,
   unshareDeckFromGroup,
 } from '../services'
 import type { SharedGroupDeck, StudyGroup, StudyGroupActivity, StudyGroupMember } from '../types'
 import { ShareDeckDialog } from './ShareDeckDialog'
+import { StudyGroupPreview } from './StudyGroupPreview'
 
 interface Props {
   groupId: string
@@ -37,11 +39,21 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
   const { showToast } = useToast()
 
   const [group, setGroup] = useState<StudyGroup | null>(null)
+  const [isMember, setIsMember] = useState<boolean | null>(null)
   const [members, setMembers] = useState<StudyGroupMember[]>([])
   const [sharedDecks, setSharedDecks] = useState<SharedGroupDeck[]>([])
   const [activity, setActivity] = useState<StudyGroupActivity[]>([])
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const [decksError, setDecksError] = useState<string | null>(null)
+  const [membersError, setMembersError] = useState<string | null>(null)
+  const [activityError, setActivityError] = useState<string | null>(null)
+
+  const [decksRetryKey, setDecksRetryKey] = useState(0)
+  const [membersRetryKey, setMembersRetryKey] = useState(0)
+  const [activityRetryKey, setActivityRetryKey] = useState(0)
 
   const [shareOpen, setShareOpen] = useState(false)
   const [studyDeck, setStudyDeck] = useState<FlashcardDeckWithId | null>(null)
@@ -56,24 +68,23 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
 
   const isOwner = group?.ownerId === user?.uid
 
-  const loadAll = async () => {
+  const loadGroupInfo = async () => {
     try {
       setLoading(true)
       setError(null)
-      const g = await getStudyGroup(groupId)
-      if (!g) throw new Error('Study group not found.')
+      const g = await getStudyGroup(groupId).catch(() => null)
       setGroup(g)
-      setNewName(g.name)
-
-      const [m, d, a] = await Promise.all([
-        listGroupMembers(groupId).catch(() => []),
-        listGroupSharedDecks(groupId).catch(() => []),
-        listGroupActivity(groupId).catch(() => []),
-      ])
-      setMembers(m)
-      setSharedDecks(d)
-      setActivity(a)
+      if (g) {
+        setNewName(g.name)
+      }
+      if (user) {
+        const member = await checkIsGroupMember(groupId, user.uid).catch(() => false)
+        setIsMember(member)
+      } else {
+        setIsMember(false)
+      }
     } catch (err) {
+      console.error('Failed to load study group info:', err)
       setError(err instanceof Error ? err.message : 'Could not load study group.')
     } finally {
       setLoading(false)
@@ -81,8 +92,66 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
   }
 
   useEffect(() => {
-    void loadAll()
-  }, [groupId])
+    void loadGroupInfo()
+  }, [groupId, user?.uid])
+
+  useEffect(() => {
+    if (!isMember) return
+
+    setDecksError(null)
+    const unsubDecks = subscribeGroupSharedDecks(
+      groupId,
+      (decks) => {
+        setSharedDecks(decks)
+        setDecksError(null)
+      },
+      (err) => {
+        console.error('Failed to subscribe to shared decks:', err)
+        setDecksError(err.message || 'Shared decks couldn’t load.')
+      },
+    )
+
+    return () => unsubDecks()
+  }, [groupId, isMember, decksRetryKey])
+
+  useEffect(() => {
+    if (!isMember) return
+
+    setMembersError(null)
+    const unsubMembers = subscribeGroupMembers(
+      groupId,
+      (m) => {
+        setMembers(m)
+        setMembersError(null)
+      },
+      (err) => {
+        console.error('Failed to subscribe to group members:', err)
+        setMembersError(err.message || 'Members couldn’t load.')
+      },
+    )
+
+    return () => unsubMembers()
+  }, [groupId, isMember, membersRetryKey])
+
+  useEffect(() => {
+    if (!isMember) return
+
+    setActivityError(null)
+    const unsubActivity = subscribeGroupActivity(
+      groupId,
+      (acts) => {
+        setActivity(acts)
+        setActivityError(null)
+      },
+      (err) => {
+        console.error('Failed to subscribe to group activity:', err)
+        setActivityError(err.message || 'Activity couldn’t load.')
+      },
+      15,
+    )
+
+    return () => unsubActivity()
+  }, [groupId, isMember, activityRetryKey])
 
   const copyCode = async () => {
     if (!group?.inviteCode) return
@@ -146,7 +215,6 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
     setBusyAction(true)
     try {
       await callRemoveMember(group.id, memberToRemove.uid)
-      setMembers((prev) => prev.filter((m) => m.uid !== memberToRemove.uid))
       setMemberToRemove(null)
       showToast('success', `${memberToRemove.displayName} was removed.`)
     } catch (err) {
@@ -159,7 +227,6 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
   const handleUnshareDeck = async (deckId: string) => {
     try {
       await unshareDeckFromGroup(groupId, deckId)
-      setSharedDecks((prev) => prev.filter((d) => d.id !== deckId))
       showToast('success', 'Deck removed from group.')
     } catch (err) {
       showToast('error', err instanceof Error ? err.message : 'Could not remove deck.')
@@ -195,6 +262,20 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
         <Skeleton className="h-28 rounded-3xl" />
         <Skeleton className="h-64 rounded-3xl" />
       </div>
+    )
+  }
+
+  if (!isMember) {
+    return (
+      <StudyGroupPreview
+        group={group}
+        groupId={groupId}
+        onJoined={() => {
+          setIsMember(true)
+          void loadGroupInfo()
+        }}
+        onBack={onBack}
+      />
     )
   }
 
@@ -238,7 +319,7 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
               <Badge>{group.privacy === 'public' ? 'Public group' : 'Private group'}</Badge>
               <span className="text-sm text-navy-900-72 flex items-center gap-1">
                 <Users size={14} aria-hidden="true" />
-                {members.length} / {group.maxMembers} members
+                {members.length > 0 ? members.length : group.memberCount} / {group.maxMembers} members
               </span>
             </div>
             {renaming ? (
@@ -310,7 +391,18 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
               </Button>
             </div>
 
-            {sharedDecks.length === 0 ? (
+            {decksError ? (
+              <div className="rounded-2xl border border-navy-900-15 bg-navy-900-05 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="m-0 text-sm font-semibold text-navy-900">Shared decks couldn't load</p>
+                  <p className="m-0 text-xs text-navy-900-72">{decksError}</p>
+                </div>
+                <Button variant="secondary" onClick={() => setDecksRetryKey((k) => k + 1)}>
+                  <RefreshCw size={14} aria-hidden="true" />
+                  Retry
+                </Button>
+              </div>
+            ) : sharedDecks.length === 0 ? (
               <EmptyState
                 title="No shared decks yet"
                 description="Share flashcards from your library so group members can study together."
@@ -361,7 +453,18 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
 
           <section className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm grid gap-3">
             <h3 className="m-0 text-xl font-bold text-navy-900">Recent group activity</h3>
-            {activity.length === 0 ? (
+            {activityError ? (
+              <div className="rounded-2xl border border-navy-900-15 bg-navy-900-05 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="m-0 text-sm font-semibold text-navy-900">Activity couldn't load</p>
+                  <p className="m-0 text-xs text-navy-900-72">{activityError}</p>
+                </div>
+                <Button variant="secondary" onClick={() => setActivityRetryKey((k) => k + 1)}>
+                  <RefreshCw size={14} aria-hidden="true" />
+                  Retry
+                </Button>
+              </div>
+            ) : activity.length === 0 ? (
               <p className="m-0 text-sm text-navy-900-72">No activity recorded yet.</p>
             ) : (
               <ul className="m-0 list-none p-0 grid gap-2">
@@ -384,33 +487,46 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
           <h3 className="m-0 text-xl font-bold text-navy-900">
             Members ({members.length})
           </h3>
-          <ul className="m-0 list-none p-0 grid gap-2" aria-label="Group members list">
-            {members.map((m) => {
-              const isSelf = m.uid === user?.uid
-              return (
-                <li
-                  key={m.uid}
-                  className="flex items-center justify-between gap-2 rounded-xl p-2 bg-navy-900-05"
-                >
-                  <div className="grid">
-                    <span className="font-semibold text-sm text-navy-900">
-                      {m.displayName} {isSelf && '(You)'}
-                    </span>
-                    <span className="text-xs text-navy-900-72 capitalize">{m.role}</span>
-                  </div>
-                  {isOwner && m.role !== 'owner' && (
-                    <button
-                      type="button"
-                      onClick={() => setMemberToRemove(m)}
-                      className="text-xs text-navy-900-72 hover:text-navy-900 underline min-h-8 px-2"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
+          {membersError ? (
+            <div className="rounded-2xl border border-navy-900-15 bg-navy-900-05 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="m-0 text-sm font-semibold text-navy-900">Members couldn't load</p>
+                <p className="m-0 text-xs text-navy-900-72">{membersError}</p>
+              </div>
+              <Button variant="secondary" onClick={() => setMembersRetryKey((k) => k + 1)}>
+                <RefreshCw size={14} aria-hidden="true" />
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <ul className="m-0 list-none p-0 grid gap-2" aria-label="Group members list">
+              {members.map((m) => {
+                const isSelf = m.uid === user?.uid
+                return (
+                  <li
+                    key={m.uid}
+                    className="flex items-center justify-between gap-2 rounded-xl p-2 bg-navy-900-05"
+                  >
+                    <div className="grid">
+                      <span className="font-semibold text-sm text-navy-900">
+                        {m.displayName} {isSelf && '(You)'}
+                      </span>
+                      <span className="text-xs text-navy-900-72 capitalize">{m.role}</span>
+                    </div>
+                    {isOwner && m.role !== 'owner' && (
+                      <button
+                        type="button"
+                        onClick={() => setMemberToRemove(m)}
+                        className="text-xs text-navy-900-72 hover:text-navy-900 underline min-h-8 px-2"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </section>
       </div>
 
@@ -418,7 +534,7 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
         groupId={groupId}
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        onShared={() => void loadAll()}
+        onShared={() => {}}
       />
 
       {studyDeck && (

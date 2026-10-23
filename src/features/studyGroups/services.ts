@@ -6,6 +6,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -139,29 +140,67 @@ export async function listPublicStudyGroups(db: Firestore = firestore): Promise<
   return snap.docs.map(d => d.data() as StudyGroup)
 }
 
-export async function listGroupMembers(groupId: string, db: Firestore = firestore): Promise<StudyGroupMember[]> {
-  const snap = await getDocs(collection(db, 'studyGroups', groupId, 'members'))
-  return snap.docs.map(d => d.data() as StudyGroupMember)
+export async function checkIsGroupMember(groupId: string, uid: string, db: Firestore = firestore): Promise<boolean> {
+  const memberRef = doc(db, 'studyGroups', groupId, 'members', uid)
+  const snap = await getDoc(memberRef)
+  return snap.exists()
 }
 
-export async function listGroupSharedDecks(groupId: string, db: Firestore = firestore): Promise<SharedGroupDeck[]> {
-  const q = query(collection(db, 'studyGroups', groupId, 'sharedDecks'), orderBy('sharedAt', 'desc'), limit(50))
-  const snap = await getDocs(q)
-  return snap.docs.map(d => d.data() as SharedGroupDeck)
-}
-
-export async function listGroupActivity(
+export function subscribeGroupMembers(
   groupId: string,
+  onNext: (members: StudyGroupMember[]) => void,
+  onError: (err: Error) => void,
+  db: Firestore = firestore,
+): () => void {
+  const q = collection(db, 'studyGroups', groupId, 'members')
+  return onSnapshot(
+    q,
+    (snap) => {
+      onNext(snap.docs.map((d) => d.data() as StudyGroupMember))
+    },
+    (err) => onError(err),
+  )
+}
+
+export function subscribeGroupSharedDecks(
+  groupId: string,
+  onNext: (decks: SharedGroupDeck[]) => void,
+  onError: (err: Error) => void,
+  db: Firestore = firestore,
+): () => void {
+  const q = query(
+    collection(db, 'studyGroups', groupId, 'sharedDecks'),
+    orderBy('sharedAt', 'desc'),
+    limit(50),
+  )
+  return onSnapshot(
+    q,
+    (snap) => {
+      onNext(snap.docs.map((d) => d.data() as SharedGroupDeck))
+    },
+    (err) => onError(err),
+  )
+}
+
+export function subscribeGroupActivity(
+  groupId: string,
+  onNext: (activities: StudyGroupActivity[]) => void,
+  onError: (err: Error) => void,
   count = 30,
   db: Firestore = firestore,
-): Promise<StudyGroupActivity[]> {
+): () => void {
   const q = query(
     collection(db, 'studyGroups', groupId, 'activity'),
     orderBy('createdAt', 'desc'),
     limit(count),
   )
-  const snap = await getDocs(q)
-  return snap.docs.map(d => d.data() as StudyGroupActivity)
+  return onSnapshot(
+    q,
+    (snap) => {
+      onNext(snap.docs.map((d) => d.data() as StudyGroupActivity))
+    },
+    (err) => onError(err),
+  )
 }
 
 export async function shareDeckWithGroup(
@@ -306,6 +345,15 @@ export async function joinStudyGroupWithCode(codeOrId: string): Promise<JoinStud
   const norm = normalizeGroupInviteCode(codeOrId)
   const payload = norm.length === 6 ? { inviteCode: norm } : { groupId: codeOrId }
   const res = await fn(payload)
+  return res.data
+}
+
+export async function joinStudyGroupById(groupId: string): Promise<JoinStudyGroupResult> {
+  const fn = httpsCallable<{ inviteCode?: string; groupId?: string }, JoinStudyGroupResult>(
+    functions,
+    'joinStudyGroup',
+  )
+  const res = await fn({ groupId })
   return res.data
 }
 

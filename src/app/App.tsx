@@ -52,7 +52,7 @@ export function AppRoutes() {
       <Route path="/signin" element={<PublicRoute><SigninPage /></PublicRoute>} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
       <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-      <Route path="/profile/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+      <Route path="/profile/settings" element={<ProtectedRoute><ToastProvider><SettingsPage /></ToastProvider></ProtectedRoute>} />
       <Route path="/profile/settings/danger-zone" element={<ProtectedRoute><DangerZonePage /></ProtectedRoute>} />
       <Route path="/join" element={<ToastProvider><JoinClassPage /></ToastProvider>} />
       <Route path="/join/:code" element={<ToastProvider><JoinClassPage /></ToastProvider>} />

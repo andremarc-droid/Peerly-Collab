@@ -1863,10 +1863,7 @@ service cloud.firestore {
     // Study Groups (Phase 3: collaborative study spaces)
     match /studyGroups/{groupId} {
       function isStudyGroupMember(gid) {
-        return signedIn() && (
-          exists(/databases/$(database)/documents/studyGroups/$(gid)/members/$(request.auth.uid))
-          || existsAfter(/databases/$(database)/documents/studyGroups/$(gid)/members/$(request.auth.uid))
-        );
+        return signedIn() && exists(/databases/$(database)/documents/studyGroups/$(gid)/members/$(request.auth.uid));
       }
       function validStudyGroup(data) {
         return data.keys().hasOnly(['id', 'name', 'description', 'privacy', 'ownerId', 'ownerDisplayName', 'inviteCode', 'memberCount', 'maxMembers', 'createdAt', 'updatedAt'])

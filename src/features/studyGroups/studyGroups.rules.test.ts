@@ -10,6 +10,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  serverTimestamp,
 } from 'firebase/firestore'
 import rules from '../../../firestore.rules?raw'
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest'
@@ -18,7 +19,7 @@ const projectId = 'demo-peerly-collab'
 let environment: RulesTestEnvironment
 
 function validGroup(groupId = 'group-1', ownerId = 'alice', overrides: Record<string, unknown> = {}) {
-  const now = new Date()
+  const now = serverTimestamp()
   return {
     id: groupId,
     name: 'Chemistry Crew',
