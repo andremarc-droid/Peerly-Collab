@@ -29,6 +29,7 @@ import type { QuizRecord } from '../services/quizService'
 import type { QuizResult } from '../types'
 import { buildRosterRows, computeTimeSpent, isLate, quizTypeLabel, resultsCsv, resultsFileName, summarizeAttempts, typedWrongAnswerCounts, type AttemptResult, type ResultListRow } from './resultLogic'
 import { AttemptDetail } from './AttemptDetail'
+import { describeQuizForResults, type QuizResultsDescription } from './quizDescription'
 
 type SortMode = 'recent' | 'student' | 'score'
 
@@ -98,6 +99,7 @@ export function QuizResultsPage() {
     quiz?.mode === 'flashcards',
     quiz?.settings.timeLimitMinutes,
   )
+  const described = quiz ? describeQuizForResults(quiz, classroom?.name ?? 'Unassigned quiz') : null
 
   async function releaseScores(value: boolean) {
     if (!quiz) return
@@ -127,7 +129,7 @@ export function QuizResultsPage() {
 
   function exportCsv() {
     try {
-      const quizInfo = quiz ? { title: quiz.title || 'Untitled quiz', type: quizTypeLabel(quiz.mode) } : undefined
+      const quizInfo = described ? { title: described.title, type: described.typeLabel, facts: described.facts } : undefined
       const blob = new Blob([resultsCsv(attempts, quiz?.mode === 'flashcards', classroom?.name ?? 'Unassigned', quiz?.settings.timeLimitMinutes, quizInfo)], { type: 'text/csv;charset=utf-8' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a'); link.href = url; link.download = resultsFileName(quiz?.title ?? ''); link.click(); URL.revokeObjectURL(url)
@@ -152,7 +154,7 @@ export function QuizResultsPage() {
         <StatTile label="Lowest" value={summary.lowest === null ? '—' : `${summary.lowest}%`} hint="Best student result" />
         <StatTile label="Completion" value={`${summary.inProgress} / ${summary.submitted}`} hint="In progress / submitted" />
       </StatRow>
-      <section className="grid gap-4" aria-labelledby="submission-heading"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="submission-heading" className="m-0 font-heading text-2xl">Submissions</h2><p className="m-0 font-semibold">{quiz.title || 'Untitled quiz'} · {quizTypeLabel(quiz.mode)} · {classroom?.name ?? 'Unassigned quiz'}</p><p className="m-0">{quiz.settings.participation.type === 'group' ? 'Each team member has their own row with the team’s shared answers and score.' : 'Each attempt is listed; summary scores use each student’s best attempt.'}</p></div></header>
+      <section className="grid gap-4" aria-labelledby="submission-heading"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="submission-heading" className="m-0 font-heading text-2xl">Submissions</h2><p className="m-0">{quiz.settings.participation.type === 'group' ? 'Each team member has their own row with the team’s shared answers and score.' : 'Each attempt is listed; summary scores use each student’s best attempt.'}</p></div></header>
         <div className="grid gap-3 md:grid-cols-2">
           <Input label="Search students" name="results-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or student ID" />
           <Select label="Sort submissions" name="results-sort" value={sort} onChange={(event) => setSort(event.target.value as SortMode)} options={[{ value: 'recent', label: 'Recently submitted' }, { value: 'student', label: 'Student name' }, { value: 'score', label: 'Score' }]} />
@@ -160,6 +162,9 @@ export function QuizResultsPage() {
         {visible.length === 0 && attempts.length === 0 && !enrollments.some((item) => item.status === 'active') ? <EmptyState title="No submissions yet" description="Student attempts will appear here after they submit this quiz." /> : visible.length === 0 ? <p role="status">No submissions match this search.</p> : <>
           <DataTable label={`Submissions for ${quiz.title || 'this quiz'}`} rows={visible} getRowId={(row) => row.attempt?.id ?? row.userId} columns={[
             { key: 'student', header: 'Student', cell: (row) => <>{row.userName}<TeamBadge row={row} /><MembershipBadge row={row} /></>, sortValue: (row) => row.userName },
+            // Every row belongs to the same quiz, so sorting these two columns would change nothing; they are not sortable.
+            { key: 'quiz', header: 'Quiz', cell: () => described && <QuizCell description={described} /> },
+            { key: 'quizDetails', header: 'Quiz details', cell: () => described && <QuizDetailsCell description={described} /> },
             { key: 'attempt', header: 'Attempt', cell: (row) => row.attempt?.attemptNumber ?? '—', sortValue: (row) => row.attempt?.attemptNumber ?? 0 },
             { key: 'status', header: 'Status', cell: (row) => {
               if (!row.attempt) return <Badge>Not started</Badge>
@@ -232,6 +237,14 @@ function TeamBadge({ row }: { row: ResultListRow }) {
   const name = row.attempt?.teamName
   if (!name) return null
   return <span className="ml-2 inline-flex"><Badge className="inline-flex items-center gap-1"><Users size={12} aria-hidden="true" /> Team · {name}</Badge></span>
+}
+/** The quiz name with its type, repeated on every row so the grades are never shown without their quiz. */
+function QuizCell({ description }: { description: QuizResultsDescription }) {
+  return <span className="flex flex-wrap items-center gap-2 sm:min-w-40"><span className="font-semibold">{description.title}</span><Badge>{description.typeLabel}</Badge></span>
+}
+/** Two short lines from `describeQuizForResults`, the same text the CSV export writes. */
+function QuizDetailsCell({ description }: { description: QuizResultsDescription }) {
+  return <span className="grid gap-1 sm:min-w-52">{description.details.map((line, index) => <span key={index}>{line}</span>)}</span>
 }
 
 function QuestionAnalytics({ questions, attempts }: { questions: SavedQuestion[]; attempts: AttemptResult[] }) {

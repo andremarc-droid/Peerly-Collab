@@ -2,6 +2,7 @@ import { gradeAttempt, type QuizQuestionRecord } from '../grading/grade'
 import { normalizeAnswer } from '../grading/normalize'
 import type { AnswerKey, QuizAttempt, QuizResult } from '../types'
 import type { EnrollmentWithId } from '../../classes/types'
+import type { QuizResultsFacts } from './quizDescription'
 
 export type AttemptResult = QuizAttempt & { id: string; result: QuizResult | null }
 export type ResultListRow = { userId: string; userName: string; attempt: AttemptResult | null; membership: 'enrolled' | 'not_started' | 'no_longer_enrolled' }
@@ -178,18 +179,24 @@ export interface ResultsQuizInfo {
   title: string
   /** Readable quiz type such as "Quiz" or "Flashcards". */
   type?: string
+  /** Quiz setup from `describeQuizForResults`, written as extra columns right after "Quiz type" so the export matches the table. */
+  facts?: QuizResultsFacts
 }
+
+const FACT_HEADERS = ['Questions', 'Participation', 'Time limit', 'Attempts allowed']
+const factCells = (facts: QuizResultsFacts) => [facts.questions, facts.participation, facts.timeLimit ?? 'Not applicable', facts.attempts]
 
 /**
  * One row per attempt. A "Team" column (right after Student) is added only when at least one attempt belongs to a team,
  * so the export of an ordinary solo quiz is exactly what it was before. Every member of a team has their own row with the same team name and score.
  * When `quizInfo` is given, "Quiz" and "Quiz type" columns are added right after Class, so a file stays identifiable
- * and exports of several quizzes can be combined and filtered in a spreadsheet.
+ * and exports of several quizzes can be combined and filtered in a spreadsheet. When `quizInfo.facts` is given too,
+ * "Questions", "Participation", "Time limit" and "Attempts allowed" follow "Quiz type".
  */
 export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = '', timeLimitMinutes: number | null = null, quizInfo?: ResultsQuizInfo): string {
   const hasTeams = attempts.some((attempt) => Boolean(attempt.teamName))
   const header: Array<string | number> = ['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Score', 'Late', 'Time spent (seconds)', 'Submitted at']
-  if (quizInfo) header.splice(3, 0, 'Quiz', 'Quiz type')
+  if (quizInfo) header.splice(3, 0, 'Quiz', 'Quiz type', ...(quizInfo.facts ? FACT_HEADERS : []))
   if (hasTeams) header.splice(1, 0, 'Team')
   const rows: Array<Array<string | number>> = [header]
   for (const attempt of attempts) {
@@ -207,7 +214,7 @@ export function resultsCsv(attempts: AttemptResult[], ungraded = false, classNam
       timeSpent !== null ? timeSpent : '—',
       attempt.submittedAt?.toDate().toISOString() ?? '',
     ]
-    if (quizInfo) cells.splice(3, 0, quizInfo.title, quizInfo.type ?? '')
+    if (quizInfo) cells.splice(3, 0, quizInfo.title, quizInfo.type ?? '', ...(quizInfo.facts ? factCells(quizInfo.facts) : []))
     if (hasTeams) cells.splice(1, 0, attempt.teamName ?? '')
     rows.push(cells)
   }

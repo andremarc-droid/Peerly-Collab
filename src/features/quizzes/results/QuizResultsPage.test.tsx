@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Timestamp } from 'firebase/firestore'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -80,11 +80,51 @@ describe('instructor quiz results page', () => {
     expect(mocks.listQuizAttempts).not.toHaveBeenCalled()
   })
 
-  it('names the quiz above the submissions table', async () => {
+  it('keeps the quiz name and type badges above the stats', async () => {
     renderPage()
-    expect(await screen.findByText('Practice · Quiz · Science, North')).toBeInTheDocument()
-    expect(screen.getByText('Quiz · Practice')).toBeInTheDocument()
+    expect(await screen.findByText('Quiz · Practice')).toBeInTheDocument()
     expect(screen.getByText('Type · Quiz')).toBeInTheDocument()
+  })
+
+  it('shows the quiz name and details on every table row, including students who have not started', async () => {
+    mocks.listEnrollments.mockResolvedValue([
+      { id: 'enrollment-1', classId: 'class-1', ownerId: 'teacher', uid: 'student', studentName: 'Sam Student', status: 'active', joinedAt: now },
+      { id: 'enrollment-2', classId: 'class-1', ownerId: 'teacher', uid: 'newbie', studentName: 'Nia New', status: 'active', joinedAt: now },
+    ])
+    renderPage()
+    const table = await screen.findByRole('region', { name: 'Submissions for Practice' })
+    expect(within(table).getByRole('columnheader', { name: 'Quiz' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Quiz details' })).toBeInTheDocument()
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(2)
+    const started = rows.find((row) => row.textContent?.includes('Sam Student'))!
+    const notStarted = rows.find((row) => row.textContent?.includes('Nia New'))!
+    expect(notStarted).toHaveTextContent('Enrolled · not started')
+    for (const row of [started, notStarted]) {
+      expect(within(row).getByText('Practice')).toBeInTheDocument()
+      expect(within(row).getByText('Quiz')).toBeInTheDocument()
+      expect(within(row).getByText('Science, North · 1 question · Individual')).toBeInTheDocument()
+      expect(within(row).getByText('No time limit · 1 attempt')).toBeInTheDocument()
+    }
+    expect(screen.queryByText('Practice · Quiz · Science, North')).not.toBeInTheDocument()
+  })
+
+  it('describes a group quiz in the table and still shows the team badge', async () => {
+    mocks.getQuiz.mockResolvedValue({ ...quiz, questionCount: 4, settings: { ...quiz.settings, attemptsAllowed: null, participation: { type: 'group', groupSize: 3, answerMode: 'representative', teamFormation: 'assigned', waitForEveryone: false, questionTimeSec: null } } })
+    mocks.listQuizAttempts.mockResolvedValue([{ ...attempt, teamId: 't1', teamName: 'Red Team' }])
+    renderPage()
+    const table = await screen.findByRole('region', { name: 'Submissions for Practice' })
+    const row = within(table).getAllByRole('row')[1]
+    expect(within(row).getByText('Team · Red Team')).toBeInTheDocument()
+    expect(within(row).getByText('Science, North · 4 questions · Group of up to 3')).toBeInTheDocument()
+    expect(within(row).getByText('No time limit · Unlimited attempts')).toBeInTheDocument()
+  })
+
+  it('describes the per-question time limit of a timed quiz in the table', async () => {
+    mocks.getQuiz.mockResolvedValue({ ...quiz, settings: { ...quiz.settings, timeLimitMinutes: 2, timeLimitSeconds: 90, attemptsAllowed: 3 } })
+    renderPage()
+    const table = await screen.findByRole('region', { name: 'Submissions for Practice' })
+    expect(within(table).getByText('1 minute 30 seconds per question · 3 attempts')).toBeInTheDocument()
   })
 
   it('puts the quiz title and type into the exported CSV and its file name', async () => {
@@ -101,8 +141,8 @@ describe('instructor quiz results page', () => {
       reader.onload = () => resolve(String(reader.result))
       reader.readAsText(created[0])
     })
-    expect(text).toContain('"Class","Quiz","Quiz type"')
-    expect(text).toContain('"Science, North","Practice","Quiz"')
+    expect(text).toContain('"Class","Quiz","Quiz type","Questions","Participation","Time limit","Attempts allowed","Attempt"')
+    expect(text).toContain('"Science, North","Practice","Quiz","1 question","Individual","No time limit","1 attempt","1"')
     expect(downloads).toEqual(['Practice-results.csv'])
     click.mockRestore()
   })
