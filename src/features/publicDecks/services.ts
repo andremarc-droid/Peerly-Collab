@@ -13,9 +13,8 @@ import {
   writeBatch,
   type Firestore,
 } from 'firebase/firestore'
-import { httpsCallable } from 'firebase/functions'
 import { firestore } from '../../lib/firebase/firestore'
-import { functions } from '../../lib/firebase/functions'
+import { callServer } from '../../lib/firebase/callServer'
 import { newCardId } from '../flashcards/schemas'
 import { createDeck } from '../flashcards/services'
 import type { FlashcardDeckWithId } from '../flashcards/types'
@@ -107,11 +106,7 @@ export async function copyPublicDeckToLibrary(
   })
 
   try {
-    const callSave = httpsCallable<{ deckId: string }, { success: boolean; savesCount: number }>(
-      functions,
-      'savePublicDeck',
-    )
-    await callSave({ deckId: deck.id })
+    await callServer<{ deckId: string }, { success: boolean; savesCount: number }>('savePublicDeck', { deckId: deck.id })
   } catch {
     // Non-blocking: failure to increment the counter should not break the user's copy
   }

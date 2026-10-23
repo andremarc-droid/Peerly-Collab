@@ -16,9 +16,8 @@ import {
   writeBatch,
   type Firestore,
 } from 'firebase/firestore'
-import { httpsCallable } from 'firebase/functions'
 import { firestore } from '../../lib/firebase/firestore'
-import { functions } from '../../lib/firebase/functions'
+import { callServer } from '../../lib/firebase/callServer'
 import type { FlashcardDeckWithId } from '../flashcards/types'
 import {
   generateGroupInviteCode,
@@ -338,36 +337,21 @@ export async function deleteStudyGroupCascade(
 }
 
 export async function joinStudyGroupWithCode(codeOrId: string): Promise<JoinStudyGroupResult> {
-  const fn = httpsCallable<{ inviteCode?: string; groupId?: string }, JoinStudyGroupResult>(
-    functions,
-    'joinStudyGroup',
-  )
   const norm = normalizeGroupInviteCode(codeOrId)
   const payload = norm.length === 6 ? { inviteCode: norm } : { groupId: codeOrId }
-  const res = await fn(payload)
-  return res.data
+  return callServer<{ inviteCode?: string; groupId?: string }, JoinStudyGroupResult>('joinStudyGroup', payload)
 }
 
 export async function joinStudyGroupById(groupId: string): Promise<JoinStudyGroupResult> {
-  const fn = httpsCallable<{ inviteCode?: string; groupId?: string }, JoinStudyGroupResult>(
-    functions,
-    'joinStudyGroup',
-  )
-  const res = await fn({ groupId })
-  return res.data
+  return callServer<{ inviteCode?: string; groupId?: string }, JoinStudyGroupResult>('joinStudyGroup', { groupId })
 }
 
 export async function leaveStudyGroupCallable(groupId: string): Promise<void> {
-  const fn = httpsCallable<{ groupId: string }, { success: boolean }>(functions, 'leaveStudyGroup')
-  await fn({ groupId })
+  await callServer<{ groupId: string }, { success: boolean }>('leaveStudyGroup', { groupId })
 }
 
 export async function removeStudyGroupMemberCallable(groupId: string, targetUid: string): Promise<void> {
-  const fn = httpsCallable<{ groupId: string; targetUid: string }, { success: boolean }>(
-    functions,
-    'removeStudyGroupMember',
-  )
-  await fn({ groupId, targetUid })
+  await callServer<{ groupId: string; targetUid: string }, { success: boolean }>('removeStudyGroupMember', { groupId, targetUid })
 }
 
 export async function cleanupMyStudyGroupsOnAccountDeletion(

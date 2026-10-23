@@ -13,9 +13,8 @@ import {
   where,
   type Firestore,
 } from 'firebase/firestore'
-import { httpsCallable } from 'firebase/functions'
 import { firestore } from '../../lib/firebase/firestore'
-import { functions } from '../../lib/firebase/functions'
+import { callServer } from '../../lib/firebase/callServer'
 import { computeCompetitionRanks } from './schemas'
 import type { ScoreboardEntry, ScoreboardPeriod, ScoreboardRankingResult } from './types'
 
@@ -86,12 +85,7 @@ export async function recordScoreboardNoticeSeen(
 
 export async function callEnsureScoreboardEntry(): Promise<{ optIn: boolean; created?: boolean }> {
   try {
-    const fn = httpsCallable<void, { optIn: boolean; created?: boolean }>(
-      functions,
-      'ensureScoreboardEntry',
-    )
-    const res = await fn()
-    return res.data
+    return await callServer<void, { optIn: boolean; created?: boolean }>('ensureScoreboardEntry', undefined)
   } catch {
     return { optIn: true }
   }
@@ -101,12 +95,7 @@ export async function callUpdateScoreboardOptIn(
   optIn: boolean,
   displayName?: string,
 ): Promise<{ success: boolean; optIn: boolean }> {
-  const fn = httpsCallable<
-    { optIn: boolean; displayName?: string },
-    { success: boolean; optIn: boolean }
-  >(functions, 'updateScoreboardOptIn')
-  const res = await fn({ optIn, displayName })
-  return res.data
+  return callServer<{ optIn: boolean; displayName?: string }, { success: boolean; optIn: boolean }>('updateScoreboardOptIn', { optIn, displayName })
 }
 
 export async function deleteUserScoreboardEntriesOnAccountDeletion(
