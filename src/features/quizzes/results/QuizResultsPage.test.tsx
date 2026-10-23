@@ -10,7 +10,7 @@ import type { AttemptResult } from './resultLogic'
 
 const mocks = vi.hoisted(() => ({
   getQuiz: vi.fn(), listQuizAttempts: vi.fn(), listResults: vi.fn(), getQuizResult: vi.fn(), watchQuestionPairs: vi.fn(), getClass: vi.fn(), listEnrollments: vi.fn(),
-  updateQuiz: vi.fn(), setQuestionGradeOverride: vi.fn(), toast: vi.fn(),
+  updateQuiz: vi.fn(), setQuestionGradeOverride: vi.fn(), toast: vi.fn(), regradeQuizAttempts: vi.fn(),
 }))
 
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'teacher', email: 'teacher@test.dev' } }) }))
@@ -18,7 +18,7 @@ vi.mock('../../../app/AppShell', () => ({ AppShell: ({ children }: { children: R
 vi.mock('../../../shared/ui/useToast', () => ({ useToast: () => ({ showToast: mocks.toast }) }))
 vi.mock('../services/quizService', () => ({ getQuiz: mocks.getQuiz, updateQuiz: mocks.updateQuiz }))
 vi.mock('../services/attemptService', () => ({ listQuizAttempts: mocks.listQuizAttempts }))
-vi.mock('../services/resultService', () => ({ getQuizResult: mocks.getQuizResult, listResults: mocks.listResults, setQuestionGradeOverride: mocks.setQuestionGradeOverride }))
+vi.mock('../services/resultService', () => ({ getQuizResult: mocks.getQuizResult, listResults: mocks.listResults, setQuestionGradeOverride: mocks.setQuestionGradeOverride, regradeQuizAttempts: mocks.regradeQuizAttempts }))
 vi.mock('../services/questionService', () => ({ watchQuestionPairs: mocks.watchQuestionPairs }))
 vi.mock('../../classes/services/classService', () => ({ getClass: mocks.getClass }))
 vi.mock('../../classes/services/enrollmentService', () => ({ listEnrollments: mocks.listEnrollments }))
@@ -78,6 +78,33 @@ describe('instructor quiz results page', () => {
     renderPage()
     expect(await screen.findByText('These results are only available to the quiz owner.')).toBeInTheDocument()
     expect(mocks.listQuizAttempts).not.toHaveBeenCalled()
+  })
+
+  it('names the quiz above the submissions table', async () => {
+    renderPage()
+    expect(await screen.findByText('Practice · Quiz · Science, North')).toBeInTheDocument()
+    expect(screen.getByText('Quiz · Practice')).toBeInTheDocument()
+    expect(screen.getByText('Type · Quiz')).toBeInTheDocument()
+  })
+
+  it('puts the quiz title and type into the exported CSV and its file name', async () => {
+    const created: Blob[] = []
+    const downloads: string[] = []
+    URL.createObjectURL = (blob: Blob) => { created.push(blob); return 'blob:results' }
+    URL.revokeObjectURL = () => undefined
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { downloads.push(this.download) })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /export csv/i }))
+    expect(created).toHaveLength(1)
+    const text = await new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.readAsText(created[0])
+    })
+    expect(text).toContain('"Class","Quiz","Quiz type"')
+    expect(text).toContain('"Science, North","Practice","Quiz"')
+    expect(downloads).toEqual(['Practice-results.csv'])
+    click.mockRestore()
   })
 
   it('displays Late badge, summary tile count, and Late by M min for late attempts', async () => {

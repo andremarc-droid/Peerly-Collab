@@ -27,7 +27,7 @@ import { listResults, regradeQuizAttempts } from '../services/resultService'
 import { watchQuestionPairs, type SavedQuestion } from '../services/questionService'
 import type { QuizRecord } from '../services/quizService'
 import type { QuizResult } from '../types'
-import { buildRosterRows, computeTimeSpent, isLate, resultsCsv, summarizeAttempts, typedWrongAnswerCounts, type AttemptResult, type ResultListRow } from './resultLogic'
+import { buildRosterRows, computeTimeSpent, isLate, quizTypeLabel, resultsCsv, resultsFileName, summarizeAttempts, typedWrongAnswerCounts, type AttemptResult, type ResultListRow } from './resultLogic'
 import { AttemptDetail } from './AttemptDetail'
 
 type SortMode = 'recent' | 'student' | 'score'
@@ -127,9 +127,10 @@ export function QuizResultsPage() {
 
   function exportCsv() {
     try {
-      const blob = new Blob([resultsCsv(attempts, quiz?.mode === 'flashcards', classroom?.name ?? 'Unassigned', quiz?.settings.timeLimitMinutes)], { type: 'text/csv;charset=utf-8' })
+      const quizInfo = quiz ? { title: quiz.title || 'Untitled quiz', type: quizTypeLabel(quiz.mode) } : undefined
+      const blob = new Blob([resultsCsv(attempts, quiz?.mode === 'flashcards', classroom?.name ?? 'Unassigned', quiz?.settings.timeLimitMinutes, quizInfo)], { type: 'text/csv;charset=utf-8' })
       const url = URL.createObjectURL(blob)
-      const link = document.createElement('a'); link.href = url; link.download = `${quiz?.title || 'quiz'}-results.csv`; link.click(); URL.revokeObjectURL(url)
+      const link = document.createElement('a'); link.href = url; link.download = resultsFileName(quiz?.title ?? ''); link.click(); URL.revokeObjectURL(url)
       showToast('success', 'Results CSV downloaded.')
     } catch { showToast('error', 'The results CSV could not be downloaded.') }
   }
@@ -140,7 +141,7 @@ export function QuizResultsPage() {
   return <AppShell>
     <PageHeader eyebrow="INSTRUCTOR · RESULTS" title={quiz.title || 'Quiz results'} subtitle="Review submissions, question performance and score release." action={<Button type="button" variant="secondary" onClick={exportCsv}><Download size={17} aria-hidden="true" /> Export CSV</Button>} />
     <main className="app-shell__content grid gap-6" id="main-content">
-      <p className="m-0"><Badge>Class · {classroom?.name ?? 'Unassigned quiz'}</Badge></p>
+      <p className="m-0 flex flex-wrap items-center gap-2"><Badge>Quiz · {quiz.title || 'Untitled quiz'}</Badge><Badge>Type · {quizTypeLabel(quiz.mode)}</Badge><Badge>Class · {classroom?.name ?? 'Unassigned quiz'}</Badge></p>
       {quiz.settings.scoreVisibility === 'after_release' && <SectionCard title="Score release" description="Students can see their results after you release them. You can turn release off again at any time."><Switch checked={quiz.settings.scoresReleased} onChange={(event) => setReleasePrompt(event.currentTarget.checked)} label="Release scores to students" hint={quiz.settings.scoresReleased ? 'Scores are visible to students now.' : 'Scores are currently held back.'} /></SectionCard>}
 {quiz.mode === 'quiz' && quiz.settings.participation.type === 'individual' && attempts.some((item) => item.status === 'submitted') && <SectionCard title="Regrade" description="Changed an answer key after students submitted? Regrade so every attempt matches the current keys. Scores you adjusted by hand are kept."><Button type="button" variant="secondary" disabled={regrading} onClick={() => setRegradePrompt(true)}><RefreshCw size={16} aria-hidden="true" /> Regrade with current answer keys</Button></SectionCard>}
       <StatRow>
@@ -151,13 +152,13 @@ export function QuizResultsPage() {
         <StatTile label="Lowest" value={summary.lowest === null ? '—' : `${summary.lowest}%`} hint="Best student result" />
         <StatTile label="Completion" value={`${summary.inProgress} / ${summary.submitted}`} hint="In progress / submitted" />
       </StatRow>
-      <section className="grid gap-4" aria-labelledby="submission-heading"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="submission-heading" className="m-0 font-heading text-2xl">Submissions</h2><p className="m-0">{quiz.settings.participation.type === 'group' ? 'Each team member has their own row with the team’s shared answers and score.' : 'Each attempt is listed; summary scores use each student’s best attempt.'}</p></div></header>
+      <section className="grid gap-4" aria-labelledby="submission-heading"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 id="submission-heading" className="m-0 font-heading text-2xl">Submissions</h2><p className="m-0 font-semibold">{quiz.title || 'Untitled quiz'} · {quizTypeLabel(quiz.mode)} · {classroom?.name ?? 'Unassigned quiz'}</p><p className="m-0">{quiz.settings.participation.type === 'group' ? 'Each team member has their own row with the team’s shared answers and score.' : 'Each attempt is listed; summary scores use each student’s best attempt.'}</p></div></header>
         <div className="grid gap-3 md:grid-cols-2">
           <Input label="Search students" name="results-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or student ID" />
           <Select label="Sort submissions" name="results-sort" value={sort} onChange={(event) => setSort(event.target.value as SortMode)} options={[{ value: 'recent', label: 'Recently submitted' }, { value: 'student', label: 'Student name' }, { value: 'score', label: 'Score' }]} />
         </div>
         {visible.length === 0 && attempts.length === 0 && !enrollments.some((item) => item.status === 'active') ? <EmptyState title="No submissions yet" description="Student attempts will appear here after they submit this quiz." /> : visible.length === 0 ? <p role="status">No submissions match this search.</p> : <>
-          <DataTable label="Quiz submissions" rows={visible} getRowId={(row) => row.attempt?.id ?? row.userId} columns={[
+          <DataTable label={`Submissions for ${quiz.title || 'this quiz'}`} rows={visible} getRowId={(row) => row.attempt?.id ?? row.userId} columns={[
             { key: 'student', header: 'Student', cell: (row) => <>{row.userName}<TeamBadge row={row} /><MembershipBadge row={row} /></>, sortValue: (row) => row.userName },
             { key: 'attempt', header: 'Attempt', cell: (row) => row.attempt?.attemptNumber ?? '—', sortValue: (row) => row.attempt?.attemptNumber ?? 0 },
             { key: 'status', header: 'Status', cell: (row) => {

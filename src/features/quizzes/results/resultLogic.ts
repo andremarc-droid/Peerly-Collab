@@ -173,13 +173,23 @@ export const csvCell = (value: string | number): string => {
   return `"${safeText.replaceAll('"', '""')}"`
 }
 
+export interface ResultsQuizInfo {
+  /** The quiz title, written on every row so an export is never anonymous. */
+  title: string
+  /** Readable quiz type such as "Quiz" or "Flashcards". */
+  type?: string
+}
+
 /**
  * One row per attempt. A "Team" column (right after Student) is added only when at least one attempt belongs to a team,
  * so the export of an ordinary solo quiz is exactly what it was before. Every member of a team has their own row with the same team name and score.
+ * When `quizInfo` is given, "Quiz" and "Quiz type" columns are added right after Class, so a file stays identifiable
+ * and exports of several quizzes can be combined and filtered in a spreadsheet.
  */
-export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = '', timeLimitMinutes: number | null = null): string {
+export function resultsCsv(attempts: AttemptResult[], ungraded = false, className = '', timeLimitMinutes: number | null = null, quizInfo?: ResultsQuizInfo): string {
   const hasTeams = attempts.some((attempt) => Boolean(attempt.teamName))
   const header: Array<string | number> = ['Student', 'User ID', 'Class', 'Attempt', 'Status', 'Score', 'Late', 'Time spent (seconds)', 'Submitted at']
+  if (quizInfo) header.splice(3, 0, 'Quiz', 'Quiz type')
   if (hasTeams) header.splice(1, 0, 'Team')
   const rows: Array<Array<string | number>> = [header]
   for (const attempt of attempts) {
@@ -197,8 +207,22 @@ export function resultsCsv(attempts: AttemptResult[], ungraded = false, classNam
       timeSpent !== null ? timeSpent : '—',
       attempt.submittedAt?.toDate().toISOString() ?? '',
     ]
+    if (quizInfo) cells.splice(3, 0, quizInfo.title, quizInfo.type ?? '')
     if (hasTeams) cells.splice(1, 0, attempt.teamName ?? '')
     rows.push(cells)
   }
   return rows.map((row) => row.map(csvCell).join(',')).join('\r\n')
+}
+
+/** The readable name of a quiz type, for the results page and the export. */
+export function quizTypeLabel(mode: string): string {
+  if (mode === 'flashcards') return 'Flashcards'
+  if (mode === 'canvas') return 'Canvas'
+  return 'Quiz'
+}
+
+/** A download name built from the quiz title, with characters that file systems reject replaced. */
+export function resultsFileName(title: string): string {
+  const cleaned = title.replace(/[\\/:*?"<>|]+/g, '-').trim()
+  return `${cleaned || 'quiz'}-results.csv`
 }
