@@ -1797,6 +1797,8 @@ service cloud.firestore {
       allow get: if signedIn();
       allow list: if false;
       allow create: if signedIn() && validInviteCode(request.resource.data);
+    }
+
     // System admin role check: custom claim or active admin record. No hard-coded emails.
     function isAdmin() {
       return signedIn() && (
