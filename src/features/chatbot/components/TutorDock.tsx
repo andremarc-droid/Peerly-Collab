@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Bot, X } from 'lucide-react'
+import { MessageCircle, X } from 'lucide-react'
 import { useMobileChrome } from '../../../lib/platform/mobileChromeContext'
 import { useTutorFocus } from '../tutorFocusContext'
 
@@ -96,7 +96,7 @@ export function TutorDock({ children, defaultOpen = false }: TutorDockProps) {
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-navy-900-12 px-3 py-2">
             <span className="inline-flex items-center gap-2 text-base font-bold text-navy-900">
               <span className="inline-flex size-9 items-center justify-center rounded-2xl bg-navy-900 text-white" aria-hidden="true">
-                <Bot size={18} />
+                <MessageCircle size={18} />
               </span>
               AI Tutor
             </span>
@@ -118,7 +118,7 @@ export function TutorDock({ children, defaultOpen = false }: TutorDockProps) {
           aria-controls={PANEL_ID}
           onClick={() => setOpen(true)}
         >
-          <Bot size={24} aria-hidden="true" />
+          <MessageCircle size={24} aria-hidden="true" />
           <span className="hidden sm:inline">AI Tutor</span>
         </button>
       )}

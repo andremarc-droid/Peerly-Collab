@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Bot, MessagesSquare, Plus, Share2, X } from 'lucide-react'
+import { MessageCircle, MessagesSquare, Plus, Share2, X } from 'lucide-react'
 import { Alert } from '../../../shared/ui/Alert'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
@@ -169,7 +169,7 @@ export function ChatbotTab({ classLabel, compact = false }: ChatbotTabProps) {
             <MessagesSquare size={20} aria-hidden="true" />
           </button>
           <span className="hidden size-10 shrink-0 items-center justify-center rounded-2xl bg-navy-900 text-white sm:inline-flex" aria-hidden="true">
-            <Bot size={20} />
+            <MessageCircle size={20} />
           </span>
           <div className="min-w-0 flex-1 px-1 sm:px-0">
             <h2 className="m-0 truncate text-base font-bold text-navy-900 sm:text-lg">

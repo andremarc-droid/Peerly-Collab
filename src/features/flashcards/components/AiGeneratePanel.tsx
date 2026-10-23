@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Sparkles, Square } from 'lucide-react'
+import { Square } from 'lucide-react'
 import { isAbortError } from '../../../lib/groq/client'
 import { getGroqConfigIssue } from '../../../lib/groq/requiredEnv'
 import { Alert } from '../../../shared/ui/Alert'
@@ -109,7 +109,6 @@ export function AiGeneratePanel({ classId, role, canLoadClassModules = true, fil
   return (
     <details className="rounded-2xl border border-navy-900-12 bg-white p-4">
       <summary className="cursor-pointer text-sm font-bold text-navy-900">
-        <Sparkles size={16} className="mr-2 inline" aria-hidden="true" />
         Generate cards with AI from your modules or documents
       </summary>
 
@@ -248,7 +247,6 @@ export function AiGeneratePanel({ classId, role, canLoadClassModules = true, fil
             onClick={() => void generate()}
             disabled={busy || Boolean(configIssue) || !hasInput}
           >
-            <Sparkles size={16} aria-hidden="true" />
             <span>{busy ? 'Generating…' : `Generate ${count} ${count === 1 ? 'card' : 'cards'}`}</span>
           </Button>
           {busy && (
