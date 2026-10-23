@@ -30,6 +30,7 @@ import type { QuizResult } from '../types'
 import { buildRosterRows, computeTimeSpent, isLate, quizTypeLabel, resultsCsv, resultsFileName, summarizeAttempts, typedWrongAnswerCounts, type AttemptResult, type ResultListRow } from './resultLogic'
 import { AttemptDetail } from './AttemptDetail'
 import { describeQuizForResults, type QuizResultsDescription } from './quizDescription'
+import { exportFile } from '../../../lib/platform/fileExport'
 
 type SortMode = 'recent' | 'student' | 'score'
 
@@ -127,13 +128,15 @@ export function QuizResultsPage() {
     }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
     try {
       const quizInfo = described ? { title: described.title, type: described.typeLabel, facts: described.facts } : undefined
-      const blob = new Blob([resultsCsv(attempts, quiz?.mode === 'flashcards', classroom?.name ?? 'Unassigned', quiz?.settings.timeLimitMinutes, quizInfo)], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a'); link.href = url; link.download = resultsFileName(quiz?.title ?? ''); link.click(); URL.revokeObjectURL(url)
-      showToast('success', 'Results CSV downloaded.')
+      const csv = resultsCsv(attempts, quiz?.mode === 'flashcards', classroom?.name ?? 'Unassigned', quiz?.settings.timeLimitMinutes, quizInfo)
+      const filename = resultsFileName(quiz?.title ?? '')
+      const result = await exportFile(csv, filename, 'text/csv;charset=utf-8')
+      if (!result.cancelled) {
+        showToast('success', 'Results CSV downloaded.')
+      }
     } catch { showToast('error', 'The results CSV could not be downloaded.') }
   }
 

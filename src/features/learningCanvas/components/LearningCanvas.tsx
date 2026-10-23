@@ -40,6 +40,7 @@ import { ReferencePickerDialog } from './ReferencePickerDialog'
 import { ShortcutsHelpDialog } from './ShortcutsHelpDialog'
 import { LossyImportDialog } from './LossyImportDialog'
 import { VersionConflictDialog } from './VersionConflictDialog'
+import { exportFile } from '../../../lib/platform/fileExport'
 
 import { ExpandableCanvasContainer } from '../../canvas/components/ExpandableCanvasContainer'
 import { CanvasControls } from '../../canvas/components/CanvasControls'
@@ -995,14 +996,10 @@ function LearningCanvasInternal({
 
   const handleExport = () => {
     const json = JSON.stringify(toJsonCanvas(readContent()), null, 2)
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${title.replace(/[^a-zA-Z0-9_-]/g, '_') || 'canvas'}.canvas`
-    a.click()
-    URL.revokeObjectURL(url)
-    announce('Canvas exported')
+    const filename = `${title.replace(/[^a-zA-Z0-9_-]/g, '_') || 'canvas'}.canvas`
+    void exportFile(json, filename, 'application/json').then((res) => {
+      if (!res.cancelled) announce('Canvas exported')
+    })
   }
 
   const handleImportFile = async (file: File) => {

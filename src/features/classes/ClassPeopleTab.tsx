@@ -11,6 +11,7 @@ import { Input } from '../../shared/ui/Input'
 import { SectionCard } from '../../shared/ui/SectionCard'
 import { useToast } from '../../shared/ui/useToast'
 import { approveEnrollment, blockStudent, buildRosterCsv, declineEnrollment, removeStudent, unblockStudent } from './services/enrollmentService'
+import { exportFile } from '../../lib/platform/fileExport'
 import type { ClassWithId, EnrollmentStatus, EnrollmentWithId } from './types'
 
 type ConfirmAction = { enrollment: EnrollmentWithId; kind: 'remove' | 'block' } | null
@@ -48,13 +49,17 @@ export function ClassPeopleTab({ classroom, enrollments, counts }: { classroom: 
     setConfirmBusy(false); setConfirm(null)
   }
 
-  function exportRoster() {
-    const csv = buildRosterCsv(enrollments)
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-    const link = document.createElement('a')
-    link.href = url; link.download = `${classroom.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()}-roster.csv`; link.click()
-    URL.revokeObjectURL(url)
-    showToast('success', 'Roster CSV downloaded.')
+  async function exportRoster() {
+    try {
+      const csv = buildRosterCsv(enrollments)
+      const filename = `${classroom.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()}-roster.csv`
+      const result = await exportFile(csv, filename, 'text/csv;charset=utf-8')
+      if (!result.cancelled) {
+        showToast('success', 'Roster CSV downloaded.')
+      }
+    } catch {
+      showToast('error', 'The roster CSV could not be downloaded.')
+    }
   }
 
   function renderStudent(entry: EnrollmentWithId, actions: 'pending' | 'active' | 'blocked') {
