@@ -5,7 +5,6 @@ import {
   X,
   Edit3,
   Trash2,
-  Orbit,
   Calendar,
   Sparkles,
   Share2,
@@ -41,7 +40,7 @@ export function NotesTabContent({
   role,
   onCreateNote,
   onDeleteNote,
-  onViewInGraph,
+  onViewInGraph: _onViewInGraph,
   onMakeStudyMaterial,
   sharedError,
 }: NotesTabContentProps) {
@@ -265,16 +264,6 @@ export function NotesTabContent({
                     >
                       <span>{note.shareRole === 'editor' ? 'Open to edit' : 'Open'}</span>
                     </Button>}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => onViewInGraph(note.id)}
-                      className="py-1 px-2.5 text-xs min-h-8 gap-1 text-navy-800"
-                      title="Open and connect this note in Knowledge Graph"
-                    >
-                      <Orbit size={13} aria-hidden="true" />
-                      <span>In Graph</span>
-                    </Button>
                     {!note.shareRole && <Button
                       type="button"
                       variant="secondary"

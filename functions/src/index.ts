@@ -91,7 +91,7 @@ async function deleteGraphInviteCodes(classId: string, graphId: string, ownerId:
 }
 
 export const deleteSharedGraph = onCall(
-  { region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' },
+  { region: 'us-central1', cors: true, timeoutSeconds: 540, memory: '1GiB' },
   async (call) => {
     if (!call.auth) throw new HttpsError('unauthenticated', 'Sign in to delete a graph view.')
     const { classId, graphId } = parseRequest(call.data)
@@ -117,7 +117,7 @@ export const deleteSharedGraph = onCall(
   },
 )
 
-export const fetchYoutubeTranscript = onCall({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async call => {
+export const fetchYoutubeTranscript = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 30, memory: '256MiB' }, async call => {
   const limits = {
     async consume(uid: string, now: number, limit: number, windowMs: number): Promise<boolean> {
       const ref = db.doc(`youtubeTranscriptRateLimits/${uid}`)
@@ -146,40 +146,40 @@ export const fetchYoutubeTranscript = onCall({ region: 'us-central1', timeoutSec
   }
 })
 
-export const createStudyGroup = onCall({ region: 'us-central1' }, createStudyGroupHandler)
-export const deleteStudyGroup = onCall({ region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' }, deleteStudyGroupHandler)
-export const previewStudyGroup = onCall({ region: 'us-central1' }, previewStudyGroupHandler)
-export const joinStudyGroup = onCall({ region: 'us-central1' }, joinStudyGroupHandler)
-export const leaveStudyGroup = onCall({ region: 'us-central1' }, leaveStudyGroupHandler)
-export const removeStudyGroupMember = onCall({ region: 'us-central1' }, removeStudyGroupMemberHandler)
-export const cleanupStudyGroups = onCall({ region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' }, cleanupStudyGroupsHandler)
-export const shareStudyItem = onCall({ region: 'us-central1' }, shareStudyItemHandler)
-export const unshareStudyItem = onCall({ region: 'us-central1' }, unshareStudyItemHandler)
+export const createStudyGroup = onCall({ region: 'us-central1', cors: true }, createStudyGroupHandler)
+export const deleteStudyGroup = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 540, memory: '1GiB' }, deleteStudyGroupHandler)
+export const previewStudyGroup = onCall({ region: 'us-central1', cors: true }, previewStudyGroupHandler)
+export const joinStudyGroup = onCall({ region: 'us-central1', cors: true }, joinStudyGroupHandler)
+export const leaveStudyGroup = onCall({ region: 'us-central1', cors: true }, leaveStudyGroupHandler)
+export const removeStudyGroupMember = onCall({ region: 'us-central1', cors: true }, removeStudyGroupMemberHandler)
+export const cleanupStudyGroups = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 540, memory: '1GiB' }, cleanupStudyGroupsHandler)
+export const shareStudyItem = onCall({ region: 'us-central1', cors: true }, shareStudyItemHandler)
+export const unshareStudyItem = onCall({ region: 'us-central1', cors: true }, unshareStudyItemHandler)
 
-export const createGame = onCall({ region: 'us-central1' }, createGameHandler)
-export const joinGame = onCall({ region: 'us-central1' }, joinGameHandler)
-export const startGame = onCall({ region: 'us-central1' }, startGameHandler)
-export const submitAnswer = onCall({ region: 'us-central1' }, submitAnswerHandler)
-export const advanceQuestion = onCall({ region: 'us-central1' }, advanceQuestionHandler)
-export const syncGame = onCall({ region: 'us-central1' }, syncGameHandler)
-export const endGame = onCall({ region: 'us-central1' }, endGameHandler)
-export const kickPlayer = onCall({ region: 'us-central1' }, kickPlayerHandler)
-export const deleteGame = onCall({ region: 'us-central1', timeoutSeconds: 120 }, deleteGameHandler)
-export const cleanupGames = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, cleanupGamesHandler)
+export const createGame = onCall({ region: 'us-central1', cors: true }, createGameHandler)
+export const joinGame = onCall({ region: 'us-central1', cors: true }, joinGameHandler)
+export const startGame = onCall({ region: 'us-central1', cors: true }, startGameHandler)
+export const submitAnswer = onCall({ region: 'us-central1', cors: true }, submitAnswerHandler)
+export const advanceQuestion = onCall({ region: 'us-central1', cors: true }, advanceQuestionHandler)
+export const syncGame = onCall({ region: 'us-central1', cors: true }, syncGameHandler)
+export const endGame = onCall({ region: 'us-central1', cors: true }, endGameHandler)
+export const kickPlayer = onCall({ region: 'us-central1', cors: true }, kickPlayerHandler)
+export const deleteGame = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 120 }, deleteGameHandler)
+export const cleanupGames = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 300, memory: '512MiB' }, cleanupGamesHandler)
 
 // Group quizzes: the only code that writes team, session and team result data.
-export const createTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(createTeamHandler))
-export const addTeamMember = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(addTeamMemberHandler))
-export const createSelfTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(createSelfTeamHandler))
-export const joinTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(joinTeamHandler))
-export const leaveTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(leaveTeamHandler))
-export const removeTeamMember = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(removeTeamMemberHandler))
-export const setRepresentative = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(setRepresentativeHandler))
-export const deleteTeam = onCall({ region: 'us-central1', timeoutSeconds: 120 }, wrapGroupQuizHandler(deleteTeamHandler))
-export const startTeamAttempt = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(startTeamAttemptHandler))
-export const submitTeamAnswer = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(submitTeamAnswerHandler))
-export const lockTeamAnswer = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(lockTeamAnswerHandler))
-export const advanceTeam = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(advanceTeamHandler))
-export const overrideTeamQuestion = onCall({ region: 'us-central1' }, wrapGroupQuizHandler(overrideTeamQuestionHandler))
-export const submitTeamAttempt = onCall({ region: 'us-central1', timeoutSeconds: 120 }, wrapGroupQuizHandler(submitTeamAttemptHandler))
-export const cleanupGroupQuizData = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, wrapGroupQuizHandler(cleanupGroupQuizDataHandler))
+export const createTeam = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(createTeamHandler))
+export const addTeamMember = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(addTeamMemberHandler))
+export const createSelfTeam = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(createSelfTeamHandler))
+export const joinTeam = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(joinTeamHandler))
+export const leaveTeam = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(leaveTeamHandler))
+export const removeTeamMember = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(removeTeamMemberHandler))
+export const setRepresentative = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(setRepresentativeHandler))
+export const deleteTeam = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 120 }, wrapGroupQuizHandler(deleteTeamHandler))
+export const startTeamAttempt = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(startTeamAttemptHandler))
+export const submitTeamAnswer = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(submitTeamAnswerHandler))
+export const lockTeamAnswer = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(lockTeamAnswerHandler))
+export const advanceTeam = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(advanceTeamHandler))
+export const overrideTeamQuestion = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(overrideTeamQuestionHandler))
+export const submitTeamAttempt = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 120 }, wrapGroupQuizHandler(submitTeamAttemptHandler))
+export const cleanupGroupQuizData = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 300, memory: '512MiB' }, wrapGroupQuizHandler(cleanupGroupQuizDataHandler))

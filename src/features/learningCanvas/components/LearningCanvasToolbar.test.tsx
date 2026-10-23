@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LearningCanvasToolbar, type AutosaveStatus } from './LearningCanvasToolbar'
+
+afterEach(cleanup)
 
 function renderToolbar(autosaveStatus: AutosaveStatus, overrides: Partial<Parameters<typeof LearningCanvasToolbar>[0]> = {}) {
   const onSaveNow = vi.fn()

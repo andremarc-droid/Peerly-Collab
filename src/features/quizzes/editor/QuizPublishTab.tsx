@@ -10,7 +10,7 @@ import { useToast } from '../../../shared/ui/useToast'
 import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
 import { draftFromPair, validateQuestionDraft } from '../builder/questionDraft'
-import { getQuiz, publishQuiz, unpublishQuiz, watchQuestionPairs, type QuizRecord, type SavedQuestion } from '../services'
+import { getQuiz, publishQuiz, unpublishQuiz, watchQuestionPairs, watchQuiz, type QuizRecord, type SavedQuestion } from '../services'
 import { describeQuizExperience, hasTeamParticipation } from './quizExperience'
 import { QuizWorkflowNav, quizStepPath } from './QuizWorkflowNav'
 
@@ -35,19 +35,40 @@ export function QuizPublishTab({ quizId }: { quizId: string }) {
   const [classes, setClasses] = useState<ClassWithId[]>([])
   const [classesLoaded, setClassesLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [refreshTick, setRefreshTick] = useState(0)
+
+  useEffect(() => {
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') setRefreshTick((t) => t + 1)
+    }
+    document.addEventListener('visibilitychange', handleVisible)
+    window.addEventListener('focus', handleVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisible)
+      window.removeEventListener('focus', handleVisible)
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
-    getQuiz(quizId)
-      .then((found) => {
+    const subscribeQuiz = typeof watchQuiz === 'function'
+      ? watchQuiz
+      : (id: string, onChange: (q: QuizRecord | null) => void, onError: (e: Error) => void) => {
+          getQuiz(id).then(onChange).catch((err) => onError(err instanceof Error ? err : new Error(String(err))))
+          return () => {}
+        }
+    const stopQuiz = subscribeQuiz(
+      quizId,
+      (found) => {
         if (!active) return
-        if (found) setQuiz(found)
+        if (found) setQuiz(found as QuizRecord)
         else setLoadError('This quiz could not be found.')
-      })
-      .catch((reason: unknown) => {
-        if (active) setLoadError(reason instanceof Error ? reason.message : 'This quiz could not be loaded.')
-      })
-    const stop = watchQuestionPairs(
+      },
+      (reason) => {
+        if (active) setLoadError(reason.message)
+      },
+    )
+    const stopPairs = watchQuestionPairs(
       quizId,
       (questions) => {
         if (!active) return
@@ -55,8 +76,12 @@ export function QuizPublishTab({ quizId }: { quizId: string }) {
       },
       () => undefined,
     )
-    return () => { active = false; stop() }
-  }, [quizId])
+    return () => {
+      active = false
+      stopQuiz()
+      stopPairs()
+    }
+  }, [quizId, refreshTick])
 
   useEffect(() => {
     if (!ownerId) return undefined

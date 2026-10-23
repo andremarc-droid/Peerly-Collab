@@ -48,6 +48,8 @@ export function useAutosave<T>({
     }
   }, [])
 
+  const runRef = useRef<() => Promise<boolean>>(() => Promise.resolve(true))
+
   const doSave = useCallback(async (): Promise<boolean> => {
     if (dirtyVersionRef.current === savedVersionRef.current) return true
     const { enabled: isEnabled, getLatest: read, save: write, onError: report } = optionsRef.current
@@ -59,7 +61,19 @@ export function useAutosave<T>({
       await write(read())
       savedVersionRef.current = version
       if (mountedRef.current) {
-        setStatus(dirtyVersionRef.current === version ? 'saved' : 'unsaved')
+        if (dirtyVersionRef.current === version) {
+          setStatus('saved')
+        } else {
+          // Edits occurred during the in-flight save.
+          // Keep dirty and automatically schedule a fast follow-up save
+          // so interrupted progress is reliably saved without staying stuck.
+          setStatus('unsaved')
+          clearTimer()
+          timerRef.current = setTimeout(() => {
+            timerRef.current = null
+            void runRef.current()
+          }, 300)
+        }
       }
       return true
     } catch (error) {
@@ -67,13 +81,17 @@ export function useAutosave<T>({
       report?.(error)
       return false
     }
-  }, [])
+  }, [clearTimer])
 
   const run = useCallback((): Promise<boolean> => {
     const next = chainRef.current.then(doSave)
     chainRef.current = next
     return next
   }, [doSave])
+
+  useEffect(() => {
+    runRef.current = run
+  }, [run])
 
   const markDirty = useCallback(() => {
     if (!optionsRef.current.enabled) return

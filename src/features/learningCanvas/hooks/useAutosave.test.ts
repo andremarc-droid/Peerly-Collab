@@ -97,6 +97,55 @@ describe('useAutosave', () => {
     expect(save).toHaveBeenCalledTimes(2)
   })
 
+  it('automatically schedules a follow-up save when interrupted by edits during an in-flight save', async () => {
+    let current = 'first-edit'
+    let resolveSave: () => void = () => {}
+    const save = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve
+        }),
+    )
+    const { result } = renderHook(() =>
+      useAutosave<string>({ enabled: true, getLatest: () => current, save }),
+    )
+
+    // Trigger first save
+    act(() => result.current.markDirty())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(result.current.status).toBe('saving')
+
+    // While save is in-flight, user makes another interaction (e.g. adding a card)
+    current = 'second-edit-during-save'
+    act(() => result.current.markDirty())
+
+    // First save finishes
+    await act(async () => {
+      resolveSave()
+      await Promise.resolve()
+    })
+
+    // Status is unsaved immediately after first save finishes because changes happened
+    expect(result.current.status).toBe('unsaved')
+
+    // Follow-up save runs automatically after 300ms
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save).toHaveBeenLastCalledWith('second-edit-during-save')
+
+    // When second save resolves, status becomes saved
+    await act(async () => {
+      resolveSave()
+      await Promise.resolve()
+    })
+    expect(result.current.status).toBe('saved')
+  })
+
   it('reports errors, keeps the content dirty and retries via flush', async () => {
     const save = vi
       .fn()

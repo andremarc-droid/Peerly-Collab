@@ -711,6 +711,14 @@ function LearningCanvasInternal({
     onPublishCursor(screenToFlowPosition({ x: event.clientX, y: event.clientY }))
   }
 
+  const handleBoardTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!onPublishCursor) return
+    const touch = event.touches[0]
+    if (touch) {
+      onPublishCursor(screenToFlowPosition({ x: touch.clientX, y: touch.clientY }))
+    }
+  }
+
   // Group dragging: children fully inside the group move with it.
   const groupDragRef = useRef<{
     groupId: string
@@ -1114,6 +1122,15 @@ function LearningCanvasInternal({
             onMouseDownCapture={handleBoardMouseDownCapture}
             onMouseMove={handleBoardMouseMove}
             onMouseLeave={() => onPublishCursor?.(null)}
+            onTouchStart={handleBoardTouchMove}
+            onTouchMove={handleBoardTouchMove}
+            onTouchEnd={() => onPublishCursor?.(null)}
+            onTouchCancel={() => onPublishCursor?.(null)}
+            onPointerMove={(e) => {
+              if (e.pointerType === 'touch') return
+              if (!onPublishCursor) return
+              onPublishCursor(screenToFlowPosition({ x: e.clientX, y: e.clientY }))
+            }}
           >
             <ReactFlow
               nodes={displayNodes}
@@ -1145,24 +1162,24 @@ function LearningCanvasInternal({
               className="learning-flow-container"
             >
               <CanvasControls />
+              <ViewportPortal>
+                <svg className="learning-canvas-cursors" aria-hidden="false">
+                  {remoteCursors.map((cursor) => (
+                    <g
+                      key={cursor.uid}
+                      className="learning-canvas-cursor"
+                      transform={`translate(${cursor.x} ${cursor.y})`}
+                      role="img"
+                      aria-label={`${cursor.name} cursor`}
+                    >
+                      <path className="learning-canvas-cursor__pointer" d="M 0 0 L 0 18 L 5 13 L 10 23 L 14 21 L 9 11 L 16 10 Z" />
+                      <rect className="learning-canvas-cursor__label" x="14" y="14" width={Math.max(42, cursor.name.length * 8 + 12)} height="22" rx="8" />
+                      <text className="learning-canvas-cursor__name" x="20" y="29">{cursor.name}</text>
+                    </g>
+                  ))}
+                </svg>
+              </ViewportPortal>
             </ReactFlow>
-            <ViewportPortal>
-              <svg className="learning-canvas-cursors" aria-hidden="false">
-                {remoteCursors.map((cursor) => (
-                  <g
-                    key={cursor.uid}
-                    className="learning-canvas-cursor"
-                    transform={`translate(${cursor.x} ${cursor.y})`}
-                    role="img"
-                    aria-label={`${cursor.name} cursor`}
-                  >
-                    <path className="learning-canvas-cursor__pointer" d="M 0 0 L 0 18 L 5 13 L 10 23 L 14 21 L 9 11 L 16 10 Z" />
-                    <rect className="learning-canvas-cursor__label" x="14" y="14" width={Math.max(42, cursor.name.length * 8 + 12)} height="22" rx="8" />
-                    <text className="learning-canvas-cursor__name" x="20" y="29">{cursor.name}</text>
-                  </g>
-                ))}
-              </svg>
-            </ViewportPortal>
           </div>
 
           {connectNotice && (

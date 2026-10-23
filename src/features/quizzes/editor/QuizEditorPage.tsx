@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Plus, Save } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../../app/AppShell'
 import { useAuth } from '../../auth/useAuth'
@@ -16,7 +16,7 @@ import { useUnsavedChangesGuard } from '../../../shared/ui/useUnsavedChangesGuar
 import { defaultQuizSettings, currentMinute } from '../schemas/settings'
 import { DueDateTimeField } from '../../assignments/DueDateTimeField'
 import { effectiveTimeLimitSeconds, fromDateTimeLocal, splitSeconds, timeLimitFields, timingProblem, toDateTimeLocal } from '../quizTiming'
-import { createQuiz, getQuiz, unpublishQuiz, updateQuiz } from '../services'
+import { createQuiz, getQuiz, unpublishQuiz, updateQuiz, watchQuiz, type QuizRecord } from '../services'
 import { watchMyClasses } from '../../classes/services/classService'
 import type { ClassWithId } from '../../classes/types'
 import type { QuizSettings, QuizStatus } from '../types'
@@ -68,6 +68,8 @@ export function QuizEditorPage() {
   const [minutesText, setMinutesText] = useState<string | null>(null)
   const [secondsText, setSecondsText] = useState<string | null>(null)
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved])
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
   useUnsavedChangesGuard(dirty)
 
   useEffect(() => {
@@ -78,27 +80,64 @@ export function QuizEditorPage() {
   useEffect(() => {
     if (!quizId) return
     let active = true
-    getQuiz(quizId).then((quiz) => {
-      if (!active) return
-      if (!quiz) { setLoadError('This quiz could not be found.'); setResolvedQuizId(quizId); return }
-      const values = { classId: quiz.classId ?? '', title: quiz.title, description: quiz.description, tags: quiz.tags.join(', '), mode: quiz.mode, settings: quiz.settings }
-      setForm(values); setSaved(values); setQuestionCount(quiz.questionCount); setStatus(quiz.status); setResolvedQuizId(quizId)
-      if (quiz.settings.attemptsAllowed !== null && ![1, 2, 3].includes(quiz.settings.attemptsAllowed)) {
-        setIsCustomAttempts(true)
-        setCustomAttemptsText(String(quiz.settings.attemptsAllowed))
-      }
-      if (quiz.status === 'published') {
-        void Promise.resolve(unpublishQuiz(quizId)).then(() => {
-          if (active) {
-            setStatus('draft')
-            showToast('info', 'Quiz automatically unpublished for editing. Changes will reflect to students once re-published.')
+    let isInitial = true
+    const subscribe = typeof watchQuiz === 'function'
+      ? watchQuiz
+      : (id: string, onChange: (q: QuizRecord | null) => void, onError: (e: Error) => void) => {
+          getQuiz(id).then(onChange).catch((err) => onError(err instanceof Error ? err : new Error(String(err))))
+          return () => {}
+        }
+    const stop = subscribe(
+      quizId,
+      (quiz) => {
+        if (!active) return
+        if (!quiz) {
+          setLoadError('This quiz could not be found.')
+          setResolvedQuizId(quizId)
+          return
+        }
+        setQuestionCount(quiz.questionCount)
+        setStatus(quiz.status)
+        setResolvedQuizId(quizId)
+
+        if (isInitial || !dirtyRef.current) {
+          const values = {
+            classId: quiz.classId ?? '',
+            title: quiz.title,
+            description: quiz.description,
+            tags: quiz.tags.join(', '),
+            mode: quiz.mode,
+            settings: quiz.settings,
           }
-        }).catch(() => {})
-      }
-    }).catch((reason: unknown) => {
-      if (active) { setLoadError(reason instanceof Error ? reason.message : 'This quiz could not be loaded.'); setResolvedQuizId(quizId) }
-    })
-    return () => { active = false }
+          setForm(values)
+          setSaved(values)
+          if (quiz.settings.attemptsAllowed !== null && ![1, 2, 3].includes(quiz.settings.attemptsAllowed)) {
+            setIsCustomAttempts(true)
+            setCustomAttemptsText(String(quiz.settings.attemptsAllowed))
+          }
+        }
+
+        if (isInitial && quiz.status === 'published') {
+          void Promise.resolve(unpublishQuiz(quizId)).then(() => {
+            if (active) {
+              setStatus('draft')
+              showToast('info', 'Quiz automatically unpublished for editing. Changes will reflect to students once re-published.')
+            }
+          }).catch(() => {})
+        }
+        isInitial = false
+      },
+      (reason) => {
+        if (active) {
+          setLoadError(reason.message)
+          setResolvedQuizId(quizId)
+        }
+      },
+    )
+    return () => {
+      active = false
+      stop()
+    }
   }, [quizId, showToast])
 
   function updateSettings(patch: Partial<QuizSettings>) {

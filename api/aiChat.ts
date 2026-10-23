@@ -6,7 +6,7 @@ export type AllowedModel = (typeof ALLOWED_MODELS)[number]
 
 export const MAX_MESSAGES = 50
 export const MAX_TEXT_CHARACTERS = 100_000
-export const MAX_IMAGE_URL_CHARACTERS = 500_000
+export const MAX_IMAGE_URL_CHARACTERS = 1_000_000
 export const MAX_TOKENS = 4096
 export const ALLOWED_IMAGE_PREFIXES = [
   'data:image/jpeg;base64,',

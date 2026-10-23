@@ -69,6 +69,10 @@ export async function getQuiz(quizId: string, db: Firestore = firestore): Promis
   return snapshot.exists() ? asRecord(snapshot.id, snapshot.data()) : null
 }
 
+export function watchQuiz(quizId: string, onChange: (quiz: QuizRecord | null) => void, onError: (error: Error) => void, db: Firestore = firestore) {
+  return onSnapshot(quizRef(db, quizId), (snapshot) => onChange(snapshot.exists() ? asRecord(snapshot.id, snapshot.data()) : null), onError)
+}
+
 export async function listOwnerQuizzes(ownerId: string, db: Firestore = firestore): Promise<QuizRecord[]> {
   const result = await getDocs(query(collection(db, 'quizzes'), where('ownerId', '==', ownerId), orderBy('updatedAt', 'desc')))
   return result.docs.map((snapshot) => asRecord(snapshot.id, snapshot.data())).filter((item): item is QuizRecord => item !== null)

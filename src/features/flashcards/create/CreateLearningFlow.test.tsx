@@ -7,6 +7,7 @@ vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'learner' 
 vi.mock('../../studyEngine/ai', async importOriginal => ({ ...await importOriginal<typeof import('../../studyEngine/ai')>(), aiComplete: mocks.aiComplete }))
 vi.mock('../services', () => ({ createDeck: mocks.createDeck }))
 vi.mock('../youtubeTranscript', () => ({
+  normalizeYoutubeUrl: (value: string) => value.trim(),
   isSupportedYoutubeUrl: (value: string) => value.startsWith('https://www.youtube.com/watch?v='),
   requestYoutubeTranscript: vi.fn(async () => { throw new Error('functions/not-found') }),
 }))

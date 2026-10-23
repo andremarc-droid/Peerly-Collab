@@ -94,6 +94,21 @@ export function ClassPage() {
       (reason) => { setQuizzesError(reason.message); setQuizzesLoading(false) })
   }, [watchedClassId, ownerId, quizzesRetry])
 
+  useEffect(() => {
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') {
+        setQuizzesRetry((v) => v + 1)
+        if (classroom) void refreshCounts(classroom)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisible)
+    window.addEventListener('focus', handleVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisible)
+      window.removeEventListener('focus', handleVisible)
+    }
+  }, [classroom, refreshCounts])
+
   const activityFeed = {
     items: quizzes,
     loading: quizzesLoading,

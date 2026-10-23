@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   getQuestionWithKey: vi.fn(),
   duplicateQuiz: vi.fn(),
   hasQuizAttemptsOrParticipants: vi.fn(),
+  watchQuiz: vi.fn(),
 }))
 vi.mock('../../auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'teacher', displayName: 'Teacher' } }) }))
 vi.mock('../../profile/useUserProfile', () => ({ useUserProfile: () => ({ profile: { name: 'Teacher' } }) }))
@@ -33,6 +34,7 @@ vi.mock('../services', () => ({
   getQuestionWithKey: mocks.getQuestionWithKey,
   duplicateQuiz: mocks.duplicateQuiz,
   hasQuizAttemptsOrParticipants: mocks.hasQuizAttemptsOrParticipants,
+  watchQuiz: mocks.watchQuiz,
 }))
 vi.mock('../services/quizService', () => ({
   createQuiz: mocks.createQuiz,
@@ -43,6 +45,7 @@ vi.mock('../services/quizService', () => ({
   deleteQuizCascade: vi.fn(),
   publishQuiz: vi.fn(),
   unpublishQuiz: mocks.unpublishQuiz,
+  watchQuiz: mocks.watchQuiz,
   archiveQuiz: vi.fn(),
 }))
 vi.mock('../services/questionService', () => ({
@@ -67,6 +70,7 @@ beforeEach(() => {
   mocks.getQuestionWithKey.mockReset().mockResolvedValue(null)
   mocks.duplicateQuiz.mockReset().mockResolvedValue('quiz-copy')
   mocks.hasQuizAttemptsOrParticipants.mockReset().mockResolvedValue(false)
+  mocks.watchQuiz.mockReset().mockImplementation((id: string, onChange: (quiz: unknown) => void) => { void mocks.getQuiz(id).then(onChange); return vi.fn() })
 })
 
 describe('quick create and quiz deletion confirmation', () => {

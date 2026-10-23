@@ -148,6 +148,21 @@ function StudentClassDetail({ classId }: { classId: string }) {
     )
   }, [classId, enrollment, modulesRetry])
 
+  useEffect(() => {
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') {
+        setQuizzesRetry((v) => v + 1)
+        setModulesRetry((v) => v + 1)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisible)
+    window.addEventListener('focus', handleVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisible)
+      window.removeEventListener('focus', handleVisible)
+    }
+  }, [])
+
   const error = requestError
   const classroom = classroomState?.classId === classId ? classroomState.value : null
   const preview = previewState?.classId === classId ? previewState.value : null

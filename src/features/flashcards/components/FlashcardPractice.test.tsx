@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FlashcardDeckWithId } from '../types'
 import { FlashcardPractice } from './FlashcardPractice'
@@ -23,44 +23,76 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('FlashcardPractice', () => {
-  it('loads progress and reveals answers before grading controls appear', async () => {
-    render(<FlashcardPractice deck={deck}/>)
+  it('renders cards with Previous and Next buttons and flips on click', async () => {
+    render(<FlashcardPractice deck={deck} />)
     expect(await screen.findByText(/Card 1 of 2/)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /Again/ })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /Reveal answer/ }))
-    expect(screen.getByRole('button', { name: /Again/ })).toBeTruthy()
-    expect(screen.getByText(/10m/)).toBeTruthy()
-  })
+    expect(screen.getByText('Cell?')).toBeTruthy()
+    
+    // Previous is disabled on first card
+    const prevBtn = screen.getByRole('button', { name: /Previous/ })
+    expect((prevBtn as HTMLButtonElement).disabled).toBe(true)
 
-  it('saves a grade and advances without skipping the next queued card', async () => {
-    render(<FlashcardPractice deck={deck}/>)
-    await screen.findByText(/Card 1 of 2/)
+    // Flip to answer
     fireEvent.click(screen.getByRole('button', { name: /Reveal answer/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Good/ }))
-    await waitFor(() => expect(mocks.saveProgress).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('Unit')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Show question/ })).toBeTruthy()
+
+    // Next button moves to next card
+    const nextBtn = screen.getByRole('button', { name: /Next card/ })
+    fireEvent.click(nextBtn)
     expect(await screen.findByText(/Card 2 of 2/)).toBeTruthy()
     expect(screen.getByText('Gene?')).toBeTruthy()
+
+    // Previous is now enabled
+    expect((screen.getByRole('button', { name: /Previous/ }) as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('maps a right swipe to Good after reveal', async () => {
-    render(<FlashcardPractice deck={deck}/>)
+  it('navigates previous and next', async () => {
+    render(<FlashcardPractice deck={deck} />)
     await screen.findByText(/Card 1 of 2/)
-    fireEvent.click(screen.getByRole('button', { name: /Reveal answer/ }))
-    const card = screen.getByText('Answer').closest('button')?.closest('.perspective-distant')?.parentElement
-    expect(card).toBeTruthy()
-    fireEvent.pointerDown(card!, { clientX: 10 })
-    fireEvent.pointerUp(card!, { clientX: 100 })
-    await waitFor(() => expect(mocks.saveProgress).toHaveBeenCalledTimes(1))
-    expect(await screen.findByText('Gene?')).toBeTruthy()
-  })
-
-  it('keeps studying when the XP write is queued after a review', async () => {
-    mocks.recordActivity.mockResolvedValue(false)
-    render(<FlashcardPractice deck={deck}/> )
-    await screen.findByText(/Card 1 of 2/)
-    fireEvent.click(screen.getByRole('button', { name: /Reveal answer/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Good/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Next card/ }))
     expect(await screen.findByText(/Card 2 of 2/)).toBeTruthy()
-    await waitFor(() => expect(mocks.recordActivity).toHaveBeenCalledWith('learner', expect.objectContaining({ kind: 'review', amount: 2 })))
+
+    // Click previous
+    fireEvent.click(screen.getByRole('button', { name: /Previous/ }))
+    expect(await screen.findByText(/Card 1 of 2/)).toBeTruthy()
+    expect(screen.getByText('Cell?')).toBeTruthy()
+  })
+
+  it('navigates via touch/pointer swipe gestures', async () => {
+    render(<FlashcardPractice deck={deck} />)
+    await screen.findByText(/Card 1 of 2/)
+    const container = screen.getByText('Cell?').closest('.select-none')
+    expect(container).toBeTruthy()
+
+    // Swipe left (negative deltaX) -> next card
+    fireEvent.pointerDown(container!, { clientX: 100, clientY: 50 })
+    fireEvent.pointerUp(container!, { clientX: 20, clientY: 50 })
+    expect(await screen.findByText(/Card 2 of 2/)).toBeTruthy()
+    expect(screen.getByText('Gene?')).toBeTruthy()
+
+    // Swipe right (positive deltaX) -> previous card
+    fireEvent.pointerDown(container!, { clientX: 20, clientY: 50 })
+    fireEvent.pointerUp(container!, { clientX: 100, clientY: 50 })
+    expect(await screen.findByText(/Card 1 of 2/)).toBeTruthy()
+    expect(screen.getByText('Cell?')).toBeTruthy()
+  })
+
+  it('finishes session and allows restarting', async () => {
+    render(<FlashcardPractice deck={deck} />)
+    await screen.findByText(/Card 1 of 2/)
+    fireEvent.click(screen.getByRole('button', { name: /Next card/ }))
+    await screen.findByText(/Card 2 of 2/)
+
+    // On last card, button says Finish
+    const finishBtn = screen.getByRole('button', { name: /Finish session/ })
+    fireEvent.click(finishBtn)
+
+    expect(await screen.findByText('Session complete')).toBeTruthy()
+    expect(screen.getByText(/You reviewed all 2 cards in this deck/)).toBeTruthy()
+
+    // Restart
+    fireEvent.click(screen.getByRole('button', { name: /Study again/ }))
+    expect(await screen.findByText(/Card 1 of 2/)).toBeTruthy()
   })
 })
