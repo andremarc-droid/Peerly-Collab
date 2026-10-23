@@ -1,8 +1,10 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../shared/ui/ToastProvider'
+import { callUpdateScoreboardOptIn } from '../scoreboard/services'
 import { SettingsPage } from './SettingsPage'
 
 let mockUserProfile: any = {
@@ -135,5 +137,32 @@ describe('SettingsPage', () => {
       '/profile/settings/danger-zone',
     )
     expect(screen.getByRole('link', { name: /back to profile/i })).toHaveAttribute('href', '/profile')
+  })
+
+  it('reverts switch and shows error toast when callUpdateScoreboardOptIn fails', async () => {
+    const user = userEvent.setup()
+    const error = new Error('Scoreboard update failed.')
+    ;(error as { status?: number }).status = 500
+    vi.mocked(callUpdateScoreboardOptIn).mockRejectedValueOnce(error)
+
+    render(
+      <ToastProvider>
+        <MemoryRouter>
+          <SettingsPage />
+        </MemoryRouter>
+      </ToastProvider>,
+    )
+
+    const switchControl = screen.getByLabelText(/show me on the public scoreboard/i)
+    await waitFor(() => {
+      expect(switchControl).toBeChecked()
+    })
+
+    await user.click(switchControl)
+
+    await waitFor(() => {
+      expect(switchControl).toBeChecked()
+      expect(screen.getByText(/Could not update scoreboard privacy. Please try again later./i)).toBeInTheDocument()
+    })
   })
 })

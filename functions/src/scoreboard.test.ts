@@ -6,11 +6,13 @@ import {
   resolveAvatar,
   resolveDisplayName,
   resolveScoreboardOptIn,
+  validateScoreboardDisplayName,
 } from './scoreboardLogic.js'
 import {
   resolveScoreboardOptIn as clientResolveScoreboardOptIn,
   resolveDisplayName as clientResolveDisplayName,
   resolveAvatar as clientResolveAvatar,
+  validateScoreboardDisplayName as clientValidateScoreboardDisplayName,
 } from '../../src/features/scoreboard/schemas.js'
 import {
   ensureScoreboardEntryHandler,
@@ -82,6 +84,30 @@ describe('scoreboard pure logic & parity', () => {
     expect(calculateCappedDelta(490, 25, DAILY_SCOREBOARD_CAP)).toBe(10)
     expect(calculateCappedDelta(500, 25, DAILY_SCOREBOARD_CAP)).toBe(0)
     expect(calculateCappedDelta(0, -5, DAILY_SCOREBOARD_CAP)).toBe(0)
+  })
+
+  it('has complete parity between functions and client display name validation', () => {
+    const testCases = [
+      '',
+      'a',
+      'ab',
+      'ValidName',
+      'This name is way too long to be allowed on the scoreboard because it exceeds thirty chars',
+      'admin',
+      'ADMIN',
+      'Peerly',
+      'system',
+      'root',
+      'some badword bitch',
+      'Regular Learner',
+    ]
+
+    for (const name of testCases) {
+      const serverResult = validateScoreboardDisplayName(name)
+      const clientResult = clientValidateScoreboardDisplayName(name)
+      expect(serverResult.valid).toBe(clientResult.valid)
+      expect(serverResult.error).toBe(clientResult.error)
+    }
   })
 })
 
@@ -291,6 +317,153 @@ describe('scoreboard Cloud Functions handlers', () => {
   })
 
   describe('updateScoreboardOptInHandler', () => {
+    it('rejects unauthenticated requests', async () => {
+      await expect(
+        updateScoreboardOptInHandler({ auth: undefined, data: { optIn: true } } as any),
+      ).rejects.toMatchObject({ code: 'unauthenticated' })
+    })
+
+    it('rejects non-object or non-boolean optIn', async () => {
+      await expect(
+        updateScoreboardOptInHandler({ auth: { uid: 'u1' }, data: null } as any),
+      ).rejects.toMatchObject({ code: 'invalid-argument' })
+
+      await expect(
+        updateScoreboardOptInHandler({ auth: { uid: 'u1' }, data: { optIn: 'yes' } } as any),
+      ).rejects.toMatchObject({ code: 'invalid-argument' })
+    })
+
+    it('rejects invalid display names with invalid-argument', async () => {
+      await expect(
+        updateScoreboardOptInHandler({ auth: { uid: 'u1' }, data: { optIn: true, displayName: 123 } } as any),
+      ).rejects.toMatchObject({ code: 'invalid-argument' })
+
+      await expect(
+        updateScoreboardOptInHandler({ auth: { uid: 'u1' }, data: { optIn: true, displayName: 'a' } } as any),
+      ).rejects.toMatchObject({ code: 'invalid-argument' })
+
+      await expect(
+        updateScoreboardOptInHandler({ auth: { uid: 'u1' }, data: { optIn: true, displayName: 'admin' } } as any),
+      ).rejects.toMatchObject({ code: 'invalid-argument' })
+
+      await expect(
+        updateScoreboardOptInHandler({ auth: { uid: 'u1' }, data: { optIn: true, displayName: 'some bitch' } } as any),
+      ).rejects.toMatchObject({ code: 'invalid-argument' })
+    })
+
+    it('executes all reads before writes when optIn is true without throwing', async () => {
+      let hasWritten = false
+      const transaction = {
+        get: vi.fn().mockImplementation(async () => {
+          if (hasWritten) {
+            throw new Error('Firestore transactions require all reads to be executed before all writes.')
+          }
+          return {
+            exists: true,
+            data: () => ({ displayName: 'Learner', xp: 50 }),
+          }
+        }),
+        set: vi.fn().mockImplementation(() => {
+          hasWritten = true
+        }),
+        delete: vi.fn().mockImplementation(() => {
+          hasWritten = true
+        }),
+      }
+
+      const mockDb = {
+        doc: vi.fn().mockImplementation((path: string) => ({ path })),
+        runTransaction: vi.fn().mockImplementation(async (cb: any) => cb(transaction)),
+      }
+      mockedGetFirestore.mockReturnValue(mockDb as any)
+
+      const res = await updateScoreboardOptInHandler({
+        auth: { uid: 'user-1', token: {} },
+        data: { optIn: true, displayName: 'ValidLearner' },
+      } as any)
+
+      expect(res).toEqual({ success: true, optIn: true })
+      expect(transaction.set).toHaveBeenCalledWith(
+        { path: 'users/user-1' },
+        expect.objectContaining({ scoreboardOptIn: true, scoreboardDisplayName: 'ValidLearner' }),
+        { merge: true },
+      )
+    })
+
+    it('creates weekly at 0 and allTime from stats xp when entries do not exist', async () => {
+      const transaction = {
+        get: vi.fn().mockImplementation(async (ref: { path: string }) => {
+          if (ref.path === 'users/user-1') return { exists: true, data: () => ({ displayName: 'Alice' }) }
+          if (ref.path === 'scoreboard/weekly/entries/user-1') return { exists: false }
+          if (ref.path === 'scoreboard/allTime/entries/user-1') return { exists: false }
+          if (ref.path === 'users/user-1/stats/summary') return { exists: true, data: () => ({ xp: 125 }) }
+          return { exists: false }
+        }),
+        set: vi.fn(),
+        delete: vi.fn(),
+      }
+
+      const mockDb = {
+        doc: vi.fn().mockImplementation((path: string) => ({ path })),
+        runTransaction: vi.fn().mockImplementation(async (cb: any) => cb(transaction)),
+      }
+      mockedGetFirestore.mockReturnValue(mockDb as any)
+
+      const res = await updateScoreboardOptInHandler({
+        auth: { uid: 'user-1', token: {} },
+        data: { optIn: true },
+      } as any)
+
+      expect(res).toEqual({ success: true, optIn: true })
+      expect(transaction.set).toHaveBeenCalledWith(
+        { path: 'scoreboard/weekly/entries/user-1' },
+        expect.objectContaining({ points: 0, optIn: true, displayName: 'Alice' }),
+        { merge: true },
+      )
+      expect(transaction.set).toHaveBeenCalledWith(
+        { path: 'scoreboard/allTime/entries/user-1' },
+        expect.objectContaining({ points: 125, optIn: true, displayName: 'Alice' }),
+        { merge: true },
+      )
+    })
+
+    it('preserves existing weekly and allTime points when opting in or updating display name', async () => {
+      const transaction = {
+        get: vi.fn().mockImplementation(async (ref: { path: string }) => {
+          if (ref.path === 'users/user-1') return { exists: true, data: () => ({ displayName: 'Alice' }) }
+          if (ref.path === 'scoreboard/weekly/entries/user-1') return { exists: true, data: () => ({ points: 42 }) }
+          if (ref.path === 'scoreboard/allTime/entries/user-1') return { exists: true, data: () => ({ points: 280 }) }
+          if (ref.path === 'users/user-1/stats/summary') return { exists: true, data: () => ({ xp: 300 }) }
+          return { exists: false }
+        }),
+        set: vi.fn(),
+        delete: vi.fn(),
+      }
+
+      const mockDb = {
+        doc: vi.fn().mockImplementation((path: string) => ({ path })),
+        runTransaction: vi.fn().mockImplementation(async (cb: any) => cb(transaction)),
+      }
+      mockedGetFirestore.mockReturnValue(mockDb as any)
+
+      const res = await updateScoreboardOptInHandler({
+        auth: { uid: 'user-1', token: {} },
+        data: { optIn: true },
+      } as any)
+
+      expect(res).toEqual({ success: true, optIn: true })
+      expect(transaction.set).toHaveBeenCalledWith(
+        { path: 'scoreboard/weekly/entries/user-1' },
+        expect.objectContaining({ points: 42 }),
+        { merge: true },
+      )
+      expect(transaction.set).toHaveBeenCalledWith(
+        { path: 'scoreboard/allTime/entries/user-1' },
+        expect.objectContaining({ points: 280 }),
+        { merge: true },
+      )
+    })
+
     it('deletes public scoreboard entries when optIn is set to false', async () => {
       const mockUserSnap = {
         data: () => ({ displayName: 'Learner' }),

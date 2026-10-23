@@ -54,6 +54,7 @@ export async function callServer<I, O>(action: string, data: I): Promise<O> {
     const error = new Error(message)
     const rawCode = typeof json.code === 'string' ? json.code : ''
     ;(error as { code?: string }).code = rawCode.startsWith('functions/') ? rawCode : rawCode ? `functions/${rawCode}` : 'functions/internal'
+    ;(error as { status?: number }).status = response.status
     throw error
   }
   return json.result as O

@@ -9,6 +9,7 @@ import {
   resolveAvatar,
   resolveDisplayName,
   resolveScoreboardOptIn,
+  validateScoreboardDisplayName,
   type ScoreboardUserFields,
 } from './scoreboardLogic.js'
 
@@ -299,47 +300,74 @@ export async function updateScoreboardOptInHandler(
   }
 
   const uid = request.auth.uid
-  const { optIn, displayName } = request.data || {}
-  const db = getFirestore()
+  const data = request.data
+  if (!data || typeof data !== 'object') {
+    throw new HttpsError('invalid-argument', 'Request body must be an object.')
+  }
+  const { optIn, displayName } = data
+  if (typeof optIn !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'optIn must be a boolean.')
+  }
+  if (displayName !== undefined && displayName !== null && typeof displayName !== 'string') {
+    throw new HttpsError('invalid-argument', 'displayName must be a string or undefined.')
+  }
 
+  const trimmedName = typeof displayName === 'string' ? displayName.trim() : null
+  if (trimmedName) {
+    const nameCheck = validateScoreboardDisplayName(trimmedName)
+    if (!nameCheck.valid) {
+      throw new HttpsError('invalid-argument', nameCheck.error || 'Invalid display name.')
+    }
+  }
+
+  const db = getFirestore()
   const userRef = db.doc(`users/${uid}`)
   const weeklyEntryRef = db.doc(`scoreboard/weekly/entries/${uid}`)
   const allTimeEntryRef = db.doc(`scoreboard/allTime/entries/${uid}`)
+  const statsRef = db.doc(`users/${uid}/stats/summary`)
 
   await db.runTransaction(async (transaction) => {
-    const userSnap = await transaction.get(userRef)
-    const userData = (userSnap.data() as ScoreboardUserFields) || {}
-    const cleanName = (displayName ?? userData.scoreboardDisplayName ?? userData.displayName ?? 'Learner')
-      .trim()
-      .slice(0, 40)
+    // 1. ALL READS FIRST
+    const [userSnap, weeklySnap, allTimeSnap, statsSnap] = await Promise.all([
+      transaction.get(userRef),
+      transaction.get(weeklyEntryRef),
+      transaction.get(allTimeEntryRef),
+      transaction.get(statsRef),
+    ])
 
-    transaction.set(
-      userRef,
-      {
-        scoreboardOptIn: optIn,
-        scoreboardDisplayName: cleanName,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    )
+    const userData = (userSnap.data() as ScoreboardUserFields) || {}
+    const statsXp = statsSnap.exists ? ((statsSnap.data()?.xp as number) ?? 0) : 0
+    const now = FieldValue.serverTimestamp()
+
+    // Determine clean display name (2-30 characters per schema)
+    const rawClean = trimmedName ?? userData.scoreboardDisplayName ?? userData.displayName ?? userData.name ?? 'Peerly Learner'
+    const cleanName = (rawClean.trim().slice(0, 30) || 'Peerly Learner')
+    const avatar = userData.avatar || userData.photoURL || null
+
+    // 2. ALL WRITES AFTER READS
+    const userUpdate: Record<string, unknown> = {
+      scoreboardOptIn: optIn,
+      updatedAt: now,
+    }
+    if (trimmedName !== null) {
+      userUpdate.scoreboardDisplayName = cleanName
+    }
+    transaction.set(userRef, userUpdate, { merge: true })
 
     if (!optIn) {
       transaction.delete(weeklyEntryRef)
       transaction.delete(allTimeEntryRef)
     } else {
-      const weeklySnap = await transaction.get(weeklyEntryRef)
-      const allTimeSnap = await transaction.get(allTimeEntryRef)
-      const statsSnap = await transaction.get(db.doc(`users/${uid}/stats/summary`))
-      const statsXp = statsSnap.exists ? ((statsSnap.data()?.xp as number) ?? 0) : 0
-      const now = FieldValue.serverTimestamp()
+      const weeklyPoints = weeklySnap.exists ? ((weeklySnap.data()?.points as number) ?? 0) : 0
+      const allTimePoints = allTimeSnap.exists ? ((allTimeSnap.data()?.points as number) ?? 0) : statsXp
 
       transaction.set(
         weeklyEntryRef,
         {
           uid,
           displayName: cleanName,
-          avatar: userData.avatar || userData.photoURL || null,
-          points: weeklySnap.exists ? weeklySnap.data()?.points ?? 0 : 0,
+          avatar,
+          points: weeklyPoints,
           optIn: true,
           updatedAt: now,
         },
@@ -351,8 +379,8 @@ export async function updateScoreboardOptInHandler(
         {
           uid,
           displayName: cleanName,
-          avatar: userData.avatar || userData.photoURL || null,
-          points: allTimeSnap.exists ? allTimeSnap.data()?.points ?? 0 : statsXp,
+          avatar,
+          points: allTimePoints,
           optIn: true,
           updatedAt: now,
         },

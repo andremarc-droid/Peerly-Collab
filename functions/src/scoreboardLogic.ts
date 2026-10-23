@@ -75,3 +75,29 @@ export function calculateCappedDelta(currentTotal: number, delta: number, cap = 
 export function getTodayKeyUtc(date = new Date()): string {
   return date.toISOString().slice(0, 10)
 }
+
+const RESERVED_NAMES = new Set(['admin', 'administrator', 'peerly', 'moderator', 'system', 'root', 'staff'])
+
+const PROFANITY_PATTERN = /(fuck|shit|bitch|asshole|cunt|nigger|faggot|dick|pussy|bastard)/i
+
+/**
+ * Validates scoreboard display name on the server.
+ * Keep in sync with src/features/scoreboard/schemas.ts.
+ */
+export function validateScoreboardDisplayName(name: string): { valid: boolean; error?: string } {
+  const trimmed = name.trim()
+  if (trimmed.length < 2) {
+    return { valid: false, error: 'Display name must be at least 2 characters.' }
+  }
+  if (trimmed.length > 30) {
+    return { valid: false, error: 'Display name must be 30 characters or less.' }
+  }
+  if (RESERVED_NAMES.has(trimmed.toLowerCase())) {
+    return { valid: false, error: 'This display name is reserved. Please choose another.' }
+  }
+  if (PROFANITY_PATTERN.test(trimmed)) {
+    return { valid: false, error: 'Display name contains inappropriate language.' }
+  }
+  return { valid: true }
+}
+

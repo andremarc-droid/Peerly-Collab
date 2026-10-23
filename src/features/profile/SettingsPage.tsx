@@ -55,13 +55,19 @@ export function SettingsPage() {
   if (!profile || !profile.role) return <Navigate to="/role?mode=continue" replace />
 
   const handleToggleOptIn = async (checked: boolean) => {
+    const previous = optIn
     setBusyOptIn(true)
     try {
       await callUpdateScoreboardOptIn(checked, displayName)
       setOptIn(checked)
       showToast('success', checked ? 'You are now visible on the public scoreboard.' : 'You have been removed from the public scoreboard.')
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Could not update scoreboard privacy.')
+    } catch (err: unknown) {
+      setOptIn(previous)
+      const status = (err as { status?: number } | null)?.status
+      const msg = (typeof status === 'number' && status >= 500)
+        ? 'Could not update scoreboard privacy. Please try again later.'
+        : (err instanceof Error ? err.message : 'Could not update scoreboard privacy.')
+      showToast('error', msg)
     } finally {
       setBusyOptIn(false)
     }
@@ -78,8 +84,12 @@ export function SettingsPage() {
     try {
       await callUpdateScoreboardOptIn(optIn ?? true, displayName)
       showToast('success', 'Scoreboard display name updated.')
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Could not update name.')
+    } catch (err: unknown) {
+      const status = (err as { status?: number } | null)?.status
+      const msg = (typeof status === 'number' && status >= 500)
+        ? 'Could not update name. Please try again later.'
+        : (err instanceof Error ? err.message : 'Could not update name.')
+      showToast('error', msg)
     } finally {
       setBusyName(false)
     }

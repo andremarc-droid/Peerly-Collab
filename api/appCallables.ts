@@ -64,6 +64,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
   }
 
   let phase = 'start'
+  let action = ''
   try {
     let body = req.body as Record<string, unknown> | string | undefined
     if (typeof body === 'string') {
@@ -74,7 +75,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       }
     }
     if (!body || typeof body !== 'object') body = await parseBody(req)
-    const action = typeof body?.action === 'string' ? body.action : ''
+    action = typeof body?.action === 'string' ? body.action : ''
     const data = body?.data
 
     // Reject anything that is not an allowed action before doing any work.
@@ -132,17 +133,31 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
     const result = await handlerFn({ auth: { uid: decodedToken.uid, token: decodedToken }, data, rawRequest: req })
     sendJson(res, 200, { result })
   } catch (err: unknown) {
-    console.error(`[appCallables API error at phase: ${phase}]:`, err)
-    const errorObj = err as { httpErrorCode?: { status?: number }; message?: string; code?: string }
+    console.error(`[appCallables API error at phase: ${phase} action: ${action || 'unknown'}]:`, err)
+    const errorObj = err as {
+      httpErrorCode?: { status?: number; canonicalName?: string }
+      message?: string
+      code?: string
+      stack?: string
+    }
     const status = errorObj?.httpErrorCode?.status
     const rawCode = errorObj?.code || 'internal'
     const code = rawCode.startsWith('functions/') ? rawCode : `functions/${rawCode}`
     const isDev = process.env.NODE_ENV !== 'production'
     const isInit = phase === 'initFirebase' || phase === 'importHandler'
-    sendJson(res, typeof status === 'number' && status >= 400 && status < 600 ? status : 500, {
-      error: !isDev && isInit ? 'Failed to initialize the server service.' : errorObj?.message || 'Something went wrong.',
+
+    const statusCode = typeof status === 'number' && status >= 400 && status < 600
+      ? status
+      : 500
+
+    const message = (!isDev && (statusCode >= 500 || isInit))
+      ? (isInit ? 'Failed to initialize the server service.' : 'Something went wrong.')
+      : (errorObj?.message || 'Something went wrong.')
+
+    sendJson(res, statusCode, {
+      error: message,
       code,
-      ...(isDev ? { phase, details: String(err) } : {}),
+      ...(isDev ? { phase, action: action || undefined, details: String(err) } : {}),
     })
   }
 }
