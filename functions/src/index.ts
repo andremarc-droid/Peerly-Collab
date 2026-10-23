@@ -5,6 +5,11 @@ import { logger } from 'firebase-functions'
 import { isGraphOwner, parseGraphDeleteRequest } from './graphDeletionValidation.js'
 import { savePublicDeckHandler } from './publicDecks.js'
 import {
+  joinStudyGroupHandler,
+  leaveStudyGroupHandler,
+  removeStudyGroupMemberHandler,
+} from './studyGroups.js'
+import {
   addTeamMember as addTeamMemberHandler,
   advanceTeam as advanceTeamHandler,
   cleanupGroupQuizData as cleanupGroupQuizDataHandler,
@@ -112,3 +117,7 @@ export const advanceTeam = onCall({ region: 'us-central1', cors: true }, wrapGro
 export const overrideTeamQuestion = onCall({ region: 'us-central1', cors: true }, wrapGroupQuizHandler(overrideTeamQuestionHandler))
 export const submitTeamAttempt = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 120 }, wrapGroupQuizHandler(submitTeamAttemptHandler))
 export const cleanupGroupQuizData = onCall({ region: 'us-central1', cors: true, timeoutSeconds: 300, memory: '512MiB' }, wrapGroupQuizHandler(cleanupGroupQuizDataHandler))
+
+export const joinStudyGroup = onCall({ region: 'us-central1', cors: true }, joinStudyGroupHandler)
+export const leaveStudyGroup = onCall({ region: 'us-central1', cors: true }, leaveStudyGroupHandler)
+export const removeStudyGroupMember = onCall({ region: 'us-central1', cors: true }, removeStudyGroupMemberHandler)

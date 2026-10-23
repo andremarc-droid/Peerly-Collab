@@ -1858,6 +1858,102 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Study Groups (Phase 3: collaborative study spaces)
+    match /studyGroups/{groupId} {
+      function isStudyGroupMember(gid) {
+        return signedIn() && exists(/databases/$(database)/documents/studyGroups/$(gid)/members/$(request.auth.uid));
+      }
+      function validStudyGroup(data) {
+        return data.keys().hasOnly(['id', 'name', 'description', 'privacy', 'ownerId', 'ownerDisplayName', 'inviteCode', 'memberCount', 'maxMembers', 'createdAt', 'updatedAt'])
+          && data.keys().hasAll(['id', 'name', 'privacy', 'ownerId', 'ownerDisplayName', 'inviteCode', 'memberCount', 'maxMembers', 'createdAt', 'updatedAt'])
+          && data.id == groupId
+          && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+          && (!('description' in data) || (data.description is string && data.description.size() <= 300))
+          && data.privacy in ['public', 'private']
+          && data.ownerId == request.auth.uid
+          && data.ownerDisplayName is string && data.ownerDisplayName.size() >= 1 && data.ownerDisplayName.size() <= 80
+          && data.inviteCode is string && data.inviteCode.size() >= 6 && data.inviteCode.size() <= 12
+          && data.memberCount is int && data.memberCount >= 1 && data.memberCount <= 50
+          && data.maxMembers == 50
+          && data.createdAt is timestamp
+          && data.updatedAt == request.time;
+      }
+
+      allow get: if signedIn() && (resource.data.privacy == 'public' || isStudyGroupMember(groupId));
+      allow list: if signedIn();
+      allow create: if signedIn() && request.auth.uid == request.resource.data.ownerId
+        && validStudyGroup(request.resource.data)
+        && request.resource.data.memberCount == 1
+        && request.resource.data.createdAt == request.time;
+      allow update: if signedIn() && request.auth.uid == resource.data.ownerId
+        && request.auth.uid == request.resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.memberCount == resource.data.memberCount
+        && validStudyGroup(request.resource.data);
+      allow delete: if signedIn() && request.auth.uid == resource.data.ownerId;
+
+      match /members/{memberId} {
+        allow get, list: if isStudyGroupMember(groupId);
+        allow create: if signedIn() && request.auth.uid == memberId
+          && request.auth.uid == getAfter(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId
+          && request.resource.data.role == 'owner';
+        allow update: if false;
+        allow delete: if signedIn() && (request.auth.uid == memberId || request.auth.uid == get(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId);
+      }
+
+      match /sharedDecks/{deckId} {
+        function validSharedDeck(data) {
+          return data.keys().hasOnly(['id', 'deckId', 'sourceClassId', 'title', 'description', 'cardCount', 'cards', 'sharedByUid', 'sharedByName', 'sharedAt'])
+            && data.keys().hasAll(['id', 'deckId', 'sourceClassId', 'title', 'cardCount', 'cards', 'sharedByUid', 'sharedByName', 'sharedAt'])
+            && data.id == deckId
+            && data.deckId is string
+            && data.sourceClassId is string
+            && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+            && (!('description' in data) || (data.description is string && data.description.size() <= 300))
+            && data.cardCount is int && data.cardCount >= 1 && data.cardCount <= 100
+            && data.cards is list && data.cards.size() == data.cardCount
+            && data.sharedByUid == request.auth.uid
+            && data.sharedByName is string && data.sharedByName.size() >= 1 && data.sharedByName.size() <= 80
+            && data.sharedAt == request.time;
+        }
+        allow get, list: if isStudyGroupMember(groupId);
+        allow create: if isStudyGroupMember(groupId) && validSharedDeck(request.resource.data);
+        allow update: if isStudyGroupMember(groupId) && (resource.data.sharedByUid == request.auth.uid || request.auth.uid == get(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId);
+        allow delete: if isStudyGroupMember(groupId) && (resource.data.sharedByUid == request.auth.uid || request.auth.uid == get(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId);
+      }
+
+      match /activity/{activityId} {
+        function validGroupActivity(data) {
+          return data.keys().hasOnly(['id', 'type', 'actorUid', 'actorName', 'details', 'createdAt'])
+            && data.keys().hasAll(['id', 'type', 'actorUid', 'actorName', 'details', 'createdAt'])
+            && data.id == activityId
+            && data.type in ['joined', 'left', 'deck_shared', 'deck_studied']
+            && data.actorUid == request.auth.uid
+            && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 80
+            && data.details is string && data.details.size() <= 200
+            && data.createdAt == request.time;
+        }
+        allow get, list: if isStudyGroupMember(groupId);
+        allow create: if isStudyGroupMember(groupId) && validGroupActivity(request.resource.data);
+        allow update: if false;
+        allow delete: if signedIn() && request.auth.uid == get(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId;
+      }
+    }
+
+    // Lookup index for study group invite codes.
+    match /studyGroupCodes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.auth.uid == request.resource.data.ownerId
+        && request.resource.data.keys().hasOnly(['groupId', 'groupName', 'ownerId', 'createdAt'])
+        && request.resource.data.keys().hasAll(['groupId', 'groupName', 'ownerId', 'createdAt'])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if signedIn() && request.auth.uid == resource.data.ownerId;
+    }
+
+
     match /sharedTutorThreads/{threadId} {
       function threadPath() {
         return /databases/$(database)/documents/sharedTutorThreads/$(threadId);

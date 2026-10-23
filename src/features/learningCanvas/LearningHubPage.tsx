@@ -34,8 +34,9 @@ import type { LessonPlan } from '../lessons/types'
 import { StatsHome } from '../stats/StatsHome'
 
 import { PublicDecksTab } from '../publicDecks'
+import { StudyGroupsTab } from '../studyGroups'
 
-const tabNames = ['home', 'decks', 'publicDecks', 'lessons', 'notes', 'canvases'] as const
+const tabNames = ['home', 'decks', 'publicDecks', 'studyGroups', 'lessons', 'notes', 'canvases'] as const
 const CreateLearningFlow = lazy(() => import('../flashcards/create/CreateLearningFlow').then(module => ({ default: module.CreateLearningFlow })))
 const LessonsTab = lazy(() => import('../lessons/LessonsTab').then(module => ({ default: module.LessonsTab })))
 const labels: Record<LearningTab, string> = {
@@ -148,6 +149,7 @@ export function LearningHubPage() {
     </div>
     if (tab === 'decks') return <>{deckError && <Alert tone="error" label="Could not load decks">{deckError}</Alert>}<FlashcardsTab decks={decks} classes={workspaceId ? [{ id: workspaceId, name: 'Personal workspace', isPersonalWorkspace: true }] : []} selectedClassId="all" role="student" error={deckError} onCreateDeck={() => setCreateDeckOpen(true)}/></>
     if (tab === 'publicDecks') return <PublicDecksTab />
+    if (tab === 'studyGroups') return <StudyGroupsTab />
     if (tab === 'notes') return <NotesTabContent notes={notes} classes={workspaceId ? [{ id: workspaceId, name: 'Personal workspace' }] : []} selectedClassId="all" role={role} onCreateNote={createNote} onDeleteNote={async (item) => { await deleteCanvas(item.classId, item.id) }} onViewInGraph={() => changeTab('canvases')} onMakeStudyMaterial={makeFromNote} sharedError={shared.error}/>
     if (tab === 'canvases') return <div className="grid gap-4"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="m-0 text-xl font-bold text-navy-900">Your study canvases</h2><Button variant="primary" onClick={() => setCreateOpen(true)}><Plus size={16} aria-hidden="true"/>New canvas</Button></div>{loading ? <Skeleton className="h-24 rounded-2xl"/> : error ? <Alert tone="error" label="Could not load canvases">{error}</Alert> : boards.length ? <div className="grid gap-3">{boards.map((item) => <article key={`${item.classId}/${item.id}`} className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm"><h3 className="m-0 text-lg font-bold text-navy-900">{item.title}</h3><p className="mt-2 mb-4 text-base text-navy-900">{item.description || 'Study canvas'}</p><div className="flex flex-wrap gap-2"><Button to={`/${role}/classes/${encodeURIComponent(item.classId)}/learning/${encodeURIComponent(item.id)}`} variant="secondary">Open canvas</Button>{item.ownerId === user?.uid && <Button type="button" variant="secondary" aria-label={`Delete ${item.title}`} disabled={deletingCanvas} onClick={() => setCanvasToDelete(item)}><Trash2 size={16} aria-hidden="true"/> Delete</Button>}</div></article>)}</div> : <EmptyState title="No canvases yet" description="Create a visual board to connect ideas and study materials." action={<Button variant="primary" onClick={() => setCreateOpen(true)}>Create canvas</Button>}/>}<SharedCanvasList items={shared.items} error={shared.error} role={role} selectedClassId="all"/></div>
     return <Suspense fallback={<Skeleton className="h-40 rounded-2xl"/>}><LessonsTab/></Suspense>

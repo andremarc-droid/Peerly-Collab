@@ -10,6 +10,7 @@ import { deleteQuizCascade } from '../quizzes/services/deleteQuizCascade'
 import { cleanupGroupQuizData } from '../quizzes/services/teamService'
 import { deleteMyTurnIns } from '../assignments/services/turnInService'
 import { deleteMyPublicDecks } from '../publicDecks/services'
+import { cleanupMyStudyGroupsOnAccountDeletion } from '../studyGroups/services'
 
 const PAGE = 100
 const DECK_SUBCOLLECTIONS = ['members', 'invites', 'activity', 'presence'] as const
@@ -114,6 +115,7 @@ export async function deleteAccountData(uid: string, role: UserRole | null, db: 
   // else is deleted and the Auth account stays, so the person can retry.
   await cleanupGroupQuizData()
   await deleteMyPublicDecks(uid, db)
+  await cleanupMyStudyGroupsOnAccountDeletion(uid, db)
   await deleteLearningPlans(uid, db)
   await emptyCollection(db, 'users', uid, 'deckProgress')
   await emptyCollection(db, 'users', uid, 'studyAttempts')
