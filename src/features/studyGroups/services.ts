@@ -320,7 +320,7 @@ export async function deleteStudyGroupCascade(
   inviteCode: string,
   db: Firestore = firestore,
 ): Promise<void> {
-  const subcollections = ['members', 'sharedDecks', 'activity']
+  const subcollections = ['members', 'sharedDecks', 'sharedItems', 'activity']
   for (const name of subcollections) {
     const snap = await getDocs(collection(db, 'studyGroups', groupId, name))
     if (!snap.empty) {
@@ -381,6 +381,19 @@ export async function cleanupMyStudyGroupsOnAccountDeletion(
     await deleteStudyGroupCascade(g.id, data.inviteCode, db)
   }
 
+  // Delete all items shared by this user across all groups
+  try {
+    const sharedItemsQuery = query(collectionGroup(db, 'sharedItems'), where('sharedByUid', '==', uid))
+    const sharedItemsSnap = await getDocs(sharedItemsQuery)
+    if (!sharedItemsSnap.empty) {
+      const batch = writeBatch(db)
+      sharedItemsSnap.docs.forEach((d) => batch.delete(d.ref))
+      await batch.commit().catch(() => {})
+    }
+  } catch (err) {
+    console.error('Failed to clean up user sharedItems during account deletion:', err)
+  }
+
   const memberQuery = query(collectionGroup(db, 'members'), where('uid', '==', uid))
   const memberSnap = await getDocs(memberQuery)
   for (const m of memberSnap.docs) {
@@ -397,3 +410,12 @@ export async function cleanupMyStudyGroupsOnAccountDeletion(
     }
   }
 }
+
+export {
+  copySharedItemToLibrary,
+  shareItemWithGroup,
+  subscribeGroupSharedItems,
+  unshareItemFromGroup,
+  updateSharedItem,
+} from './sharedItemsService'
+

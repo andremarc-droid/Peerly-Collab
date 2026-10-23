@@ -1925,12 +1925,58 @@ service cloud.firestore {
         allow delete: if isStudyGroupMember(groupId) && (resource.data.sharedByUid == request.auth.uid || request.auth.uid == get(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId);
       }
 
+      match /sharedItems/{itemId} {
+        function validSharedItem(data) {
+          return data.keys().hasOnly(['id', 'kind', 'title', 'summary', 'payload', 'sharedByUid', 'sharedByName', 'sharedAt', 'version', 'originalItemId'])
+            && data.keys().hasAll(['id', 'kind', 'title', 'payload', 'sharedByUid', 'sharedByName', 'sharedAt', 'version'])
+            && data.id == itemId
+            && data.kind in ['deck', 'canvas', 'lessonPlan', 'note']
+            && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+            && (!('summary' in data) || (data.summary is string && data.summary.size() <= 300))
+            && (!('originalItemId' in data) || (data.originalItemId is string && data.originalItemId.size() <= 100))
+            && data.version is int && data.version >= 1
+            && data.sharedByUid == request.auth.uid
+            && data.sharedByName is string && data.sharedByName.size() >= 1 && data.sharedByName.size() <= 80
+            && data.sharedAt == request.time
+            && data.payload is map
+            && (
+              (data.kind == 'deck'
+                && data.payload.keys().hasOnly(['cardCount', 'cards', 'sourceClassId'])
+                && data.payload.cardCount is int && data.payload.cardCount >= 1 && data.payload.cardCount <= 100
+                && data.payload.cards is list && data.payload.cards.size() == data.payload.cardCount)
+              || (data.kind == 'canvas'
+                && data.payload.keys().hasOnly(['nodeCount', 'edgeCount', 'nodes', 'edges', 'viewport', 'sourceClassId'])
+                && data.payload.nodeCount is int && data.payload.nodeCount >= 0 && data.payload.nodeCount <= 80
+                && data.payload.edgeCount is int && data.payload.edgeCount >= 0 && data.payload.edgeCount <= 120
+                && data.payload.nodes is list && data.payload.nodes.size() == data.payload.nodeCount
+                && data.payload.edges is list && data.payload.edges.size() == data.payload.edgeCount)
+              || (data.kind == 'lessonPlan'
+                && !('source' in data.payload)
+                && data.payload.keys().hasOnly(['topic', 'level', 'lessonCount', 'order', 'lessons'])
+                && data.payload.lessonCount is int && data.payload.lessonCount >= 1 && data.payload.lessonCount <= 20
+                && data.payload.order is list && data.payload.order.size() == data.payload.lessonCount
+                && data.payload.lessons is map)
+              || (data.kind == 'note'
+                && data.payload.keys().hasOnly(['text', 'sourceClassId'])
+                && data.payload.text is string && data.payload.text.size() <= 20000)
+            );
+        }
+        allow get, list: if isStudyGroupMember(groupId);
+        allow create: if isStudyGroupMember(groupId) && validSharedItem(request.resource.data);
+        allow update: if isStudyGroupMember(groupId)
+          && resource.data.sharedByUid == request.auth.uid
+          && request.resource.data.sharedByUid == request.auth.uid
+          && validSharedItem(request.resource.data);
+        allow delete: if (isStudyGroupMember(groupId) && (resource.data.sharedByUid == request.auth.uid || request.auth.uid == get(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId))
+          || (signedIn() && resource.data.sharedByUid == request.auth.uid);
+      }
+
       match /activity/{activityId} {
         function validGroupActivity(data) {
           return data.keys().hasOnly(['id', 'type', 'actorUid', 'actorName', 'details', 'createdAt'])
             && data.keys().hasAll(['id', 'type', 'actorUid', 'actorName', 'details', 'createdAt'])
             && data.id == activityId
-            && data.type in ['joined', 'left', 'deck_shared', 'deck_studied']
+            && data.type in ['joined', 'left', 'deck_shared', 'deck_studied', 'item_shared', 'item_updated', 'item_unshared', 'item_studied']
             && data.actorUid == request.auth.uid
             && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 80
             && data.details is string && data.details.size() <= 200
@@ -2190,6 +2236,16 @@ service cloud.firestore {
       }
     }
 
+    // Collection group queries for members and sharedItems
+    match /{path=**}/members/{memberId} {
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+    match /{path=**}/sharedItems/{itemId} {
+      allow list: if signedIn() && resource.data.sharedByUid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.sharedByUid == request.auth.uid;
+    }
+
     // Unknown paths are denied by default.
   }
 }
+

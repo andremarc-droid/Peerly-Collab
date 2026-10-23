@@ -1,18 +1,39 @@
-import { useEffect, useState } from 'react'
-import { ArrowLeft, Copy, Play, Plus, RefreshCw, Trash2, Users } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  ArrowLeft,
+  BookOpen,
+  Clock,
+  Copy,
+  FileText,
+  Network,
+  RefreshCw,
+  Trash2,
+  Users,
+} from 'lucide-react'
+import { doc, getDoc } from 'firebase/firestore'
+import { firestore } from '../../../lib/firebase/firestore'
 import { Alert } from '../../../shared/ui/Alert'
 import { Badge } from '../../../shared/ui/Badge'
 import { Button } from '../../../shared/ui/Button'
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog'
-import { EmptyState } from '../../../shared/ui/EmptyState'
 import { Input } from '../../../shared/ui/Input'
 import { Skeleton } from '../../../shared/ui/Skeleton'
 import { useToast } from '../../../shared/ui/useToast'
 import { useAuth } from '../../auth/useAuth'
 import { FlashcardStudyDialog } from '../../flashcards/components/FlashcardStudyDialog'
 import type { FlashcardDeckWithId } from '../../flashcards/types'
+import { loadNoteContent } from '../../learningCanvas/noteService'
+import { getCanvas, getContent } from '../../learningCanvas/services'
+import { getLessonPlan } from '../../lessons/services'
+import {
+  buildSharedCanvasPayload,
+  buildSharedDeckPayload,
+  buildSharedLessonPlanPayload,
+  buildSharedNotePayload,
+} from '../schemas'
 import {
   checkIsGroupMember,
+  copySharedItemToLibrary,
   deleteStudyGroupCascade,
   getStudyGroup,
   leaveStudyGroupCallable as callLeaveStudyGroup,
@@ -22,17 +43,31 @@ import {
   renameStudyGroup,
   subscribeGroupActivity,
   subscribeGroupMembers,
-  subscribeGroupSharedDecks,
-  unshareDeckFromGroup,
+  subscribeGroupSharedItems,
+  unshareItemFromGroup,
+  updateSharedItem,
 } from '../services'
-import type { SharedGroupDeck, StudyGroup, StudyGroupActivity, StudyGroupMember } from '../types'
-import { ShareDeckDialog } from './ShareDeckDialog'
+import type {
+  SharedCanvasPayload,
+  SharedDeckPayload,
+  SharedGroupItem,
+  SharedItemKind,
+  SharedNotePayload,
+  StudyGroup,
+  StudyGroupActivity,
+  StudyGroupMember,
+} from '../types'
+import { ItemPreviewDialog } from './ItemPreviewDialog'
+import { SharedItemsTabContent } from './SharedItemsTabContent'
+import { ShareItemDialog } from './ShareItemDialog'
 import { StudyGroupPreview } from './StudyGroupPreview'
 
 interface Props {
   groupId: string
   onBack: () => void
 }
+
+type TabType = 'decks' | 'canvases' | 'lessons' | 'notes' | 'activity' | 'members'
 
 export function StudyGroupDetailPage({ groupId, onBack }: Props) {
   const { user } = useAuth()
@@ -41,26 +76,31 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
   const [group, setGroup] = useState<StudyGroup | null>(null)
   const [isMember, setIsMember] = useState<boolean | null>(null)
   const [members, setMembers] = useState<StudyGroupMember[]>([])
-  const [sharedDecks, setSharedDecks] = useState<SharedGroupDeck[]>([])
+  const [sharedItems, setSharedItems] = useState<SharedGroupItem[]>([])
   const [activity, setActivity] = useState<StudyGroupActivity[]>([])
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<TabType>('decks')
 
-  const [decksError, setDecksError] = useState<string | null>(null)
+  const [itemsError, setItemsError] = useState<string | null>(null)
   const [membersError, setMembersError] = useState<string | null>(null)
   const [activityError, setActivityError] = useState<string | null>(null)
 
-  const [decksRetryKey, setDecksRetryKey] = useState(0)
+  const [itemsRetryKey, setItemsRetryKey] = useState(0)
   const [membersRetryKey, setMembersRetryKey] = useState(0)
   const [activityRetryKey, setActivityRetryKey] = useState(0)
 
   const [shareOpen, setShareOpen] = useState(false)
+  const [shareKind, setShareKind] = useState<SharedItemKind>('deck')
+
+  const [previewItem, setPreviewItem] = useState<SharedGroupItem | null>(null)
   const [studyDeck, setStudyDeck] = useState<FlashcardDeckWithId | null>(null)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [memberToRemove, setMemberToRemove] = useState<StudyGroupMember | null>(null)
+  const [itemToRemove, setItemToRemove] = useState<SharedGroupItem | null>(null)
   const [busyAction, setBusyAction] = useState(false)
 
   const [renaming, setRenaming] = useState(false)
@@ -74,9 +114,8 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
       setError(null)
       const g = await getStudyGroup(groupId).catch(() => null)
       setGroup(g)
-      if (g) {
-        setNewName(g.name)
-      }
+      if (g) setNewName(g.name)
+
       if (user) {
         const member = await checkIsGroupMember(groupId, user.uid).catch(() => false)
         setIsMember(member)
@@ -98,21 +137,22 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
   useEffect(() => {
     if (!isMember) return
 
-    setDecksError(null)
-    const unsubDecks = subscribeGroupSharedDecks(
+    setItemsError(null)
+    const unsubItems = subscribeGroupSharedItems(
       groupId,
-      (decks) => {
-        setSharedDecks(decks)
-        setDecksError(null)
+      'all',
+      (items) => {
+        setSharedItems(items)
+        setItemsError(null)
       },
       (err) => {
-        console.error('Failed to subscribe to shared decks:', err)
-        setDecksError(err.message || 'Shared decks couldn’t load.')
+        console.error('Failed to subscribe to shared items:', err)
+        setItemsError(err.message || 'Shared items couldn’t load.')
       },
     )
 
-    return () => unsubDecks()
-  }, [groupId, isMember, decksRetryKey])
+    return () => unsubItems()
+  }, [groupId, isMember, itemsRetryKey])
 
   useEffect(() => {
     if (!isMember) return
@@ -147,11 +187,123 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
         console.error('Failed to subscribe to group activity:', err)
         setActivityError(err.message || 'Activity couldn’t load.')
       },
-      15,
+      25,
     )
 
     return () => unsubActivity()
   }, [groupId, isMember, activityRetryKey])
+
+  const decks = useMemo(() => sharedItems.filter((i) => i.kind === 'deck'), [sharedItems])
+  const canvases = useMemo(() => sharedItems.filter((i) => i.kind === 'canvas'), [sharedItems])
+  const lessons = useMemo(() => sharedItems.filter((i) => i.kind === 'lessonPlan'), [sharedItems])
+  const notes = useMemo(() => sharedItems.filter((i) => i.kind === 'note'), [sharedItems])
+
+  const handleCopyItem = async (item: SharedGroupItem) => {
+    if (!user) return
+    try {
+      await copySharedItemToLibrary(item, user.uid)
+      showToast('success', `Saved a copy of "${item.title}" to your library!`)
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : 'Could not save copy.')
+    }
+  }
+
+  const handleUpdateItem = async (item: SharedGroupItem) => {
+    if (!user || item.sharedByUid !== user.uid) return
+    try {
+      let payload = item.payload
+      let title = item.title
+      let summary = item.summary
+
+      if (item.kind === 'deck') {
+        const deckId = item.originalItemId || item.id
+        const classId = (item.payload as SharedDeckPayload).sourceClassId || 'personal'
+        const snap = await getDoc(doc(firestore, 'classes', classId, 'flashcardDecks', deckId))
+        if (!snap.exists()) throw new Error('Original deck not found in your library.')
+        const data = snap.data() as any
+        title = data.title
+        summary = data.description
+        payload = buildSharedDeckPayload(data.cards, classId)
+      } else if (item.kind === 'canvas') {
+        const canvasId = item.originalItemId || item.id
+        const classId = (item.payload as SharedCanvasPayload).sourceClassId || 'personal'
+        const [meta, content] = await Promise.all([getCanvas(classId, canvasId), getContent(classId, canvasId)])
+        if (!meta || !content) throw new Error('Original canvas not found in your library.')
+        title = meta.title
+        summary = meta.description
+        payload = buildSharedCanvasPayload(content.nodes, content.edges, content.viewport, classId)
+      } else if (item.kind === 'lessonPlan') {
+        const planId = item.originalItemId || item.id
+        const full = await getLessonPlan(user.uid, planId)
+        if (!full) throw new Error('Original lesson plan not found in your library.')
+        title = full.plan.title
+        summary = full.plan.topic
+        payload = buildSharedLessonPlanPayload(full.plan.topic, full.plan.level, full.plan.order, full.lessons)
+      } else if (item.kind === 'note') {
+        const noteId = item.originalItemId || item.id
+        const classId = (item.payload as SharedNotePayload).sourceClassId || 'personal'
+        const [meta, text] = await Promise.all([getCanvas(classId, noteId), loadNoteContent(classId, noteId)])
+        if (!meta) throw new Error('Original note not found in your library.')
+        title = meta.title
+        summary = meta.description
+        payload = buildSharedNotePayload(text, classId)
+      }
+
+      await updateSharedItem(
+        groupId,
+        item.id,
+        { title, summary, payload, kind: item.kind },
+        { uid: user.uid, displayName: user.displayName || user.email },
+      )
+      showToast('success', `Updated shared copy of "${title}"!`)
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : 'Could not update item.')
+    }
+  }
+
+  const handleRemoveItem = async () => {
+    if (!itemToRemove || !user) return
+    setBusyAction(true)
+    try {
+      await unshareItemFromGroup(
+        groupId,
+        itemToRemove.id,
+        itemToRemove.kind,
+        itemToRemove.title,
+        { uid: user.uid, displayName: user.displayName || user.email },
+      )
+      setItemToRemove(null)
+      showToast('success', `Removed "${itemToRemove.title}" from group.`)
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : 'Could not remove item.')
+    } finally {
+      setBusyAction(false)
+    }
+  }
+
+  const startStudyingDeck = (item: SharedGroupItem) => {
+    const payload = item.payload as SharedDeckPayload
+    const studyable: FlashcardDeckWithId = {
+      id: item.id,
+      classId: payload.sourceClassId || 'group',
+      ownerId: item.sharedByUid,
+      kind: 'personal',
+      title: item.title,
+      description: item.summary || '',
+      status: 'private',
+      cardCount: payload.cardCount,
+      cards: payload.cards,
+      createdAt: item.sharedAt,
+      updatedAt: item.sharedAt,
+    }
+    setStudyDeck(studyable)
+    if (user) {
+      void logStudySessionActivity(groupId, item.title, {
+        uid: user.uid,
+        displayName: user.displayName || user.email,
+      })
+    }
+  }
 
   const copyCode = async () => {
     if (!group?.inviteCode) return
@@ -224,38 +376,6 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
     }
   }
 
-  const handleUnshareDeck = async (deckId: string) => {
-    try {
-      await unshareDeckFromGroup(groupId, deckId)
-      showToast('success', 'Deck removed from group.')
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Could not remove deck.')
-    }
-  }
-
-  const startStudying = (shared: SharedGroupDeck) => {
-    const studyable: FlashcardDeckWithId = {
-      id: shared.id,
-      classId: shared.sourceClassId || 'group',
-      ownerId: shared.sharedByUid,
-      kind: 'personal',
-      title: shared.title,
-      description: shared.description,
-      status: 'private',
-      cardCount: shared.cardCount,
-      cards: shared.cards,
-      createdAt: shared.sharedAt,
-      updatedAt: shared.sharedAt,
-    }
-    setStudyDeck(studyable)
-    if (user) {
-      void logStudySessionActivity(groupId, shared.title, {
-        uid: user.uid,
-        displayName: user.displayName || user.email,
-      })
-    }
-  }
-
   if (loading) {
     return (
       <div className="grid gap-4 p-4">
@@ -291,6 +411,15 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
     )
   }
 
+  const tabDefs: Array<{ id: TabType; label: string; count: number; icon: any }> = [
+    { id: 'decks', label: 'Decks', count: decks.length, icon: BookOpen },
+    { id: 'canvases', label: 'Canvases', count: canvases.length, icon: Network },
+    { id: 'lessons', label: 'Lessons', count: lessons.length, icon: FileText },
+    { id: 'notes', label: 'Notes', count: notes.length, icon: FileText },
+    { id: 'activity', label: 'Activity', count: activity.length, icon: Clock },
+    { id: 'members', label: 'Members', count: members.length, icon: Users },
+  ]
+
   return (
     <div className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -321,6 +450,7 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
                 <Users size={14} aria-hidden="true" />
                 {members.length > 0 ? members.length : group.memberCount} / {group.maxMembers} members
               </span>
+              <span className="text-sm text-navy-900-72">· {sharedItems.length} shared items</span>
             </div>
             {renaming ? (
               <div className="flex items-center gap-2 mt-2">
@@ -380,113 +510,149 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
         </div>
       </header>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <div className="md:col-span-2 grid gap-6">
-          <section className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm grid gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="m-0 text-xl font-bold text-navy-900">Shared flashcard decks</h3>
-              <Button variant="primary" onClick={() => setShareOpen(true)}>
-                <Plus size={16} aria-hidden="true" />
-                Share deck
+      {/* Group Navigation Tabs (44px touch target) */}
+      <div className="flex flex-wrap gap-2 border-b border-navy-900-15 pb-2" role="tablist" aria-label="Study group tabs">
+        {tabDefs.map((t) => {
+          const Icon = t.icon
+          const active = tab === t.id
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 min-h-11 rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-navy-900 ${
+                active ? 'bg-navy-900 text-white' : 'bg-navy-900-08 text-navy-900 hover:bg-navy-900-15'
+              }`}
+            >
+              <Icon size={16} aria-hidden="true" />
+              <span>{t.label}</span>
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20' : 'bg-navy-900-10'}`}>
+                {t.count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Tab Panels */}
+      {tab === 'decks' && (
+        <SharedItemsTabContent
+          kind="deck"
+          items={decks}
+          loading={loading}
+          error={itemsError}
+          onRetry={() => setItemsRetryKey((k) => k + 1)}
+          onOpenShare={() => {
+            setShareKind('deck')
+            setShareOpen(true)
+          }}
+          onViewItem={(item) => startStudyingDeck(item)}
+          onSaveCopy={handleCopyItem}
+          onUpdateItem={handleUpdateItem}
+          onRemoveItem={(item) => setItemToRemove(item)}
+          isOwner={isOwner}
+          currentUid={user?.uid}
+        />
+      )}
+
+      {tab === 'canvases' && (
+        <SharedItemsTabContent
+          kind="canvas"
+          items={canvases}
+          loading={loading}
+          error={itemsError}
+          onRetry={() => setItemsRetryKey((k) => k + 1)}
+          onOpenShare={() => {
+            setShareKind('canvas')
+            setShareOpen(true)
+          }}
+          onViewItem={(item) => setPreviewItem(item)}
+          onSaveCopy={handleCopyItem}
+          onUpdateItem={handleUpdateItem}
+          onRemoveItem={(item) => setItemToRemove(item)}
+          isOwner={isOwner}
+          currentUid={user?.uid}
+        />
+      )}
+
+      {tab === 'lessons' && (
+        <SharedItemsTabContent
+          kind="lessonPlan"
+          items={lessons}
+          loading={loading}
+          error={itemsError}
+          onRetry={() => setItemsRetryKey((k) => k + 1)}
+          onOpenShare={() => {
+            setShareKind('lessonPlan')
+            setShareOpen(true)
+          }}
+          onViewItem={(item) => setPreviewItem(item)}
+          onSaveCopy={handleCopyItem}
+          onUpdateItem={handleUpdateItem}
+          onRemoveItem={(item) => setItemToRemove(item)}
+          isOwner={isOwner}
+          currentUid={user?.uid}
+        />
+      )}
+
+      {tab === 'notes' && (
+        <SharedItemsTabContent
+          kind="note"
+          items={notes}
+          loading={loading}
+          error={itemsError}
+          onRetry={() => setItemsRetryKey((k) => k + 1)}
+          onOpenShare={() => {
+            setShareKind('note')
+            setShareOpen(true)
+          }}
+          onViewItem={(item) => setPreviewItem(item)}
+          onSaveCopy={handleCopyItem}
+          onUpdateItem={handleUpdateItem}
+          onRemoveItem={(item) => setItemToRemove(item)}
+          isOwner={isOwner}
+          currentUid={user?.uid}
+        />
+      )}
+
+      {tab === 'activity' && (
+        <section className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm grid gap-3">
+          <h3 className="m-0 text-xl font-bold text-navy-900">Recent group activity</h3>
+          {activityError ? (
+            <div className="rounded-2xl border border-navy-900-15 bg-navy-900-05 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="m-0 text-sm font-semibold text-navy-900">Activity couldn't load</p>
+                <p className="m-0 text-xs text-navy-900-72">{activityError}</p>
+              </div>
+              <Button variant="secondary" onClick={() => setActivityRetryKey((k) => k + 1)}>
+                <RefreshCw size={14} aria-hidden="true" />
+                Retry
               </Button>
             </div>
+          ) : activity.length === 0 ? (
+            <p className="m-0 text-sm text-navy-900-72">No activity recorded yet.</p>
+          ) : (
+            <ul className="m-0 list-none p-0 grid gap-2">
+              {activity.map((act) => (
+                <li
+                  key={act.id}
+                  className="flex items-center justify-between text-sm py-2 border-b border-navy-900-05 last:border-b-0"
+                >
+                  <span className="text-navy-900">
+                    <strong>{act.actorName}</strong> {act.details}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
-            {decksError ? (
-              <div className="rounded-2xl border border-navy-900-15 bg-navy-900-05 p-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="m-0 text-sm font-semibold text-navy-900">Shared decks couldn't load</p>
-                  <p className="m-0 text-xs text-navy-900-72">{decksError}</p>
-                </div>
-                <Button variant="secondary" onClick={() => setDecksRetryKey((k) => k + 1)}>
-                  <RefreshCw size={14} aria-hidden="true" />
-                  Retry
-                </Button>
-              </div>
-            ) : sharedDecks.length === 0 ? (
-              <EmptyState
-                title="No shared decks yet"
-                description="Share flashcards from your library so group members can study together."
-                action={
-                  <Button variant="primary" onClick={() => setShareOpen(true)}>
-                    <Plus size={16} aria-hidden="true" />
-                    Share first deck
-                  </Button>
-                }
-              />
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {sharedDecks.map((deck) => (
-                  <article
-                    key={deck.id}
-                    className="flex flex-col justify-between rounded-2xl border border-navy-900-15 bg-navy-900-05 p-4"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-xs text-navy-900-72">Shared by {deck.sharedByName}</span>
-                        <Badge>{deck.cardCount} cards</Badge>
-                      </div>
-                      <h4 className="m-0 font-bold text-navy-900 text-base">{deck.title}</h4>
-                      {deck.description && (
-                        <p className="mt-1 text-sm text-navy-900-72 line-clamp-2">{deck.description}</p>
-                      )}
-                    </div>
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-navy-900-10 pt-3">
-                      <Button variant="primary" onClick={() => startStudying(deck)}>
-                        <Play size={16} aria-hidden="true" />
-                        Study
-                      </Button>
-                      {(isOwner || deck.sharedByUid === user?.uid) && (
-                        <Button
-                          variant="ghost"
-                          onClick={() => void handleUnshareDeck(deck.id)}
-                          aria-label={`Remove deck ${deck.title}`}
-                        >
-                          <Trash2 size={16} aria-hidden="true" />
-                        </Button>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm grid gap-3">
-            <h3 className="m-0 text-xl font-bold text-navy-900">Recent group activity</h3>
-            {activityError ? (
-              <div className="rounded-2xl border border-navy-900-15 bg-navy-900-05 p-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="m-0 text-sm font-semibold text-navy-900">Activity couldn't load</p>
-                  <p className="m-0 text-xs text-navy-900-72">{activityError}</p>
-                </div>
-                <Button variant="secondary" onClick={() => setActivityRetryKey((k) => k + 1)}>
-                  <RefreshCw size={14} aria-hidden="true" />
-                  Retry
-                </Button>
-              </div>
-            ) : activity.length === 0 ? (
-              <p className="m-0 text-sm text-navy-900-72">No activity recorded yet.</p>
-            ) : (
-              <ul className="m-0 list-none p-0 grid gap-2">
-                {activity.map((act) => (
-                  <li
-                    key={act.id}
-                    className="flex items-center justify-between text-sm py-1.5 border-b border-navy-900-05 last:border-b-0"
-                  >
-                    <span className="text-navy-900">
-                      <strong>{act.actorName}</strong> {act.details}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-
-        <section className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm grid gap-3 self-start">
-          <h3 className="m-0 text-xl font-bold text-navy-900">
-            Members ({members.length})
-          </h3>
+      {tab === 'members' && (
+        <section className="rounded-3xl border border-navy-900-15 bg-white p-5 shadow-sm grid gap-3">
+          <h3 className="m-0 text-xl font-bold text-navy-900">Members ({members.length})</h3>
           {membersError ? (
             <div className="rounded-2xl border border-navy-900-15 bg-navy-900-05 p-4 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -505,7 +671,7 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
                 return (
                   <li
                     key={m.uid}
-                    className="flex items-center justify-between gap-2 rounded-xl p-2 bg-navy-900-05"
+                    className="flex items-center justify-between gap-2 rounded-xl p-3 bg-navy-900-05"
                   >
                     <div className="grid">
                       <span className="font-semibold text-sm text-navy-900">
@@ -528,24 +694,53 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
             </ul>
           )}
         </section>
-      </div>
+      )}
 
-      <ShareDeckDialog
+      {/* Share Dialog */}
+      <ShareItemDialog
         groupId={groupId}
         open={shareOpen}
+        initialKind={shareKind}
         onClose={() => setShareOpen(false)}
         onShared={() => {}}
       />
 
+      {/* View Item Dialog */}
+      {previewItem && (
+        <ItemPreviewDialog
+          item={previewItem}
+          open={Boolean(previewItem)}
+          onClose={() => setPreviewItem(null)}
+          onSaveCopy={handleCopyItem}
+          onStudyDeck={(item) => startStudyingDeck(item)}
+        />
+      )}
+
+      {/* Flashcard Study Dialog */}
       {studyDeck && (
         <FlashcardStudyDialog deck={studyDeck} onClose={() => setStudyDeck(null)} />
       )}
 
+      {/* Confirm Remove Item */}
+      {itemToRemove && (
+        <ConfirmDialog
+          open
+          title="Remove shared item?"
+          description={`Remove "${itemToRemove.title}" from this study group? Group members will no longer be able to view or copy it.`}
+          confirmLabel="Remove item"
+          busy={busyAction}
+          closeOnConfirm={false}
+          onClose={() => setItemToRemove(null)}
+          onConfirm={() => void handleRemoveItem()}
+        />
+      )}
+
+      {/* Confirm Delete Group */}
       {deleteOpen && (
         <ConfirmDialog
           open
           title="Delete study group?"
-          description="Are you sure? All shared decks, invite codes, and activity history for this group will be deleted."
+          description="Are you sure? All shared items, invite codes, and activity history for this group will be deleted."
           confirmLabel="Delete group"
           busy={busyAction}
           closeOnConfirm={false}
@@ -554,11 +749,12 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
         />
       )}
 
+      {/* Confirm Leave Group */}
       {leaveOpen && (
         <ConfirmDialog
           open
           title="Leave study group?"
-          description="You will lose access to shared decks and group study activities."
+          description="You will lose access to shared items and group study activities."
           confirmLabel="Leave group"
           busy={busyAction}
           closeOnConfirm={false}
@@ -567,6 +763,7 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
         />
       )}
 
+      {/* Confirm Remove Member */}
       {memberToRemove && (
         <ConfirmDialog
           open
