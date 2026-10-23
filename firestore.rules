@@ -1863,7 +1863,10 @@ service cloud.firestore {
     // Study Groups (Phase 3: collaborative study spaces)
     match /studyGroups/{groupId} {
       function isStudyGroupMember(gid) {
-        return signedIn() && exists(/databases/$(database)/documents/studyGroups/$(gid)/members/$(request.auth.uid));
+        return signedIn() && (
+          exists(/databases/$(database)/documents/studyGroups/$(gid)/members/$(request.auth.uid))
+          || existsAfter(/databases/$(database)/documents/studyGroups/$(gid)/members/$(request.auth.uid))
+        );
       }
       function validStudyGroup(data) {
         return data.keys().hasOnly(['id', 'name', 'description', 'privacy', 'ownerId', 'ownerDisplayName', 'inviteCode', 'memberCount', 'maxMembers', 'createdAt', 'updatedAt'])
@@ -1897,6 +1900,7 @@ service cloud.firestore {
       match /members/{memberId} {
         allow get, list: if isStudyGroupMember(groupId);
         allow create: if signedIn() && request.auth.uid == memberId
+          && existsAfter(/databases/$(database)/documents/studyGroups/$(groupId))
           && request.auth.uid == getAfter(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId
           && request.resource.data.role == 'owner';
         allow update: if false;
@@ -1936,7 +1940,11 @@ service cloud.firestore {
             && data.createdAt == request.time;
         }
         allow get, list: if isStudyGroupMember(groupId);
-        allow create: if isStudyGroupMember(groupId) && validGroupActivity(request.resource.data);
+        allow create: if (
+          isStudyGroupMember(groupId)
+          || (signedIn() && existsAfter(/databases/$(database)/documents/studyGroups/$(groupId))
+              && request.auth.uid == getAfter(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId)
+        ) && validGroupActivity(request.resource.data);
         allow update: if false;
         allow delete: if signedIn() && request.auth.uid == get(/databases/$(database)/documents/studyGroups/$(groupId)).data.ownerId;
       }
