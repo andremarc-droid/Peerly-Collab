@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowRight, ArrowUpRight, BookOpenCheck, Brain, Check, Clock3, Layers3, Lightbulb, Menu, Sparkles, UsersRound, X } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUpRight, BookOpenCheck, Brain, Check, Clock3, Layers3, Lightbulb, Menu, UsersRound, X } from 'lucide-react'
 import { useState } from 'react'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useAuth } from '../auth/useAuth'
@@ -54,7 +54,7 @@ function ProductPreview() {
         <div className="preview-feedback"><span className="feedback-icon"><Check size={15} /></span><div><strong>Exactly right</strong><span>Binary search cuts the search space in half with every step, running in O(log n) time.</span></div></div>
       </Card>
       <div className="group-chip"><span className="group-chip__avatars" aria-hidden="true"><i>A</i><i>M</i><i>J</i></span><span><strong>Group of 3</strong><small>answering together</small></span><span className="group-chip__live" aria-label="Live" /></div>
-      <div className="preview-note"><Sparkles size={16} aria-hidden="true" /><span>Practice that builds mastery</span></div>
+      <div className="preview-note"><Brain size={16} aria-hidden="true" /><span>Practice that builds mastery</span></div>
     </div>
   )
 }
@@ -130,7 +130,7 @@ export function LandingPage() {
 
         <section className="closing-section">
           <StripeBackground variant="band" />
-          <Container className="closing-inner"><div><Badge>READY WHEN YOU ARE</Badge><h2>Make your next<br />practice count.</h2><p>Start a quiz, join your group, and see what you can learn.</p></div><div className="closing-actions"><Button to="/role?mode=signup">Get started <ArrowRight size={18} aria-hidden="true" /></Button><Button to="/role?mode=signin" variant="secondary">Sign in</Button></div><span className="closing-spark" aria-hidden="true"><Sparkles size={25} /></span></Container>
+          <Container className="closing-inner"><div><Badge>READY WHEN YOU ARE</Badge><h2>Make your next<br />practice count.</h2><p>Start a quiz, join your group, and see what you can learn.</p></div><div className="closing-actions"><Button to="/role?mode=signup">Get started <ArrowRight size={18} aria-hidden="true" /></Button><Button to="/role?mode=signin" variant="secondary">Sign in</Button></div><span className="closing-spark" aria-hidden="true"><BookOpenCheck size={25} /></span></Container>
         </section>
       </main>
       <footer className="site-footer"><Container className="site-footer__inner"><Logo /><span className="footer-copy">© {copyrightYear} Peerly Collab. Learn boldly.</span><nav aria-label="Footer navigation"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="mailto:hello@peerly-collab.example">Contact</a></nav></Container></footer>

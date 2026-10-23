@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { LogOut, Save, Settings, Trash2 } from 'lucide-react'
+import { ChevronRight, LogOut, Save, Settings } from 'lucide-react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Button } from '../../shared/ui/Button'
@@ -8,13 +8,12 @@ import { PageHeader } from '../../shared/ui/PageHeader'
 import { SectionCard } from '../../shared/ui/SectionCard'
 import { updateProfile } from 'firebase/auth'
 import { clearRoleIntent } from '../auth/roleIntent'
-import { hasPasswordProvider, signOutCurrentUser } from '../auth/authService'
+import { signOutCurrentUser } from '../auth/authService'
 import { useAuth } from '../auth/useAuth'
 import { mapFirebaseAuthError } from '../auth/authErrors'
 import { useUserProfile } from './useUserProfile'
-import { deleteAccount } from './accountDeletion'
-import { beginAccountDeletion, endAccountDeletion, signedOutRedirectPath } from './accountDeletionState'
-import { DeleteAccountDialog } from './DeleteAccountDialog'
+import { signedOutRedirectPath } from './accountDeletionState'
+import { ProfileLoadError } from './ProfileLoadError'
 import { AppShell, AppShellLoading } from '../../app/AppShell'
 import { clearReturnTo } from '../../app/returnTo'
 
@@ -27,9 +26,6 @@ export function ProfilePage() {
   const [requestError, setRequestError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleteBusy, setDeleteBusy] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const name = editedName ?? profile?.name ?? ''
 
@@ -82,37 +78,6 @@ export function ProfilePage() {
     }
   }
 
-  async function handleDeleteAccount(password: string) {
-    const role = profile?.role
-    if (!user || !role) return
-    setDeleteBusy(true)
-    setDeleteError(null)
-    beginAccountDeletion()
-    try {
-      // Removes the data in Firestore first, then the Firebase Authentication account.
-      await deleteAccount({ user, role, password })
-      clearRoleIntent()
-      clearReturnTo()
-      // Once the sign-in is gone the app sends the person to the landing page on its own.
-    } catch (deleteFailure) {
-      console.error('Account deletion failed', deleteFailure)
-      setDeleteError(mapFirebaseAuthError(deleteFailure))
-    } finally {
-      endAccountDeletion()
-      setDeleteBusy(false)
-    }
-  }
-
-  const dangerZone = (
-    <div className="profile-danger">
-      <div className="profile-danger__copy">
-        <strong>Danger zone</strong>
-        <p>Permanently deletes your account, your data and your sign-in.</p>
-      </div>
-      <Button type="button" variant="secondary" className="button--destructive profile-danger__button" onClick={() => { setDeleteError(null); setDeleteOpen(true) }} disabled={busy || deleteBusy}><Trash2 size={16} aria-hidden="true" /> Delete account</Button>
-    </div>
-  )
-
   return <AppShell>
     <PageHeader eyebrow="PROFILE & ACCOUNT" title="Profile settings" subtitle="Keep your learning identity up to date." />
     <main className="app-shell__content profile-page" id="main-content">
@@ -134,23 +99,9 @@ export function ProfilePage() {
       <SectionCard title="Account access" description="Sign out when you’re finished on this device." className="profile-access-card">
         <div className="profile-actions"><Button type="button" variant="secondary" onClick={handleSignOut} disabled={busy}><LogOut size={16} aria-hidden="true" /> Sign out</Button></div>
       </SectionCard>
-      <SectionCard title="Settings" description="Permanent account actions live here so they stay out of everyday profile edits." icon={<Settings size={20} />} className="profile-access-card profile-settings-card">
-        {dangerZone}
+      <SectionCard title="Settings" description="Permanent account actions live in Settings so they stay out of everyday profile edits." icon={<Settings size={20} />} className="profile-access-card profile-settings-card">
+        <div className="profile-actions"><Button to="/profile/settings" variant="secondary">Open settings <ChevronRight size={16} aria-hidden="true" /></Button></div>
       </SectionCard>
     </main>
-    <DeleteAccountDialog
-      open={deleteOpen}
-      onClose={() => { setDeleteOpen(false); setDeleteError(null) }}
-      onConfirm={handleDeleteAccount}
-      email={profile.email ?? user.email ?? ''}
-      role={profile.role}
-      needsPassword={hasPasswordProvider(user)}
-      busy={deleteBusy}
-      error={deleteError}
-    />
   </AppShell>
-}
-
-function ProfileLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <AppShell><PageHeader eyebrow="PROFILE & ACCOUNT" title="Profile settings" subtitle="We couldn’t load your account details just yet." /><main className="app-shell__content profile-page"><SectionCard title="Profile unavailable" className="profile-error-card"><Alert tone="error" label="Profile unavailable">{message}</Alert><Button type="button" onClick={onRetry}>Try again</Button></SectionCard></main></AppShell>
 }

@@ -37,5 +37,7 @@ export function mobileBackTo(pathname: string, role: MobileRole | null): string 
   if (pathname.startsWith('/student/quizzes')) return '/student'
   if (pathname.startsWith('/join')) return '/student'
   if (pathname.startsWith('/learning/')) return role === 'instructor' ? '/instructor/learning' : '/student/learning'
+  if (pathname.startsWith('/profile/settings/')) return '/profile/settings'
+  if (pathname.startsWith('/profile/')) return '/profile'
   return mobileHomePath(role)
 }

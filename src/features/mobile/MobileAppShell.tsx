@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { BookOpen, LayoutGrid, LogOut, Sparkles, UserRound } from 'lucide-react'
+import { BookOpen, GraduationCap, LayoutGrid, LogOut, UserRound } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Alert } from '../../shared/ui/Alert'
 import { Logo } from '../../shared/ui/Logo'
@@ -16,13 +16,13 @@ import { MobileChromeContext } from '../../lib/platform/mobileChromeContext'
 const INSTRUCTOR_NAV: M3NavItem[] = [
   { to: '/instructor', label: 'Classes', Icon: LayoutGrid, end: true },
   { to: '/instructor/quizzes', label: 'Quizzes', Icon: BookOpen },
-  { to: '/instructor/learning', label: 'Learning', Icon: Sparkles },
+  { to: '/instructor/learning', label: 'Learning', Icon: GraduationCap },
   { to: '/profile', label: 'Profile', Icon: UserRound },
 ]
 
 const STUDENT_NAV: M3NavItem[] = [
   { to: '/student', label: 'Classes', Icon: LayoutGrid, end: true },
-  { to: '/student/learning', label: 'Learning', Icon: Sparkles },
+  { to: '/student/learning', label: 'Learning', Icon: GraduationCap },
   { to: '/profile', label: 'Profile', Icon: UserRound },
 ]
 

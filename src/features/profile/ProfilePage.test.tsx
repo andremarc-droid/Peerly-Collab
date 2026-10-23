@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProfilePage } from './ProfilePage'
@@ -41,15 +41,16 @@ vi.mock('../auth/authService', () => ({
 afterEach(cleanup)
 
 describe('ProfilePage', () => {
-  it('keeps delete account inside Settings rather than as its own page section', () => {
+  it('opens Settings from the profile and no longer offers account deletion itself', () => {
     render(
       <MemoryRouter>
         <ProfilePage />
       </MemoryRouter>,
     )
     const settings = screen.getByRole('heading', { name: 'Settings' }).closest('section')
-    expect(settings).toHaveTextContent('Danger zone')
-    expect(settings).toContainElement(screen.getByRole('button', { name: 'Delete account' }))
-    expect(screen.queryByRole('heading', { name: 'Danger zone' })).not.toBeInTheDocument()
+    expect(settings).not.toBeNull()
+    expect(within(settings as HTMLElement).getByRole('link', { name: /open settings/i })).toHaveAttribute('href', '/profile/settings')
+    expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Danger zone')).not.toBeInTheDocument()
   })
 })

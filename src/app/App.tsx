@@ -12,6 +12,8 @@ import { ToastProvider } from '../shared/ui/ToastProvider'
 import { AppShellLoading } from './AppShell'
 
 const ProfilePage = lazy(() => import('../features/profile/ProfilePage').then((module) => ({ default: module.ProfilePage })))
+const SettingsPage = lazy(() => import('../features/profile/SettingsPage').then((module) => ({ default: module.SettingsPage })))
+const DangerZonePage = lazy(() => import('../features/profile/DangerZonePage').then((module) => ({ default: module.DangerZonePage })))
 const DesignPage = lazy(() => import('../features/misc/DesignPage').then((module) => ({ default: module.DesignPage })))
 const ClassesPage = lazy(() => import('../features/classes/ClassesPage').then((module) => ({ default: module.ClassesPage })))
 const ClassPage = lazy(() => import('../features/classes/ClassPage').then((module) => ({ default: module.ClassPage })))
@@ -51,6 +53,8 @@ export function AppRoutes() {
       <Route path="/signin" element={<PublicRoute><SigninPage /></PublicRoute>} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
       <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+      <Route path="/profile/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+      <Route path="/profile/settings/danger-zone" element={<ProtectedRoute><DangerZonePage /></ProtectedRoute>} />
       <Route path="/join" element={<ToastProvider><JoinClassPage /></ToastProvider>} />
       <Route path="/join/:code" element={<ToastProvider><JoinClassPage /></ToastProvider>} />
       <Route path="/learning/join/:classId/:canvasId/:token" element={<ProtectedRoute><ToastProvider><CanvasInvitePage /></ToastProvider></ProtectedRoute>} />

@@ -33,6 +33,13 @@ describe('mobileBackTo', () => {
     expect(mobileBackTo('/learning/join/c1/x/t', 'instructor')).toBe('/instructor/learning')
   })
 
+  it('steps back one level inside profile settings', () => {
+    expect(isMobileTabRoot('/profile/settings')).toBe(false)
+    expect(isMobileTabRoot('/profile/settings/danger-zone')).toBe(false)
+    expect(mobileBackTo('/profile/settings', 'student')).toBe('/profile')
+    expect(mobileBackTo('/profile/settings/danger-zone', 'instructor')).toBe('/profile/settings')
+  })
+
   it('falls back to the role home', () => {
     expect(mobileHomePath('instructor')).toBe('/instructor')
     expect(mobileBackTo('/unknown', 'student')).toBe('/student')
