@@ -22,7 +22,7 @@ export async function deleteClassCascade(classId: string, db: Firestore = firest
     for (const assignment of assignmentPage.docs) await deleteAssignmentCascade(classId, assignment.id, db)
   }
   while (true) {
-    const canvasPage = await getDocs(query(collection(db, 'classes', classId, 'learningCanvases'), limit(100)))
+    const canvasPage = await getDocs(query(collection(db, 'classes', classId, 'learningCanvases'), limit(5)))
     if (canvasPage.empty) break
     for (const canvasDoc of canvasPage.docs) await deleteCanvasSubcollections(classId, canvasDoc.id, db)
     const batch = writeBatch(db)
@@ -31,7 +31,7 @@ export async function deleteClassCascade(classId: string, db: Firestore = firest
       batch.delete(canvasDoc.ref)
     }
     await batch.commit()
-    if (canvasPage.size < 100) break
+    if (canvasPage.size < 5) break
   }
   while (true) {
     const deckPage = await getDocs(query(collection(db, 'classes', classId, 'flashcardDecks'), limit(100)))

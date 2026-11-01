@@ -17,9 +17,9 @@ const modularDb = (db: unknown) => db as Firestore
 
 beforeAll(async () => {
   environment = await initializeTestEnvironment({ projectId, firestore: { host: '127.0.0.1', port: 8180, rules } })
-})
-afterEach(async () => environment.clearFirestore())
-afterAll(async () => environment.cleanup())
+}, 30000)
+afterEach(async () => environment?.clearFirestore())
+afterAll(async () => environment?.cleanup())
 
 async function seed() {
   await environment.withSecurityRulesDisabled(async (context) => {
@@ -137,4 +137,60 @@ describe('classroom services', () => {
     await removeStudent('class1', 'two', ownerDb)
     expect((await getDoc(doc(ownerDb, 'enrollments/class1_three'))).data()?.status).toBe('active')
   })
+
+  it('deletes a class with >5 learning canvases without exceeding Firestore rule lookup bounds', async () => {
+    await seed()
+    const teacherDb = modularDb(environment.authenticatedContext('teacher').firestore())
+    const created = await createClass(
+      { ownerId: 'teacher', ownerName: 'Teacher', name: 'Science Class' },
+      teacherDb,
+      () => 'MNP234',
+    )
+
+    // Seed 8 learning canvases with content documents
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore()
+      for (let i = 0; i < 8; i++) {
+        const canvasId = `cascade-canvas-${i}`
+        await setDoc(doc(admin, `classes/${created.id}/learningCanvases/${canvasId}`), {
+          ownerId: 'teacher',
+          classId: created.id,
+          kind: 'class',
+          title: `Canvas ${i}`,
+          description: '',
+          status: 'draft',
+          nodeCount: 0,
+          edgeCount: 0,
+          refs: [],
+          sourceCanvasId: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        await setDoc(doc(admin, `classes/${created.id}/learningCanvases/${canvasId}/content/main`), {
+          version: 1,
+          nodes: [],
+          edges: [],
+          viewport: { x: 0, y: 0, zoom: 1 },
+        })
+      }
+    })
+
+    // Execute deleteClassCascade as authenticated teacher
+    await deleteClassCascade(created.id, teacherDb)
+
+    // Verify all 8 canvases and their content documents are completely deleted
+    await environment.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore()
+      for (let i = 0; i < 8; i++) {
+        const cSnap = await getDoc(doc(admin, `classes/${created.id}/learningCanvases/cascade-canvas-${i}`))
+        expect(cSnap.exists()).toBe(false)
+        const contentSnap = await getDoc(
+          doc(admin, `classes/${created.id}/learningCanvases/cascade-canvas-${i}/content/main`),
+        )
+        expect(contentSnap.exists()).toBe(false)
+      }
+      const classSnap = await getDoc(doc(admin, `classes/${created.id}`))
+      expect(classSnap.exists()).toBe(false)
+    })
+  }, 30000)
 })
