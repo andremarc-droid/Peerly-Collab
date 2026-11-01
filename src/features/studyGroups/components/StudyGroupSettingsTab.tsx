@@ -233,9 +233,9 @@ export function StudyGroupSettingsTab({
       </section>
 
       {/* Danger Zone */}
-      <section className="rounded-3xl border border-red-500/20 bg-white p-4 sm:p-6 shadow-sm grid gap-4">
+      <section className="rounded-3xl border border-danger-border bg-white p-4 sm:p-6 shadow-sm grid gap-4">
         <div>
-          <h3 className="m-0 text-lg font-bold text-red-600">Danger Zone</h3>
+          <h3 className="m-0 text-lg font-bold text-danger-text">Danger Zone</h3>
           <p className="m-0 text-xs sm:text-sm text-navy-900-72 mt-0.5">
             {isOwner
               ? 'Irreversible actions for this study group.'
@@ -244,7 +244,7 @@ export function StudyGroupSettingsTab({
         </div>
 
         {isOwner ? (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-red-500/15 bg-red-50/50 p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-danger-border bg-danger-bg p-4">
             <div>
               <strong className="text-sm font-semibold text-navy-900 block">Delete this study group</strong>
               <span className="text-xs text-navy-900-72">
@@ -255,14 +255,14 @@ export function StudyGroupSettingsTab({
               type="button"
               variant="secondary"
               onClick={onDeleteGroup}
-              className="min-h-11 text-red-600 border-red-500/30 hover:bg-red-50 shrink-0 w-full sm:w-auto"
+              className="min-h-11 text-danger-text border-danger-border hover:bg-danger-bg shrink-0 w-full sm:w-auto"
             >
               <Trash2 size={16} aria-hidden="true" />
               Delete study group
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-red-500/15 bg-red-50/50 p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-danger-border bg-danger-bg p-4">
             <div>
               <strong className="text-sm font-semibold text-navy-900 block">Leave study group</strong>
               <span className="text-xs text-navy-900-72">
@@ -273,7 +273,7 @@ export function StudyGroupSettingsTab({
               type="button"
               variant="secondary"
               onClick={onLeaveGroup}
-              className="min-h-11 text-red-600 border-red-500/30 hover:bg-red-50 shrink-0 w-full sm:w-auto"
+              className="min-h-11 text-danger-text border-danger-border hover:bg-danger-bg shrink-0 w-full sm:w-auto"
             >
               Leave study group
             </Button>

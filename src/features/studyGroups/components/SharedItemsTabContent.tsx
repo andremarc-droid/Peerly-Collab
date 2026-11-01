@@ -174,7 +174,7 @@ export function SharedItemsTabContent({
                         variant="ghost"
                         onClick={() => onRemoveItem(item)}
                         aria-label={`Remove ${item.title} from group`}
-                        className="min-h-11 px-2.5 text-navy-900-72 hover:text-red-600"
+                        className="min-h-11 px-2.5 text-navy-900-72 hover:text-danger-text"
                       >
                         <Trash2 size={16} aria-hidden="true" />
                       </Button>

@@ -153,8 +153,7 @@ export function FlashcardPractice({ deck, progressKey }: Props) {
       </div>
 
       <div
-        className="select-none"
-        style={{ touchAction: 'pan-y' }}
+        className="select-none touch-pan-y"
         onTouchStart={e => {
           const t = e.touches[0]
           if (t) onSwipeStart(t.clientX, t.clientY)

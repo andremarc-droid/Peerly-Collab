@@ -440,7 +440,7 @@ export function StudyGroupDetailPage({ groupId, onBack }: Props) {
             Settings
           </Button>
           {isOwner ? (
-            <Button variant="ghost" onClick={() => setDeleteOpen(true)} className="min-h-11 text-red-600 hover:bg-red-50">
+            <Button variant="ghost" onClick={() => setDeleteOpen(true)} className="min-h-11 text-danger-text hover:bg-danger-bg">
               <Trash2 size={16} aria-hidden="true" />
               Delete group
             </Button>
