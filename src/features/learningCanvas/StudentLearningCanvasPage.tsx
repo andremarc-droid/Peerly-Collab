@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AppShell } from '../../app/AppShell'
 import { PageHeader } from '../../shared/ui/PageHeader'
@@ -8,6 +8,11 @@ import { Button } from '../../shared/ui/Button'
 import { useToast } from '../../shared/ui/useToast'
 import { useAuth } from '../auth/useAuth'
 import { LearningCanvas } from './components/LearningCanvas'
+import { useSeededCanvas } from './dev/useSeededCanvas'
+
+const BenchmarkBanner = import.meta.env.VITE_ENABLE_BENCH === 'true'
+  ? lazy(() => import('./dev/BenchmarkBanner').then((m) => ({ default: m.BenchmarkBanner })))
+  : null
 import {
   getCanvas,
   getContent,
@@ -37,6 +42,7 @@ export function StudentLearningCanvasPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
   const navigate = useNavigate()
+  const seeded = useSeededCanvas()
 
   const [canvas, setCanvas] = useState<LearningCanvasRecord | null>(null)
   const [content, setContent] = useState<LearningCanvasContent | null>(null)
@@ -147,6 +153,13 @@ export function StudentLearningCanvasPage() {
 
   // Load content together with the version token it belongs to
   const loadData = useCallback(async () => {
+    if (seeded.isSeeded && seeded.seededContent && seeded.seededCanvasMeta) {
+      setCanvas(seeded.seededCanvasMeta)
+      baseContentRef.current = seeded.seededContent
+      setContent(seeded.seededContent)
+      setLoading(false)
+      return
+    }
     if (!classId || !canvasId) return
     setLoading(true)
     setError(null)
@@ -171,6 +184,7 @@ export function StudentLearningCanvasPage() {
   }, [loadData])
 
   useEffect(() => {
+    if (seeded.isSeeded) return undefined
     if (!classId || !canvasId) return undefined
     return watchCanvasContent(
       classId,
@@ -182,7 +196,7 @@ export function StudentLearningCanvasPage() {
       },
       (cause) => setError(cause.message),
     )
-  }, [classId, canvasId])
+  }, [classId, canvasId, seeded.isSeeded])
 
   useEffect(() => {
     if (loading || !canvasAccess.social || window.location.hash !== '#canvas-collaboration') return undefined
@@ -201,6 +215,10 @@ export function StudentLearningCanvasPage() {
   const handleSave = async (
     updatedContent: LearningCanvasContent,
   ): Promise<LearningCanvasContent> => {
+    if (seeded.isSeeded) {
+      showToast('info', '[DEV] Seeded board active. Changes are in-memory only and not saved.')
+      return updatedContent
+    }
     if (!classId || !canvasId) throw new Error('Canvas is not ready to save.')
     const base = baseContentRef.current ?? updatedContent
     const result = await saveCanvasMerged({
@@ -280,6 +298,14 @@ export function StudentLearningCanvasPage() {
         action={<Button to="/student/learning" variant="secondary">Back to Learning</Button>}
       />
       <main className="app-shell__content flex flex-col gap-4">
+        {BenchmarkBanner && seeded.isSeeded && (
+          <Suspense fallback={null}>
+            <BenchmarkBanner
+              currentSize={seeded.seedSize}
+              onSelectSize={seeded.setSeedSize}
+            />
+          </Suspense>
+        )}
         <div className="w-full">
           <LearningCanvas
             title={canvas?.title}
