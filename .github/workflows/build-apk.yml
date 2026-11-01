@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build profile (debug or release)'
+        required: false
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
 
 jobs:
   build-apk:
@@ -32,6 +41,8 @@ jobs:
       - name: Build web app
         run: npm run build
         env:
+          CAPACITOR_BUILD_TYPE: ${{ github.event.inputs.build_type || 'debug' }}
+          VITE_ENABLE_BENCH: ${{ (github.event.inputs.build_type || 'debug') == 'debug' && 'true' || 'false' }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
@@ -140,7 +151,7 @@ jobs:
           fi
           cat >> android/app/build.gradle <<'EOF'
 
-          // Added by CI: always sign the debug APK with the keystore whose SHA-1 is registered in Firebase.
+          // Added by CI: always sign debug and release APKs with the keystore whose SHA-1 is registered in Firebase.
           android {
             signingConfigs {
               debug {
@@ -149,26 +160,50 @@ jobs:
                 keyAlias 'androiddebugkey'
                 keyPassword 'android'
               }
+              release {
+                storeFile file(System.getenv('ANDROID_DEBUG_KEYSTORE_PATH'))
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+              }
+            }
+            buildTypes {
+              release {
+                signingConfig signingConfigs.release
+              }
             }
           }
           EOF
 
       - name: Sync web build into Android project
         run: npx cap sync android
+        env:
+          CAPACITOR_BUILD_TYPE: ${{ github.event.inputs.build_type || 'debug' }}
 
       - name: Set up Gradle (caches downloads between runs)
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
+      - name: Build APK (${{ github.event.inputs.build_type || 'debug' }})
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
+          if [ "$BUILD_TYPE" = "release" ]; then
+            ./gradlew assembleRelease --no-daemon
+          else
+            ./gradlew assembleDebug --no-daemon
+          fi
 
       - name: Verify the APK is signed with the key registered in Firebase
         run: |
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
           APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
-          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          if [ "$BUILD_TYPE" = "release" ]; then
+            APK=android/app/build/outputs/apk/release/app-release.apk
+          else
+            APK=android/app/build/outputs/apk/debug/app-debug.apk
+          fi
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
           APKSIGNER_OUT="$("$APKSIGNER" verify --print-certs "$APK")"
           echo "$APKSIGNER_OUT"
           APK_SHA1="$(echo "$APKSIGNER_OUT" | awk '/certificate SHA-1 digest/{print tolower($NF); exit}' | tr -d ':[:space:]')"
@@ -184,6 +219,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: peerly-collab-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: peerly-collab-${{ github.event.inputs.build_type || 'debug' }}-apk
+          path: ${{ env.APK_PATH || 'android/app/build/outputs/apk/debug/app-debug.apk' }}
           if-no-files-found: error

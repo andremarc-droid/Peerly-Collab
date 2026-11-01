@@ -1,5 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
+const isRelease = process.env.CAPACITOR_BUILD_TYPE === 'release'
+
 const config: CapacitorConfig = {
   appId: 'com.peerly.collab',
   appName: 'Peerly Collab',
@@ -8,6 +10,8 @@ const config: CapacitorConfig = {
   android: {
     // Keeps the in-app origin on https so Firebase and secure-context APIs work.
     allowMixedContent: false,
+    // Disable WebView remote debugging in release builds for performance and security
+    webContentsDebuggingEnabled: !isRelease,
   },
   plugins: {
     FirebaseAuthentication: {

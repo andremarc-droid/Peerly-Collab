@@ -24,12 +24,75 @@ export function sameItem(a: unknown, b: unknown): boolean {
   return stable(a) === stable(b)
 }
 
+/** Fast-path field-by-field node equality that skips serializing massive base64 image strings. */
+export function sameNode(a: LearningCanvasNode, b: LearningCanvasNode): boolean {
+  if (a === b) return true
+  if (
+    a.id !== b.id ||
+    a.type !== b.type ||
+    a.x !== b.x ||
+    a.y !== b.y ||
+    a.width !== b.width ||
+    a.height !== b.height ||
+    a.color !== b.color
+  ) {
+    return false
+  }
+  if (a.type === 'text' && b.type === 'text') {
+    return a.text === b.text
+  }
+  if (a.type === 'image' && b.type === 'image') {
+    if (a.image.alt !== b.image.alt || a.image.caption !== b.image.caption) return false
+    if (a.image.dataUrl.length !== b.image.dataUrl.length) return false
+    return a.image.dataUrl === b.image.dataUrl
+  }
+  if (a.type === 'link' && b.type === 'link') {
+    return a.link.url === b.link.url && a.link.title === b.link.title && a.link.note === b.link.note
+  }
+  if (a.type === 'reference' && b.type === 'reference') {
+    return a.reference.refType === b.reference.refType && a.reference.refId === b.reference.refId
+  }
+  if (a.type === 'group' && b.type === 'group') {
+    return a.group.label === b.group.label
+  }
+  return sameItem(a, b)
+}
+
+/** Fast-path edge equality avoiding string serialization. */
+export function sameEdge(a: LearningCanvasEdge, b: LearningCanvasEdge): boolean {
+  if (a === b) return true
+  return (
+    a.id === b.id &&
+    a.from === b.from &&
+    a.to === b.to &&
+    a.fromSide === b.fromSide &&
+    a.toSide === b.toSide &&
+    a.label === b.label &&
+    a.arrow === b.arrow
+  )
+}
+
 /** True when two boards have the same cards and connections (the viewport is ignored). */
 export function sameBoard(
   a: Pick<LearningCanvasContent, 'nodes' | 'edges'>,
   b: Pick<LearningCanvasContent, 'nodes' | 'edges'>,
 ): boolean {
-  return sameItem(sortById(a.nodes), sortById(b.nodes)) && sameItem(sortById(a.edges), sortById(b.edges))
+  if (a === b) return true
+  if (a.nodes.length !== b.nodes.length || a.edges.length !== b.edges.length) return false
+
+  const aNodes = sortById(a.nodes)
+  const bNodes = sortById(b.nodes)
+  for (let i = 0; i < aNodes.length; i++) {
+    if (!sameNode(aNodes[i]!, bNodes[i]!)) return false
+  }
+
+  const aEdges = sortById(a.edges)
+  const bEdges = sortById(b.edges)
+  for (let i = 0; i < aEdges.length; i++) {
+    if (!sameEdge(aEdges[i]!, bEdges[i]!)) return false
+  }
+
+  return true
 }
 
 function sortById<T extends { id: string }>(items: T[]): T[] {
@@ -42,10 +105,11 @@ function sortById<T extends { id: string }>(items: T[]): T[] {
  * A side that changed an item wins over a side that did not. When both changed
  * the same item, local wins (last writer). A local delete beats a remote edit.
  */
-function mergeById<T extends { id: string }>(
+export function mergeById<T extends { id: string }>(
   base: T[],
   local: T[],
   remote: T[],
+  isEqual: (a: T, b: T) => boolean = (a, b) => sameItem(a, b),
 ): { items: T[]; remoteOnly: Set<string> } {
   const baseMap = new Map(base.map((item) => [item.id, item]))
   const localMap = new Map(local.map((item) => [item.id, item]))
@@ -60,12 +124,12 @@ function mergeById<T extends { id: string }>(
     const theirs = remoteMap.get(id)
 
     if (mine && theirs) {
-      const iChanged = !was || !sameItem(was, mine)
-      const theyChanged = !was || !sameItem(was, theirs)
+      const iChanged = !was || !isEqual(was, mine)
+      const theyChanged = !was || !isEqual(was, theirs)
       items.push(!iChanged && theyChanged ? theirs : mine)
     } else if (mine) {
       // Gone remotely: keep only if it is new here or I changed it after they deleted it.
-      if (!was || !sameItem(was, mine)) items.push(mine)
+      if (!was || !isEqual(was, mine)) items.push(mine)
     } else if (theirs && !was) {
       items.push(theirs)
       remoteOnly.add(id)
@@ -98,7 +162,7 @@ export function mergeContent(
   local: LearningCanvasContent,
   remote: LearningCanvasContent,
 ): MergeResult {
-  const nodeMerge = mergeById<LearningCanvasNode>(base.nodes, local.nodes, remote.nodes)
+  const nodeMerge = mergeById<LearningCanvasNode>(base.nodes, local.nodes, remote.nodes, sameNode)
   let nodes = nodeMerge.items
   let dropped = 0
 
@@ -120,7 +184,7 @@ export function mergeContent(
   }
 
   const nodeIds = new Set(nodes.map((n) => n.id))
-  const edgeMerge = mergeById<LearningCanvasEdge>(base.edges, local.edges, remote.edges)
+  const edgeMerge = mergeById<LearningCanvasEdge>(base.edges, local.edges, remote.edges, sameEdge)
   const seenConnections = new Set<string>()
   let edges = edgeMerge.items.filter((edge) => {
     if (edge.from === edge.to || !nodeIds.has(edge.from) || !nodeIds.has(edge.to)) return false

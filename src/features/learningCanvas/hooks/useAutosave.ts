@@ -100,7 +100,11 @@ export function useAutosave<T>({
     clearTimer()
     timerRef.current = setTimeout(() => {
       timerRef.current = null
-      void run()
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(() => { void run() }, { timeout: 1000 })
+      } else {
+        void run()
+      }
     }, delayMs)
   }, [clearTimer, delayMs, run])
 
