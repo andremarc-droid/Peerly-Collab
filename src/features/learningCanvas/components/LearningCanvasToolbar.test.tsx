@@ -67,4 +67,20 @@ describe('LearningCanvasToolbar save button', () => {
     renderToolbar('unsaved', { readOnly: true })
     expect(screen.queryByRole('button', { name: 'Save canvas' })).toBeNull()
   })
+
+  it('renders a touch Select/Pan toggle on touch devices', () => {
+    const onToggleSelectMode = vi.fn()
+    renderToolbar('saved', { isTouch: true, isSelectMode: false, onToggleSelectMode })
+    const selectToggle = screen.getByRole('button', { name: 'Switch to touch select mode' })
+    expect(selectToggle).not.toBeNull()
+    fireEvent.click(selectToggle)
+    expect(onToggleSelectMode).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows active select mode when isSelectMode is true on touch', () => {
+    const onToggleSelectMode = vi.fn()
+    renderToolbar('saved', { isTouch: true, isSelectMode: true, onToggleSelectMode })
+    const selectToggle = screen.getByRole('button', { name: 'Switch to touch pan mode' })
+    expect(selectToggle.getAttribute('aria-pressed')).toBe('true')
+  })
 })

@@ -35,6 +35,7 @@ import { LearningCanvasToolbar } from './LearningCanvasToolbar'
 import { CanvasOutlineView } from './CanvasOutlineView'
 import { QuickAddMenu } from './QuickAddMenu'
 import { ConnectionNotice } from './ConnectionNotice'
+import { RemoteCursorsLayer } from './RemoteCursorsLayer'
 import { ConnectCardsDialog } from './ConnectCardsDialog'
 import { ReferencePickerDialog } from './ReferencePickerDialog'
 import { ShortcutsHelpDialog } from './ShortcutsHelpDialog'
@@ -120,6 +121,21 @@ interface Snapshot {
   nodes: LearningCanvasNode[]
   edges: DomainEdge[]
 }
+
+const EMPTY_SNAPSHOT: Snapshot = { nodes: [], edges: [] }
+const EMPTY_ARRAY: string[] = []
+
+/**
+ * Node and edge DOM culling. Disabled in test mode because jsdom lacks a layout engine,
+ * causing all nodes to measure 0x0 and be culled.
+ */
+const CULL_ELEMENTS = import.meta.env.MODE !== 'test'
+
+/**
+ * Minimum gap between cursor samples. Converting a screen point to a flow point reads the
+ * container's bounding rect (a forced layout), so it must not run on every pointer event.
+ */
+const CURSOR_SAMPLE_MS = 100
 
 interface FlowCallbacks {
   onUpdate: (id: string, updates: Partial<LearningCanvasNode>) => void
@@ -288,6 +304,17 @@ function LearningCanvasInternal({
   const rootRef = useRef<HTMLDivElement>(null)
   const boardRef = useRef<HTMLDivElement>(null)
 
+  // Touch screens pan with one finger. A drag-to-select marquee would steal that gesture and
+  // hit-test every card on each move, so it is only enabled for mouse / pen input.
+  const [isTouch] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches,
+  )
+
+  const [isSelectMode, setIsSelectMode] = useState(false)
+
   const [snapToGrid, setSnapToGrid] = useState(false)
   const [isOutlineOpen, setIsOutlineOpen] = useState(false)
 
@@ -379,6 +406,10 @@ function LearningCanvasInternal({
     enabled: !readOnly && Boolean(onSave),
     getLatest: () => toSavableContent(readContent()),
     save: async (content) => {
+      // Skip network save and merge if persistable content has not changed from remote base
+      if (sameBoard(content, remoteBaseRef.current)) {
+        return
+      }
       const saved = await onSave?.(content)
       if (!saved) return
       remoteBaseRef.current = saved
@@ -706,24 +737,22 @@ function LearningCanvasInternal({
     addCard('text', screenToFlowPosition({ x: event.clientX, y: event.clientY }))
   }
 
-  const handleBoardMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+  // Mouse / pen only (a finger has no hover cursor worth broadcasting), and sampled so the
+  // layout read in screenToFlowPosition never runs per event while cards are being dragged.
+  const lastCursorAtRef = useRef(0)
+  const publishCursorFromPoint = (clientX: number, clientY: number) => {
     if (!onPublishCursor) return
-    onPublishCursor(screenToFlowPosition({ x: event.clientX, y: event.clientY }))
-  }
-
-  const handleBoardTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (!onPublishCursor) return
-    const touch = event.touches[0]
-    if (touch) {
-      onPublishCursor(screenToFlowPosition({ x: touch.clientX, y: touch.clientY }))
-    }
+    const now = performance.now()
+    if (now - lastCursorAtRef.current < CURSOR_SAMPLE_MS) return
+    lastCursorAtRef.current = now
+    onPublishCursor(screenToFlowPosition({ x: clientX, y: clientY }))
   }
 
   // Group dragging: children fully inside the group move with it.
   const groupDragRef = useRef<{
     groupId: string
     initialPos: { x: number; y: number }
-    containedNodes: Array<{ id: string; initialX: number; initialY: number }>
+    containedMap: Map<string, { initialX: number; initialY: number }>
   } | null>(null)
 
   const onNodeDragStart: OnNodeDrag<Node> = (_event, node) => {
@@ -737,26 +766,27 @@ function LearningCanvasInternal({
     const maxX = minX + groupWidth
     const maxY = minY + groupHeight
 
-    const contained = nodes
-      .filter((n) => {
-        if (n.id === node.id || n.type === 'group') return false
-        const w = typeof n.style?.width === 'number' ? n.style.width : (n.measured?.width ?? 240)
-        const h = typeof n.style?.height === 'number' ? n.style.height : (n.measured?.height ?? 140)
-        return n.position.x >= minX && n.position.y >= minY && n.position.x + w <= maxX && n.position.y + h <= maxY
-      })
-      .map((n) => ({ id: n.id, initialX: n.position.x, initialY: n.position.y }))
+    const containedMap = new Map<string, { initialX: number; initialY: number }>()
+    for (const n of nodes) {
+      if (n.id === node.id || n.type === 'group') continue
+      const w = typeof n.style?.width === 'number' ? n.style.width : (n.measured?.width ?? 240)
+      const h = typeof n.style?.height === 'number' ? n.style.height : (n.measured?.height ?? 140)
+      if (n.position.x >= minX && n.position.y >= minY && n.position.x + w <= maxX && n.position.y + h <= maxY) {
+        containedMap.set(n.id, { initialX: n.position.x, initialY: n.position.y })
+      }
+    }
 
-    groupDragRef.current = { groupId: node.id, initialPos: { ...node.position }, containedNodes: contained }
+    groupDragRef.current = { groupId: node.id, initialPos: { ...node.position }, containedMap }
   }
 
   const onNodeDrag: OnNodeDrag<Node> = (_event, node) => {
     const drag = groupDragRef.current
-    if (!drag || drag.groupId !== node.id) return
+    if (!drag || drag.groupId !== node.id || drag.containedMap.size === 0) return
     const dx = node.position.x - drag.initialPos.x
     const dy = node.position.y - drag.initialPos.y
     setNodes((nds) =>
       nds.map((n) => {
-        const match = drag.containedNodes.find((c) => c.id === n.id)
+        const match = drag.containedMap.get(n.id)
         return match ? { ...n, position: { x: match.initialX + dx, y: match.initialY + dy } } : n
       }),
     )
@@ -917,7 +947,7 @@ function LearningCanvasInternal({
 
   const matchingNodeIds = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return []
+    if (!q) return EMPTY_ARRAY
     return nodes
       .filter((n) => {
         const data = n.data as Record<string, unknown>
@@ -925,6 +955,10 @@ function LearningCanvasInternal({
         if (n.type === 'link') {
           const l = data.link as { title?: string; note?: string; url?: string } | undefined
           return [l?.title, l?.note, l?.url].some((v) => (v || '').toLowerCase().includes(q))
+        }
+        if (n.type === 'image') {
+          const im = data.image as { alt?: string; caption?: string } | undefined
+          return [im?.alt, im?.caption].some((v) => (v || '').toLowerCase().includes(q))
         }
         if (n.type === 'reference') {
           const ref = data.reference as { refType: LearningCanvasRefType; refId: string } | undefined
@@ -942,27 +976,30 @@ function LearningCanvasInternal({
 
   const matchSet = useMemo(() => new Set(matchingNodeIds), [matchingNodeIds])
   const safeSearchIndex = matchingNodeIds.length === 0 ? 0 : Math.min(searchIndex, matchingNodeIds.length - 1)
+  const hasReferenceNodes = useMemo(() => nodes.some((n) => n.type === 'reference'), [nodes])
 
   // Highlight and resolved reference info are derived at render time, so they
   // update live instead of being frozen when the card was created.
-  const displayNodes = useMemo(
-    () =>
-      nodes.map((n) => {
-        const highlighted = matchSet.has(n.id)
-        const data = n.data as {
-          isHighlighted?: boolean
-          resolvedInfo?: ResolvedReferenceInfo
-          reference?: { refType: LearningCanvasRefType; refId: string }
-        }
-        const info =
-          n.type === 'reference' && data.reference
-            ? refByKey.get(`${data.reference.refType}:${data.reference.refId}`)
-            : undefined
-        if (Boolean(data.isHighlighted) === highlighted && data.resolvedInfo === info) return n
-        return { ...n, data: { ...n.data, isHighlighted: highlighted, resolvedInfo: info } }
-      }),
-    [nodes, matchSet, refByKey],
-  )
+  // When no search is active and no reference cards exist, skip traversing all nodes.
+  const displayNodes = useMemo(() => {
+    if (matchSet.size === 0 && (!hasReferenceNodes || refByKey.size === 0)) {
+      return nodes
+    }
+    return nodes.map((n) => {
+      const highlighted = matchSet.has(n.id)
+      const data = n.data as {
+        isHighlighted?: boolean
+        resolvedInfo?: ResolvedReferenceInfo
+        reference?: { refType: LearningCanvasRefType; refId: string }
+      }
+      const info =
+        n.type === 'reference' && data.reference
+          ? refByKey.get(`${data.reference.refType}:${data.reference.refId}`)
+          : undefined
+      if (Boolean(data.isHighlighted) === highlighted && data.resolvedInfo === info) return n
+      return { ...n, data: { ...n.data, isHighlighted: highlighted, resolvedInfo: info } }
+    })
+  }, [nodes, matchSet, hasReferenceNodes, refByKey])
 
   // Re-centre only when the query changes, never because a card was edited.
   const matchesRef = useRef<string[]>([])
@@ -1040,7 +1077,33 @@ function LearningCanvasInternal({
     setIsConnectDialogOpen(true)
   }
 
-  const currentDomain = useMemo(() => flowToDomain(nodes, edges), [nodes, edges])
+  // Stable handlers for the memoized toolbar to avoid re-rendering it during card drag frames.
+  const handleToggleSnapToGrid = useCallback(() => setSnapToGrid((v) => !v), [])
+  const handleToggleOutline = useCallback(() => setIsOutlineOpen((v) => !v), [])
+  const handleToggleSelectMode = useCallback(() => setIsSelectMode((v) => !v), [])
+  const handleOpenConnectDialog = useCallback(() => {
+    setConnectDialogSourceId(undefined)
+    setIsConnectDialogOpen(true)
+  }, [])
+  const handleOpenHelp = useCallback(() => setIsHelpDialogOpen(true), [])
+  const handleRetrySave = useCallback(() => {
+    void autosave.flush()
+  }, [autosave])
+
+  const addCardRef = useRef(addCard)
+  useEffect(() => {
+    addCardRef.current = addCard
+  })
+  const handleAddCard = useCallback((type: LearningCanvasNodeType) => {
+    addCardRef.current(type)
+  }, [])
+
+  // Only the outline and the connect dialog read this, so skip the conversion (and its per-node
+  // clamping) on every drag frame while both are closed.
+  const currentDomain = useMemo(
+    () => (isOutlineOpen || isConnectDialogOpen ? flowToDomain(nodes, edges) : EMPTY_SNAPSHOT),
+    [isOutlineOpen, isConnectDialogOpen, nodes, edges],
+  )
 
   return (
     <div ref={rootRef} className="flex flex-col h-full w-full gap-3" data-testid="learning-canvas-root">
@@ -1057,29 +1120,27 @@ function LearningCanvasInternal({
         canUndo={history.canUndo}
         canRedo={history.canRedo}
         isOutlineOpen={isOutlineOpen}
+        isTouch={isTouch}
+        isSelectMode={isSelectMode}
         searchQuery={searchQuery}
         searchMatchCount={matchingNodeIds.length}
         searchMatchIndex={safeSearchIndex}
-        onToggleSnapToGrid={() => setSnapToGrid((v) => !v)}
+        onToggleSnapToGrid={handleToggleSnapToGrid}
+        onToggleSelectMode={handleToggleSelectMode}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        onToggleOutline={() => setIsOutlineOpen((v) => !v)}
+        onToggleOutline={handleToggleOutline}
         onSearchChange={handleSearchChange}
         onSearchNext={handleSearchNext}
         onSearchPrev={handleSearchPrev}
-        onAddCard={(type) => addCard(type)}
+        onAddCard={handleAddCard}
         onAddImageFile={handleAddImageFile}
-        onOpenConnectDialog={() => {
-          setConnectDialogSourceId(undefined)
-          setIsConnectDialogOpen(true)
-        }}
+        onOpenConnectDialog={handleOpenConnectDialog}
         onExport={handleExport}
         onImportFile={handleImportFile}
-        onOpenHelp={() => setIsHelpDialogOpen(true)}
+        onOpenHelp={handleOpenHelp}
         onToggleStatus={onToggleStatus}
-        onRetrySave={() => {
-          void autosave.flush()
-        }}
+        onRetrySave={handleRetrySave}
         onSaveNow={onSave ? saveNow : undefined}
         onCopyToMyCanvases={onCopyToMyCanvases}
       />
@@ -1120,16 +1181,10 @@ function LearningCanvasInternal({
             data-testid="learning-canvas-board"
             onKeyDownCapture={handleKeyDownCapture}
             onMouseDownCapture={handleBoardMouseDownCapture}
-            onMouseMove={handleBoardMouseMove}
             onMouseLeave={() => onPublishCursor?.(null)}
-            onTouchStart={handleBoardTouchMove}
-            onTouchMove={handleBoardTouchMove}
-            onTouchEnd={() => onPublishCursor?.(null)}
-            onTouchCancel={() => onPublishCursor?.(null)}
             onPointerMove={(e) => {
               if (e.pointerType === 'touch') return
-              if (!onPublishCursor) return
-              onPublishCursor(screenToFlowPosition({ x: e.clientX, y: e.clientY }))
+              publishCursorFromPoint(e.clientX, e.clientY)
             }}
           >
             <ReactFlow
@@ -1153,8 +1208,9 @@ function LearningCanvasInternal({
               nodesDraggable={!readOnly}
               nodesConnectable={!readOnly}
               elementsSelectable={true}
-              selectionOnDrag={!readOnly}
-              panOnDrag={readOnly ? true : [1, 2]}
+              selectionOnDrag={!readOnly && (!isTouch || isSelectMode)}
+              panOnDrag={readOnly || (isTouch && !isSelectMode) ? true : [1, 2]}
+              onlyRenderVisibleElements={CULL_ELEMENTS}
               zoomOnDoubleClick={false}
               deleteKeyCode={null}
               fitView
@@ -1163,21 +1219,7 @@ function LearningCanvasInternal({
             >
               <CanvasControls />
               <ViewportPortal>
-                <svg className="learning-canvas-cursors" aria-hidden="false">
-                  {remoteCursors.map((cursor) => (
-                    <g
-                      key={cursor.uid}
-                      className="learning-canvas-cursor"
-                      transform={`translate(${cursor.x} ${cursor.y})`}
-                      role="img"
-                      aria-label={`${cursor.name} cursor`}
-                    >
-                      <path className="learning-canvas-cursor__pointer" d="M 0 0 L 0 18 L 5 13 L 10 23 L 14 21 L 9 11 L 16 10 Z" />
-                      <rect className="learning-canvas-cursor__label" x="14" y="14" width={Math.max(42, cursor.name.length * 8 + 12)} height="22" rx="8" />
-                      <text className="learning-canvas-cursor__name" x="20" y="29">{cursor.name}</text>
-                    </g>
-                  ))}
-                </svg>
+                <RemoteCursorsLayer remoteCursors={remoteCursors} />
               </ViewportPortal>
             </ReactFlow>
           </div>
@@ -1226,19 +1268,23 @@ function LearningCanvasInternal({
         />
       )}
 
-      <ReferencePickerDialog
-        open={Boolean(pickerForNodeId)}
-        onClose={() => setPickerForNodeId(null)}
-        items={availableReferences}
-        onSelect={(refType, refId) => {
-          if (pickerForNodeId) {
-            updateNode(pickerForNodeId, { reference: { refType, refId } })
-            setPickerForNodeId(null)
-          }
-        }}
-      />
+      {Boolean(pickerForNodeId) && (
+        <ReferencePickerDialog
+          open
+          onClose={() => setPickerForNodeId(null)}
+          items={availableReferences}
+          onSelect={(refType, refId) => {
+            if (pickerForNodeId) {
+              updateNode(pickerForNodeId, { reference: { refType, refId } })
+              setPickerForNodeId(null)
+            }
+          }}
+        />
+      )}
 
-      <ShortcutsHelpDialog open={isHelpDialogOpen} onClose={() => setIsHelpDialogOpen(false)} />
+      {isHelpDialogOpen && (
+        <ShortcutsHelpDialog open onClose={() => setIsHelpDialogOpen(false)} />
+      )}
 
       {importResult && (
         <LossyImportDialog
@@ -1250,30 +1296,32 @@ function LearningCanvasInternal({
         />
       )}
 
-      <VersionConflictDialog
-        open={isConflictDialogOpen}
-        onClose={() => setIsConflictDialogOpen(false)}
-        onReload={async () => {
-          if (!onReloadLatest) return
-          const reloaded = await onReloadLatest()
-          if (reloaded) {
-            history.clear()
-            applySnapshot({ nodes: reloaded.nodes, edges: reloaded.edges })
-            autosave.markSaved()
-            announce('Canvas reloaded from server')
-          }
-        }}
-        onKeepMine={async () => {
-          if (!onSave) return
-          try {
-            await onSave(toSavableContent(readContent()), { force: true })
-            autosave.markSaved()
-            announce('Overwritten with local changes')
-          } catch {
-            announce('Could not overwrite the saved canvas. Try again.')
-          }
-        }}
-      />
+      {isConflictDialogOpen && (
+        <VersionConflictDialog
+          open
+          onClose={() => setIsConflictDialogOpen(false)}
+          onReload={async () => {
+            if (!onReloadLatest) return
+            const reloaded = await onReloadLatest()
+            if (reloaded) {
+              history.clear()
+              applySnapshot({ nodes: reloaded.nodes, edges: reloaded.edges })
+              autosave.markSaved()
+              announce('Canvas reloaded from server')
+            }
+          }}
+          onKeepMine={async () => {
+            if (!onSave) return
+            try {
+              await onSave(toSavableContent(readContent()), { force: true })
+              autosave.markSaved()
+              announce('Overwritten with local changes')
+            } catch {
+              announce('Could not overwrite the saved canvas. Try again.')
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -13,6 +13,7 @@
   overflow: hidden;
   border: 1px solid var(--color-navy-900-12);
   box-shadow: var(--shadow-sm);
+  contain: paint;
 }
 
 .learning-canvas-wrapper:focus-within {
@@ -45,6 +46,12 @@
   user-select: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   overflow: visible;
+}
+
+/* Disable transitions while dragging cards to eliminate style recalc and paint thrashing */
+.react-flow__node.dragging .learning-card,
+.react-flow--dragging .learning-card {
+  transition: none !important;
 }
 
 .learning-card:hover {

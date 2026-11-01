@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import type { NodeProps } from '@xyflow/react'
+import { useState, useRef, useEffect, useCallback, memo } from 'react'
+import { useStore, type NodeProps } from '@xyflow/react'
 import { Edit2, Check, Trash2, Palette } from 'lucide-react'
 import { CardHandles } from '../../canvas/components/CardHandles'
 import { SafeMarkdown } from './SafeMarkdown'
@@ -16,11 +16,15 @@ export interface TextCardData {
   onDelete?: (id: string) => void
 }
 
-export function TextCard({ id, data, selected }: NodeProps & { data: TextCardData }) {
+function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardData }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(data.text ?? '')
   const [showColorPicker, setShowColorPicker] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Level of detail: below 0.5 zoom and unselected, render simplified plain text without handles.
+  // Selector returns boolean so useStore triggers re-render ONLY when crossing the 0.5 threshold.
+  const isLowDetail = useStore((s) => s.transform[2] < 0.5)
 
   useEffect(() => {
     if (!isEditing) {
@@ -75,7 +79,7 @@ export function TextCard({ id, data, selected }: NodeProps & { data: TextCardDat
       }`}
       data-testid={`text-card-${id}`}
     >
-      <CardHandles isConnectable={!data.readOnly} />
+      {(!isLowDetail || selected) && <CardHandles isConnectable={!data.readOnly} />}
 
       {/* Card Content or Inline Editor */}
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -116,6 +120,10 @@ export function TextCard({ id, data, selected }: NodeProps & { data: TextCardDat
                 </button>
               </div>
             </div>
+          </div>
+        ) : isLowDetail && !selected ? (
+          <div className="text-sm text-navy-900 break-words whitespace-pre-wrap leading-relaxed line-clamp-6">
+            {data.text || <span className="text-navy-800-72 italic">Double-click to type text…</span>}
           </div>
         ) : (
           <div className="text-sm text-navy-900 break-words leading-relaxed">
@@ -177,3 +185,5 @@ export function TextCard({ id, data, selected }: NodeProps & { data: TextCardDat
     </article>
   )
 }
+
+export const TextCard = memo(TextCardInternal)

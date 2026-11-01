@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, memo } from 'react'
 import {
   FileText,
   Globe,
@@ -19,6 +19,8 @@ import {
   AlertCircle,
   Image as ImageIcon,
   Save,
+  BoxSelect,
+  Hand,
 } from 'lucide-react'
 import { Button } from '../../../shared/ui/Button'
 import type { LearningCanvasNodeType } from '../types'
@@ -34,10 +36,13 @@ interface LearningCanvasToolbarProps {
   canUndo: boolean
   canRedo: boolean
   isOutlineOpen: boolean
+  isTouch?: boolean
+  isSelectMode?: boolean
   searchQuery: string
   searchMatchCount: number
   searchMatchIndex: number
   onToggleSnapToGrid: () => void
+  onToggleSelectMode?: () => void
   onUndo: () => void
   onRedo: () => void
   onToggleOutline: () => void
@@ -57,7 +62,7 @@ interface LearningCanvasToolbarProps {
   onCopyToMyCanvases?: () => void
 }
 
-export function LearningCanvasToolbar({
+function LearningCanvasToolbarInternal({
   readOnly = false,
   canEditStatus = false,
   status = 'draft',
@@ -66,10 +71,13 @@ export function LearningCanvasToolbar({
   canUndo,
   canRedo,
   isOutlineOpen,
+  isTouch = false,
+  isSelectMode = false,
   searchQuery,
   searchMatchCount,
   searchMatchIndex,
   onToggleSnapToGrid,
+  onToggleSelectMode,
   onUndo,
   onRedo,
   onToggleOutline,
@@ -231,6 +239,23 @@ export function LearningCanvasToolbar({
             >
               <Grid size={16} aria-hidden="true" />
             </button>
+
+            {/* Touch Pan / Select mode toggle */}
+            {isTouch && onToggleSelectMode && (
+              <button
+                type="button"
+                onClick={onToggleSelectMode}
+                aria-pressed={isSelectMode}
+                aria-label={isSelectMode ? 'Switch to touch pan mode' : 'Switch to touch select mode'}
+                title={isSelectMode ? 'Select mode active (tap for pan mode)' : 'Pan mode active (tap for select mode)'}
+                className={`min-h-[44px] px-2.5 py-1.5 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-navy-800 flex items-center gap-1.5 text-xs font-semibold ${
+                  isSelectMode ? 'bg-navy-900 text-white' : 'text-navy-900 hover:bg-navy-900-5'
+                }`}
+              >
+                {isSelectMode ? <BoxSelect size={16} aria-hidden="true" /> : <Hand size={16} aria-hidden="true" />}
+                <span>{isSelectMode ? 'Select' : 'Pan'}</span>
+              </button>
+            )}
           </>
         ) : onCopyToMyCanvases ? (
           <Button type="button" onClick={onCopyToMyCanvases}>
@@ -400,3 +425,5 @@ export function LearningCanvasToolbar({
     </div>
   )
 }
+
+export const LearningCanvasToolbar = memo(LearningCanvasToolbarInternal)
