@@ -13,6 +13,11 @@ on:
         options:
           - debug
           - release
+      enable_bench:
+        description: 'Enable canvas benchmark banner and seeded boards'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-apk:
@@ -42,7 +47,7 @@ jobs:
         run: npm run build
         env:
           CAPACITOR_BUILD_TYPE: ${{ github.event.inputs.build_type || 'debug' }}
-          VITE_ENABLE_BENCH: ${{ (github.event.inputs.build_type || 'debug') == 'debug' && 'true' || 'false' }}
+          VITE_ENABLE_BENCH: ${{ (inputs.enable_bench == true || github.event.inputs.enable_bench == 'true') && 'true' || 'false' }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
