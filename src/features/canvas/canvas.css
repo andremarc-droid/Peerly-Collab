@@ -231,23 +231,31 @@
 }
 
 @media (pointer: coarse) {
-  /* On touch, hide handles on unselected cards to avoid painting hundreds of box-shadowed dots
-     and intercepting touch panning.
-     React Flow sets .react-flow__handle.connectable { pointer-events: all; } with 2-class specificity;
-     we match or exceed it (.react-flow__handle.canvas-handle) with !important so unselected handles are non-interactive. */
-  .react-flow__handle.canvas-handle,
+  /* Default for shared .canvas-node cards (e.g. quiz canvas where play mode connects cards directly):
+     keep handles visible on coarse pointers. */
   .canvas-handle {
+    opacity: 0.75;
+  }
+
+  /* Scoped to .learning-card (Learning Canvas): hide handles on unselected cards to avoid painting
+     hundreds of box-shadowed dots and intercepting touch panning.
+     React Flow sets .react-flow__handle.connectable { pointer-events: all; } with 2-class specificity;
+     we exceed it (.learning-card .react-flow__handle.canvas-handle) with !important so unselected
+     learning-card handles are non-interactive, while selected cards keep 44px touch targets. */
+  .learning-card .react-flow__handle.canvas-handle,
+  .learning-card .canvas-handle {
     opacity: 0;
     pointer-events: none !important;
   }
 
-  .react-flow__node.selected .react-flow__handle.canvas-handle,
-  .react-flow__node.selected .canvas-handle,
-  .canvas-node.is-selected .react-flow__handle.canvas-handle,
-  .canvas-node.is-selected .canvas-handle,
-  .canvas-node:focus-within .canvas-handle,
-  .canvas-handle:focus-visible,
-  .canvas-handle:active {
+  .react-flow__node.selected .learning-card .react-flow__handle.canvas-handle,
+  .react-flow__node.selected .learning-card .canvas-handle,
+  .learning-card.is-selected .react-flow__handle.canvas-handle,
+  .learning-card.is-selected .canvas-handle,
+  .learning-card:focus-within .react-flow__handle.canvas-handle,
+  .learning-card:focus-within .canvas-handle,
+  .learning-card .canvas-handle:focus-visible,
+  .learning-card .canvas-handle:active {
     opacity: 0.75;
     pointer-events: all !important;
   }
