@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react'
 import { LearningCanvas } from './LearningCanvas'
+import { QuickAddMenu } from './QuickAddMenu'
 import { TextCard, type TextCardData } from './TextCard'
 import type { LearningCanvasContent } from '../types'
 
@@ -250,5 +253,31 @@ describe('toSavableContent dropped item warning in LearningCanvas', () => {
       const notice = screen.getByTestId('connection-notice')
       expect(notice.textContent).toContain('1 incomplete card(s) and 1 connected edge(s) were skipped during save')
     })
+  })
+})
+
+describe('QuickAddMenu positioning and wrapper containment', () => {
+  it('renders QuickAddMenu in document.body via portal at viewport coordinates and does not set contain:paint on wrapper', () => {
+    const css = readFileSync(resolve(__dirname, '../learningCanvas.css'), 'utf8')
+    const wrapperRuleMatch = css.match(/\.learning-canvas-wrapper\s*\{[^}]*\}/)
+    expect(wrapperRuleMatch).not.toBeNull()
+    expect(wrapperRuleMatch?.[0]).not.toMatch(/contain\s*:\s*paint/)
+
+    const onSelect = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <div className="learning-canvas-wrapper" data-testid="wrapper-host">
+        <QuickAddMenu position={{ x: 320, y: 410 }} onSelect={onSelect} onClose={onClose} />
+      </div>,
+    )
+
+    const menu = screen.getByTestId('quick-add-menu')
+    expect(menu.parentElement).toBe(document.body)
+    expect(screen.getByTestId('wrapper-host').contains(menu)).toBe(false)
+    expect(menu.style.left).toBe('320px')
+    expect(menu.style.top).toBe('410px')
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Text card/i }))
+    expect(onSelect).toHaveBeenCalledWith('text')
   })
 })
