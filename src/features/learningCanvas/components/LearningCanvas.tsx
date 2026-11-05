@@ -12,6 +12,8 @@ import {
   ReactFlowProvider,
   ViewportPortal,
   useReactFlow,
+  useStore,
+  useUpdateNodeInternals,
   useNodesState,
   useEdgesState,
   ConnectionMode,
@@ -301,6 +303,8 @@ function LearningCanvasInternal({
   onOpenReference,
 }: LearningCanvasProps) {
   const { fitView, screenToFlowPosition } = useReactFlow()
+  const updateNodeInternals = useUpdateNodeInternals()
+  const isLowDetail = useStore((s) => s.transform[2] < 0.5)
   const rootRef = useRef<HTMLDivElement>(null)
   const boardRef = useRef<HTMLDivElement>(null)
 
@@ -440,7 +444,26 @@ function LearningCanvasInternal({
   const applySnapshot = useCallback((snap: Snapshot) => {
     setNodes(snap.nodes.map((n) => domainToFlowNode(n, readOnly, callbacks)))
     setEdges(snap.edges.map((e) => domainToFlowEdge(e, readOnly, callbacks)))
-  }, [callbacks, readOnly, setEdges, setNodes])
+    const ids = snap.nodes.map((n) => n.id)
+    if (ids.length > 0) {
+      requestAnimationFrame(() => {
+        updateNodeInternals(ids)
+      })
+    }
+  }, [callbacks, readOnly, setEdges, setNodes, updateNodeInternals])
+
+  // Safety net: re-measure handle bounds when crossing the 0.5 zoom LOD threshold.
+  const prevLowDetailRef = useRef(isLowDetail)
+  useEffect(() => {
+    if (prevLowDetailRef.current === isLowDetail) return
+    prevLowDetailRef.current = isLowDetail
+    const ids = stateRef.current.nodes.map((n) => n.id)
+    if (ids.length > 0) {
+      requestAnimationFrame(() => {
+        updateNodeInternals(ids)
+      })
+    }
+  }, [isLowDetail, updateNodeInternals])
 
   useEffect(() => {
     if (!remoteContent || sameBoard(remoteBaseRef.current, remoteContent)) return

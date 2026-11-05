@@ -84,9 +84,15 @@ To profile reproducibly without network or Firestore mutation variability, appen
 - **Problem**: `LearningCanvasToolbar`, dialogs, and parent controls were unmemoized and received inline lambda props, re-rendering entirely during every node drag frame.
 - **Fix**: Wrapped `LearningCanvasToolbar` in `React.memo`. Converted handlers to stable `useCallback` references. Short-circuited mounting of inactive dialogs.
 
-### E. Level of Detail (LOD)
-- **Problem**: When zooming out to inspect the whole board, cards rendered full Markdown, handles, floating toolbars, and shadows.
-- **Fix**: Added zoom threshold selector via `@xyflow/react` `useStore((s) => s.transform[2] < 0.5)`. Below 0.5 zoom and when unselected, cards render simplified plain text without handles or floating toolbars, eliminating heavy subtrees.
+### E. Level of Detail (LOD) & Handle Measurement Lifecycle
+- **Problem**: When zooming out to inspect the whole board, cards rendered full Markdown, handles, floating toolbars, and shadows. However, unmounting `<CardHandles />` in `TextCard` at `zoom < 0.5` broke edge rendering when combined with `onlyRenderVisibleElements`.
+- **Root Cause in `@xyflow/system` & `@xyflow/react`**:
+  - `getHandleBounds` (`@xyflow/system` line 939) queries `.source` / `.target` handle elements on the node DOM element and stores their bounding boxes in `node.internals.handleBounds` only when `updateNodeInternals` (line 1866) runs via `ResizeObserver` (`useNodeObserver` in `@xyflow/react` line 2180).
+  - If a culled `TextCard` remounted while `zoom < 0.5` and `<CardHandles />` was unmounted, `getHandleBounds` returned `null` (`handleBounds = { source: null, target: null }`). When zooming back in, mounting absolute-positioned `.canvas-handle` elements did not change the card's `offsetWidth`/`offsetHeight`, so `ResizeObserver` did not fire, `getEdgePosition` (line 1434) failed with error `008` (`Couldn't create edge for source/target handle`), and edges connected to `TextCard` vanished.
+  - Furthermore, in `adoptUserNodes` / `parseHandles` (`@xyflow/system` lines 1639–1705), replacing `userNode` objects with freshly constructed `domainToFlowNode` objects (which have `userNode.measured === undefined`) resets `internalNode.measured` to `{ width: undefined, height: undefined }` and `internalNode.internals.handleBounds` to `undefined`.
+- **Fix**:
+  1. `TextCard` always mounts `<CardHandles />` in the DOM and applies `.learning-card--lod` when `zoom < 0.5` and unselected, hiding handles with `visibility: hidden; opacity: 0` (never `display: none`) so `getBoundingClientRect()` remains non-zero.
+  2. `LearningCanvas` invokes `useUpdateNodeInternals()` inside `requestAnimationFrame` for all affected node IDs after `applySnapshot` (remote merge, undo/redo, import, reload) and whenever crossing the `0.5` LOD zoom threshold.
 
 ### F. Cursor Publishing & Remote Cursors Layer
 - **Problem**: `onPointerMove` without throttling and touch event handlers called `screenToFlowPosition`, which invokes `getBoundingClientRect()` (triggering forced synchronous layout). In addition, remote cursor ticks re-rendered the board.
