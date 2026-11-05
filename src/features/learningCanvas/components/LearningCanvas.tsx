@@ -101,6 +101,8 @@ interface LearningCanvasProps {
   onReloadLatest?: () => Promise<LearningCanvasContent | null | undefined>
   /** The page knows the class and the viewer's role, so it builds the right URL. */
   onOpenReference?: (refType: LearningCanvasRefType, refId: string) => void
+  /** Override viewport element culling (defaults to true in production, false in unit tests). */
+  cullElements?: boolean
 }
 
 const nodeTypes = {
@@ -287,7 +289,7 @@ function flowToDomain(nodes: Node[], edges: Edge[]): Snapshot {
   return { nodes: domainNodes, edges: domainEdges }
 }
 
-function LearningCanvasInternal({
+export function LearningCanvasInternal({
   initialContent,
   remoteContent,
   remoteCursors = [],
@@ -303,6 +305,7 @@ function LearningCanvasInternal({
   onCopyToMyCanvases,
   onReloadLatest,
   onOpenReference,
+  cullElements = CULL_ELEMENTS,
 }: LearningCanvasProps) {
   const { fitView, screenToFlowPosition } = useReactFlow()
   const updateNodeInternals = useUpdateNodeInternals()
@@ -1281,7 +1284,7 @@ function LearningCanvasInternal({
               elementsSelectable={true}
               selectionOnDrag={!readOnly && (!isTouch || isSelectMode)}
               panOnDrag={readOnly || (isTouch && !isSelectMode) ? true : [1, 2]}
-              onlyRenderVisibleElements={CULL_ELEMENTS && editingNodeIds.length === 0}
+              onlyRenderVisibleElements={cullElements && editingNodeIds.length === 0}
               zoomOnDoubleClick={false}
               deleteKeyCode={null}
               fitView
