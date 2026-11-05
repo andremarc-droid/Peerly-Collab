@@ -1112,6 +1112,11 @@ function LearningCanvasInternal({
   const handleRetrySave = useCallback(() => {
     void autosave.flush()
   }, [autosave])
+  const handleFlowError = useCallback((code: string, message: string) => {
+    if (import.meta.env.DEV || import.meta.env.VITE_ENABLE_BENCH === 'true') {
+      console.warn(`[ReactFlow ${code}]: ${message}`)
+    }
+  }, [])
 
   const addCardRef = useRef(addCard)
   useEffect(() => {
@@ -1221,6 +1226,7 @@ function LearningCanvasInternal({
               onNodeDragStart={onNodeDragStart}
               onNodeDrag={onNodeDrag}
               onNodeDragStop={onNodeDragStop}
+              onError={handleFlowError}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               connectionMode={ConnectionMode.Loose}
