@@ -334,3 +334,21 @@ describe('TextCard inline editing state retention across culling unmount/remount
     expect(onEditingChange).toHaveBeenCalledWith('tc-cull-1', false)
   })
 })
+
+describe('LinkCard incomplete default URL guard', () => {
+  it('renders a newly added Link card (url: "https://", title: "") without throwing Invalid URL', () => {
+    render(
+      <div className="w-[800px] h-[600px]">
+        <LearningCanvas
+          title="Link Card Guard Board"
+          initialContent={sampleContent}
+        />
+      </div>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+    const linkCard = screen.getByLabelText('Link card: Web Link')
+    expect(linkCard).not.toBeNull()
+    expect(linkCard.textContent).toContain('Web Link')
+  })
+})

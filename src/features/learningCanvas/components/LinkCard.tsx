@@ -19,6 +19,16 @@ export interface LinkCardData {
   onDelete?: (id: string) => void
 }
 
+function getLinkDisplayTitle(link?: { url: string; title?: string }): string {
+  if (link?.title?.trim()) return link.title
+  if (!link?.url) return 'Web Link'
+  try {
+    return new URL(link.url).hostname || 'Web Link'
+  } catch {
+    return link.url === 'https://' ? 'Web Link' : link.url
+  }
+}
+
 export function LinkCard({ id, data, selected }: NodeProps & { data: LinkCardData }) {
   const [isEditing, setIsEditing] = useState(false)
   const [url, setUrl] = useState(data.link?.url ?? '')
@@ -57,7 +67,7 @@ export function LinkCard({ id, data, selected }: NodeProps & { data: LinkCardDat
 
   const cardColorClass = `learning-card--${data.color || 'none'}`
   const highlightClass = data.isHighlighted ? 'ring-4 ring-amber-400' : ''
-  const displayTitle = data.link?.title || (data.link?.url ? new URL(data.link.url).hostname : 'Web Link')
+  const displayTitle = getLinkDisplayTitle(data.link)
 
   return (
     <article
