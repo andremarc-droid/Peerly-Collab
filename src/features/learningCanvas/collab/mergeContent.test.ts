@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type {
   LearningCanvasContent,
@@ -6,9 +8,11 @@ import type {
   LearningCanvasImageNode,
   LearningCanvasLinkNode,
   LearningCanvasNode,
+  LearningCanvasNodeType,
   LearningCanvasReferenceNode,
   LearningCanvasTextNode,
 } from '../types'
+import { validateLearningCanvasEdge, validateLearningCanvasNode } from '../schemas'
 import {
   mergeById,
   mergeContent,
@@ -303,6 +307,206 @@ describe('3-way merge with large image nodes and mixed content', () => {
     expect(edge1?.arrow).toBe('both') // local changed edge arrow, wins
     const edge2 = merged.content.edges.find((e) => e.id === 'e2')
     expect(edge2).toBeDefined() // remote added edge2
+  })
+})
+
+type DeepRequired<T> = {
+  [K in keyof Required<T>]: Required<T>[K] extends Record<string, unknown>
+    ? DeepRequired<Required<T>[K]>
+    : Required<T>[K]
+}
+
+function mutateScalarSameLength(key: string, value: unknown): unknown {
+  if (typeof value === 'number') return value + 1
+  if (typeof value === 'boolean') return !value
+  if (typeof value === 'string') {
+    if (key === 'color') return value === 'none' ? 'tint' : 'none'
+    if (key === 'refType') return value === 'module' ? 'quiz' : 'module'
+    if (key === 'fromSide' || key === 'toSide') return value === 'left' ? 'right' : 'left'
+    if (key === 'arrow') return value === 'to' ? 'both' : 'to'
+    if (value.startsWith('https://')) {
+      return 'https://changed.example/path'
+    }
+    if (value.startsWith('data:image/')) {
+      const prefix = 'data:image/png;base64,'
+      const body = value.slice(prefix.length)
+      const flipped = (body[0] === 'A' ? 'B' : 'A') + body.slice(1)
+      return prefix + flipped
+    }
+    // Mutate string keeping the exact same length so length-only checks fail
+    const first = value[0] === 'X' ? 'Y' : 'X'
+    return first + value.slice(1)
+  }
+  throw new Error(`Unsupported scalar type for key "${key}": ${typeof value}`)
+}
+
+function extractInterfaceKeysFromTypesSource(source: string, interfaceName: string): string[] {
+  const re = new RegExp(`export interface ${interfaceName}(?:\\s+extends\\s+\\w+)?\\s*\\{([\\s\\S]*?)\\n\\}`)
+  const match = source.match(re)
+  if (!match?.[1]) throw new Error(`Could not find interface ${interfaceName} in types.ts`)
+  const body = match[1]
+  // Match top-level property names (2-space indent) and nested property names (4-space indent)
+  const keys: string[] = []
+  for (const line of body.split('\n')) {
+    const propMatch = line.match(/^\s{2,4}([a-zA-Z0-9_]+)\??\s*:/)
+    if (propMatch?.[1]) keys.push(propMatch[1])
+  }
+  return keys
+}
+
+describe('sameNode and sameEdge exhaustive schema/type key enumeration', () => {
+  const completeNodesByType: {
+    text: DeepRequired<LearningCanvasTextNode>
+    link: DeepRequired<LearningCanvasLinkNode>
+    reference: DeepRequired<LearningCanvasReferenceNode>
+    group: DeepRequired<LearningCanvasGroupNode>
+    image: DeepRequired<LearningCanvasImageNode>
+  } = {
+    text: {
+      id: 'node-text-1',
+      type: 'text',
+      x: 100,
+      y: 200,
+      width: 240,
+      height: 140,
+      color: 'none',
+      text: 'Markdown content',
+    },
+    link: {
+      id: 'node-link-1',
+      type: 'link',
+      x: 100,
+      y: 200,
+      width: 280,
+      height: 160,
+      color: 'tint',
+      link: {
+        url: 'https://initial.example/path',
+        title: 'Example Title',
+        note: 'Example Note',
+      },
+    },
+    reference: {
+      id: 'node-ref-1',
+      type: 'reference',
+      x: 100,
+      y: 200,
+      width: 260,
+      height: 150,
+      color: 'navy',
+      reference: {
+        refType: 'module',
+        refId: 'mod-101',
+      },
+    },
+    group: {
+      id: 'node-group-1',
+      type: 'group',
+      x: 50,
+      y: 60,
+      width: 400,
+      height: 300,
+      color: 'c1',
+      group: {
+        label: 'Study Group Box',
+      },
+    },
+    image: {
+      id: 'node-img-1',
+      type: 'image',
+      x: 120,
+      y: 180,
+      width: 300,
+      height: 220,
+      color: 'none',
+      image: {
+        dataUrl: 'data:image/png;base64,AAAA1111BBBB2222',
+        alt: 'Diagram alt text',
+        caption: 'Diagram caption',
+      },
+    },
+  }
+
+  const completeEdge: DeepRequired<LearningCanvasEdge> = {
+    id: 'edge-full-1',
+    from: 'node-text-1',
+    to: 'node-link-1',
+    fromSide: 'left',
+    toSide: 'right',
+    label: 'relates to',
+    arrow: 'to',
+  }
+
+  it('compares every top-level and nested key of every LearningCanvasNodeType and LearningCanvasEdge', () => {
+    const typesSource = readFileSync(resolve(__dirname, '../types.ts'), 'utf8')
+    const baseKeys = extractInterfaceKeysFromTypesSource(typesSource, 'LearningCanvasNodeBase')
+    const interfaceByType: Record<LearningCanvasNodeType, string> = {
+      text: 'LearningCanvasTextNode',
+      link: 'LearningCanvasLinkNode',
+      reference: 'LearningCanvasReferenceNode',
+      group: 'LearningCanvasGroupNode',
+      image: 'LearningCanvasImageNode',
+    }
+
+    const nodeTypes: LearningCanvasNodeType[] = ['text', 'link', 'reference', 'group', 'image']
+    for (const nodeType of nodeTypes) {
+      const sample = completeNodesByType[nodeType]
+      // Validate through runtime schema so schema and fixture stay in sync
+      const validated = validateLearningCanvasNode(sample)
+      expect(sameNode(validated, structuredClone(validated))).toBe(true)
+
+      // Verify fixture includes every key declared in types.ts for this node type
+      const declaredKeys = new Set([
+        ...baseKeys,
+        ...extractInterfaceKeysFromTypesSource(typesSource, interfaceByType[nodeType]),
+      ])
+      const presentKeys = new Set<string>()
+
+      for (const [topKey, topVal] of Object.entries(validated)) {
+        presentKeys.add(topKey)
+        if (topKey === 'type') continue
+
+        if (topVal && typeof topVal === 'object' && !Array.isArray(topVal)) {
+          for (const [nestedKey, nestedVal] of Object.entries(topVal as Record<string, unknown>)) {
+            presentKeys.add(nestedKey)
+            const mutated = structuredClone(validated) as unknown as Record<string, unknown>
+            const nestedObj = { ...(mutated[topKey] as Record<string, unknown>) }
+            nestedObj[nestedKey] = mutateScalarSameLength(nestedKey, nestedVal)
+            mutated[topKey] = nestedObj
+            expect(
+              sameNode(validated, mutated as unknown as LearningCanvasNode),
+              `Expected sameNode to detect change in ${nodeType}.${topKey}.${nestedKey}`,
+            ).toBe(false)
+          }
+        } else {
+          const mutated = structuredClone(validated) as unknown as Record<string, unknown>
+          mutated[topKey] = mutateScalarSameLength(topKey, topVal)
+          expect(
+            sameNode(validated, mutated as unknown as LearningCanvasNode),
+            `Expected sameNode to detect change in ${nodeType}.${topKey}`,
+          ).toBe(false)
+        }
+      }
+
+      expect(presentKeys).toEqual(declaredKeys)
+    }
+
+    // Exhaustively check every key on LearningCanvasEdge
+    const declaredEdgeKeys = new Set(extractInterfaceKeysFromTypesSource(typesSource, 'LearningCanvasEdge'))
+    const validatedEdge = validateLearningCanvasEdge(completeEdge, new Set(['node-text-1', 'node-link-1']))
+    expect(sameEdge(validatedEdge, structuredClone(validatedEdge))).toBe(true)
+
+    const presentEdgeKeys = new Set(Object.keys(validatedEdge))
+    expect(presentEdgeKeys).toEqual(declaredEdgeKeys)
+
+    for (const [edgeKey, edgeVal] of Object.entries(validatedEdge)) {
+      const mutatedEdge = structuredClone(validatedEdge) as unknown as Record<string, unknown>
+      mutatedEdge[edgeKey] = mutateScalarSameLength(edgeKey, edgeVal)
+      expect(
+        sameEdge(validatedEdge, mutatedEdge as unknown as LearningCanvasEdge),
+        `Expected sameEdge to detect change in edge.${edgeKey}`,
+      ).toBe(false)
+    }
   })
 })
 
