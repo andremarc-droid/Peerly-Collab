@@ -76,10 +76,10 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
       onDoubleClick={handleDoubleClick}
       className={`learning-card w-full h-full p-3.5 flex flex-col justify-between ${cardColorClass} ${highlightClass} ${
         selected ? 'is-selected' : ''
-      }`}
+      } ${isLowDetail && !selected && !isEditing ? 'learning-card--lod' : ''}`}
       data-testid={`text-card-${id}`}
     >
-      {(!isLowDetail || selected) && <CardHandles isConnectable={!data.readOnly} />}
+      <CardHandles isConnectable={!data.readOnly} />
 
       {/* Card Content or Inline Editor */}
       <div className="flex-1 min-h-0 overflow-y-auto">

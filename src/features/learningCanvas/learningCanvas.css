@@ -54,6 +54,20 @@
   transition: none !important;
 }
 
+/* Low-detail mode (zoom < 0.5, unselected): simplify card shadows and hide handles visually
+   using visibility:hidden and opacity:0 (never display:none, which zeroes the bounding rect
+   React Flow's getHandleBounds measures). */
+.learning-card--lod {
+  box-shadow: none;
+}
+
+.learning-card--lod .react-flow__handle.canvas-handle,
+.learning-card--lod .canvas-handle {
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none !important;
+}
+
 .learning-card:hover {
   border-color: var(--color-navy-800);
   box-shadow: var(--shadow-md);
