@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react'
 import { LearningCanvas } from './LearningCanvas'
@@ -189,6 +189,66 @@ describe('TextCard low-detail (LOD) handle retention', () => {
     expect(restoredHandles.length).toBe(4)
     restoredHandles.forEach((handle, idx) => {
       expect(handle).toBe(initialHandles[idx])
+    })
+  })
+})
+
+describe('toSavableContent dropped item warning in LearningCanvas', () => {
+  it('shows a visible warning notice when saving drops an incomplete card and its connected edge', async () => {
+    const onSave = vi.fn().mockImplementation(async (c: LearningCanvasContent) => c)
+    const boardWithIncompleteLink: LearningCanvasContent = {
+      version: 1,
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'text',
+          x: 50,
+          y: 50,
+          width: 240,
+          height: 140,
+          color: 'none',
+          text: 'Valid text card',
+        },
+        {
+          id: 'node-incomplete',
+          type: 'link',
+          x: 350,
+          y: 50,
+          width: 240,
+          height: 140,
+          color: 'none',
+          link: { url: 'https://example.com', title: '' },
+        },
+      ],
+      edges: [
+        {
+          id: 'edge-dropped',
+          from: 'node-1',
+          to: 'node-incomplete',
+          arrow: 'to',
+        },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }
+
+    render(
+      <div className="w-[800px] h-[600px]">
+        <LearningCanvas
+          title="Save Warning Board"
+          initialContent={boardWithIncompleteLink}
+          onSave={onSave}
+        />
+      </div>,
+    )
+
+    // Trigger an edit so the board is dirty and Save canvas is enabled
+    fireEvent.click(screen.getByRole('button', { name: 'Text' }))
+    const saveBtn = screen.getByRole('button', { name: 'Save canvas' })
+    fireEvent.click(saveBtn)
+
+    await waitFor(() => {
+      const notice = screen.getByTestId('connection-notice')
+      expect(notice.textContent).toContain('1 incomplete card(s) and 1 connected edge(s) were skipped during save')
     })
   })
 })

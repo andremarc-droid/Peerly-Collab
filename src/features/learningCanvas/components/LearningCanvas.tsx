@@ -68,7 +68,7 @@ import type {
 
 import { toJsonCanvas, fromJsonCanvas, type FromJsonCanvasResult } from '../jsonCanvas'
 import { newNodePlacement, clampNode } from '../schemas'
-import { persistableBoardDiffers, toSavableContent } from '../savableContent'
+import { persistableBoardDiffers, toSavableContent, toSavableContentWithReport } from '../savableContent'
 import { CanvasConflictError } from '../errors'
 import { useUndoRedo } from '../hooks/useUndoRedo'
 import { useAutosave } from '../hooks/useAutosave'
@@ -405,10 +405,30 @@ function LearningCanvasInternal({
     if (!readOnly) history.record(readSnapshot())
   }
 
+  const lastSaveWarningRef = useRef<string | null>(null)
+
+  const prepareSavableContent = (): LearningCanvasContent => {
+    const report = toSavableContentWithReport(readContent())
+    if (report.droppedNodes > 0 || report.droppedEdges > 0) {
+      const msg =
+        report.droppedNodes > 0 && report.droppedEdges > 0
+          ? `${report.droppedNodes} incomplete card(s) and ${report.droppedEdges} connected edge(s) were skipped during save until completed.`
+          : report.droppedNodes > 0
+            ? `${report.droppedNodes} incomplete card(s) were skipped during save until completed.`
+            : `${report.droppedEdges} invalid connection(s) were skipped during save.`
+      lastSaveWarningRef.current = msg
+      announce(msg)
+      setConnectNotice({ message: msg, key: Date.now() })
+    } else {
+      lastSaveWarningRef.current = null
+    }
+    return report.content
+  }
+
   // Autosave (always saves the latest board; flushes when leaving)
   const autosave = useAutosave<LearningCanvasContent>({
     enabled: !readOnly && Boolean(onSave),
-    getLatest: () => toSavableContent(readContent()),
+    getLatest: () => prepareSavableContent(),
     save: async (content) => {
       // Skip network save and merge if persistable content has not changed from remote base
       if (sameBoard(content, remoteBaseRef.current)) {
@@ -438,7 +458,13 @@ function LearningCanvasInternal({
   const saveNow = () => {
     if (readOnly || !onSave) return
     void autosave.flush().then((saved) => {
-      announce(saved ? 'Canvas saved' : 'The canvas could not be saved. Try again.')
+      if (!saved) {
+        announce('The canvas could not be saved. Try again.')
+      } else if (lastSaveWarningRef.current) {
+        announce(`Canvas saved. ${lastSaveWarningRef.current}`)
+      } else {
+        announce('Canvas saved')
+      }
     })
   }
   const applySnapshot = useCallback((snap: Snapshot) => {

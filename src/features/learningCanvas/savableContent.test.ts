@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { persistableBoardDiffers, toSavableContent } from './savableContent'
+import { persistableBoardDiffers, toSavableContent, toSavableContentWithReport } from './savableContent'
 import { parseLearningCanvasContent } from './schemas'
 import type { LearningCanvasContent, LearningCanvasNode } from './types'
 
@@ -72,5 +72,17 @@ describe('toSavableContent', () => {
     const local = content([{ ...text, text: 'updated' }])
     const remote = content([text])
     expect(persistableBoardDiffers(local, remote)).toBe(true)
+  })
+
+  it('reports droppedNodes and droppedEdges counts when invalid cards and their edges are skipped', () => {
+    const board = content(
+      [text, emptyLink],
+      [{ id: 'e-dropped', from: 't1', to: 'l1', arrow: 'to' }],
+    )
+    const report = toSavableContentWithReport(board)
+    expect(report.droppedNodes).toBe(1)
+    expect(report.droppedEdges).toBe(1)
+    expect(report.content.nodes.map((n) => n.id)).toEqual(['t1'])
+    expect(report.content.edges).toEqual([])
   })
 })

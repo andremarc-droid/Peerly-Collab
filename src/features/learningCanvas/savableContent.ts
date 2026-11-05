@@ -2,6 +2,59 @@ import { sameBoard } from './collab/mergeContent'
 import { validateLearningCanvasNode } from './schemas'
 import type { LearningCanvasContent, LearningCanvasEdge, LearningCanvasNode } from './types'
 
+export interface SavableContentReport {
+  content: LearningCanvasContent
+  droppedNodes: number
+  droppedEdges: number
+}
+
+/**
+ * Returns the part of the editor content that passes the persistence rules,
+ * along with counts of any incomplete/invalid nodes and edges that were skipped.
+ */
+export function toSavableContentWithReport(content: LearningCanvasContent): SavableContentReport {
+  const nodes: LearningCanvasNode[] = []
+  let droppedNodes = 0
+  for (const node of content.nodes) {
+    try {
+      nodes.push(validateLearningCanvasNode(node))
+    } catch {
+      // incomplete placeholder card: skip until the user finishes it
+      droppedNodes += 1
+    }
+  }
+
+  const ids = new Set(nodes.map((n) => n.id))
+  const seenIds = new Set<string>()
+  const seenConnections = new Set<string>()
+  const edges: LearningCanvasEdge[] = []
+  let droppedEdges = 0
+  for (const edge of content.edges) {
+    if (edge.from === edge.to || !ids.has(edge.from) || !ids.has(edge.to)) {
+      droppedEdges += 1
+      continue
+    }
+    if (seenIds.has(edge.id)) {
+      droppedEdges += 1
+      continue
+    }
+    const key = `${edge.from}->${edge.to}:${edge.fromSide ?? ''}:${edge.toSide ?? ''}`
+    if (seenConnections.has(key)) {
+      droppedEdges += 1
+      continue
+    }
+    seenIds.add(edge.id)
+    seenConnections.add(key)
+    edges.push(edge)
+  }
+
+  return {
+    content: { ...content, nodes, edges },
+    droppedNodes,
+    droppedEdges,
+  }
+}
+
 /**
  * Returns the part of the editor content that passes the persistence rules.
  *
@@ -13,30 +66,7 @@ import type { LearningCanvasContent, LearningCanvasEdge, LearningCanvasNode } fr
  * Incomplete cards stay on the board; they are simply not persisted until valid.
  */
 export function toSavableContent(content: LearningCanvasContent): LearningCanvasContent {
-  const nodes: LearningCanvasNode[] = []
-  for (const node of content.nodes) {
-    try {
-      nodes.push(validateLearningCanvasNode(node))
-    } catch {
-      // incomplete placeholder card: skip until the user finishes it
-    }
-  }
-
-  const ids = new Set(nodes.map((n) => n.id))
-  const seenIds = new Set<string>()
-  const seenConnections = new Set<string>()
-  const edges: LearningCanvasEdge[] = []
-  for (const edge of content.edges) {
-    if (edge.from === edge.to || !ids.has(edge.from) || !ids.has(edge.to)) continue
-    if (seenIds.has(edge.id)) continue
-    const key = `${edge.from}->${edge.to}:${edge.fromSide ?? ''}:${edge.toSide ?? ''}`
-    if (seenConnections.has(key)) continue
-    seenIds.add(edge.id)
-    seenConnections.add(key)
-    edges.push(edge)
-  }
-
-  return { ...content, nodes, edges }
+  return toSavableContentWithReport(content).content
 }
 
 /**
