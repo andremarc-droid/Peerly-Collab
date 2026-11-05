@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReactFlowProvider, useStoreApi } from '@xyflow/react'
 import { LearningCanvasInternal } from './LearningCanvas'
@@ -348,5 +348,57 @@ describe('LearningCanvas real-layout viewport culling smoke test', () => {
     expect(menu.style.top).toBe('190px')
 
     warnSpy.mockRestore()
+  })
+
+  it('reaches off-screen culled cards via Outline view and keyboard shortcuts (Ctrl+A / Delete)', async () => {
+    let setTransform: (tx: number, ty: number, zoom: number) => void = () => {}
+
+    render(
+      <div className="w-[800px] h-[600px]">
+        <ReactFlowProvider>
+          <ViewportController
+            onReady={(fn) => {
+              setTransform = fn
+            }}
+          />
+          <LearningCanvasInternal
+            title="Accessible Culling Board"
+            initialContent={cullingBoard}
+            cullElements={true}
+          />
+        </ReactFlowProvider>
+      </div>,
+    )
+
+    // Pan far away so all cards leave the DOM
+    act(() => {
+      setTransform(-5000, -5000, 1)
+    })
+    await waitFor(() => {
+      expect(screen.queryByTestId('image-card-node-img')).toBeNull()
+      expect(screen.queryByTestId('text-card-node-text')).toBeNull()
+    })
+
+    // Open the Outline view while both cards are culled off-screen
+    fireEvent.click(screen.getByRole('button', { name: /Outline/i }))
+
+    const outlineImg = screen.getByTestId('outline-node-node-img')
+    const outlineText = screen.getByTestId('outline-node-node-text')
+    expect(outlineImg.textContent).toContain('Diagram image')
+    expect(outlineText.textContent).toContain('Connected explanation card')
+
+    // Jumping to an off-screen card selects it in state even before the viewport animation finishes
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to Connected explanation card' }))
+
+    // Keyboard shortcuts on the board (Ctrl+A then Delete) reach all off-screen culled cards
+    const board = screen.getByTestId('learning-canvas-board')
+    fireEvent.keyDown(board, { key: 'a', ctrlKey: true })
+    fireEvent.keyDown(board, { key: 'Delete' })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('outline-node-node-img')).toBeNull()
+      expect(screen.queryByTestId('outline-node-node-text')).toBeNull()
+      expect(screen.getByText('No cards found.')).not.toBeNull()
+    })
   })
 })

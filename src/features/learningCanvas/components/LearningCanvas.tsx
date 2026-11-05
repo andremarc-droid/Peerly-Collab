@@ -188,6 +188,8 @@ function domainToFlowNode(n: LearningCanvasNode, readOnly: boolean, cb: FlowCall
     id: n.id,
     type: n.type,
     position: { x: n.x, y: n.y },
+    width: n.width,
+    height: n.height,
     style: { width: n.width, height: n.height },
     data: {
       ...n,
@@ -535,7 +537,13 @@ export function LearningCanvasInternal({
         const nodeStyle = { ...n.style }
         if (updates.width !== undefined) nodeStyle.width = updates.width
         if (updates.height !== undefined) nodeStyle.height = updates.height
-        return { ...n, style: nodeStyle, data: { ...n.data, ...updates } }
+        return {
+          ...n,
+          ...(updates.width !== undefined ? { width: updates.width } : {}),
+          ...(updates.height !== undefined ? { height: updates.height } : {}),
+          style: nodeStyle,
+          data: { ...n.data, ...updates },
+        }
       }),
     )
     markDirty()
@@ -973,7 +981,7 @@ export function LearningCanvasInternal({
       addCard('group')
     } else if (key === 'f') {
       consume()
-      fitView({ duration: 300 })
+      fitView({ duration: 300, includeHiddenNodes: true })
     } else if (e.key === '/') {
       consume()
       rootRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
@@ -1010,6 +1018,10 @@ export function LearningCanvasInternal({
 
   const refByKey = useMemo(
     () => new Map(availableReferences.map((r) => [`${r.type}:${r.id}`, r])),
+    [availableReferences],
+  )
+  const resolvedReferencesRecord = useMemo(
+    () => Object.fromEntries(availableReferences.map((r) => [r.id, r])),
     [availableReferences],
   )
 
@@ -1077,13 +1089,13 @@ export function LearningCanvasInternal({
   useEffect(() => {
     const first = matchesRef.current[0]
     if (searchQuery.trim() && first) {
-      fitView({ nodes: [{ id: first }], duration: 300, maxZoom: 1.2 })
+      fitView({ nodes: [{ id: first }], duration: 300, maxZoom: 1.2, includeHiddenNodes: true })
     }
   }, [searchQuery, fitView])
 
   const focusMatch = (index: number) => {
     const id = matchingNodeIds[index]
-    if (id) fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2 })
+    if (id) fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2, includeHiddenNodes: true })
   }
 
   const handleSearchChange = (q: string) => {
@@ -1136,7 +1148,7 @@ export function LearningCanvasInternal({
 
   const handleJumpToNode = (id: string) => {
     if (!nodes.some((n) => n.id === id)) return
-    fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2 })
+    fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2, includeHiddenNodes: true })
     setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === id })))
   }
 
@@ -1323,6 +1335,7 @@ export function LearningCanvasInternal({
             nodes={currentDomain.nodes}
             edges={currentDomain.edges}
             readOnly={readOnly}
+            resolvedReferences={resolvedReferencesRecord}
             onJumpToNode={handleJumpToNode}
             onConnectFromNode={handleConnectFromNode}
             onDeleteNode={deleteNode}

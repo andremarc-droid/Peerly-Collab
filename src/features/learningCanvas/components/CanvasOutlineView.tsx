@@ -13,6 +13,7 @@ import {
   Crosshair,
   Search,
   X,
+  Image as ImageIcon,
 } from 'lucide-react'
 import type { LearningCanvasNode, LearningCanvasEdge } from '../types'
 import type { ResolvedReferenceInfo } from './ReferenceCard'
@@ -50,6 +51,7 @@ export function CanvasOutlineView({
         const info = node.reference ? resolvedReferences[node.reference.refId] : undefined
         return info?.available ? info.title : 'Not available'
       }
+      if (node.type === 'image') return node.image?.alt || node.image?.caption || 'Image card'
       if (node.type === 'group') return node.group?.label || 'Group container'
       return 'Card'
     },
@@ -59,6 +61,7 @@ export function CanvasOutlineView({
   const getNodeIcon = (node: LearningCanvasNode) => {
     if (node.type === 'text') return <FileText size={16} aria-hidden="true" />
     if (node.type === 'link') return <Globe size={16} aria-hidden="true" />
+    if (node.type === 'image') return <ImageIcon size={16} aria-hidden="true" />
     if (node.type === 'group') return <Layers size={16} aria-hidden="true" />
     if (node.type === 'reference') {
       if (node.reference?.refType === 'module') return <BookOpen size={16} aria-hidden="true" />
