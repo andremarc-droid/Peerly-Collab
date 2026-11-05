@@ -142,6 +142,7 @@ const CURSOR_SAMPLE_MS = 100
 interface FlowCallbacks {
   onUpdate: (id: string, updates: Partial<LearningCanvasNode>) => void
   onDelete: (id: string) => void
+  onEditingChange: (id: string, isEditing: boolean) => void
   onPickReference: (nodeId: string) => void
   onOpenReference: (refType: LearningCanvasRefType, refId: string) => void
   onUpdateEdge: (id: string, updates: { label?: string; arrow?: LearningCanvasArrow }) => void
@@ -191,6 +192,7 @@ function domainToFlowNode(n: LearningCanvasNode, readOnly: boolean, cb: FlowCall
       readOnly,
       onUpdate: cb.onUpdate,
       onDelete: cb.onDelete,
+      onEditingChange: cb.onEditingChange,
       onPickReference: cb.onPickReference,
       onOpenReference: cb.onOpenReference,
     },
@@ -349,6 +351,17 @@ function LearningCanvasInternal({
   const [pickerForNodeId, setPickerForNodeId] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<FromJsonCanvasResult | null>(null)
 
+  // Track nodes with an active inline editor so viewport culling does not unmount their textarea.
+  const [editingNodeIds, setEditingNodeIds] = useState<string[]>(EMPTY_ARRAY)
+  const handleEditingChange = useCallback((id: string, isEditing: boolean) => {
+    setEditingNodeIds((prev) => {
+      if (isEditing) {
+        return prev.includes(id) ? prev : [...prev, id]
+      }
+      return prev.includes(id) ? prev.filter((item) => item !== id) : prev
+    })
+  }, [])
+
   // Stable callbacks handed to every card/edge. They forward to the handlers
   // below through a ref, so cards created at any point in time (including
   // before the latest render) always run the current logic. This is what
@@ -357,6 +370,7 @@ function LearningCanvasInternal({
   const [callbacks] = useState<FlowCallbacks>(() => ({
     onUpdate: (id, updates) => handlersRef.current?.onUpdate(id, updates),
     onDelete: (id) => handlersRef.current?.onDelete(id),
+    onEditingChange: (id, isEditing) => handlersRef.current?.onEditingChange(id, isEditing),
     onPickReference: (id) => handlersRef.current?.onPickReference(id),
     onOpenReference: (refType, refId) => handlersRef.current?.onOpenReference(refType, refId),
     onUpdateEdge: (id, updates) => handlersRef.current?.onUpdateEdge(id, updates),
@@ -527,6 +541,7 @@ function LearningCanvasInternal({
   const deleteNode = (id: string) => {
     if (readOnly) return
     recordHistory()
+    handleEditingChange(id, false)
     setNodes((nds) => nds.filter((n) => n.id !== id))
     setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id))
     announce('Card deleted')
@@ -555,6 +570,7 @@ function LearningCanvasInternal({
     handlersRef.current = {
       onUpdate: updateNode,
       onDelete: deleteNode,
+      onEditingChange: handleEditingChange,
       onPickReference: (id) => setPickerForNodeId(id),
       onOpenReference: (refType, refId) => onOpenReference?.(refType, refId),
       onUpdateEdge: updateEdge,
@@ -1265,7 +1281,7 @@ function LearningCanvasInternal({
               elementsSelectable={true}
               selectionOnDrag={!readOnly && (!isTouch || isSelectMode)}
               panOnDrag={readOnly || (isTouch && !isSelectMode) ? true : [1, 2]}
-              onlyRenderVisibleElements={CULL_ELEMENTS}
+              onlyRenderVisibleElements={CULL_ELEMENTS && editingNodeIds.length === 0}
               zoomOnDoubleClick={false}
               deleteKeyCode={null}
               fitView

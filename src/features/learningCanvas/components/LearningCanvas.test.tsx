@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react'
 import { LearningCanvas } from './LearningCanvas'
 import { QuickAddMenu } from './QuickAddMenu'
-import { TextCard, type TextCardData } from './TextCard'
+import { TextCard, clearUnsavedTextDrafts, type TextCardData } from './TextCard'
 import type { LearningCanvasContent } from '../types'
 
 class MockResizeObserver {
@@ -20,6 +20,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  clearUnsavedTextDrafts()
   vi.unstubAllGlobals()
 })
 
@@ -279,5 +280,57 @@ describe('QuickAddMenu positioning and wrapper containment', () => {
 
     fireEvent.click(screen.getByRole('menuitem', { name: /Text card/i }))
     expect(onSelect).toHaveBeenCalledWith('text')
+  })
+})
+
+describe('TextCard inline editing state retention across culling unmount/remount', () => {
+  it('preserves unsaved editText and editing mode if unmounted while culled and notifies onEditingChange', () => {
+    const onEditingChange = vi.fn()
+    const onUpdate = vi.fn()
+    const props = makeTextCardProps({
+      id: 'tc-cull-1',
+      data: {
+        text: 'Original text',
+        color: 'none',
+        readOnly: false,
+        onEditingChange,
+        onUpdate,
+      },
+    })
+
+    const { unmount } = render(
+      <ReactFlowProvider>
+        <TextCard {...props} />
+      </ReactFlowProvider>,
+    )
+
+    // Enter inline editing mode via double-click
+    fireEvent.doubleClick(screen.getByTestId('text-card-tc-cull-1'))
+    expect(onEditingChange).toHaveBeenCalledWith('tc-cull-1', true)
+
+    const textarea = screen.getByLabelText('Edit text content (Markdown supported)') as HTMLTextAreaElement
+    expect(textarea.value).toBe('Original text')
+
+    // Type unsaved text
+    fireEvent.change(textarea, { target: { value: 'Unsaved in-progress markdown draft' } })
+    expect(textarea.value).toBe('Unsaved in-progress markdown draft')
+
+    // Simulate viewport culling unmounting the card when panned off-screen
+    unmount()
+
+    // Remount the same card when panned back into view
+    render(
+      <ReactFlowProvider>
+        <TextCard {...props} />
+      </ReactFlowProvider>,
+    )
+
+    const restoredTextarea = screen.getByLabelText('Edit text content (Markdown supported)') as HTMLTextAreaElement
+    expect(restoredTextarea.value).toBe('Unsaved in-progress markdown draft')
+
+    // Saving commits the draft and clears the unsaved cache
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onUpdate).toHaveBeenCalledWith('tc-cull-1', { text: 'Unsaved in-progress markdown draft' })
+    expect(onEditingChange).toHaveBeenCalledWith('tc-cull-1', false)
   })
 })

@@ -14,13 +14,38 @@ export interface TextCardData {
   isHighlighted?: boolean
   onUpdate?: (id: string, updates: Partial<LearningCanvasNode>) => void
   onDelete?: (id: string) => void
+  onEditingChange?: (id: string, isEditing: boolean) => void
+}
+
+/**
+ * Preserves in-progress inline edit drafts across unmount/remount cycles
+ * (for example if React Flow's viewport culling unmounts an off-screen card).
+ */
+const unsavedTextDrafts = new Map<string, string>()
+
+export function clearUnsavedTextDrafts(): void {
+  unsavedTextDrafts.clear()
 }
 
 function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardData }) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editText, setEditText] = useState(data.text ?? '')
+  const [isEditing, setIsEditing] = useState(() => unsavedTextDrafts.has(id))
+  const [editText, setEditText] = useState(() => unsavedTextDrafts.get(id) ?? (data.text ?? ''))
   const [showColorPicker, setShowColorPicker] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const startEditing = useCallback(() => {
+    const initialDraft = unsavedTextDrafts.get(id) ?? (data.text ?? '')
+    unsavedTextDrafts.set(id, initialDraft)
+    setEditText(initialDraft)
+    setIsEditing(true)
+    data.onEditingChange?.(id, true)
+  }, [id, data])
+
+  const stopEditing = useCallback(() => {
+    unsavedTextDrafts.delete(id)
+    setIsEditing(false)
+    data.onEditingChange?.(id, false)
+  }, [id, data])
 
   // Level of detail: below 0.5 zoom and unselected, render simplified plain text without handles.
   // Selector returns boolean so useStore triggers re-render ONLY when crossing the 0.5 threshold.
@@ -40,16 +65,16 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
   }, [isEditing])
 
   const handleSave = useCallback(() => {
-    setIsEditing(false)
+    stopEditing()
     const trimmed = editText.trim().slice(0, LEARNING_CANVAS_TEXT_MAX)
     if (trimmed !== data.text) {
       data.onUpdate?.(id, { text: trimmed })
     }
-  }, [id, data, editText])
+  }, [id, data, editText, stopEditing])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      setIsEditing(false)
+      stopEditing()
       setEditText(data.text ?? '')
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       handleSave()
@@ -59,7 +84,7 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!data.readOnly) {
-      setIsEditing(true)
+      startEditing()
     }
   }
 
@@ -88,7 +113,11 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
             <textarea
               ref={textareaRef}
               value={editText}
-              onChange={(e) => setEditText(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value
+                unsavedTextDrafts.set(id, next)
+                setEditText(next)
+              }}
               onKeyDown={handleKeyDown}
               aria-label="Edit text content (Markdown supported)"
               maxLength={LEARNING_CANVAS_TEXT_MAX}
@@ -103,7 +132,7 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
                 <button
                   type="button"
                   onClick={() => {
-                    setIsEditing(false)
+                    stopEditing()
                     setEditText(data.text ?? '')
                   }}
                   className="px-2 py-1 rounded text-navy-800 hover:bg-navy-900-8"
@@ -141,7 +170,7 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
         <div className="absolute -top-10 right-0 z-30 flex items-center gap-1 bg-white border border-navy-900-12 rounded-xl shadow-md p-1">
           <button
             type="button"
-            onClick={() => setIsEditing(true)}
+            onClick={startEditing}
             aria-label="Edit text"
             className="p-1.5 rounded-lg text-navy-900 hover:bg-navy-900-8 focus:outline-none focus:ring-2 focus:ring-navy-800"
             title="Edit text"
