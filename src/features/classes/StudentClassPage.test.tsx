@@ -24,6 +24,7 @@ vi.mock('./services/joinService', () => ({
 vi.mock('./services/classService', () => ({ watchClass: mocks.watchClass }))
 vi.mock('./services/quizService', () => ({ watchPublishedQuizzesForClass: mocks.watchQuizzes }))
 vi.mock('../modules/services', () => ({ subscribeToModules: mocks.subscribeToModules }))
+vi.mock('../assignments/StudentAssignmentsSection', () => ({ StudentAssignmentsSection: () => null }))
 vi.mock('../quizzes/services/attemptService', () => ({ listUserAttempts: vi.fn(async () => []) }))
 
 const now = Timestamp.fromMillis(1_700_000_000_000)
