@@ -58,10 +58,14 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
   }, [data.text, isEditing])
 
   useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      textareaRef.current.focus()
-      textareaRef.current.select()
+    if (isEditing) {
+      data.onEditingChange?.(id, true)
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        textareaRef.current.select()
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing])
 
   const handleSave = useCallback(() => {

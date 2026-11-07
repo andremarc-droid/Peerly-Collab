@@ -356,8 +356,8 @@ export function LearningCanvasInternal({
   const [pickerForNodeId, setPickerForNodeId] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<FromJsonCanvasResult | null>(null)
 
-  // Track nodes with an active inline editor so viewport culling does not unmount their textarea.
-  const [editingNodeIds, setEditingNodeIds] = useState<string[]>(EMPTY_ARRAY)
+  // Track nodes with an active inline editor (re-notified on remount when restored from draft map).
+  const [, setEditingNodeIds] = useState<string[]>(EMPTY_ARRAY)
   const handleEditingChange = useCallback((id: string, isEditing: boolean) => {
     setEditingNodeIds((prev) => {
       if (isEditing) {
@@ -1296,7 +1296,7 @@ export function LearningCanvasInternal({
               elementsSelectable={true}
               selectionOnDrag={!readOnly && (!isTouch || isSelectMode)}
               panOnDrag={readOnly || (isTouch && !isSelectMode) ? true : [1, 2]}
-              onlyRenderVisibleElements={cullElements && editingNodeIds.length === 0}
+              onlyRenderVisibleElements={cullElements}
               zoomOnDoubleClick={false}
               deleteKeyCode={null}
               fitView

@@ -335,6 +335,7 @@ describe('TextCard inline editing state retention across culling unmount/remount
 
     // Simulate viewport culling unmounting the card when panned off-screen
     unmount()
+    onEditingChange.mockClear()
 
     // Remount the same card when panned back into view
     render(
@@ -342,6 +343,9 @@ describe('TextCard inline editing state retention across culling unmount/remount
         <TextCard {...props} />
       </ReactFlowProvider>,
     )
+
+    // Re-fires onEditingChange(id, true) when remounting with an active draft
+    expect(onEditingChange).toHaveBeenCalledWith('tc-cull-1', true)
 
     const restoredTextarea = screen.getByLabelText('Edit text content (Markdown supported)') as HTMLTextAreaElement
     expect(restoredTextarea.value).toBe('Unsaved in-progress markdown draft')

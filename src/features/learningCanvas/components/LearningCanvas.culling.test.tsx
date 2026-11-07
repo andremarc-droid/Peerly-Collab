@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReactFlowProvider, useStoreApi } from '@xyflow/react'
 import { LearningCanvasInternal } from './LearningCanvas'
 import { QuickAddMenu } from './QuickAddMenu'
+import { generateSeededBoard } from '../dev/seedBoard'
 import type { LearningCanvasContent } from '../types'
 
 const TINY_PNG =
@@ -53,6 +54,19 @@ const cullingBoard: LearningCanvasContent = {
 const NODE_LAYOUT: Record<string, { x: number; y: number; width: number; height: number }> = {
   'node-img': { x: 40, y: 60, width: 280, height: 220 },
   'node-text': { x: 420, y: 80, width: 240, height: 140 },
+}
+
+function getNodeLayout(nodeEl: HTMLElement | null): { x: number; y: number; width: number; height: number } {
+  if (!nodeEl) return { x: 0, y: 0, width: 240, height: 140 }
+  const id = nodeEl.getAttribute('data-id') ?? ''
+  if (NODE_LAYOUT[id]) return NODE_LAYOUT[id]!
+  const tf = nodeEl.style?.transform ?? ''
+  const match = tf.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/)
+  const x = match ? Number(match[1]) : 0
+  const y = match ? Number(match[2]) : 0
+  const width = Number.parseFloat(nodeEl.style?.width || '') || 240
+  const height = Number.parseFloat(nodeEl.style?.height || '') || 140
+  return { x, y, width, height }
 }
 
 let currentTransform: [number, number, number] = [0, 0, 1]
@@ -187,8 +201,7 @@ describe('LearningCanvas real-layout viewport culling smoke test', () => {
           return 800
         }
         if (this.classList.contains('react-flow__node')) {
-          const id = this.getAttribute('data-id') ?? ''
-          return NODE_LAYOUT[id]?.width ?? 240
+          return getNodeLayout(this).width
         }
         if (this.classList.contains('canvas-handle')) {
           return 44
@@ -208,8 +221,7 @@ describe('LearningCanvas real-layout viewport culling smoke test', () => {
           return 600
         }
         if (this.classList.contains('react-flow__node')) {
-          const id = this.getAttribute('data-id') ?? ''
-          return NODE_LAYOUT[id]?.height ?? 140
+          return getNodeLayout(this).height
         }
         if (this.classList.contains('canvas-handle')) {
           return 44
@@ -228,14 +240,12 @@ describe('LearningCanvas real-layout viewport culling smoke test', () => {
         return makeDOMRect(0, 0, 800, 600)
       }
       if (this.classList.contains('react-flow__node')) {
-        const id = this.getAttribute('data-id') ?? ''
-        const layout = NODE_LAYOUT[id] ?? { x: 0, y: 0, width: 240, height: 140 }
+        const layout = getNodeLayout(this)
         return makeDOMRect(tx + layout.x * zoom, ty + layout.y * zoom, layout.width * zoom, layout.height * zoom)
       }
       if (this.classList.contains('canvas-handle')) {
         const nodeEl = this.closest('.react-flow__node') as HTMLElement | null
-        const id = nodeEl?.getAttribute('data-id') ?? ''
-        const layout = NODE_LAYOUT[id] ?? { x: 0, y: 0, width: 240, height: 140 }
+        const layout = getNodeLayout(nodeEl)
         const nodeLeft = tx + layout.x * zoom
         const nodeTop = ty + layout.y * zoom
         const nodeW = layout.width * zoom
@@ -399,6 +409,65 @@ describe('LearningCanvas real-layout viewport culling smoke test', () => {
       expect(screen.queryByTestId('outline-node-node-img')).toBeNull()
       expect(screen.queryByTestId('outline-node-node-text')).toBeNull()
       expect(screen.getByText('No cards found.')).not.toBeNull()
+    })
+  })
+
+  it('keeps viewport culling enabled during inline editing on a 150-card board to avoid a 140+ card mount burst', async () => {
+    const board150 = generateSeededBoard(150)
+    let setTransform: (tx: number, ty: number, zoom: number) => void = () => {}
+
+    const { container } = render(
+      <div className="w-[800px] h-[600px]">
+        <ReactFlowProvider>
+          <ViewportController
+            onReady={(fn) => {
+              setTransform = fn
+            }}
+          />
+          <LearningCanvasInternal
+            title="150 Card Culling Board"
+            initialContent={board150}
+            cullElements={true}
+          />
+        </ReactFlowProvider>
+      </div>,
+    )
+
+    act(() => {
+      setTransform(0, 0, 1)
+      notifyAllResizeObservers()
+    })
+
+    // Only the cards overlapping the 800x600 viewport are mounted (not all 150 cards)
+    const mountedBeforeEdit = container.querySelectorAll('.react-flow__node').length
+    expect(mountedBeforeEdit).toBeGreaterThan(0)
+    expect(mountedBeforeEdit).toBeLessThan(20)
+
+    // Double-click the first visible text card to enter inline edit mode
+    const firstTextCard = screen.getByTestId('text-card-seed-node-1')
+    fireEvent.doubleClick(firstTextCard)
+    const textarea = screen.getByLabelText('Edit text content (Markdown supported)') as HTMLTextAreaElement
+    expect(textarea).not.toBeNull()
+    fireEvent.change(textarea, { target: { value: 'Draft saved across culling' } })
+
+    // Culling stays active: off-screen cards do NOT burst-mount when entering inline edit
+    const mountedDuringEdit = container.querySelectorAll('.react-flow__node').length
+    expect(mountedDuringEdit).toBe(mountedBeforeEdit)
+
+    // Pan far away so the edited card unmounts, then pan back and verify draft and edit mode restore
+    act(() => {
+      setTransform(-8000, -8000, 1)
+    })
+    await waitFor(() => {
+      expect(screen.queryByTestId('text-card-seed-node-1')).toBeNull()
+    })
+    act(() => {
+      setTransform(0, 0, 1)
+      notifyAllResizeObservers()
+    })
+    await waitFor(() => {
+      const restoredTextarea = screen.getByLabelText('Edit text content (Markdown supported)') as HTMLTextAreaElement
+      expect(restoredTextarea.value).toBe('Draft saved across culling')
     })
   })
 })

@@ -113,9 +113,9 @@ To profile reproducibly without network or Firestore mutation variability, appen
 - **Fix**: Render `<EdgeLabelRenderer>` conditionally only when an edge has a label, is selected and editable, or is currently being edited.
 
 ### I. Node Culling (`onlyRenderVisibleElements`) & Accessibility
-- **Problem**: Cards and edges off-screen were kept in the DOM.
+- **Problem**: Cards and edges off-screen were kept in the DOM. Disabling `onlyRenderVisibleElements` while editing a card on a 150-card seeded board caused an immediate mount burst of ~144 off-screen cards (~576 handle nodes + Markdown chunks) on double-click and a matching unmount burst on Save/Cancel.
 - **Fix**:
-  1. Enabled `onlyRenderVisibleElements` in `<ReactFlow>`, gated by `cullElements = import.meta.env.MODE !== 'test'` (overridable via `cullElements` prop) and automatically paused while any card has an active inline editor (`editingNodeIds.length === 0`).
+  1. Enabled `onlyRenderVisibleElements` in `<ReactFlow>`, gated by `cullElements = import.meta.env.MODE !== 'test'` (overridable via `cullElements` prop). Culling stays enabled even during inline editing so starting an edit on a 150-card board mounts 0 additional off-screen cards; if an actively edited `TextCard` is panned off-screen and back, `unsavedTextDrafts` restores its draft and re-fires `onEditingChange(id, true)` on remount.
   2. Declared explicit `width` and `height` on each React Flow `Node` in `domainToFlowNode` (in addition to `style.width` / `style.height`) and passed `includeHiddenNodes: true` to `fitView` (`handleJumpToNode`, search `focusMatch`, and keyboard `F`) so React Flow's `getFitViewNodes` can compute bounds and scroll to off-screen or unmeasured cards even while culled from the DOM.
   3. **Accessibility with Culling Enabled**:
      - **Text Outline (`CanvasOutlineView`)**: Reads directly from React state (`currentDomain.nodes` and `currentDomain.edges`), so every card (including `text`, `link`, `reference`, `image`, and `group` cards) and connection is always listed, searchable, connectable, and deletable even when panned off-screen and unmounted from the canvas DOM. Clicking **Jump to card** pans/zooms the viewport to bring the culled card into the DOM and selects it.
