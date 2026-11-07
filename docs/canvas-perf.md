@@ -122,9 +122,9 @@ To profile reproducibly without network or Firestore mutation variability, appen
      - **Keyboard Shortcuts**: Board-level shortcuts (`Ctrl+A` / `Cmd+A` select all, `ArrowUp`/`Down`/`Left`/`Right` nudge selected cards, `Delete`/`Backspace` delete selected cards, `F` fit view, `/` search, `Ctrl+Z` / `Ctrl+Y` undo/redo) operate on `nodes` state rather than DOM nodes, so they reach off-screen cards seamlessly.
      - **Known DOM Focus Limitation**: Native browser `Tab` focus order only traverses currently mounted DOM nodes inside the viewport. Keyboard and screen-reader users can reach any off-screen card at any time via the **Outline** view or **Search** (`/`).
 
-### J. CSS Rendering Costs & Portal Positioning
+### J. CSS Rendering Costs & Fixed Menu Positioning
 - **Problem**: `.learning-card` had transitions on `box-shadow` and `border-color` that fired during drag frame coordinate updates. Additionally, setting `contain: paint` on `.learning-canvas-wrapper` created a containing block for `position: fixed` descendants, offsetting and clipping `QuickAddMenu`.
-- **Fix**: Disabled `.learning-card` transitions during active drag via `.react-flow__node.dragging .learning-card` and `.react-flow--dragging .learning-card`. Removed `contain: paint` from `.learning-canvas-wrapper` (relying on `overflow: hidden` for board clipping) and rendered `QuickAddMenu` through a React portal into `document.body`.
+- **Fix**: Disabled `.learning-card` transitions during active drag via `.react-flow__node.dragging .learning-card` and `.react-flow--dragging .learning-card`. Removed `contain: paint` from `.learning-canvas-wrapper` (relying on `overflow: hidden` for board clipping) while keeping `QuickAddMenu` rendered inline inside `.learning-canvas-wrapper` / `ExpandableCanvasContainer` so `position: fixed` uses viewport coordinates and remains visible inside the browser Fullscreen API top layer.
 
 ---
 

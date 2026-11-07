@@ -1,4 +1,3 @@
-import { createPortal } from 'react-dom'
 import { FileText, Globe, BookOpen, Layers, X, Image as ImageIcon } from 'lucide-react'
 import type { LearningCanvasNodeType } from '../types'
 
@@ -9,7 +8,7 @@ interface QuickAddMenuProps {
 }
 
 export function QuickAddMenu({ position, onSelect, onClose }: QuickAddMenuProps) {
-  const menu = (
+  return (
     <div
       role="menu"
       aria-label="Quick add connected card"
@@ -105,6 +104,4 @@ export function QuickAddMenu({ position, onSelect, onClose }: QuickAddMenuProps)
       </button>
     </div>
   )
-
-  return typeof document !== 'undefined' ? createPortal(menu, document.body) : menu
 }

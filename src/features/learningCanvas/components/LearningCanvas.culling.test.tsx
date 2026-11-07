@@ -265,7 +265,7 @@ describe('LearningCanvas real-layout viewport culling smoke test', () => {
     vi.unstubAllGlobals()
   })
 
-  it('culls off-screen cards, remounts them when panned back at zoom < 0.5 and 1.0, keeps 4 handles and edges intact, and portals QuickAddMenu', async () => {
+  it('culls off-screen cards, remounts them when panned back at zoom < 0.5 and 1.0, keeps 4 handles and edges intact, and positions QuickAddMenu inside container', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     let setTransform: (tx: number, ty: number, zoom: number) => void = () => {}
 
@@ -341,9 +341,9 @@ describe('LearningCanvas real-layout viewport culling smoke test', () => {
     const error008Calls = warnSpy.mock.calls.filter((args) => String(args[0] ?? '').includes('008'))
     expect(error008Calls).toEqual([])
 
-    // 5. Verify QuickAddMenu is portaled to document.body at exact screen coordinates
+    // 5. Verify QuickAddMenu is rendered inside the canvas container at exact screen coordinates
     const menu = screen.getByTestId('quick-add-menu')
-    expect(menu.parentElement).toBe(document.body)
+    expect(container.contains(menu)).toBe(true)
     expect(menu.style.left).toBe('260px')
     expect(menu.style.top).toBe('190px')
 

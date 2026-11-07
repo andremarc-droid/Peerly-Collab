@@ -6,6 +6,7 @@ import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react'
 import { LearningCanvas } from './LearningCanvas'
 import { QuickAddMenu } from './QuickAddMenu'
 import { TextCard, clearUnsavedTextDrafts, type TextCardData } from './TextCard'
+import { ExpandableCanvasContainer } from '../../canvas/components/ExpandableCanvasContainer'
 import type { LearningCanvasContent } from '../types'
 
 class MockResizeObserver {
@@ -258,7 +259,7 @@ describe('toSavableContent dropped item warning in LearningCanvas', () => {
 })
 
 describe('QuickAddMenu positioning and wrapper containment', () => {
-  it('renders QuickAddMenu in document.body via portal at viewport coordinates and does not set contain:paint on wrapper', () => {
+  it('renders QuickAddMenu inline inside the canvas container so it stays visible in fullscreen and does not set contain:paint on wrapper', async () => {
     const css = readFileSync(resolve(__dirname, '../learningCanvas.css'), 'utf8')
     const wrapperRuleMatch = css.match(/\.learning-canvas-wrapper\s*\{[^}]*\}/)
     expect(wrapperRuleMatch).not.toBeNull()
@@ -267,16 +268,33 @@ describe('QuickAddMenu positioning and wrapper containment', () => {
     const onSelect = vi.fn()
     const onClose = vi.fn()
     render(
-      <div className="learning-canvas-wrapper" data-testid="wrapper-host">
-        <QuickAddMenu position={{ x: 320, y: 410 }} onSelect={onSelect} onClose={onClose} />
-      </div>,
+      <ExpandableCanvasContainer title="Fullscreen Test">
+        <div className="learning-canvas-wrapper" data-testid="wrapper-host">
+          <QuickAddMenu position={{ x: 320, y: 410 }} onSelect={onSelect} onClose={onClose} />
+        </div>
+      </ExpandableCanvasContainer>,
     )
 
+    const expandableContainer = screen.getByTestId('expandable-canvas-container')
+    const wrapperHost = screen.getByTestId('wrapper-host')
     const menu = screen.getByTestId('quick-add-menu')
-    expect(menu.parentElement).toBe(document.body)
-    expect(screen.getByTestId('wrapper-host').contains(menu)).toBe(false)
+
+    expect(expandableContainer.contains(menu)).toBe(true)
+    expect(wrapperHost.contains(menu)).toBe(true)
     expect(menu.style.left).toBe('320px')
     expect(menu.style.top).toBe('410px')
+
+    // Expand to fullscreen state and verify QuickAddMenu remains inside the fullscreen subtree and positioned
+    fireEvent.click(screen.getByRole('button', { name: 'Expand board to full screen' }))
+    await waitFor(() => {
+      expect(expandableContainer.getAttribute('data-expanded')).toBe('true')
+    })
+
+    const expandedMenu = screen.getByTestId('quick-add-menu')
+    expect(expandableContainer.contains(expandedMenu)).toBe(true)
+    expect(wrapperHost.contains(expandedMenu)).toBe(true)
+    expect(expandedMenu.style.left).toBe('320px')
+    expect(expandedMenu.style.top).toBe('410px')
 
     fireEvent.click(screen.getByRole('menuitem', { name: /Text card/i }))
     expect(onSelect).toHaveBeenCalledWith('text')
