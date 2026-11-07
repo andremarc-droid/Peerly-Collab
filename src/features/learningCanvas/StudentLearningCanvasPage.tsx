@@ -308,6 +308,7 @@ export function StudentLearningCanvasPage() {
         )}
         <div className="w-full">
           <LearningCanvas
+            canvasId={canvasId}
             title={canvas?.title}
             initialContent={content}
             readOnly={isReadOnly}

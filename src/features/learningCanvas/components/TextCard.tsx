@@ -10,6 +10,7 @@ import type { LearningCanvasNode, LearningCanvasColor } from '../types'
 export interface TextCardData {
   text: string
   color: LearningCanvasColor
+  canvasId?: string
   readOnly?: boolean
   isHighlighted?: boolean
   onUpdate?: (id: string, updates: Partial<LearningCanvasNode>) => void
@@ -19,33 +20,56 @@ export interface TextCardData {
 
 /**
  * Preserves in-progress inline edit drafts across unmount/remount cycles
- * (for example if React Flow's viewport culling unmounts an off-screen card).
+ * (for example if React Flow's viewport culling unmounts an off-screen card),
+ * keyed by `${canvasId}:${nodeId}` so drafts never leak across canvases.
  */
 const unsavedTextDrafts = new Map<string, string>()
 
-export function clearUnsavedTextDrafts(): void {
-  unsavedTextDrafts.clear()
+function getDraftKey(nodeId: string, canvasId?: string): string {
+  return `${canvasId ?? 'default'}:${nodeId}`
+}
+
+export function getUnsavedTextDraft(nodeId: string, canvasId?: string): string | undefined {
+  return unsavedTextDrafts.get(getDraftKey(nodeId, canvasId))
+}
+
+export function deleteUnsavedTextDraft(nodeId: string, canvasId?: string): void {
+  unsavedTextDrafts.delete(getDraftKey(nodeId, canvasId))
+}
+
+export function clearUnsavedTextDrafts(canvasId?: string): void {
+  if (!canvasId) {
+    unsavedTextDrafts.clear()
+    return
+  }
+  const prefix = `${canvasId}:`
+  for (const key of Array.from(unsavedTextDrafts.keys())) {
+    if (key.startsWith(prefix)) {
+      unsavedTextDrafts.delete(key)
+    }
+  }
 }
 
 function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardData }) {
-  const [isEditing, setIsEditing] = useState(() => unsavedTextDrafts.has(id))
-  const [editText, setEditText] = useState(() => unsavedTextDrafts.get(id) ?? (data.text ?? ''))
+  const draftKey = getDraftKey(id, data.canvasId)
+  const [isEditing, setIsEditing] = useState(() => unsavedTextDrafts.has(draftKey))
+  const [editText, setEditText] = useState(() => unsavedTextDrafts.get(draftKey) ?? (data.text ?? ''))
   const [showColorPicker, setShowColorPicker] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const startEditing = useCallback(() => {
-    const initialDraft = unsavedTextDrafts.get(id) ?? (data.text ?? '')
-    unsavedTextDrafts.set(id, initialDraft)
+    const initialDraft = unsavedTextDrafts.get(draftKey) ?? (data.text ?? '')
+    unsavedTextDrafts.set(draftKey, initialDraft)
     setEditText(initialDraft)
     setIsEditing(true)
     data.onEditingChange?.(id, true)
-  }, [id, data])
+  }, [id, draftKey, data])
 
   const stopEditing = useCallback(() => {
-    unsavedTextDrafts.delete(id)
+    unsavedTextDrafts.delete(draftKey)
     setIsEditing(false)
     data.onEditingChange?.(id, false)
-  }, [id, data])
+  }, [id, draftKey, data])
 
   // Level of detail: below 0.5 zoom and unselected, render simplified plain text without handles.
   // Selector returns boolean so useStore triggers re-render ONLY when crossing the 0.5 threshold.
@@ -119,7 +143,7 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
               value={editText}
               onChange={(e) => {
                 const next = e.target.value
-                unsavedTextDrafts.set(id, next)
+                unsavedTextDrafts.set(draftKey, next)
                 setEditText(next)
               }}
               onKeyDown={handleKeyDown}

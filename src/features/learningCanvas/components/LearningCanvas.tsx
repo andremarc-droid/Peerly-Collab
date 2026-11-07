@@ -27,7 +27,11 @@ import '@xyflow/react/dist/style.css'
 import '../../canvas/canvas.css' // defines .canvas-handle (44px hit area) used by CardHandles
 import '../learningCanvas.css'
 
-import { TextCard } from './TextCard'
+import {
+  TextCard,
+  clearUnsavedTextDrafts,
+  deleteUnsavedTextDraft,
+} from './TextCard'
 import { LinkCard } from './LinkCard'
 import { ReferenceCard, type ResolvedReferenceInfo } from './ReferenceCard'
 import { GroupNode } from './GroupNode'
@@ -81,6 +85,7 @@ import {
 } from '../constants'
 
 interface LearningCanvasProps {
+  canvasId?: string
   initialContent: LearningCanvasContent
   remoteContent?: LearningCanvasContent | null
   remoteCursors?: RemoteCursor[]
@@ -183,7 +188,12 @@ function cardIdAtPoint(x: number, y: number): string | null {
   return nodeEl.getAttribute('data-id')
 }
 
-function domainToFlowNode(n: LearningCanvasNode, readOnly: boolean, cb: FlowCallbacks): Node {
+function domainToFlowNode(
+  n: LearningCanvasNode,
+  readOnly: boolean,
+  cb: FlowCallbacks,
+  canvasId: string,
+): Node {
   return {
     id: n.id,
     type: n.type,
@@ -193,6 +203,7 @@ function domainToFlowNode(n: LearningCanvasNode, readOnly: boolean, cb: FlowCall
     style: { width: n.width, height: n.height },
     data: {
       ...n,
+      canvasId,
       readOnly,
       onUpdate: cb.onUpdate,
       onDelete: cb.onDelete,
@@ -292,6 +303,7 @@ function flowToDomain(nodes: Node[], edges: Edge[]): Snapshot {
 }
 
 export function LearningCanvasInternal({
+  canvasId = 'default',
   initialContent,
   remoteContent,
   remoteCursors = [],
@@ -383,12 +395,19 @@ export function LearningCanvasInternal({
   }))
 
   const [initialFlow] = useState(() => ({
-    nodes: initialContent.nodes.map((n) => domainToFlowNode(n, readOnly, callbacks)),
+    nodes: initialContent.nodes.map((n) => domainToFlowNode(n, readOnly, callbacks, canvasId)),
     edges: initialContent.edges.map((e) => domainToFlowEdge(e, readOnly, callbacks)),
   }))
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initialFlow.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initialFlow.edges)
   const remoteBaseRef = useRef(initialContent)
+
+  // Clear any unsaved inline text drafts for this canvas when it unmounts.
+  useEffect(() => {
+    return () => {
+      clearUnsavedTextDrafts(canvasId)
+    }
+  }, [canvasId])
 
   // Always-current copy of the board, readable from timers and event handlers.
   const stateRef = useRef({ nodes, edges })
@@ -487,7 +506,7 @@ export function LearningCanvasInternal({
     })
   }
   const applySnapshot = useCallback((snap: Snapshot) => {
-    setNodes(snap.nodes.map((n) => domainToFlowNode(n, readOnly, callbacks)))
+    setNodes(snap.nodes.map((n) => domainToFlowNode(n, readOnly, callbacks, canvasId)))
     setEdges(snap.edges.map((e) => domainToFlowEdge(e, readOnly, callbacks)))
     const ids = snap.nodes.map((n) => n.id)
     if (ids.length > 0) {
@@ -495,7 +514,7 @@ export function LearningCanvasInternal({
         updateNodeInternals(ids)
       })
     }
-  }, [callbacks, readOnly, setEdges, setNodes, updateNodeInternals])
+  }, [callbacks, canvasId, readOnly, setEdges, setNodes, updateNodeInternals])
 
   // Safety net: re-measure handle bounds when crossing the 0.5 zoom LOD threshold.
   const prevLowDetailRef = useRef(isLowDetail)
@@ -552,6 +571,7 @@ export function LearningCanvasInternal({
   const deleteNode = (id: string) => {
     if (readOnly) return
     recordHistory()
+    deleteUnsavedTextDraft(id, canvasId)
     handleEditingChange(id, false)
     setNodes((nds) => nds.filter((n) => n.id !== id))
     setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id))
@@ -632,7 +652,7 @@ export function LearningCanvasInternal({
     else node = { ...base, type: 'group', group: { label: 'New Group' } }
 
     history.record(snapshot)
-    setNodes((nds) => [...nds, domainToFlowNode(node, readOnly, callbacks)])
+    setNodes((nds) => [...nds, domainToFlowNode(node, readOnly, callbacks, canvasId)])
 
     if (
       connectFromNodeId &&
@@ -682,7 +702,7 @@ export function LearningCanvasInternal({
       }
 
       history.record(snapshot)
-      setNodes((nds) => [...nds, domainToFlowNode(node, readOnly, callbacks)])
+      setNodes((nds) => [...nds, domainToFlowNode(node, readOnly, callbacks, canvasId)])
       announce('Image card added')
       markDirty()
     } catch (err) {
@@ -964,6 +984,10 @@ export function LearningCanvasInternal({
       if (selectedIds.size === 0 && !curEdges.some((ed) => ed.selected)) return
       consume()
       recordHistory()
+      for (const id of selectedIds) {
+        deleteUnsavedTextDraft(id, canvasId)
+        handleEditingChange(id, false)
+      }
       setNodes((nds) => nds.filter((n) => !selectedIds.has(n.id)))
       setEdges((eds) =>
         eds.filter((ed) => !ed.selected && !selectedIds.has(ed.source) && !selectedIds.has(ed.target)),

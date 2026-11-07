@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react'
 import { LearningCanvas } from './LearningCanvas'
 import { QuickAddMenu } from './QuickAddMenu'
-import { TextCard, clearUnsavedTextDrafts, type TextCardData } from './TextCard'
+import {
+  TextCard,
+  clearUnsavedTextDrafts,
+  getUnsavedTextDraft,
+  type TextCardData,
+} from './TextCard'
 import { ExpandableCanvasContainer } from '../../canvas/components/ExpandableCanvasContainer'
 import type { LearningCanvasContent } from '../types'
 
@@ -354,6 +359,87 @@ describe('TextCard inline editing state retention across culling unmount/remount
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(onUpdate).toHaveBeenCalledWith('tc-cull-1', { text: 'Unsaved in-progress markdown draft' })
     expect(onEditingChange).toHaveBeenCalledWith('tc-cull-1', false)
+  })
+
+  it('isolates unsaved drafts by canvasId + nodeId so two canvases with the same nodeId never collide', () => {
+    const propsCanvasA = makeTextCardProps({
+      id: 'node-shared',
+      data: {
+        text: 'Canvas A text',
+        color: 'none',
+        canvasId: 'canvas-a',
+        readOnly: false,
+      },
+    })
+    const propsCanvasB = makeTextCardProps({
+      id: 'node-shared',
+      data: {
+        text: 'Canvas B text',
+        color: 'none',
+        canvasId: 'canvas-b',
+        readOnly: false,
+      },
+    })
+
+    const { unmount } = render(
+      <ReactFlowProvider>
+        <TextCard {...propsCanvasA} />
+      </ReactFlowProvider>,
+    )
+
+    fireEvent.doubleClick(screen.getByTestId('text-card-node-shared'))
+    const textareaA = screen.getByLabelText('Edit text content (Markdown supported)') as HTMLTextAreaElement
+    fireEvent.change(textareaA, { target: { value: 'Draft on Canvas A' } })
+    expect(getUnsavedTextDraft('node-shared', 'canvas-a')).toBe('Draft on Canvas A')
+    expect(getUnsavedTextDraft('node-shared', 'canvas-b')).toBeUndefined()
+
+    unmount()
+
+    // Rendering the same nodeId in canvas-b does not inherit canvas-a's draft
+    render(
+      <ReactFlowProvider>
+        <TextCard {...propsCanvasB} />
+      </ReactFlowProvider>,
+    )
+    expect(screen.queryByLabelText('Edit text content (Markdown supported)')).toBeNull()
+    expect(screen.getByTestId('text-card-node-shared').textContent).toContain('Canvas B text')
+  })
+
+  it('clears unsaved drafts when a card is deleted and when LearningCanvas unmounts', async () => {
+    const { unmount } = render(
+      <div className="w-[800px] h-[600px]">
+        <LearningCanvas
+          canvasId="canvas-cleanup-test"
+          title="Cleanup Board"
+          initialContent={sampleContent}
+        />
+      </div>,
+    )
+
+    // Start editing node-1 and node-2
+    fireEvent.doubleClick(screen.getByTestId('text-card-node-1'))
+    fireEvent.doubleClick(screen.getByTestId('text-card-node-2'))
+
+    const textareas = screen.getAllByLabelText('Edit text content (Markdown supported)') as HTMLTextAreaElement[]
+    fireEvent.change(textareas[0]!, { target: { value: 'Draft 1 to delete' } })
+    fireEvent.change(textareas[1]!, { target: { value: 'Draft 2 to clear on unmount' } })
+
+    expect(getUnsavedTextDraft('node-1', 'canvas-cleanup-test')).toBe('Draft 1 to delete')
+    expect(getUnsavedTextDraft('node-2', 'canvas-cleanup-test')).toBe('Draft 2 to clear on unmount')
+
+    // Delete node-1 via Outline view and verify its draft is removed immediately
+    fireEvent.click(screen.getByRole('button', { name: /Outline/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete First card' }))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('text-card-node-1')).toBeNull()
+    })
+    expect(getUnsavedTextDraft('node-1', 'canvas-cleanup-test')).toBeUndefined()
+    expect(getUnsavedTextDraft('node-2', 'canvas-cleanup-test')).toBe('Draft 2 to clear on unmount')
+
+    // Unmount LearningCanvas and verify remaining drafts for canvas-cleanup-test are cleared
+    unmount()
+    expect(getUnsavedTextDraft('node-2', 'canvas-cleanup-test')).toBeUndefined()
   })
 })
 
