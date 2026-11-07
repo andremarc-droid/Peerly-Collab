@@ -261,6 +261,87 @@ describe('toSavableContent dropped item warning in LearningCanvas', () => {
       expect(notice.textContent).toContain('1 incomplete card(s) and 1 connected edge(s) were skipped during save')
     })
   })
+
+  it('dedupes dropped-item warnings across saves and does not re-show a dismissed notice until dropped counts change', async () => {
+    const onSave = vi.fn().mockImplementation(async (c: LearningCanvasContent) => c)
+    const boardWithIncompleteLink: LearningCanvasContent = {
+      version: 1,
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'text',
+          x: 50,
+          y: 50,
+          width: 240,
+          height: 140,
+          color: 'none',
+          text: 'Valid text card',
+        },
+        {
+          id: 'node-incomplete',
+          type: 'link',
+          x: 350,
+          y: 50,
+          width: 240,
+          height: 140,
+          color: 'none',
+          link: { url: 'https://example.com', title: '' },
+        },
+      ],
+      edges: [
+        {
+          id: 'edge-dropped',
+          from: 'node-1',
+          to: 'node-incomplete',
+          arrow: 'to',
+        },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    }
+
+    render(
+      <div className="w-[800px] h-[600px]">
+        <LearningCanvas
+          title="Dedupe Warning Board"
+          initialContent={boardWithIncompleteLink}
+          onSave={onSave}
+        />
+      </div>,
+    )
+
+    // 1. Add a valid text card and save: notice appears for 1 incomplete card + 1 edge
+    fireEvent.click(screen.getByRole('button', { name: 'Text' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save canvas' }))
+
+    await waitFor(() => {
+      const notice = screen.getByTestId('connection-notice')
+      expect(notice.textContent).toContain('1 incomplete card(s) and 1 connected edge(s) were skipped during save')
+    })
+
+    // 2. User dismisses the notice
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByTestId('connection-notice')).toBeNull()
+
+    // 3. Add another valid text card (dropped counts are still 1 card + 1 edge) and save:
+    // dismissed notice must NOT reappear
+    fireEvent.click(screen.getByRole('button', { name: 'Text' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save canvas' }))
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledTimes(2)
+    })
+    expect(screen.queryByTestId('connection-notice')).toBeNull()
+
+    // 4. Add a second incomplete Link card (dropped counts change to 2 cards + 1 edge) and save:
+    // notice reappears with the new count
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Text' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save canvas' }))
+
+    await waitFor(() => {
+      const notice = screen.getByTestId('connection-notice')
+      expect(notice.textContent).toContain('2 incomplete card(s) and 1 connected edge(s) were skipped during save')
+    })
+  })
 })
 
 describe('QuickAddMenu positioning and wrapper containment', () => {

@@ -444,6 +444,7 @@ export function LearningCanvasInternal({
   }
 
   const lastSaveWarningRef = useRef<string | null>(null)
+  const lastNotifiedDropMessageRef = useRef<string | null>(null)
 
   const prepareSavableContent = (): LearningCanvasContent => {
     const report = toSavableContentWithReport(readContent())
@@ -454,10 +455,16 @@ export function LearningCanvasInternal({
           : report.droppedNodes > 0
             ? `${report.droppedNodes} incomplete card(s) were skipped during save until completed.`
             : `${report.droppedEdges} invalid connection(s) were skipped during save.`
-      lastSaveWarningRef.current = msg
-      announce(msg)
-      setConnectNotice({ message: msg, key: Date.now() })
+      if (lastNotifiedDropMessageRef.current !== msg) {
+        lastNotifiedDropMessageRef.current = msg
+        lastSaveWarningRef.current = msg
+        announce(msg)
+        setConnectNotice({ message: msg, key: Date.now() })
+      } else {
+        lastSaveWarningRef.current = null
+      }
     } else {
+      lastNotifiedDropMessageRef.current = null
       lastSaveWarningRef.current = null
     }
     return report.content
