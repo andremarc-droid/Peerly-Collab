@@ -15,7 +15,6 @@ export interface TextCardData {
   isHighlighted?: boolean
   onUpdate?: (id: string, updates: Partial<LearningCanvasNode>) => void
   onDelete?: (id: string) => void
-  onEditingChange?: (id: string, isEditing: boolean) => void
 }
 
 /**
@@ -64,15 +63,13 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
     unsavedTextDrafts.set(draftKey, initialDraft)
     setEditText(initialDraft)
     setIsEditing(true)
-    data.onEditingChange?.(id, true)
-  }, [id, draftKey, data])
+  }, [draftKey, data.text])
 
   const stopEditing = useCallback(() => {
     restoredFromDraftRef.current = false
     unsavedTextDrafts.delete(draftKey)
     setIsEditing(false)
-    data.onEditingChange?.(id, false)
-  }, [id, draftKey, data])
+  }, [draftKey])
 
   // Level of detail: below 0.5 zoom and unselected, render simplified plain text without handles.
   // Selector returns boolean so useStore triggers re-render ONLY when crossing the 0.5 threshold.
@@ -86,7 +83,6 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
 
   useEffect(() => {
     if (isEditing) {
-      data.onEditingChange?.(id, true)
       const textarea = textareaRef.current
       if (textarea) {
         textarea.focus()
@@ -99,7 +95,6 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
         }
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing])
 
   const handleSave = useCallback(() => {
