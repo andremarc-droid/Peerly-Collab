@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react'
 import { LearningCanvas, shouldLogFlowError } from './LearningCanvas'
@@ -388,8 +389,8 @@ describe('QuickAddMenu positioning and wrapper containment', () => {
 })
 
 describe('TextCard inline editing state retention across culling unmount/remount', () => {
-  it('preserves unsaved editText and editing mode if unmounted while culled and notifies onEditingChange', () => {
-    const onEditingChange = vi.fn()
+  it('places caret at the end when remounting from a stored draft so typing one character appends to the draft instead of replacing it', async () => {
+    const user = userEvent.setup()
     const onUpdate = vi.fn()
     const props = makeTextCardProps({
       id: 'tc-cull-1',
@@ -397,7 +398,6 @@ describe('TextCard inline editing state retention across culling unmount/remount
         text: 'Original text',
         color: 'none',
         readOnly: false,
-        onEditingChange,
         onUpdate,
       },
     })
@@ -408,20 +408,17 @@ describe('TextCard inline editing state retention across culling unmount/remount
       </ReactFlowProvider>,
     )
 
-    // Enter inline editing mode via double-click
+    // Fresh edit start selects all text, so typing replaces "Original text" with the new draft
     fireEvent.doubleClick(screen.getByTestId('text-card-tc-cull-1'))
-    expect(onEditingChange).toHaveBeenCalledWith('tc-cull-1', true)
-
     const textarea = screen.getByLabelText('Edit text content (Markdown supported)') as HTMLTextAreaElement
-    expect(textarea.value).toBe('Original text')
+    expect(textarea.selectionStart).toBe(0)
+    expect(textarea.selectionEnd).toBe('Original text'.length)
 
-    // Type unsaved text
-    fireEvent.change(textarea, { target: { value: 'Unsaved in-progress markdown draft' } })
-    expect(textarea.value).toBe('Unsaved in-progress markdown draft')
+    await user.keyboard('Unsaved draft')
+    expect(textarea.value).toBe('Unsaved draft')
 
     // Simulate viewport culling unmounting the card when panned off-screen
     unmount()
-    onEditingChange.mockClear()
 
     // Remount the same card when panned back into view
     render(
@@ -430,16 +427,18 @@ describe('TextCard inline editing state retention across culling unmount/remount
       </ReactFlowProvider>,
     )
 
-    // Re-fires onEditingChange(id, true) when remounting with an active draft
-    expect(onEditingChange).toHaveBeenCalledWith('tc-cull-1', true)
-
     const restoredTextarea = screen.getByLabelText('Edit text content (Markdown supported)') as HTMLTextAreaElement
-    expect(restoredTextarea.value).toBe('Unsaved in-progress markdown draft')
+    expect(restoredTextarea.value).toBe('Unsaved draft')
+    expect(restoredTextarea.selectionStart).toBe('Unsaved draft'.length)
+    expect(restoredTextarea.selectionEnd).toBe('Unsaved draft'.length)
+
+    // Typing one character appends to the restored draft instead of overwriting it
+    await user.keyboard('!')
+    expect(restoredTextarea.value).toBe('Unsaved draft!')
 
     // Saving commits the draft and clears the unsaved cache
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-    expect(onUpdate).toHaveBeenCalledWith('tc-cull-1', { text: 'Unsaved in-progress markdown draft' })
-    expect(onEditingChange).toHaveBeenCalledWith('tc-cull-1', false)
+    expect(onUpdate).toHaveBeenCalledWith('tc-cull-1', { text: 'Unsaved draft!' })
   })
 
   it('isolates unsaved drafts by canvasId + nodeId so two canvases with the same nodeId never collide', () => {

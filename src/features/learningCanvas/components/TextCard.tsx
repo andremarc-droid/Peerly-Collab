@@ -52,6 +52,7 @@ export function clearUnsavedTextDrafts(canvasId?: string): void {
 
 function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardData }) {
   const draftKey = getDraftKey(id, data.canvasId)
+  const restoredFromDraftRef = useRef(unsavedTextDrafts.has(draftKey))
   const [isEditing, setIsEditing] = useState(() => unsavedTextDrafts.has(draftKey))
   const [editText, setEditText] = useState(() => unsavedTextDrafts.get(draftKey) ?? (data.text ?? ''))
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -59,6 +60,7 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
 
   const startEditing = useCallback(() => {
     const initialDraft = unsavedTextDrafts.get(draftKey) ?? (data.text ?? '')
+    restoredFromDraftRef.current = false
     unsavedTextDrafts.set(draftKey, initialDraft)
     setEditText(initialDraft)
     setIsEditing(true)
@@ -66,6 +68,7 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
   }, [id, draftKey, data])
 
   const stopEditing = useCallback(() => {
+    restoredFromDraftRef.current = false
     unsavedTextDrafts.delete(draftKey)
     setIsEditing(false)
     data.onEditingChange?.(id, false)
@@ -84,9 +87,16 @@ function TextCardInternal({ id, data, selected }: NodeProps & { data: TextCardDa
   useEffect(() => {
     if (isEditing) {
       data.onEditingChange?.(id, true)
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-        textareaRef.current.select()
+      const textarea = textareaRef.current
+      if (textarea) {
+        textarea.focus()
+        if (restoredFromDraftRef.current) {
+          const end = textarea.value.length
+          textarea.setSelectionRange(end, end)
+          restoredFromDraftRef.current = false
+        } else {
+          textarea.select()
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
