@@ -164,6 +164,6 @@ To profile reproducibly without network or Firestore mutation variability, appen
   - Added optional workflow_dispatch input `build_type: [debug, release]` to `.github/workflows/build-apk.yml`.
   - Configured Gradle signing in CI to sign both `debug` and `release` APKs with the identical registered keystore (`$HOME/.android/debug.keystore`), guaranteeing identical SHA-1 certificate fingerprints (preventing Google Sign-In error 10).
   - In `capacitor.config.ts`, set `webContentsDebuggingEnabled: !isRelease` (disabled in release, enabled in debug).
-  - Set `VITE_DEBUG_APK='true'` for debug APK builds in `.github/workflows/build-apk.yml` and `vite.config.ts` so `handleFlowError` logs React Flow error codes (such as `008` missing handle) during device testing via `chrome://inspect` even when `VITE_ENABLE_BENCH` is `false`.
+  - Set `VITE_DEBUG_APK='true'` for debug APK builds in `.github/workflows/build-apk.yml` so `handleFlowError` logs React Flow error codes (such as `008` missing handle) during device testing via `chrome://inspect` even when `VITE_ENABLE_BENCH` is `false`.
   - Confirmed no hot-path `console.log` statements in canvas source.
 
