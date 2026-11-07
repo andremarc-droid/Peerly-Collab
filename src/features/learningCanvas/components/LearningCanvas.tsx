@@ -447,13 +447,11 @@ export function LearningCanvasInternal({
           : report.droppedNodes > 0
             ? `${report.droppedNodes} incomplete card(s) were skipped during save until completed.`
             : `${report.droppedEdges} invalid connection(s) were skipped during save.`
+      lastSaveWarningRef.current = msg
       if (lastNotifiedDropMessageRef.current !== msg) {
         lastNotifiedDropMessageRef.current = msg
-        lastSaveWarningRef.current = msg
         announce(msg)
         setConnectNotice({ message: msg, key: Date.now() })
-      } else {
-        lastSaveWarningRef.current = null
       }
     } else {
       lastNotifiedDropMessageRef.current = null

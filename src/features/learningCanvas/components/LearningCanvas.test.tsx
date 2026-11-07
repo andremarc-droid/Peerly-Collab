@@ -324,13 +324,17 @@ describe('toSavableContent dropped item warning in LearningCanvas', () => {
     expect(screen.queryByTestId('connection-notice')).toBeNull()
 
     // 3. Add another valid text card (dropped counts are still 1 card + 1 edge) and save:
-    // dismissed notice must NOT reappear
+    // dismissed notice must NOT reappear, while manual Save still includes the warning in its aria-live announcement
     fireEvent.click(screen.getByRole('button', { name: 'Text' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save canvas' }))
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledTimes(2)
     })
     expect(screen.queryByTestId('connection-notice')).toBeNull()
+    const liveRegion = screen.getByTestId('learning-canvas-root').querySelector('[aria-live="polite"]')
+    expect(liveRegion?.textContent).toBe(
+      'Canvas saved. 1 incomplete card(s) and 1 connected edge(s) were skipped during save until completed.',
+    )
 
     // 4. Add a second incomplete Link card (dropped counts change to 2 cards + 1 edge) and save:
     // notice reappears with the new count
