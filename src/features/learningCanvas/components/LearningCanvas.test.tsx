@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react'
-import { LearningCanvas } from './LearningCanvas'
+import { LearningCanvas, shouldLogFlowError } from './LearningCanvas'
 import { QuickAddMenu } from './QuickAddMenu'
 import {
   TextCard,
@@ -539,5 +539,15 @@ describe('LinkCard incomplete default URL guard', () => {
     const linkCard = screen.getByLabelText('Link card: Web Link')
     expect(linkCard).not.toBeNull()
     expect(linkCard.textContent).toContain('Web Link')
+  })
+})
+
+describe('React Flow error logging in debug APK builds (shouldLogFlowError)', () => {
+  it('enables React Flow error logging in DEV, VITE_ENABLE_BENCH, and VITE_DEBUG_APK builds, and disables it in release builds', () => {
+    expect(shouldLogFlowError({ DEV: true, VITE_ENABLE_BENCH: 'false', VITE_DEBUG_APK: 'false' })).toBe(true)
+    expect(shouldLogFlowError({ DEV: false, VITE_ENABLE_BENCH: 'true', VITE_DEBUG_APK: 'false' })).toBe(true)
+    expect(shouldLogFlowError({ DEV: false, VITE_ENABLE_BENCH: 'false', VITE_DEBUG_APK: 'true' })).toBe(true)
+    expect(shouldLogFlowError({ DEV: false, VITE_ENABLE_BENCH: 'false', VITE_DEBUG_APK: 'false' })).toBe(false)
+    expect(shouldLogFlowError({ DEV: false })).toBe(false)
   })
 })

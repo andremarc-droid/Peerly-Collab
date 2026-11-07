@@ -168,6 +168,12 @@ function makeId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
 }
 
+export function shouldLogFlowError(
+  env: { DEV?: boolean; VITE_ENABLE_BENCH?: string; VITE_DEBUG_APK?: string } = import.meta.env,
+): boolean {
+  return Boolean(env.DEV || env.VITE_ENABLE_BENCH === 'true' || env.VITE_DEBUG_APK === 'true')
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
@@ -1201,7 +1207,7 @@ export function LearningCanvasInternal({
     void autosave.flush()
   }, [autosave])
   const handleFlowError = useCallback((code: string, message: string) => {
-    if (import.meta.env.DEV || import.meta.env.VITE_ENABLE_BENCH === 'true') {
+    if (shouldLogFlowError()) {
       console.warn(`[ReactFlow ${code}]: ${message}`)
     }
   }, [])
