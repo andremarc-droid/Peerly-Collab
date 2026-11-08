@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="110.5 48 1778 1778" width="512" height="512">
+  <title>Peerly Collab</title>
+  <defs>
+    <clipPath id="left-inner"><circle cx="696" cy="937" r="419.5"/></clipPath>
+  </defs>
+  <rect x="110.5" y="48" width="1778" height="1778" rx="356" fill="#ffffff"/>
+  <circle cx="1303.5" cy="937" r="419.5" fill="#090d52" clip-path="url(#left-inner)"/>
+  <circle cx="696" cy="937" r="457.5" fill="none" stroke="#020421" stroke-width="77"/>
+  <circle cx="1303.5" cy="937" r="457.5" fill="none" stroke="#020421" stroke-width="77"/>
+</svg>
