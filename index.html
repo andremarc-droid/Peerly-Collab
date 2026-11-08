@@ -6,8 +6,37 @@
     <!-- Light only: never adapt to a browser/OS dark theme (also blocks Chrome/Samsung auto-dark). -->
     <meta name="color-scheme" content="only light" />
     <meta name="supported-color-schemes" content="light" />
+    <meta name="theme-color" content="#0d0d59" />
     <meta name="description" content="A collaborative quiz platform for effective learning." />
     <title>Peerly Collab</title>
+
+    <!-- Browser tab icon. Search engines read the same links: Google needs a square icon whose size is a multiple of 48px. -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Site name for search results, link previews and home-screen shortcuts. -->
+    <meta name="application-name" content="Peerly Collab" />
+    <meta name="apple-mobile-web-app-title" content="Peerly Collab" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Peerly Collab" />
+    <meta property="og:title" content="Peerly Collab" />
+    <meta property="og:description" content="A collaborative quiz platform for effective learning." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Peerly Collab" />
+    <meta name="twitter:description" content="A collaborative quiz platform for effective learning." />
+    <!-- WebSite structured data tells Google the site's name. The URL is read at runtime so no domain is hard-coded here. -->
+    <script>
+      (function () {
+        var data = document.createElement('script')
+        data.type = 'application/ld+json'
+        data.text = JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebSite', name: 'Peerly Collab', url: location.origin + '/' })
+        document.head.appendChild(data)
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
