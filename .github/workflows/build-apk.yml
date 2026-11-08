@@ -68,14 +68,15 @@ jobs:
             npx cap add android
           fi
 
+      - name: Set up Python (used to build the launcher icon from the logo)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Replace the default Capacitor launcher icon and splash screen with the Peerly Collab logo
         run: |
-          for file in icon-only.png icon-foreground.png icon-background.png splash.png splash-dark.png; do
-            if [ ! -f "assets/$file" ]; then
-              echo "::warning::Missing assets/$file, so the APK keeps the default Capacitor icon. Extract the Peerly Collab icon pack into the project root and commit assets/."
-              exit 0
-            fi
-          done
+          python -m pip install --quiet pillow
+          python scripts/generate-android-assets.py
           npx --yes @capacitor/assets@latest generate --android --assetPath assets --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#ffffff' --splashBackgroundColor '#ffffff' --splashBackgroundColorDark '#ffffff'
 
       - name: Configure native Google sign-in
